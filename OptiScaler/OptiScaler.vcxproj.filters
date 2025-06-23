@@ -506,6 +506,9 @@
     <ClInclude Include="proxies\IGDExt_Proxy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="include\sl.param\parameters.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Config.cpp">
@@ -792,6 +795,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="hooks\Streamline_Hooks.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="include\sl.param\parameters.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

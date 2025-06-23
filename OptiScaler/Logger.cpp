@@ -104,6 +104,7 @@ void PrepareLogger()
                 file_sink->set_pattern("%H:%M:%S.%f\t%L\t%v");
 #else
                 file_sink->set_pattern("[%H:%M:%S.%f] [%L] %v");
+                // file_sink->set_pattern("[%H:%M:%S.%f] [thread %t] [%L] %v");
 #endif // LOG_ASYNC
 
                 sinks.push_back(file_sink);

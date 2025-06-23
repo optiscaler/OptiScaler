@@ -735,7 +735,8 @@ static void CheckWorkingMode()
             hookCrypt32();
 
             // Advapi32
-            if (Config::Instance()->DxgiSpoofing.value_or_default())
+            if (Config::Instance()->DxgiSpoofing.value_or_default() ||
+                Config::Instance()->StreamlineSpoofing.value_or_default())
                 hookAdvapi32();
 
             // hook streamline right away if it's already loaded
@@ -761,6 +762,22 @@ static void CheckWorkingMode()
             {
                 LOG_DEBUG("sl.dlss_g.dll already in memory");
                 StreamlineHooks::hookDlssg(slDlssg);
+            }
+
+            HMODULE slReflex = nullptr;
+            slReflex = KernelBaseProxy::GetModuleHandleW_()(L"sl.reflex.dll");
+            if (slReflex != nullptr)
+            {
+                LOG_DEBUG("sl.reflex.dll already in memory");
+                StreamlineHooks::hookReflex(slReflex);
+            }
+
+            HMODULE slCommon = nullptr;
+            slCommon = KernelBaseProxy::GetModuleHandleW_()(L"sl.common.dll");
+            if (slCommon != nullptr)
+            {
+                LOG_DEBUG("sl.common.dll already in memory");
+                StreamlineHooks::hookCommon(slCommon);
             }
 
             // XeSS
@@ -970,6 +987,18 @@ static void CheckQuirks()
         State::Instance().gameQuirks.set(GameQuirk::LoadD3D12Manually);
         LOG_INFO("Enabling a quirk for PoE2 (Load d3d12.dll)");
     }
+    else if (exePathFilename == "kunitsugami.exe" || exePathFilename == "monsterhunterrise.exe" ||
+             exePathFilename == "drdr.exe" || exePathFilename == "dd2ccs.exe" ||
+             exePathFilename == "kunitsugamidemo.exe" || exePathFilename == "dd2.exe" ||
+             exePathFilename == "monsterhunterwilds.exe")
+    {
+        if (!State::Instance().isRunningOnNvidia && !Config::Instance()->DxgiSpoofing.value_or_default() &&
+            !Config::Instance()->RestoreComputeSignature.has_value())
+        {
+            Config::Instance()->RestoreComputeSignature.set_volatile_value(true);
+            LOG_INFO("Enabling restore compute signature");
+        }
+    }
 }
 
 bool isNvidia()
@@ -1124,6 +1153,9 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 
                 if (!Config::Instance()->DxgiSpoofing.has_value())
                     Config::Instance()->DxgiSpoofing.set_volatile_value(false);
+
+                if (!Config::Instance()->StreamlineSpoofing.has_value())
+                    Config::Instance()->StreamlineSpoofing.set_volatile_value(false);
             }
             else
             {

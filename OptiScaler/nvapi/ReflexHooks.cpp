@@ -200,7 +200,6 @@ void ReflexHooks::update(bool optiFg_FgState, bool isVulkan)
 
     if (_updatesWithoutMarker > 20 || !_inited)
     {
-        LOG_DEBUG("_updatesWithoutMarker: {}, _inited: {}", _updatesWithoutMarker, _inited);
         State::Instance().reflexLimitsFps = false;
         return;
     }

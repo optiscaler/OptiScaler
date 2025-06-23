@@ -318,6 +318,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="include\imgui\imgui_impl_uwp.h" />
     <ClInclude Include="include\imgui\imgui_impl_vulkan.h" />
     <ClInclude Include="include\imgui\imgui_impl_win32.h" />
+    <ClInclude Include="include\sl.param\parameters.h" />
     <ClInclude Include="inputs\FfxApiExe_Dx12.h" />
     <ClInclude Include="inputs\FfxApi_Vk.h" />
     <ClInclude Include="inputs\NVNGX_DLSS.h" />
@@ -464,6 +465,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="include\imgui\imgui_impl_uwp.cpp" />
     <ClCompile Include="include\imgui\imgui_impl_vulkan.cpp" />
     <ClCompile Include="include\imgui\imgui_impl_win32.cpp" />
+    <ClCompile Include="include\sl.param\parameters.cpp" />
     <ClCompile Include="inputs\FfxApiExe_Dx12.cpp" />
     <ClCompile Include="inputs\FfxApi_Vk.cpp" />
     <ClCompile Include="inputs\XeSS_Base.cpp" />

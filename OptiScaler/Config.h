@@ -322,6 +322,7 @@ class Config
 
     // Spoofing
     CustomOptional<bool> DxgiSpoofing { true };
+    CustomOptional<bool> StreamlineSpoofing { true };
     CustomOptional<std::string, NoDefault> DxgiBlacklist; // disabled by default
     CustomOptional<int, NoDefault> DxgiVRAM;              // disabled by default
     CustomOptional<bool> VulkanSpoofing { false };

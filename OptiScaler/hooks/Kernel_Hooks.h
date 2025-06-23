@@ -141,8 +141,7 @@ class KernelHooks
         }
 
         // sl.interposer.dll
-        if (Config::Instance()->FGType.value_or_default() == FGType::Nukems &&
-            CheckDllName(&lcaseLibName, &slInterposerNames))
+        if (CheckDllName(&lcaseLibName, &slInterposerNames))
         {
             auto streamlineModule = KernelBaseProxy::LoadLibraryExA_()(lpLibFullPath, NULL, 0);
 
@@ -190,6 +189,40 @@ class KernelHooks
             }
 
             return dlssgModule;
+        }
+
+        // sl.reflex.dll
+        if (CheckDllName(&lcaseLibName, &slReflexNames))
+        {
+            auto reflexModule = KernelBaseProxy::LoadLibraryExA_()(lpLibFullPath, NULL, 0);
+
+            if (reflexModule != nullptr)
+            {
+                StreamlineHooks::hookReflex(reflexModule);
+            }
+            else
+            {
+                LOG_ERROR("Trying to load dll: {}", lcaseLibName);
+            }
+
+            return reflexModule;
+        }
+
+        // sl.common.dll
+        if (CheckDllName(&lcaseLibName, &slCommonNames))
+        {
+            auto commonModule = KernelBaseProxy::LoadLibraryExA_()(lpLibFullPath, NULL, 0);
+
+            if (commonModule != nullptr)
+            {
+                StreamlineHooks::hookCommon(commonModule);
+            }
+            else
+            {
+                LOG_ERROR("Trying to load dll: {}", lcaseLibName);
+            }
+
+            return commonModule;
         }
 
         // nvngx_dlss
@@ -561,8 +594,7 @@ class KernelHooks
         }
 
         // sl.interposer.dll
-        if (Config::Instance()->FGType.value_or_default() == FGType::Nukems &&
-            CheckDllNameW(&lcaseLibName, &slInterposerNamesW))
+        if (CheckDllNameW(&lcaseLibName, &slInterposerNamesW))
         {
             auto streamlineModule = KernelBaseProxy::LoadLibraryExW_()(lpLibFullPath, NULL, 0);
 
@@ -610,6 +642,40 @@ class KernelHooks
             }
 
             return dlssgModule;
+        }
+
+        // sl.reflex.dll
+        if (CheckDllNameW(&lcaseLibName, &slReflexNamesW))
+        {
+            auto reflexModule = KernelBaseProxy::LoadLibraryExW_()(lpLibFullPath, NULL, 0);
+
+            if (reflexModule != nullptr)
+            {
+                StreamlineHooks::hookReflex(reflexModule);
+            }
+            else
+            {
+                LOG_ERROR("Trying to load dll: {}", lcaseLibNameA);
+            }
+
+            return reflexModule;
+        }
+
+        // sl.common.dll
+        if (CheckDllNameW(&lcaseLibName, &slCommonNamesW))
+        {
+            auto commonModule = KernelBaseProxy::LoadLibraryExW_()(lpLibFullPath, NULL, 0);
+
+            if (commonModule != nullptr)
+            {
+                StreamlineHooks::hookCommon(commonModule);
+            }
+            else
+            {
+                LOG_ERROR("Trying to load dll: {}", lcaseLibNameA);
+            }
+
+            return commonModule;
         }
 
         if (Config::Instance()->DisableOverlays.value_or_default() && CheckDllNameW(&lcaseLibName, &blockOverlayNamesW))
@@ -1683,7 +1749,8 @@ class KernelHooks
     static DWORD hk_K32_GetFileAttributesW(LPCWSTR lpFileName)
     {
         if (!State::Instance().nvngxExists && State::Instance().nvngxReplacement.has_value() &&
-            Config::Instance()->DxgiSpoofing.value_or_default())
+            (Config::Instance()->DxgiSpoofing.value_or_default() ||
+             Config::Instance()->StreamlineSpoofing.value_or_default()))
         {
             auto path = wstring_to_string(std::wstring(lpFileName));
             to_lower_in_place(path);
@@ -1704,7 +1771,8 @@ class KernelHooks
                                      DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
     {
         if (!State::Instance().nvngxExists && State::Instance().nvngxReplacement.has_value() &&
-            Config::Instance()->DxgiSpoofing.value_or_default())
+            (Config::Instance()->DxgiSpoofing.value_or_default() ||
+             Config::Instance()->StreamlineSpoofing.value_or_default()))
         {
             auto path = wstring_to_string(std::wstring(lpFileName));
             to_lower_in_place(path);

@@ -98,6 +98,8 @@ class State
     std::string NGX_OTA_Dlss;
     std::string NGX_OTA_Dlssd;
 
+    feature_version streamlineVersion = { 0, 0, 0 };
+
     API api = API::NotSelected;
     API swapchainApi = API::NotSelected;
 

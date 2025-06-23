@@ -38,7 +38,9 @@ static BOOL hkCryptQueryObject(DWORD dwObjectType, const void* pvObject, DWORD d
         }
 
         if (pathString.contains("nvngx.dll") && !State::Instance().nvngxExists &&
-            State::Instance().nvngxReplacement.has_value() && Config::Instance()->DxgiSpoofing.value_or_default())
+            State::Instance().nvngxReplacement.has_value() &&
+            (Config::Instance()->DxgiSpoofing.value_or_default() ||
+             Config::Instance()->StreamlineSpoofing.value_or_default()))
         {
             LOG_DEBUG("Replacing nvngx with a signed dll");
             return o_CryptQueryObject(dwObjectType, State::Instance().nvngxReplacement.value().c_str(),

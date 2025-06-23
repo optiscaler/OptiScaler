@@ -2,6 +2,7 @@
 #include "Config.h"
 #include "Util.h"
 #include "nvapi/fakenvapi.h"
+#include <hooks/Streamline_Hooks.h>
 
 static inline int64_t GetTicks()
 {
@@ -402,6 +403,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             VulkanExtensionSpoofing.set_from_config(readBool("Spoofing", "VulkanExtensionSpoofing"));
             VulkanVRAM.set_from_config(readInt("Spoofing", "VulkanVRAM"));
             SpoofedGPUName.set_from_config(readWString("Spoofing", "SpoofedGPUName"));
+            StreamlineSpoofing.set_from_config(readBool("Spoofing", "StreamlineSpoofing"));
             SpoofHAGS.set_from_config(readBool("Spoofing", "SpoofHAGS"));
             SpoofFeatureLevel.set_from_config(readBool("Spoofing", "D3DFeatureLevel"));
             SpoofedVendorId.set_from_config(readUInt("Spoofing", "SpoofedVendorId"));
@@ -947,6 +949,8 @@ bool Config::SaveIni()
         ini.SetValue("Spoofing", "DxgiVRAM", GetIntValue(Instance()->DxgiVRAM.value_for_config()).c_str());
         ini.SetValue("Spoofing", "SpoofedGPUName",
                      wstring_to_string(Instance()->SpoofedGPUName.value_for_config_or(L"auto")).c_str());
+        ini.SetValue("Spoofing", "StreamlineSpoofing",
+                     GetBoolValue(Instance()->StreamlineSpoofing.value_for_config()).c_str());
         ini.SetValue("Spoofing", "SpoofHAGS", GetBoolValue(Instance()->SpoofHAGS.value_for_config()).c_str());
         ini.SetValue("Spoofing", "D3DFeatureLevel",
                      GetBoolValue(Instance()->SpoofFeatureLevel.value_for_config()).c_str());
@@ -1038,6 +1042,8 @@ bool Config::SaveFakenvapiIni()
     fakenvapiIni.SetLongValue("fakenvapi", "force_latencyflex", FN_ForceLatencyFlex.value_or(false));
     fakenvapiIni.SetLongValue("fakenvapi", "latencyflex_mode", FN_LatencyFlexMode.value_or(0));
     fakenvapiIni.SetLongValue("fakenvapi", "force_reflex", FN_ForceReflex.value_or(0));
+
+    StreamlineHooks::updateForceReflex();
 
     return fakenvapiIni.SaveFile(FN_iniPath.wstring().c_str()) >= 0;
 }
