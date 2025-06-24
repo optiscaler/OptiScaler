@@ -2036,7 +2036,7 @@ bool MenuCommon::RenderMenu()
                                 uint32_t configModes = 0;
 
                                 if (Config::Instance()->Fsr4Model.has_value())
-                                    configModes = Config::Instance()->Fsr4Model.value_or_default() + 1;
+                                    configModes = Config::Instance()->Fsr4Model.value_or(0) + 1;
 
                                 if (configModes < 0 || configModes >= models.size())
                                     configModes = 0;
@@ -2050,7 +2050,7 @@ bool MenuCommon::RenderMenu()
                                         uint32_t selection = 0;
 
                                         if (Config::Instance()->Fsr4Model.has_value())
-                                            selection = Config::Instance()->Fsr4Model.value_or_default() + 1;
+                                            selection = Config::Instance()->Fsr4Model.value_or(0) + 1;
 
                                         if (ImGui::Selectable(models[n], selection == n))
                                         {
