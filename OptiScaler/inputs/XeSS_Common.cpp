@@ -256,8 +256,13 @@ xess_result_t hk_xessGetJitterScale(xess_context_handle_t hContext, float* pX, f
 {
     LOG_DEBUG("");
 
-    *pX = 1.0f;
-    *pY = 1.0f;
+    if (!_jitterScales.contains(hContext))
+        return XESS_RESULT_ERROR_INVALID_CONTEXT;
+
+    auto scales = &_jitterScales[hContext];
+
+    *pX = scales->x;
+    *pY = scales->y;
 
     return XESS_RESULT_SUCCESS;
 }
@@ -369,6 +374,9 @@ xess_result_t hk_xessGetVelocityScale(xess_context_handle_t hContext, float* pX,
 xess_result_t hk_xessSetJitterScale(xess_context_handle_t hContext, float x, float y)
 {
     LOG_DEBUG("x: {}, y: {}", x, y);
+
+    _jitterScales[hContext] = { x, y };
+
     return XESS_RESULT_SUCCESS;
 }
 

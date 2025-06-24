@@ -254,8 +254,18 @@ xess_result_t hk_xessVKExecute(xess_context_handle_t hContext, VkCommandBuffer c
         }
     }
 
-    params->Set(NVSDK_NGX_Parameter_Jitter_Offset_X, pExecParams->jitterOffsetX);
-    params->Set(NVSDK_NGX_Parameter_Jitter_Offset_Y, pExecParams->jitterOffsetY);
+    float jitterScaleX = 1.0f;
+    float jitterScaleY = 1.0f;
+
+    if (_jitterScales.contains(hContext))
+    {
+        auto scales = &_jitterScales[hContext];
+        jitterScaleX = scales->x;
+        jitterScaleY = scales->y;
+    }
+
+    params->Set(NVSDK_NGX_Parameter_Jitter_Offset_X, pExecParams->jitterOffsetX * jitterScaleX);
+    params->Set(NVSDK_NGX_Parameter_Jitter_Offset_Y, pExecParams->jitterOffsetY * jitterScaleY);
     params->Set(NVSDK_NGX_Parameter_DLSS_Exposure_Scale, pExecParams->exposureScale);
     params->Set(NVSDK_NGX_Parameter_Reset, pExecParams->resetHistory);
     params->Set(NVSDK_NGX_Parameter_Width, pExecParams->inputWidth);
