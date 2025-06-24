@@ -130,6 +130,7 @@ class State
     // FSR3.x
     std::vector<const char*> fsr3xVersionNames {};
     std::vector<uint64_t> fsr3xVersionIds {};
+    uint32_t currentFsr4Model {};
 
     // Linux check
     bool isRunningOnLinux = false;

@@ -9,11 +9,14 @@
 
 #include <Unknwn.h>
 #include <Windows.h>
+#include <scanner/scanner.h>
 
 typedef HRESULT(__cdecl* PFN_AmdExtD3DCreateInterface)(IUnknown* pOuter, REFIID riid, void** ppvObject);
+typedef uint64_t (*PFN_getModelBlob)(uint32_t preset, uint64_t unknown, uint64_t* source, uint64_t* size);
 
 static HMODULE moduleAmdxc64 = nullptr;
 static HMODULE fsr4Module = nullptr;
+static PFN_getModelBlob o_getModelBlob = nullptr;
 
 #pragma region GDI32
 
@@ -145,6 +148,22 @@ inline static std::vector<std::filesystem::path> GetDriverStore()
 
 #pragma endregion
 
+uint64_t hkgetModelBlob(uint32_t preset, uint64_t unknown, uint64_t* source, uint64_t* size)
+{
+    LOG_FUNC();
+
+    if (Config::Instance()->Fsr4Model.has_value())
+    {
+        preset = Config::Instance()->Fsr4Model.value();
+    }
+
+    State::Instance().currentFsr4Model = preset;
+
+    auto result = o_getModelBlob(preset, unknown, source, size);
+
+    return result;
+}
+
 /* Potato_of_Doom's Implementation */
 #pragma region IAmdExtFfxApi
 
@@ -198,6 +217,26 @@ struct AmdExtFfxApi : public IAmdExtFfxApi
             {
                 LOG_ERROR("Failed to load amdxcffx64.dll");
                 return E_NOINTERFACE;
+            }
+
+            std::wstring_view dllName(L"amdxcffx64.dll");
+            std::string_view dispatchPattern("83 F9 05 0F 87 ? ? ? ?");
+            o_getModelBlob = (PFN_getModelBlob) scanner::GetAddress(dllName, dispatchPattern, 0);
+
+            if (o_getModelBlob)
+            {
+                LOG_DEBUG("Hooking model selection");
+
+                DetourTransactionBegin();
+                DetourUpdateThread(GetCurrentThread());
+
+                DetourAttach(&(PVOID&) o_getModelBlob, hkgetModelBlob);
+
+                DetourTransactionCommit();
+            }
+            else
+            {
+                LOG_ERROR("Couldn't hook model selection");
             }
 
             o_UpdateFfxApiProvider =

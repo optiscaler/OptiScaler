@@ -292,6 +292,7 @@ class Config
     CustomOptional<int> Fsr3xIndex { 0 };
     CustomOptional<bool> FsrUseMaskForTransparency { true };
     CustomOptional<bool> Fsr4Update { false };
+    CustomOptional<uint32_t> Fsr4Model { 0 };
     CustomOptional<bool> FsrNonLinearSRGB { false };
     CustomOptional<bool> FsrNonLinearPQ { false };
     CustomOptional<bool> FsrAgilitySDKUpgrade { false };

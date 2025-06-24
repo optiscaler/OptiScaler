@@ -127,6 +127,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             FsrUseMaskForTransparency.set_from_config(readBool("FSR", "UseReactiveMaskForTransparency"));
             DlssReactiveMaskBias.set_from_config(readFloat("FSR", "DlssReactiveMaskBias"));
             Fsr4Update.set_from_config(readBool("FSR", "Fsr4Update"));
+            Fsr4Model.set_from_config(readInt("FSR", "Fsr4Model"));
             FsrNonLinearPQ.set_from_config(readBool("FSR", "FsrNonLinearPQ"));
             FsrNonLinearSRGB.set_from_config(readBool("FSR", "FsrNonLinearSRGB"));
             FsrAgilitySDKUpgrade.set_from_config(readBool("FSR", "FsrAgilitySDKUpgrade"));
@@ -693,6 +694,7 @@ bool Config::SaveIni()
         ini.SetValue("FSR", "DlssReactiveMaskBias",
                      GetFloatValue(Instance()->DlssReactiveMaskBias.value_for_config()).c_str());
         ini.SetValue("FSR", "Fsr4Update", GetBoolValue(Instance()->Fsr4Update.value_for_config()).c_str());
+        ini.SetValue("FSR", "Fsr4Model", GetIntValue(Instance()->Fsr4Model.value_for_config()).c_str());
         ini.SetValue("FSR", "FsrNonLinearPQ", GetBoolValue(Instance()->FsrNonLinearPQ.value_for_config()).c_str());
         ini.SetValue("FSR", "FsrNonLinearSRGB", GetBoolValue(Instance()->FsrNonLinearSRGB.value_for_config()).c_str());
         ini.SetValue("FSR", "FsrAgilitySDKUpgrade",
