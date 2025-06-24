@@ -16,7 +16,7 @@ std::pair<uintptr_t, uintptr_t> GetModule(const std::wstring_view moduleName)
     return { moduleBase, moduleEnd };
 }
 
-uintptr_t FindPattern(uintptr_t startAddress, uintptr_t maxSize, const char* mask)
+uintptr_t scanner::FindPattern(uintptr_t startAddress, uintptr_t maxSize, const char* mask)
 {
     std::vector<std::pair<uint8_t, bool>> pattern;
 
@@ -47,6 +47,7 @@ uintptr_t FindPattern(uintptr_t startAddress, uintptr_t maxSize, const char* mas
     return std::distance(dataStart, sig) + startAddress;
 }
 
+// Has some issues with DLLs on Linux
 uintptr_t scanner::GetAddress(const std::wstring_view moduleName, const std::string_view pattern, ptrdiff_t offset,
                               uintptr_t startAddress)
 {
@@ -58,6 +59,7 @@ uintptr_t scanner::GetAddress(const std::wstring_view moduleName, const std::str
         address = FindPattern(GetModule(moduleName.data()).first,
                               GetModule(moduleName.data()).second - GetModule(moduleName.data()).first, pattern.data());
 
+    // Use KernelBaseProxy::GetModuleHandleW_() ?
     if ((GetModuleHandleW(moduleName.data()) != nullptr) && (address != NULL))
     {
         return (address + offset);

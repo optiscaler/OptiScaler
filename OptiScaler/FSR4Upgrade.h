@@ -219,9 +219,21 @@ struct AmdExtFfxApi : public IAmdExtFfxApi
                 return E_NOINTERFACE;
             }
 
-            std::wstring_view dllName(L"amdxcffx64.dll");
-            std::string_view dispatchPattern("83 F9 05 0F 87 ? ? ? ?");
-            o_getModelBlob = (PFN_getModelBlob) scanner::GetAddress(dllName, dispatchPattern, 0);
+            {
+                const char* pattern = "83 F9 05 0F 87 ? ? ? ?";
+
+                auto fsr4ModulePtr = (uintptr_t) fsr4Module;
+
+                const uintptr_t moduleEnd = [&]()
+                {
+                    auto ntHeaders = reinterpret_cast<PIMAGE_NT_HEADERS64>(
+                        fsr4ModulePtr + reinterpret_cast<PIMAGE_DOS_HEADER>(fsr4ModulePtr)->e_lfanew);
+                    return static_cast<uintptr_t>(fsr4ModulePtr + ntHeaders->OptionalHeader.SizeOfImage);
+                }();
+
+                o_getModelBlob =
+                    (PFN_getModelBlob) scanner::FindPattern(fsr4ModulePtr, moduleEnd - fsr4ModulePtr, pattern);
+            }
 
             if (o_getModelBlob)
             {

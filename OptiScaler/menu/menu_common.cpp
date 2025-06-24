@@ -2066,8 +2066,11 @@ bool MenuCommon::RenderMenu()
 
                                     ImGui::EndCombo();
                                 }
-                                ShowHelpMarker(
-                                    "Model 0 is meant for FSR AA\nModel 5 is meant for FSR Ultra Performance");
+                                ShowHelpMarker("Model 0 is meant for FSR AA/Ultra Quality\n"
+                                               "Model 1 is meant for Quality\n"
+                                               "Model 2 is meant for Balanced\n"
+                                               "Model 3 is meant for Performance\n"
+                                               "Model 5 is meant for Ultra Performance");
 
                                 ImGui::Spacing();
                                 ImGui::Text("Current model: %d", State::Instance().currentFsr4Model);
