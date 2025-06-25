@@ -187,14 +187,14 @@ set setupSuccess=true
 pause
 
 if "%setupSuccess%"=="true" (
-    REM Remove "OptiScaler Setup.bat"
+    REM Remove "setup_windows.bat"
     del %0
 )
 
 exit /b
 
 :create_uninstaller
-copy /y NUL "Remove OptiScaler.bat"
+copy /y NUL "Remove setup_windows.bat"
 
 (
 echo @echo off
