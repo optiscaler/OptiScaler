@@ -371,7 +371,7 @@ void* StreamlineHooks::hkdlssg_slGetPluginFunction(const char* functionName)
         return &hkdlssg_slOnPluginLoad;
     }
 
-    if (strcmp(functionName, "slDLSSGSetOptions") == 0)
+    if (strcmp(functionName, "slDLSSGSetOptions") == 0 && State::Instance().api == API::Vulkan)
     {
         o_slDLSSGSetOptions = (decltype(&slDLSSGSetOptions)) o_dlssg_slGetPluginFunction(functionName);
         return &hkslDLSSGSetOptions;
@@ -652,6 +652,13 @@ void StreamlineHooks::hookDlss(HMODULE slDlss)
         return;
     }
 
+    static HMODULE last_slDlss = nullptr;
+
+    if (last_slDlss == slDlss)
+        return;
+
+    last_slDlss = slDlss;
+
     if (o_dlss_slGetPluginFunction)
         unhookDlss();
 
@@ -697,6 +704,13 @@ void StreamlineHooks::hookDlssg(HMODULE slDlssg)
         LOG_WARN("Dlssg module in NULL");
         return;
     }
+
+    static HMODULE last_slDlssg = nullptr;
+
+    if (last_slDlssg == slDlssg)
+        return;
+
+    last_slDlssg = slDlssg;
 
     if (o_dlssg_slGetPluginFunction)
         unhookDlssg();
@@ -744,6 +758,13 @@ void StreamlineHooks::hookReflex(HMODULE slReflex)
         return;
     }
 
+    static HMODULE last_slReflex = nullptr;
+
+    if (last_slReflex == slReflex)
+        return;
+
+    last_slReflex = slReflex;
+
     if (o_reflex_slGetPluginFunction)
         unhookReflex();
 
@@ -789,6 +810,13 @@ void StreamlineHooks::hookCommon(HMODULE slCommon)
         LOG_WARN("Common module in NULL");
         return;
     }
+
+    static HMODULE last_slCommon = nullptr;
+
+    if (last_slCommon == slCommon)
+        return;
+
+    last_slCommon = slCommon;
 
     if (o_common_slGetPluginFunction)
         unhookCommon();
