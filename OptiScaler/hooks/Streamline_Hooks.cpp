@@ -342,8 +342,9 @@ sl::Result StreamlineHooks::hkslReflexSetOptions(const sl::ReflexOptions& option
     if (Config::Instance()->FN_ForceReflex == 2)
         newOptions.mode = sl::ReflexMode::eLowLatencyWithBoost;
 
-    if (Config::Instance()->FN_ForceReflex == 1)
-        newOptions.mode = sl::ReflexMode::eOff;
+    // Will cause a pink screen when used with DLSSG
+    // if (Config::Instance()->FN_ForceReflex == 1)
+    //     newOptions.mode = sl::ReflexMode::eOff;
 
     return o_slReflexSetOptions(newOptions);
 }
@@ -392,8 +393,10 @@ bool StreamlineHooks::hkreflex_slSetConstants_sl1(const void* data, uint32_t fra
 
     if (Config::Instance()->FN_ForceReflex == 2)
         constants.mode = sl1::ReflexMode::eReflexModeLowLatencyWithBoost;
-    else if (Config::Instance()->FN_ForceReflex == 1)
-        constants.mode = sl1::ReflexMode::eReflexModeOff;
+
+    // Will cause a pink screen when used with DLSSG
+    // else if (Config::Instance()->FN_ForceReflex == 1)
+    //     constants.mode = sl1::ReflexMode::eReflexModeOff;
 
     return o_reflex_slSetConstants_sl1(&constants, frameIndex, id);
 }
