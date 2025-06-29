@@ -25,6 +25,7 @@ enum class GameQuirk
     LoadD3D12Manually,
     KernelBaseHooks,
     VulkanDLSSBarrierFixup,
+    ForceUnrealEngine,
     _
 };
 

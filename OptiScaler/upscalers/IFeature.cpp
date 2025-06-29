@@ -80,7 +80,9 @@ bool IFeature::SetInitParameters(NVSDK_NGX_Parameter* InParameters)
             LOG_INFO("AutoExposure flag overrided by user: {}", Config::Instance()->AutoExposure.value());
             _initFlags.AutoExposure = Config::Instance()->AutoExposure.value();
         }
-        else if (State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL && Name()[0] == 'X')
+        else if ((State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
+                  State::Instance().gameQuirks & GameQuirk::ForceUnrealEngine) &&
+                 Name()[0] == 'X')
         {
             LOG_INFO("AutoExposure flag overrided by OptiScaler (UE+XeSS): true");
             _initFlags.AutoExposure = true;
