@@ -245,10 +245,9 @@ static HRESULT hkFGPresent(void* This, UINT SyncInterval, UINT Flags)
                 // filter out posibly wrong measured high values
                 if (elapsedTimeMs < 100.0)
                 {
-                    State::Instance().frameTimeMutex.lock();
+                    std::lock_guard<std::mutex> lock(State::Instance().frameTimeMutex);
                     State::Instance().upscaleTimes.push_back(elapsedTimeMs);
                     State::Instance().upscaleTimes.pop_front();
-                    State::Instance().frameTimeMutex.unlock();
                 }
             }
             else
@@ -430,10 +429,9 @@ static HRESULT Present(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags
             // filter out posibly wrong measured high values
             if (elapsedTimeMs < 100.0)
             {
-                State::Instance().frameTimeMutex.lock();
+                std::lock_guard<std::mutex> lock(State::Instance().frameTimeMutex);
                 State::Instance().upscaleTimes.push_back(elapsedTimeMs);
                 State::Instance().upscaleTimes.pop_front();
-                State::Instance().frameTimeMutex.unlock();
             }
         }
         else
@@ -471,10 +469,9 @@ static HRESULT Present(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags
                     // filter out posibly wrong measured high values
                     if (elapsedTimeMs < 100.0)
                     {
-                        State::Instance().frameTimeMutex.lock();
+                        std::lock_guard<std::mutex> lock(State::Instance().frameTimeMutex);
                         State::Instance().upscaleTimes.push_back(elapsedTimeMs);
                         State::Instance().upscaleTimes.pop_front();
-                        State::Instance().frameTimeMutex.unlock();
                     }
                 }
             }
