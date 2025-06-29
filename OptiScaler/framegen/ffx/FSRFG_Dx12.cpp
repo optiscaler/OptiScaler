@@ -66,7 +66,7 @@ UINT64 FSRFG_Dx12::UpscaleStart()
 
         if (Config::Instance()->FGHUDFix.value_or_default())
         {
-            auto allocator = _commandAllocators[frameIndex];
+            auto allocator = _commandAllocators[frameIndex].get();
             auto result = allocator->Reset();
             result = _commandList[frameIndex]->Reset(allocator, nullptr);
             LOG_DEBUG("_commandList[{}]->Reset()", frameIndex);
@@ -358,7 +358,7 @@ bool FSRFG_Dx12::DispatchHudless(bool useHudless, double frameTime)
         dfgPrepare.header.pNext = &backendDesc.header;
 
         // GetDispatchCommandList();
-        dfgPrepare.commandList = _commandList[fIndex];
+        dfgPrepare.commandList = _commandList[fIndex].get();
 
         dfgPrepare.frameID = _frameCount;
         dfgPrepare.flags = m_FrameGenerationConfig.flags;
@@ -447,7 +447,7 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
         LOG_WARN("(FG) Callback without active FG! fIndex:{}", fIndex);
 
 #ifdef USE_QUEUE_FOR_FG
-        auto allocator = _commandAllocators[fIndex];
+        auto allocator = _commandAllocators[fIndex].get();
         auto result = allocator->Reset();
         result = _commandList[fIndex]->Reset(allocator, nullptr);
 #endif

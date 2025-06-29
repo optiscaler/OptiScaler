@@ -316,21 +316,16 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Init_Ext(unsigned long long InApp
     // early hooking for signatures
     if (orgSetComputeRootSignature == nullptr)
     {
-        ID3D12CommandAllocator* alloc = nullptr;
-        ID3D12GraphicsCommandList* gcl = nullptr;
-
-        auto result = InDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&alloc));
+        Util::ComPtr<ID3D12CommandAllocator> alloc;
+        auto result = InDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_OUTPTR_ARGS(std::out_ptr(alloc)));
         if (result == S_OK)
         {
-
-            result = InDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, alloc, NULL, IID_PPV_ARGS(&gcl));
+            Util::ComPtr<ID3D12GraphicsCommandList> gcl;
+            result = InDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, alloc.get(), NULL, IID_OUTPTR_ARGS(std::out_ptr(gcl)));
             if (result == S_OK)
             {
-                HookToCommandList(gcl);
-                gcl->Release();
+                HookToCommandList(gcl.get());
             }
-
-            alloc->Release();
         }
     }
 

@@ -215,28 +215,27 @@ void IFGFeature_Dx12::CreateObjects(ID3D12Device* InDevice)
 
         for (size_t i = 0; i < BUFFER_COUNT; i++)
         {
-            ID3D12CommandAllocator* allocator = nullptr;
-            result = InDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&allocator));
+            Util::ComPtr<ID3D12CommandAllocator> allocator;
+            result = InDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
+                                                      IID_OUTPTR_ARGS(std::out_ptr(allocator)));
             if (result != S_OK)
             {
                 LOG_ERROR("CreateCommandAllocators _commandAllocators[{}]: {:X}", i, (unsigned long) result);
                 break;
             }
             allocator->SetName(L"_commandAllocator");
-            if (!CheckForRealObject(__FUNCTION__, allocator, (IUnknown**) &_commandAllocators[i]))
-                _commandAllocators[i] = allocator;
+            _commandAllocators[i] = CheckForRealObject(__FUNCTION__, std::move(allocator));
 
-            ID3D12GraphicsCommandList* cmdList = nullptr;
-            result = InDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, _commandAllocators[i], NULL,
-                                                 IID_PPV_ARGS(&cmdList));
+            Util::ComPtr<ID3D12GraphicsCommandList> cmdList;
+            result = InDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, _commandAllocators[i].get(), NULL,
+                                                 IID_OUTPTR_ARGS(std::out_ptr(cmdList)));
             if (result != S_OK)
             {
                 LOG_ERROR("CreateCommandList _commandList[{}]: {:X}", i, (unsigned long) result);
                 break;
             }
             cmdList->SetName(L"_commandList");
-            if (!CheckForRealObject(__FUNCTION__, cmdList, (IUnknown**) &_commandList[i]))
-                _commandList[i] = cmdList;
+            _commandList[i] = CheckForRealObject(__FUNCTION__, std::move(cmdList));
 
             result = _commandList[i]->Close();
             if (result != S_OK)
@@ -255,17 +254,8 @@ void IFGFeature_Dx12::ReleaseObjects()
 
     for (size_t i = 0; i < BUFFER_COUNT; i++)
     {
-        if (_commandAllocators[i] != nullptr)
-        {
-            _commandAllocators[i]->Release();
-            _commandAllocators[i] = nullptr;
-        }
-
-        if (_commandList[i] != nullptr)
-        {
-            _commandList[i]->Release();
-            _commandList[i] = nullptr;
-        }
+        _commandAllocators[i].reset();
+        _commandList[i].reset();
     }
 
     _mvFlip.reset();
@@ -278,7 +268,7 @@ bool IFGFeature_Dx12::IsFGCommandList(void* cmdList)
 
     for (size_t i = 0; i < BUFFER_COUNT; i++)
     {
-        if (_commandList[i] == cmdList)
+        if (_commandList[i].get() == cmdList)
         {
             found = true;
             break;
@@ -304,7 +294,7 @@ bool IFGFeature_Dx12::ExecuteHudlessCmdList()
 
     if (result == S_OK)
     {
-        ID3D12CommandList* cl[] = { cl[0] = _commandList[fIndex] };
+        ID3D12CommandList* cl[] = { cl[0] = _commandList[fIndex].get() };
         _gameCommandQueue->ExecuteCommandLists(1, cl);
 
         return true;
