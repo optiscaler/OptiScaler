@@ -4,31 +4,6 @@
 
 #include "XeSSFeature_Dx12.h"
 
-bool XeSSFeatureDx12::Init(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCommandList,
-                           NVSDK_NGX_Parameter* InParameters)
-{
-    LOG_FUNC();
-
-    if (IsInited())
-        return true;
-
-    Device = InDevice;
-
-    if (InitXeSS(InDevice, InParameters))
-    {
-        if (!Config::Instance()->OverlayMenu.value_or(true) && (Imgui == nullptr || Imgui.get() == nullptr))
-            Imgui = std::make_unique<Menu_Dx12>(Util::GetProcessWindow(), InDevice);
-
-        OutputScaler = std::make_unique<OS_Dx12>("Output Scaling", InDevice, (TargetWidth() < DisplayWidth()));
-        RCAS = std::make_unique<RCAS_Dx12>("RCAS", InDevice);
-        Bias = std::make_unique<Bias_Dx12>("Bias", InDevice);
-
-        return true;
-    }
-
-    return false;
-}
-
 bool XeSSFeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters)
 {
     LOG_FUNC();
@@ -444,4 +419,187 @@ bool XeSSFeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
     return true;
 }
 
-XeSSFeatureDx12::~XeSSFeatureDx12() {}
+XeSSFeatureDx12::~XeSSFeatureDx12()
+{
+    if (_localPipeline != nullptr)
+    {
+        _localPipeline->Release();
+        _localPipeline = nullptr;
+    }
+
+    if (_localBufferHeap != nullptr)
+    {
+        _localBufferHeap->Release();
+        _localBufferHeap = nullptr;
+    }
+
+    if (_localTextureHeap != nullptr)
+    {
+        _localTextureHeap->Release();
+        _localTextureHeap = nullptr;
+    }
+}
+
+bool XeSSFeatureDx12::CheckInitializationContext(ApiContext* context)
+{
+    D3D12Context* d3d12Context = &std::get<D3D12Context>(*context);
+
+    if (d3d12Context->d3d12Device == nullptr)
+        return false;
+
+    if (d3d12Context->d3d12CommandList == nullptr)
+        return false;
+
+    return true;
+}
+
+xess_result_t XeSSFeatureDx12::CreateXessContext(ApiContext* context, xess_context_handle_t* pXessContext)
+{
+    return XeSSProxy::D3D12CreateContext()(std::get<D3D12Context>(*context).d3d12Device, pXessContext);
+}
+
+xess_result_t XeSSFeatureDx12::ApiInit(ApiContext* context, XessInitParams* xessInitParams)
+{
+    xess_result_t ret = {};
+    auto xessParams = std::get<xess_d3d12_init_params_t>(*xessInitParams);
+    auto d3d12Context = &std::get<D3D12Context>(*context);
+    auto device = d3d12Context->d3d12Device;
+
+    // create heaps to prevent create heap errors of xess
+    if (Config::Instance()->CreateHeaps.value_or(true))
+    {
+        HRESULT hr;
+        xess_properties_t xessProps{};
+        ret = XeSSProxy::GetProperties()(_xessContext, &xessParams.outputResolution, &xessProps);
+
+        if (ret == XESS_RESULT_SUCCESS)
+        {
+            CD3DX12_HEAP_DESC bufferHeapDesc(xessProps.tempBufferHeapSize, D3D12_HEAP_TYPE_DEFAULT);
+            State::Instance().skipHeapCapture = true;
+            hr = device->CreateHeap(&bufferHeapDesc, IID_PPV_ARGS(&_localBufferHeap));
+            State::Instance().skipHeapCapture = false;
+
+            if (SUCCEEDED(hr))
+            {
+                D3D12_HEAP_DESC textureHeapDesc{
+                    xessProps.tempTextureHeapSize,
+                    {D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0},
+                    0,
+                    D3D12_HEAP_FLAG_ALLOW_ONLY_NON_RT_DS_TEXTURES};
+
+                State::Instance().skipHeapCapture = true;
+                hr = device->CreateHeap(&textureHeapDesc, IID_PPV_ARGS(&_localTextureHeap));
+                State::Instance().skipHeapCapture = false;
+
+                if (SUCCEEDED(hr))
+                {
+                    Config::Instance()->CreateHeaps = true;
+
+                    LOG_DEBUG("using _localBufferHeap & _localTextureHeap!");
+
+                    xessParams.bufferHeapOffset = 0;
+                    xessParams.textureHeapOffset = 0;
+                    xessParams.pTempBufferHeap = _localBufferHeap;
+                    xessParams.pTempTextureHeap = _localTextureHeap;
+                }
+                else
+                {
+                    _localBufferHeap->Release();
+                    LOG_ERROR("CreateHeap textureHeapDesc failed {0:x}!", (UINT) hr);
+                }
+            }
+            else
+            {
+                LOG_ERROR("CreateHeap bufferHeapDesc failed {0:x}!", (UINT) hr);
+            }
+        }
+        else
+        {
+            LOG_ERROR("xessGetProperties failed {0}!", ResultToString(ret));
+        }
+    }
+
+    // try to build pipelines with local pipeline object
+    if (Config::Instance()->BuildPipelines.value_or(true))
+    {
+        LOG_DEBUG("xessD3D12BuildPipelines!");
+        State::Instance().skipHeapCapture = true;
+
+        ID3D12Device1* device1;
+        if (FAILED(device->QueryInterface(IID_PPV_ARGS(&device1))))
+        {
+            LOG_ERROR("QueryInterface device1 failed!");
+            ret = XeSSProxy::D3D12BuildPipelines()(_xessContext, NULL, false, xessParams.initFlags);
+        }
+        else
+        {
+            HRESULT hr = device1->CreatePipelineLibrary(nullptr, 0, IID_PPV_ARGS(&_localPipeline));
+
+            if (FAILED(hr) || !_localPipeline)
+            {
+                LOG_ERROR("CreatePipelineLibrary failed {0:x}!", (UINT) hr);
+                ret = XeSSProxy::D3D12BuildPipelines()(_xessContext, NULL, false, xessParams.initFlags);
+            }
+            else
+            {
+                ret = XeSSProxy::D3D12BuildPipelines()(_xessContext, _localPipeline, false, xessParams.initFlags);
+
+                if (ret != XESS_RESULT_SUCCESS)
+                {
+                    LOG_ERROR("xessD3D12BuildPipelines error with _localPipeline: {0}", ResultToString(ret));
+                    ret = XeSSProxy::D3D12BuildPipelines()(_xessContext, NULL, false, xessParams.initFlags);
+                }
+                else
+                {
+                    LOG_DEBUG("using _localPipelines!");
+                    xessParams.pPipelineLibrary = _localPipeline;
+                }
+            }
+        }
+
+        if (device1 != nullptr)
+            device1->Release();
+
+        State::Instance().skipHeapCapture = false;
+
+        if (ret != XESS_RESULT_SUCCESS)
+        {
+            LOG_ERROR("xessD3D12BuildPipelines error: {0}", ResultToString(ret));
+        }
+    }
+
+    State::Instance().skipHeapCapture = true;
+    ret = XeSSProxy::D3D12Init()(_xessContext, &xessParams);
+    State::Instance().skipHeapCapture = false;
+
+    return ret;
+}
+
+XessInitParams XeSSFeatureDx12::CreateInitParams(xess_2d_t outputResolution, xess_quality_settings_t qualitySetting,
+                                                 uint32_t initFlags)
+{
+    xess_d3d12_init_params_t xessParams{};
+    xessParams.initFlags = initFlags;
+    xessParams.outputResolution = outputResolution;
+    xessParams.qualitySetting = qualitySetting;
+
+    return XessInitParams(xessParams);
+}
+
+void XeSSFeatureDx12::InitMenuAndOutput(ApiContext* context)
+{
+    auto InDevice = std::get<D3D12Context>(*context).d3d12Device;
+    if (!Config::Instance()->OverlayMenu.value_or(true) && (Imgui == nullptr || Imgui.get() == nullptr))
+        Imgui = std::make_unique<Menu_Dx12>(Util::GetProcessWindow(), InDevice);
+
+    OutputScaler = std::make_unique<OS_Dx12>("Output Scaling", InDevice, (TargetWidth() < DisplayWidth()));
+    RCAS = std::make_unique<RCAS_Dx12>("RCAS", InDevice);
+    Bias = std::make_unique<Bias_Dx12>("Bias", InDevice);
+}
+
+bool XeSSFeatureDx12::Init(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCommandList,
+                           NVSDK_NGX_Parameter* InParameters)
+{
+    ApiContext apiCtx = D3D12Context({.d3d12Device = InDevice, .d3d12CommandList = InCommandList});
+    return XeSSFeature::Init(&apiCtx, InParameters);
+}
