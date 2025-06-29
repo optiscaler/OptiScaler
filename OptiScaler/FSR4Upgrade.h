@@ -152,6 +152,18 @@ uint64_t hkgetModelBlob(uint32_t preset, uint64_t unknown, uint64_t* source, uin
 {
     LOG_FUNC();
 
+    // Fixup for Quality preset sometimes using model 0, sometimes using model 1
+    if (State::Instance().currentFeature)
+    {
+        auto target = State::Instance().currentFeature->TargetWidth();
+        auto render = State::Instance().currentFeature->RenderWidth();
+
+        auto ratio = (float) target / (float) render;
+
+        if (preset == 0 && ratio >= 1.49f)
+            preset = 1;
+    }
+
     if (Config::Instance()->Fsr4Model.has_value())
     {
         preset = Config::Instance()->Fsr4Model.value();
