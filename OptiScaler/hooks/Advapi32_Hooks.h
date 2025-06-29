@@ -21,7 +21,8 @@ static LSTATUS hkRegOpenKeyExW(HKEY hKey, LPCWSTR lpSubKey, DWORD ulOptions, REG
 {
     LSTATUS result = 0;
 
-    if (lpSubKey != nullptr && wcscmp(L"SOFTWARE\\NVIDIA Corporation\\Global", lpSubKey) == 0)
+    if (lpSubKey != nullptr && (wcscmp(L"SOFTWARE\\NVIDIA Corporation\\Global", lpSubKey) == 0 ||
+                                wcscmp(L"SYSTEM\\ControlSet001\\Services\\nvlddmkm", lpSubKey) == 0))
     {
         *phkResult = signatureMark;
         return 0;
