@@ -5,6 +5,13 @@
 
 enum class GameQuirk
 {
+    // Config-level quirks, de facto customized defaults
+    ForceNoOptiFG,
+    DisableFSR3Inputs,
+    DisableFSR2PatternInputs,
+    RestoreComputeSigOnNonNvidia,
+
+    // Quirks that are applied deeper in code
     CyberpunkHudlessStateOverride,
     SkipFsr3Method,
     FastFeatureReset,
@@ -12,10 +19,6 @@ enum class GameQuirk
     KernelBaseHooks,
     VulkanDLSSBarrierFixup,
     ForceUnrealEngine,
-    ForceNoOptiFG,
-    DisableFSR3Inputs,
-    DisableFSR2PatternInputs,
-    RestoreComputeSigOnNonNvidia,
     // Don't forget to add the new entry to printQuirks
     _
 };
@@ -33,26 +36,38 @@ struct QuirkEntry
 
 // exeName has to be lowercase
 static const QuirkEntry quirkTable[] = {
-    QUIRK_ENTRY("cyberpunk2077.exe", GameQuirk::CyberpunkHudlessStateOverride, GameQuirk::ForceNoOptiFG),
-    QUIRK_ENTRY("fmf2-win64-shipping.exe", GameQuirk::DisableFSR3Inputs),
+    // Red Dead Redemption 2
     QUIRK_ENTRY("rdr.exe", GameQuirk::SkipFsr3Method, GameQuirk::ForceNoOptiFG),
     QUIRK_ENTRY("playrdr.exe", GameQuirk::SkipFsr3Method, GameQuirk::ForceNoOptiFG),
+
+    // No Man's Sky
+    QUIRK_ENTRY("nms.exe", GameQuirk::KernelBaseHooks, GameQuirk::VulkanDLSSBarrierFixup),
+
+    // Path of Exile 2
+    QUIRK_ENTRY("pathofexile.exe", GameQuirk::LoadD3D12Manually),
+    QUIRK_ENTRY("pathofexile_x64.exe", GameQuirk::LoadD3D12Manually),
+    QUIRK_ENTRY("pathofexilesteam.exe", GameQuirk::LoadD3D12Manually),
+    QUIRK_ENTRY("pathofexile_x64steam.exe", GameQuirk::LoadD3D12Manually),
+
+    // Crapcom Games, DLSS without dxgi spoofing needs restore compute in those
+    QUIRK_ENTRY("kunitsugami.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
+    QUIRK_ENTRY("kunitsugamidemo.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
+    QUIRK_ENTRY("monsterhunterrise.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
+    QUIRK_ENTRY("monsterhunterwilds.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
+    // Dead Rising Deluxe Remaster (including the demo)
+    QUIRK_ENTRY("drdr.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
+    // Dragon's Dogma 2
+    QUIRK_ENTRY("dd2ccs.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
+    QUIRK_ENTRY("dd2.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
+
+    // Forgive Me Father 2
+    QUIRK_ENTRY("fmf2-win64-shipping.exe", GameQuirk::DisableFSR3Inputs),
+
+    QUIRK_ENTRY("cyberpunk2077.exe", GameQuirk::CyberpunkHudlessStateOverride, GameQuirk::ForceNoOptiFG),
+    QUIRK_ENTRY("persistence-win64-shipping.exe", GameQuirk::ForceUnrealEngine),
     QUIRK_ENTRY("banishers-win64-shipping.exe", GameQuirk::DisableFSR2PatternInputs),
     QUIRK_ENTRY("splitfiction.exe", GameQuirk::FastFeatureReset),
     QUIRK_ENTRY("minecraft.windows.exe", GameQuirk::KernelBaseHooks),
-    QUIRK_ENTRY("nms.exe", GameQuirk::KernelBaseHooks, GameQuirk::VulkanDLSSBarrierFixup),
-    QUIRK_ENTRY("pathofexile.exe", GameQuirk::LoadD3D12Manually),
-    QUIRK_ENTRY("pathofexile_x64.exe", GameQuirk::LoadD3D12Manually),
-    QUIRK_ENTRY("pathofexile_x64steam.exe", GameQuirk::LoadD3D12Manually),
-    QUIRK_ENTRY("pathofexilesteam.exe", GameQuirk::LoadD3D12Manually),
-    QUIRK_ENTRY("kunitsugami.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
-    QUIRK_ENTRY("monsterhunterrise.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
-    QUIRK_ENTRY("drdr.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
-    QUIRK_ENTRY("dd2ccs.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
-    QUIRK_ENTRY("kunitsugamidemo.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
-    QUIRK_ENTRY("dd2.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
-    QUIRK_ENTRY("monsterhunterwilds.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
-    QUIRK_ENTRY("persistence-win64-shipping.exe", GameQuirk::ForceUnrealEngine),
 };
 
 static flag_set<GameQuirk> getQuirksForExe(std::string exeName)
@@ -91,7 +106,7 @@ static void printQuirks(flag_set<GameQuirk>& quirks)
     if (quirks & GameQuirk::ForceNoOptiFG)
         spdlog::info("Quirk: Disabling OptiFG");
     if (quirks & GameQuirk::DisableFSR3Inputs)
-        spdlog::info("Quirk: Disable FSR 3 Inputs");
+        spdlog::info("Quirk: Disable FSR 3.0 Inputs");
     if (quirks & GameQuirk::DisableFSR2PatternInputs)
         spdlog::info("Quirk: Disable FSR 2 Pattern Inputs");
     if (quirks & GameQuirk::RestoreComputeSigOnNonNvidia)
