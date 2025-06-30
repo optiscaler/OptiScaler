@@ -9,10 +9,7 @@
   <a href="https://github.com/optiscaler/OptiScaler/releases/latest"><img src="https://img.shields.io/badge/Download-Stable-green?style=for-the-badge&logo=github&logoSize=auto" alt="Stable release"></a>
   <a href="https://github.com/optiscaler/OptiScaler/releases/tag/nightly"><img src="https://img.shields.io/badge/Download-Nightly-purple?style=for-the-badge&logo=github&logoSize=auto" alt="Nightly release"></a>
   <a href="https://github.com/optiscaler/OptiScaler/wiki"><img src="https://img.shields.io/badge/Documentation-blue?style=for-the-badge&logo=gitbook&logoColor=white&logoSize=auto" alt="Wiki"></a>
-  <a href="https://github.com/optiscaler/OptiScaler"><img src="https://img.shields.io/github/last-commit/optiscaler/Optiscaler?style=for-the-badge&logo=githubactions&logoColor=white&logoSize=auto&label=Last%20Copemmit" alt="Last Commit"></a>
-  <a href="https://github.com/optiscaler/OptiScaler/blob/master/LICENSE"><img src="https://img.shields.io/github/license/optiscaler/Optiscaler?style=for-the-badge&logo=git&logoColor=white&logoSize=auto" alt="License"></a>
-  <a href="https://github.com/optiscaler/OptiScaler"><img src="https://img.shields.io/github/stars/optiscaler/Optiscaler?style=for-the-badge&logo=github&logoSize=auto" alt="Github Stars"></a>
-
+  
 </div>
 
 ## Table of Contents
