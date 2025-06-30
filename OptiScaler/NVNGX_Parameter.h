@@ -398,7 +398,8 @@ inline static void InitNGXParameters(NVSDK_NGX_Parameter* InParams)
 {
     InParams->Set(NVSDK_NGX_Parameter_SuperSampling_Available, 1);
 
-    if (State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL)
+    if (State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
+        State::Instance().gameQuirks & GameQuirk::ForceUnrealEngine)
     {
         InParams->Set(NVSDK_NGX_Parameter_SuperSampling_MinDriverVersionMajor, 10);
         InParams->Set(NVSDK_NGX_Parameter_SuperSampling_MinDriverVersionMinor, 10);

@@ -392,6 +392,14 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Init_ProjectID(const char* InProj
 {
     LOG_FUNC();
 
+    LOG_INFO("InProjectId: {0}", InProjectId);
+    LOG_INFO("InEngineType: {0}", (int) InEngineType);
+    LOG_INFO("InEngineVersion: {0}", InEngineVersion);
+
+    State::Instance().NVNGX_ProjectId = std::string(InProjectId);
+    State::Instance().NVNGX_Engine = InEngineType;
+    State::Instance().NVNGX_EngineVersion = std::string(InEngineVersion);
+
     if (State::Instance().NvngxDx12Inited)
     {
         LOG_WARN("NVNGX already inited");
@@ -423,14 +431,6 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Init_ProjectID(const char* InProj
 
     auto result = NVSDK_NGX_D3D12_Init_Ext(0x1337, InApplicationDataPath, InDevice, InSDKVersion, InFeatureInfo);
 
-    LOG_INFO("InProjectId: {0}", InProjectId);
-    LOG_INFO("InEngineType: {0}", (int) InEngineType);
-    LOG_INFO("InEngineVersion: {0}", InEngineVersion);
-
-    State::Instance().NVNGX_ProjectId = std::string(InProjectId);
-    State::Instance().NVNGX_Engine = InEngineType;
-    State::Instance().NVNGX_EngineVersion = std::string(InEngineVersion);
-
     return result;
 }
 
@@ -442,14 +442,6 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Init_with_ProjectID(
 {
     LOG_FUNC();
 
-    if (State::Instance().NvngxDx12Inited)
-    {
-        LOG_WARN("NVNGX already inited");
-        return NVSDK_NGX_Result_Success;
-    }
-
-    auto result = NVSDK_NGX_D3D12_Init_Ext(0x1337, InApplicationDataPath, InDevice, InSDKVersion, InFeatureInfo);
-
     LOG_INFO("InProjectId: {0}", InProjectId);
     LOG_INFO("InEngineType: {0}", (int) InEngineType);
     LOG_INFO("InEngineVersion: {0}", InEngineVersion);
@@ -457,6 +449,14 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Init_with_ProjectID(
     State::Instance().NVNGX_ProjectId = std::string(InProjectId);
     State::Instance().NVNGX_Engine = InEngineType;
     State::Instance().NVNGX_EngineVersion = std::string(InEngineVersion);
+
+    if (State::Instance().NvngxDx12Inited)
+    {
+        LOG_WARN("NVNGX already inited");
+        return NVSDK_NGX_Result_Success;
+    }
+
+    auto result = NVSDK_NGX_D3D12_Init_Ext(0x1337, InApplicationDataPath, InDevice, InSDKVersion, InFeatureInfo);
 
     return result;
 }

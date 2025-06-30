@@ -102,7 +102,8 @@ bool XeSSFeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
                             (D3D12_RESOURCE_STATES) Config::Instance()->ColorResourceBarrier.value(),
                             D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
-        else if (State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL)
+        else if (State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
+                 State::Instance().gameQuirks & GameQuirk::ForceUnrealEngine)
         {
             Config::Instance()->ColorResourceBarrier = (int) D3D12_RESOURCE_STATE_RENDER_TARGET;
             ResourceBarrier(InCommandList, paramColor, D3D12_RESOURCE_STATE_RENDER_TARGET,
@@ -131,7 +132,8 @@ bool XeSSFeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
                             (D3D12_RESOURCE_STATES) Config::Instance()->MVResourceBarrier.value(),
                             D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
-        else if (State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL)
+        else if (State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
+                 State::Instance().gameQuirks & GameQuirk::ForceUnrealEngine)
         {
             Config::Instance()->MVResourceBarrier = (int) D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
             ResourceBarrier(InCommandList, params.pVelocityTexture, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,

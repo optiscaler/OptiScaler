@@ -999,6 +999,13 @@ static void CheckQuirks()
             LOG_INFO("Enabling restore compute signature");
         }
     }
+    else if (exePathFilename == "persistence-win64-shipping.exe")
+    {
+        // Mostly for games that don't send engine information
+        // because they are only using NVSDK_NGX_D3D12_Init_Ext
+        State::Instance().gameQuirks.set(GameQuirk::ForceUnrealEngine);
+        LOG_INFO("Force enabling Unreal Engine fixes");
+    }
 }
 
 bool isNvidia()
