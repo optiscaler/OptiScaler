@@ -917,95 +917,33 @@ static void CheckQuirks()
     State::Instance().GameExe = exePathFilename;
     State::Instance().GameName = wstring_to_string(Util::GetExeProductName());
 
-    for (size_t i = 0; i < exePathFilename.size(); i++)
-        exePathFilename[i] = std::tolower(exePathFilename[i]);
-
     LOG_INFO("Game's Exe: {0}", exePathFilename);
     LOG_INFO("Game Name: {0}", State::Instance().GameName);
 
-    if (exePathFilename == "cyberpunk2077.exe")
-    {
-        State::Instance().gameQuirks.set(GameQuirk::CyberpunkHudlessStateOverride);
+    auto quirks = getQuirksForExe(exePathFilename);
+    printQuirks(quirks);
 
-        // Disabled OptiFG for now
-        if (Config::Instance()->FGType.value_or_default() == FGType::OptiFG)
-            Config::Instance()->FGType.set_volatile_value(FGType::NoFG);
-        // Config::Instance()->FGType.set_volatile_value(FGType::Nukems);
+    // Apply config-level quirks
+    if (quirks & GameQuirk::ForceNoOptiFG && Config::Instance()->FGType.value_or_default() == FGType::OptiFG)
+        Config::Instance()->FGType.set_volatile_value(FGType::NoFG);
 
-        LOG_INFO("Enabling a quirk for Cyberpunk (Disable FSR-FG Swapchain & enable DLSS-G fix)");
-    }
-    else if (exePathFilename == "fmf2-win64-shipping.exe")
-    {
-        if (!Config::Instance()->UseFsr3Inputs.has_value())
-        {
-            Config::Instance()->UseFsr3Inputs.set_volatile_value(false);
-            LOG_INFO("Enabling a quirk for FMF2 (Disable FSR3 Hooks)");
-        }
+    if (quirks & GameQuirk::DisableFSR3Inputs && !Config::Instance()->UseFsr3Inputs.has_value())
+        Config::Instance()->UseFsr3Inputs.set_volatile_value(false);
 
-        if (!Config::Instance()->Fsr3Pattern.has_value())
-        {
-            Config::Instance()->Fsr3Pattern.set_volatile_value(false);
-            LOG_INFO("Enabling a quirk for FMF2 (Disable FSR3 Pattern Hooks)");
-        }
-    }
-    else if (exePathFilename == "rdr.exe" || exePathFilename == "playrdr.exe")
-    {
-        State::Instance().gameQuirks.set(GameQuirk::SkipFsr3Method);
+    if (quirks & GameQuirk::DisableFSR3Inputs && !Config::Instance()->Fsr3Pattern.has_value())
+        Config::Instance()->Fsr3Pattern.set_volatile_value(false);
 
-        if (Config::Instance()->FGType.value_or_default() == FGType::OptiFG)
-            Config::Instance()->FGType.set_volatile_value(FGType::NoFG);
+    if (quirks & GameQuirk::DisableFSR2PatternInputs && !Config::Instance()->Fsr2Pattern.has_value())
+        Config::Instance()->Fsr2Pattern.set_volatile_value(false);
 
-        LOG_INFO("Enabling a quirk for RDR1 (Disable FSR-FG Swapchain)");
-    }
-    else if (exePathFilename == "banishers-win64-shipping.exe")
+    if (quirks & GameQuirk::RestoreComputeSigOnNonNvidia && !State::Instance().isRunningOnNvidia &&
+        !Config::Instance()->DxgiSpoofing.value_or_default() &&
+        !Config::Instance()->RestoreComputeSignature.has_value())
     {
-        if (!Config::Instance()->Fsr2Pattern.has_value())
-        {
-            Config::Instance()->Fsr2Pattern.set_volatile_value(false);
-            LOG_INFO("Enabling a quirk for Banishers (Disable FSR2 Pattern Inputs)");
-        }
+        Config::Instance()->RestoreComputeSignature.set_volatile_value(true);
     }
-    else if (exePathFilename == "splitfiction.exe")
-    {
-        State::Instance().gameQuirks.set(GameQuirk::FastFeatureReset);
-        LOG_INFO("Enabling a quirk for Split Fiction (Quick upscaler reinit)");
-    }
-    else if (exePathFilename == "minecraft.windows.exe")
-    {
-        State::Instance().gameQuirks.set(GameQuirk::KernelBaseHooks);
-        LOG_INFO("Enabling a quirk for Minecraft (Enable KernelBase hooks)");
-    }
-    else if (exePathFilename == "nms.exe")
-    {
-        State::Instance().gameQuirks.set(GameQuirk::KernelBaseHooks);
-        State::Instance().gameQuirks |= GameQuirk::VulkanDLSSBarrierFixup;
-        LOG_INFO("Enabling a quirk for No Man's Sky (Enable KernelBase hooks)");
-    }
-    else if (exePathFilename == "pathofexile.exe" || exePathFilename == "pathofexile_x64.exe" ||
-             exePathFilename == "pathofexile_x64steam.exe" || exePathFilename == "pathofexilesteam.exe")
-    {
-        State::Instance().gameQuirks.set(GameQuirk::LoadD3D12Manually);
-        LOG_INFO("Enabling a quirk for PoE2 (Load d3d12.dll)");
-    }
-    else if (exePathFilename == "kunitsugami.exe" || exePathFilename == "monsterhunterrise.exe" ||
-             exePathFilename == "drdr.exe" || exePathFilename == "dd2ccs.exe" ||
-             exePathFilename == "kunitsugamidemo.exe" || exePathFilename == "dd2.exe" ||
-             exePathFilename == "monsterhunterwilds.exe")
-    {
-        if (!State::Instance().isRunningOnNvidia && !Config::Instance()->DxgiSpoofing.value_or_default() &&
-            !Config::Instance()->RestoreComputeSignature.has_value())
-        {
-            Config::Instance()->RestoreComputeSignature.set_volatile_value(true);
-            LOG_INFO("Enabling restore compute signature");
-        }
-    }
-    else if (exePathFilename == "persistence-win64-shipping.exe")
-    {
-        // Mostly for games that don't send engine information
-        // because they are only using NVSDK_NGX_D3D12_Init_Ext
-        State::Instance().gameQuirks.set(GameQuirk::ForceUnrealEngine);
-        LOG_INFO("Force enabling Unreal Engine fixes");
-    }
+
+    State::Instance().gameQuirks = quirks;
 }
 
 bool isNvidia()

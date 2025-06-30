@@ -509,6 +509,9 @@
     <ClInclude Include="include\sl.param\parameters.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="misc\Quirks.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Config.cpp">

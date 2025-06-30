@@ -331,6 +331,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="inputs\XeSS_Vulkan.h" />
     <ClInclude Include="menu\font\Hack_Compressed.h" />
     <ClInclude Include="misc\FrameLimit.h" />
+    <ClInclude Include="misc\Quirks.h" />
     <ClInclude Include="OwnedMutex.h" />
     <ClInclude Include="proxies\D3D12_Proxy.h" />
     <ClInclude Include="proxies\Dxgi_Proxy.h" />

@@ -3,11 +3,11 @@
 
 #include "upscalers/IFeature.h"
 #include "framegen/IFGFeature_Dx12.h"
+#include "misc/Quirks.h"
 
 #include <deque>
 #include <vulkan/vulkan.h>
 #include <ankerl/unordered_dense.h>
-#include <flag-set-cpp/flag_set.hpp>
 
 typedef enum API
 {
@@ -16,18 +16,6 @@ typedef enum API
     DX12,
     Vulkan,
 } API;
-
-enum class GameQuirk
-{
-    CyberpunkHudlessStateOverride,
-    SkipFsr3Method,
-    FastFeatureReset,
-    LoadD3D12Manually,
-    KernelBaseHooks,
-    VulkanDLSSBarrierFixup,
-    ForceUnrealEngine,
-    _
-};
 
 typedef enum FGType : uint32_t
 {
