@@ -14,6 +14,7 @@ enum class GameQuirk : uint64_t
     RestoreComputeSigOnNonNvidia,
     ForceAutoExposure,
     DisableReactiveMasks,
+    DisableDxgiSpoofing,
 
     // Quirks that are applied deeper in code
     CyberpunkHudlessStateOverride,
@@ -54,20 +55,20 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("pathofexile_x64steam.exe", GameQuirk::LoadD3D12Manually),
 
     // Crapcom Games, DLSS without dxgi spoofing needs restore compute in those
-    QUIRK_ENTRY("kunitsugami.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
-    QUIRK_ENTRY("kunitsugamidemo.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
-    QUIRK_ENTRY("monsterhunterrise.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
-    QUIRK_ENTRY("monsterhunterwilds.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
+    QUIRK_ENTRY("kunitsugami.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing),
+    QUIRK_ENTRY("kunitsugamidemo.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing),
+    QUIRK_ENTRY("monsterhunterrise.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing),
+    QUIRK_ENTRY("monsterhunterwilds.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing),
 
     // Dead Rising Deluxe Remaster (including the demo)
-    QUIRK_ENTRY("drdr.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
+    QUIRK_ENTRY("drdr.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing),
 
     // Dragon's Dogma 2
-    QUIRK_ENTRY("dd2ccs.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
-    QUIRK_ENTRY("dd2.exe", GameQuirk::RestoreComputeSigOnNonNvidia),
+    QUIRK_ENTRY("dd2ccs.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing),
+    QUIRK_ENTRY("dd2.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing),
 
     // Red Dead Redemption 2
-    QUIRK_ENTRY("rdr.exe2", GameQuirk::DisableFSR2Inputs, GameQuirk::DisableFSR3Inputs),
+    QUIRK_ENTRY("rdr2.exe", GameQuirk::DisableFSR2Inputs, GameQuirk::DisableFSR3Inputs),
     QUIRK_ENTRY("playrdr2.exe", GameQuirk::DisableFSR2Inputs, GameQuirk::DisableFSR3Inputs),
 
     // Forgive Me Father 2
@@ -114,7 +115,10 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("jedisurvivor.exe", GameQuirk::ForceAutoExposure),
 
     // Self-explanatory
-    QUIRK_ENTRY("cyberpunk2077.exe", GameQuirk::CyberpunkHudlessStateOverride, GameQuirk::ForceNoOptiFG),
+    QUIRK_ENTRY("cyberpunk2077.exe", GameQuirk::CyberpunkHudlessStateOverride, GameQuirk::ForceNoOptiFG,
+                GameQuirk::DisableDxgiSpoofing),
+    QUIRK_ENTRY("witcher3.exe", GameQuirk::DisableDxgiSpoofing),
+    QUIRK_ENTRY("alanwake2.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("persistence-win64-shipping.exe", GameQuirk::ForceUnrealEngine),
     QUIRK_ENTRY("splitfiction.exe", GameQuirk::FastFeatureReset),
     QUIRK_ENTRY("minecraft.windows.exe", GameQuirk::KernelBaseHooks),
@@ -167,6 +171,8 @@ static void printQuirks(flag_set<GameQuirk>& quirks)
         spdlog::info("Quirk: Disable Reactive Masks");
     if (quirks & GameQuirk::RestoreComputeSigOnNonNvidia)
         spdlog::info("Quirk: Enabling restore compute signature on AMD/Intel");
+    if (quirks & GameQuirk::DisableDxgiSpoofing)
+        spdlog::info("Quirk: Dxgi spoofing disabled by default");
 
     return;
 }
