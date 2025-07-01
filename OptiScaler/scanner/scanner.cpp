@@ -35,22 +35,7 @@ std::vector<SectionRange> GetExecSections(HMODULE hMod)
     return secs;
 }
 
-std::pair<uintptr_t, uintptr_t> GetModule(const std::wstring_view moduleName)
-{
-    const static uintptr_t moduleBase =
-        reinterpret_cast<uintptr_t>(KernelBaseProxy::GetModuleHandleW_()(moduleName.data()));
-    const static uintptr_t moduleEnd = [&]()
-    {
-        auto ntHeaders = reinterpret_cast<PIMAGE_NT_HEADERS64>(
-            moduleBase + reinterpret_cast<PIMAGE_DOS_HEADER>(moduleBase)->e_lfanew);
-
-        return static_cast<uintptr_t>(moduleBase + ntHeaders->OptionalHeader.SizeOfImage);
-    }();
-
-    return { moduleBase, moduleEnd };
-}
-
-uintptr_t scanner::FindPattern(uintptr_t startAddress, uintptr_t maxSize, const char* mask)
+uintptr_t FindPattern(uintptr_t startAddress, uintptr_t maxSize, const char* mask)
 {
     std::vector<std::pair<uint8_t, bool>> pattern;
 
@@ -81,7 +66,6 @@ uintptr_t scanner::FindPattern(uintptr_t startAddress, uintptr_t maxSize, const 
     return std::distance(dataStart, sig) + startAddress;
 }
 
-// Has some issues with DLLs on Linux
 uintptr_t scanner::GetAddress(const std::wstring_view moduleName, const std::string_view pattern, ptrdiff_t offset,
                               uintptr_t startAddress)
 {
@@ -129,8 +113,7 @@ uintptr_t scanner::GetAddress(const std::wstring_view moduleName, const std::str
         }
     }
 
-    // Use KernelBaseProxy::GetModuleHandleW_() ?
-    if ((GetModuleHandleW(moduleName.data()) != nullptr) && (address != NULL))
+    if (address != NULL)
     {
         return (address + offset);
     }
