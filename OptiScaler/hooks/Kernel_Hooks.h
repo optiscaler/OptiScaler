@@ -1654,6 +1654,8 @@ class KernelHooks
         return o_K32_LoadLibraryW(lpLibFileName);
     }
 
+    static constexpr HMODULE amdxc64Mark = HMODULE(0xFFFFFFFF13372137);
+
     static FARPROC hk_K32_GetProcAddress(HMODULE hModule, LPCSTR lpProcName)
     {
         if ((size_t) lpProcName < 0x000000000000F000)
@@ -1670,6 +1672,10 @@ class KernelHooks
                       Util::WhoIsTheCaller(_ReturnAddress()));
         }
 
+        // FSR 4 Init in case of missing amdxc64.dll
+        if (lpProcName != nullptr && hModule == amdxc64Mark && lstrcmpA(lpProcName, "AmdExtD3DCreateInterface") == 0)
+            return (FARPROC) &customAmdExtD3DCreateInterface;
+
         if (State::Instance().isRunningOnLinux && lpProcName != nullptr &&
             hModule == KernelBaseProxy::GetModuleHandleW_()(L"gdi32.dll") &&
             lstrcmpA(lpProcName, "D3DKMTEnumAdapters2") == 0)
@@ -1680,11 +1686,33 @@ class KernelHooks
 
     static HMODULE hk_K32_GetModuleHandleA(LPCSTR lpModuleName)
     {
-        if (lpModuleName != NULL && strcmp(lpModuleName, "nvngx_dlssg.dll") == 0)
+        if (lpModuleName != NULL)
         {
-            LOG_TRACE("Trying to get module handle of {}, caller: {}", lpModuleName,
-                      Util::WhoIsTheCaller(_ReturnAddress()));
-            return dllModule;
+            if (strcmp(lpModuleName, "nvngx_dlssg.dll") == 0)
+            {
+                LOG_TRACE("Trying to get module handle of {}, caller: {}", lpModuleName,
+                          Util::WhoIsTheCaller(_ReturnAddress()));
+                return dllModule;
+            }
+            else if (strcmp(lpModuleName, "amdxc64.dll") == 0)
+            {
+                // Libraries like FFX SDK or AntiLag 2 SDK do not load amdxc64 themselves
+                // so most likely amdxc64 is getting loaded by the driver itself.
+                // Therefore it should be safe for us to return a custom implementation when it's not loaded
+                // This can get removed if Proton starts to ship amdxc64
+
+                CheckForGPU();
+
+                auto original = o_K32_GetModuleHandleA(lpModuleName);
+
+                if (original == nullptr && Config::Instance()->Fsr4Update.value_or_default())
+                {
+                    LOG_INFO("amdxc64.dll is not loaded, giving a fake HMODULE");
+                    return amdxc64Mark;
+                }
+
+                return original;
+            }
         }
 
         return o_K32_GetModuleHandleA(lpModuleName);
