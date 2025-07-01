@@ -160,7 +160,8 @@ uint64_t hkgetModelBlob(uint32_t preset, uint64_t unknown, uint64_t* source, uin
 
         auto ratio = (float) target / (float) render;
 
-        if (preset == 0 && ratio >= 1.49f)
+        // Include Ultra Quality in the fix as well
+        if (preset == 0 && ratio >= 1.29f)
             preset = 1;
     }
 
