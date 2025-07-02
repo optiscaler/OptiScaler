@@ -276,14 +276,12 @@ bool StreamlineHooks::hkdlssg_slOnPluginLoad(void* params, const char* loaderJSO
     // TODO: do it better than "static" and hoping for the best
     static std::string config;
 
-    if (Config::Instance()->StreamlineSpoofing.value_or_default() && Config::Instance()->FGType != FGType::Nukems &&
-        !State::Instance().isRunningOnNvidia)
+    if (Config::Instance()->StreamlineSpoofing.value_or_default() && Config::Instance()->FGType != FGType::Nukems)
         setSystemCapsArch((sl::param::IParameters*) params, 0);
 
     auto result = o_dlssg_slOnPluginLoad(params, loaderJSON, pluginJSON);
 
-    if (Config::Instance()->StreamlineSpoofing.value_or_default() && Config::Instance()->FGType != FGType::Nukems &&
-        !State::Instance().isRunningOnNvidia)
+    if (Config::Instance()->StreamlineSpoofing.value_or_default() && Config::Instance()->FGType != FGType::Nukems)
         setSystemCapsArch((sl::param::IParameters*) params, UINT_MAX);
 
     nlohmann::json configJson = nlohmann::json::parse(*pluginJSON);
