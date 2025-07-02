@@ -226,6 +226,49 @@ bool StreamlineHooks::hkdlss_slOnPluginLoad(void* params, const char* loaderJSON
     return result;
 }
 
+void setSystemCapsArch(sl::param::IParameters* params, uint32_t arch)
+{
+    if (State::Instance().streamlineVersion.major > 1)
+    {
+        SystemCaps* caps = {};
+        sl::param::getPointerParam(params, sl::param::common::kSystemCaps, &caps);
+
+        if (caps)
+        {
+            for (auto& adapter : caps->adapters)
+            {
+                if ((uint32_t) adapter.vendor != 0)
+                {
+                    adapter.vendor = VendorId::eNVDA;
+                    adapter.architecture = arch;
+                }
+            }
+
+            caps->driverVersionMajor = 999;
+            caps->hwsSupported = true;
+        }
+    }
+    else if (State::Instance().streamlineVersion.major == 1)
+    {
+        // This should be Streamline 1.5 as previous versions don't even have slOnPluginLoad
+
+        LOG_TRACE("Attempting to change system caps for Streamline v1, this could fail depending on the exact version");
+        SystemCapsSl15* caps = {};
+        sl::param::getPointerParam(params, sl::param::common::kSystemCaps, &caps);
+
+        if (caps)
+        {
+            caps->architecture[0] = arch;
+            caps->driverVersionMajor = 999;
+
+            // This will write outside the struct if SystemCaps is smaller than expected
+            // Witcher 3 (sl 1.5) uses this layout
+            // Layout from Streamline 1.3 is somehow bigger than this so it should be fine
+            caps->hwSchedulingEnabled = true;
+        }
+    }
+}
+
 bool StreamlineHooks::hkdlssg_slOnPluginLoad(void* params, const char* loaderJSON, const char** pluginJSON)
 {
     LOG_FUNC();
@@ -233,7 +276,16 @@ bool StreamlineHooks::hkdlssg_slOnPluginLoad(void* params, const char* loaderJSO
     // TODO: do it better than "static" and hoping for the best
     static std::string config;
 
+    if (Config::Instance()->StreamlineSpoofing.value_or_default() && Config::Instance()->FGType != FGType::Nukems &&
+        !State::Instance().isRunningOnNvidia)
+        setSystemCapsArch((sl::param::IParameters*) params, 0);
+
     auto result = o_dlssg_slOnPluginLoad(params, loaderJSON, pluginJSON);
+
+    if (Config::Instance()->StreamlineSpoofing.value_or_default() && Config::Instance()->FGType != FGType::Nukems &&
+        !State::Instance().isRunningOnNvidia)
+        setSystemCapsArch((sl::param::IParameters*) params, UINT_MAX);
+
     nlohmann::json configJson = nlohmann::json::parse(*pluginJSON);
 
     if (Config::Instance()->VulkanExtensionSpoofing.value_or_default())
@@ -256,48 +308,7 @@ bool StreamlineHooks::hkcommon_slOnPluginLoad(void* params, const char* loaderJS
     auto result = o_common_slOnPluginLoad(params, loaderJSON, pluginJSON);
 
     if (Config::Instance()->StreamlineSpoofing.value_or_default())
-    {
-        if (State::Instance().streamlineVersion.major > 1)
-        {
-            SystemCaps* caps = {};
-            sl::param::getPointerParam((sl::param::IParameters*) params, sl::param::common::kSystemCaps, &caps);
-
-            if (caps)
-            {
-                for (auto& adapter : caps->adapters)
-                {
-                    if ((uint32_t) adapter.vendor != 0)
-                    {
-                        adapter.vendor = VendorId::eNVDA;
-                        adapter.architecture = UINT_MAX;
-                    }
-                }
-
-                caps->driverVersionMajor = 999;
-                caps->hwsSupported = true;
-            }
-        }
-        else if (State::Instance().streamlineVersion.major == 1)
-        {
-            // This should be Streamline 1.5 as previous versions don't even have slOnPluginLoad
-
-            LOG_TRACE(
-                "Attempting to change system caps for Streamline v1, this could fail depending on the exact version");
-            SystemCapsSl15* caps = {};
-            sl::param::getPointerParam((sl::param::IParameters*) params, sl::param::common::kSystemCaps, &caps);
-
-            if (caps)
-            {
-                caps->architecture[0] = UINT_MAX;
-                caps->driverVersionMajor = 999;
-
-                // This will write outside the struct if SystemCaps is smaller than expected
-                // Witcher 3 (sl 1.5) uses this layout
-                // Layout from Streamline 1.3 is somehow bigger than this so it should be fine
-                caps->hwSchedulingEnabled = true;
-            }
-        }
-    }
+        setSystemCapsArch((sl::param::IParameters*) params, UINT_MAX);
 
     return result;
 }
