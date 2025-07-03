@@ -150,18 +150,10 @@ bool StreamlineHooks::hkslInit_sl1(sl1::Preferences* pref, int applicationId)
     return o_slInit_sl1(*pref, applicationId);
 }
 
-enum class VendorId : uint32_t
-{
-    eMS = 0x1414, // Software Render Adapter
-    eNVDA = 0x10DE,
-    eAMD = 0x1002,
-    eIntel = 0x8086,
-};
-
 struct Adapter
 {
     LUID id {};
-    VendorId vendor {};
+    VendorId::Value vendor {};
     uint32_t bit; // in the adapter bit-mask
     uint32_t architecture {};
     uint32_t implementation {};
@@ -239,7 +231,7 @@ void setSystemCapsArch(sl::param::IParameters* params, uint32_t arch)
             {
                 if ((uint32_t) adapter.vendor != 0)
                 {
-                    adapter.vendor = VendorId::eNVDA;
+                    adapter.vendor = VendorId::Nvidia;
                     adapter.architecture = arch;
                 }
             }

@@ -101,6 +101,18 @@ struct feature_version
     bool operator>=(const feature_version& other) const { return !(*this < other); }
 };
 
+namespace VendorId
+{
+enum Value : uint32_t
+{
+    Invalid = 0,
+    Microsoft = 0x1414, // Software Render Adapter
+    Nvidia = 0x10DE,
+    AMD = 0x1002,
+    Intel = 0x8086,
+};
+};
+
 inline static std::string wstring_to_string(const std::wstring& wide_str)
 {
     std::string str(wide_str.length(), 0);

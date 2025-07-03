@@ -184,7 +184,7 @@ inline static bool SkipSpoofing()
 
         if (result == S_OK)
         {
-            if (pDesc->VendorId != 0x1414 &&
+            if (pDesc->VendorId != VendorId::Microsoft &&
                 !State::Instance().adapterDescs.contains(pDesc->AdapterLuid.HighPart | pDesc->AdapterLuid.LowPart))
             {
                 std::wstring szName(pDesc->Description);
@@ -199,7 +199,7 @@ inline static bool SkipSpoofing()
             if (Config::Instance()->DxgiVRAM.has_value())
                 pDesc->DedicatedVideoMemory = (UINT64) Config::Instance()->DxgiVRAM.value() * 1024 * 1024 * 1024;
 
-            if (pDesc->VendorId != 0x1414 &&
+            if (pDesc->VendorId != VendorId::Microsoft &&
                 (!Config::Instance()->TargetVendorId.has_value() ||
                  Config::Instance()->TargetVendorId.value() == pDesc->VendorId) &&
                 (!Config::Instance()->TargetDeviceId.has_value() ||
@@ -234,7 +234,7 @@ inline static bool SkipSpoofing()
 
         if (result == S_OK)
         {
-            if (pDesc->VendorId != 0x1414 &&
+            if (pDesc->VendorId != VendorId::Microsoft &&
                 !State::Instance().adapterDescs.contains(pDesc->AdapterLuid.HighPart | pDesc->AdapterLuid.LowPart))
             {
                 std::wstring szName(pDesc->Description);
@@ -249,7 +249,7 @@ inline static bool SkipSpoofing()
             if (Config::Instance()->DxgiVRAM.has_value())
                 pDesc->DedicatedVideoMemory = (UINT64) Config::Instance()->DxgiVRAM.value() * 1024 * 1024 * 1024;
 
-            if (pDesc->VendorId != 0x1414 &&
+            if (pDesc->VendorId != VendorId::Microsoft &&
                 (!Config::Instance()->TargetVendorId.has_value() ||
                  Config::Instance()->TargetVendorId.value() == pDesc->VendorId) &&
                 (!Config::Instance()->TargetDeviceId.has_value() ||
@@ -284,7 +284,7 @@ inline static bool SkipSpoofing()
 
         if (result == S_OK)
         {
-            if (pDesc->VendorId != 0x1414 &&
+            if (pDesc->VendorId != VendorId::Microsoft &&
                 !State::Instance().adapterDescs.contains(pDesc->AdapterLuid.HighPart | pDesc->AdapterLuid.LowPart))
             {
                 std::wstring szName(pDesc->Description);
@@ -299,7 +299,7 @@ inline static bool SkipSpoofing()
             if (Config::Instance()->DxgiVRAM.has_value())
                 pDesc->DedicatedVideoMemory = (UINT64) Config::Instance()->DxgiVRAM.value() * 1024 * 1024 * 1024;
 
-            if (pDesc->VendorId != 0x1414 &&
+            if (pDesc->VendorId != VendorId::Microsoft &&
                 (!Config::Instance()->TargetVendorId.has_value() ||
                  Config::Instance()->TargetVendorId.value() == pDesc->VendorId) &&
                 (!Config::Instance()->TargetDeviceId.has_value() ||
@@ -334,7 +334,7 @@ inline static bool SkipSpoofing()
 
         if (result == S_OK)
         {
-            if (pDesc->VendorId != 0x1414 &&
+            if (pDesc->VendorId != VendorId::Microsoft &&
                 !State::Instance().adapterDescs.contains(pDesc->AdapterLuid.HighPart | pDesc->AdapterLuid.LowPart))
             {
                 std::wstring szName(pDesc->Description);
@@ -349,7 +349,7 @@ inline static bool SkipSpoofing()
             if (Config::Instance()->DxgiVRAM.has_value())
                 pDesc->DedicatedVideoMemory = (UINT64) Config::Instance()->DxgiVRAM.value() * 1024 * 1024 * 1024;
 
-            if (pDesc->VendorId != 0x1414 &&
+            if (pDesc->VendorId != VendorId::Microsoft &&
                 (!Config::Instance()->TargetVendorId.has_value() ||
                  Config::Instance()->TargetVendorId.value() == pDesc->VendorId) &&
                 (!Config::Instance()->TargetDeviceId.has_value() ||

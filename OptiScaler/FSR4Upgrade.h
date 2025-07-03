@@ -318,7 +318,7 @@ static inline void CheckForGPU()
         result = adapter->GetDesc(&adapterDesc);
         State::Instance().skipSpoofing = false;
 
-        if (result == S_OK && adapterDesc.VendorId != 0x00001414)
+        if (result == S_OK && adapterDesc.VendorId != VendorId::Microsoft)
         {
             std::wstring szName(adapterDesc.Description);
             std::string descStr = std::format("Adapter: {}, VRAM: {} MB", wstring_to_string(szName),
@@ -326,7 +326,7 @@ static inline void CheckForGPU()
             LOG_INFO("{}", descStr);
 
             // If GPU is AMD
-            if (adapterDesc.VendorId == 0x1002)
+            if (adapterDesc.VendorId == VendorId::AMD)
             {
                 // If GPU Name contains 90XX or GFX12 (Linux) always set it to true
                 if (szName.find(L" 90") != std::wstring::npos || szName.find(L" GFX12") != std::wstring::npos)

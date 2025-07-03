@@ -1957,12 +1957,12 @@ static HRESULT hkD3D12CreateDevice(IDXGIAdapter* pAdapter, D3D_FEATURE_LEVEL Min
         minLevel = D3D_FEATURE_LEVEL_11_0;
     }
 
-    if (desc.VendorId == 0x8086)
+    if (desc.VendorId == VendorId::Intel)
         State::Instance().skipSpoofing = true;
 
     auto result = o_D3D12CreateDevice(pAdapter, minLevel, riid, ppDevice);
 
-    if (desc.VendorId == 0x8086)
+    if (desc.VendorId == VendorId::Intel)
         State::Instance().skipSpoofing = false;
 
     LOG_DEBUG("o_D3D12CreateDevice result: {:X}", (UINT) result);
@@ -1975,7 +1975,7 @@ static HRESULT hkD3D12CreateDevice(IDXGIAdapter* pAdapter, D3D_FEATURE_LEVEL Min
         if (szName.size() > 0)
             State::Instance().DeviceAdapterNames[*ppDevice] = wstring_to_string(szName);
 
-        if (desc.VendorId == 0x8086 && Config::Instance()->UESpoofIntelAtomics64.value_or_default())
+        if (desc.VendorId == VendorId::Intel && Config::Instance()->UESpoofIntelAtomics64.value_or_default())
         {
             IGDExtProxy::EnableAtomicSupport(State::Instance().currentD3D12Device);
             _intelD3D12Device = State::Instance().currentD3D12Device;

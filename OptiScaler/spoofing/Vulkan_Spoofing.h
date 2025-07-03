@@ -97,7 +97,7 @@ inline static void hkvkGetPhysicalDeviceProperties(VkPhysicalDevice physical_dev
 
     // Report adapter info
     auto uniqueId = properties->vendorID | properties->deviceID;
-    if (properties->vendorID != 0x1414 && !State::Instance().adapterDescs.contains(uniqueId))
+    if (properties->vendorID != VendorId::Microsoft && !State::Instance().adapterDescs.contains(uniqueId))
     {
         std::string szName(properties->deviceName);
         std::string descStr = std::format("Adapter: {}, VendorId: {:#x}, DeviceId: {:#x}", szName, properties->vendorID,
@@ -134,7 +134,7 @@ inline static void hkvkGetPhysicalDeviceProperties2(VkPhysicalDevice phys_dev, V
 
     // Report adapter info
     auto uniqueId = properties2->properties.vendorID | properties2->properties.deviceID;
-    if (properties2->properties.vendorID != 0x1414 && !State::Instance().adapterDescs.contains(uniqueId))
+    if (properties2->properties.vendorID != VendorId::Microsoft && !State::Instance().adapterDescs.contains(uniqueId))
     {
         std::string szName(properties2->properties.deviceName);
         std::string descStr = std::format("Adapter: {}, VendorId: {:#x}, DeviceId: {:#x}", szName,
@@ -159,7 +159,7 @@ inline static void hkvkGetPhysicalDeviceProperties2(VkPhysicalDevice phys_dev, V
         properties2->properties.driverVersion = VK_MAKE_API_VERSION(999, 99, 0, 0);
 
         // If spoofing Nvidia
-        if (Config::Instance()->SpoofedVendorId.value_or_default() == 0x10de)
+        if (Config::Instance()->SpoofedVendorId.value_or_default() == VendorId::Nvidia)
         {
             auto next = (VkDummyProps*) properties2->pNext;
 
@@ -190,7 +190,7 @@ inline static void hkvkGetPhysicalDeviceProperties2KHR(VkPhysicalDevice phys_dev
 
     // Report adapter info
     auto uniqueId = properties2->properties.vendorID | properties2->properties.deviceID;
-    if (properties2->properties.vendorID != 0x1414 && !State::Instance().adapterDescs.contains(uniqueId))
+    if (properties2->properties.vendorID != VendorId::Microsoft && !State::Instance().adapterDescs.contains(uniqueId))
     {
         std::string szName(properties2->properties.deviceName);
         std::string descStr = std::format("Adapter: {}, VendorId: {:#x}, DeviceId: {:#x}", szName,
@@ -215,7 +215,7 @@ inline static void hkvkGetPhysicalDeviceProperties2KHR(VkPhysicalDevice phys_dev
         properties2->properties.driverVersion = VK_MAKE_API_VERSION(999, 99, 0, 0);
 
         // If spoofing Nvidia
-        if (Config::Instance()->SpoofedVendorId.value_or_default() == 0x10de)
+        if (Config::Instance()->SpoofedVendorId.value_or_default() == VendorId::Nvidia)
         {
             auto next = (VkDummyProps*) properties2->pNext;
 

@@ -333,7 +333,7 @@ class Config
     CustomOptional<int, NoDefault> VulkanVRAM; // disabled by default
     CustomOptional<bool> SpoofHAGS { false };
     CustomOptional<bool> SpoofFeatureLevel { false };
-    CustomOptional<uint32_t> SpoofedVendorId { 0x10de };
+    CustomOptional<uint32_t> SpoofedVendorId { VendorId::Nvidia };
     CustomOptional<uint32_t> SpoofedDeviceId { 0x2684 };
     CustomOptional<uint32_t, NoDefault> TargetVendorId;
     CustomOptional<uint32_t, NoDefault> TargetDeviceId;
