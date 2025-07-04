@@ -2,6 +2,7 @@
 #include <pch.h>
 
 #include <OwnedMutex.h>
+#include "UtilCom.h"
 
 #include <dxgi1_6.h>
 
@@ -28,6 +29,28 @@ class IFGFeature
     IID streamlineRiid {};
 
     bool CheckForRealObject(std::string functionName, IUnknown* pObject, IUnknown** ppRealObject);
+
+    // If given interface has a Streamline proxy, return that. Otherwise return the interface unchanged.
+    template<typename Intf>
+    [[nodiscard]] Util::ComPtr<Intf> CheckForRealObject(std::string_view functionName, Util::ComPtr<Intf> pObject)
+    {
+        if (streamlineRiid.Data1 == 0)
+        {
+            auto iidResult = IIDFromString(L"{ADEC44E2-61F0-45C3-AD9F-1B37379284FF}", &streamlineRiid);
+
+            if (iidResult != S_OK)
+                return pObject;
+        }
+
+        Util::ComPtr<Intf> pRealObject;
+        if (pObject->QueryInterface(streamlineRiid, std::out_ptr(pRealObject)) == S_OK && pRealObject != nullptr)
+        {
+            LOG_INFO("{} Streamline proxy found!", functionName);
+            return pRealObject;
+        }
+
+        return pObject;
+    }
 
   public:
     OwnedMutex Mutex;
