@@ -406,3 +406,26 @@ bool XeSSFeatureDx11on12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_N
 }
 
 XeSSFeatureDx11on12::~XeSSFeatureDx11on12() {}
+
+// TODO
+bool XeSSFeatureDx11on12::CheckInitializationContext(ApiContext* context) { return false; }
+
+// TODO
+xess_result_t XeSSFeatureDx11on12::CreateXessContext(ApiContext* context, xess_context_handle_t* pXessContext)
+{
+    return xess_result_t();
+}
+
+// TODO
+xess_result_t XeSSFeatureDx11on12::ApiInit(ApiContext* context, XessInitParams* xessInitParams)
+{
+    return xess_result_t();
+}
+
+XessInitParams XeSSFeatureDx11on12::CreateInitParams(xess_2d_t outputResolution, xess_quality_settings_t qualitySetting,
+                                                     uint32_t initFlags)
+{
+    return XessInitParams();
+}
+
+void XeSSFeatureDx11on12::InitMenuAndOutput(ApiContext* context) {}
