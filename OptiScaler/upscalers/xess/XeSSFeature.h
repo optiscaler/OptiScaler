@@ -1,8 +1,10 @@
 #pragma once
+#include <vulkan/vulkan.hpp>
 #include <upscalers/IFeature.h>
 #include <proxies/XeSS_Proxy.h>
 
 #include <string>
+#include <variant>
 
 inline static std::string ResultToString(xess_result_t result)
 {
@@ -42,13 +44,36 @@ inline static std::string ResultToString(xess_result_t result)
     }
 }
 
+struct D3D11Context
+{
+    ID3D11DeviceContext* d3d11Context;
+    ID3D11Device* d3d11Device;
+};
+
+struct D3D12Context
+{
+    ID3D12Device* d3d12Device;
+    ID3D12GraphicsCommandList* d3d12CommandList;
+};
+
+struct VulkanContext
+{
+    vk::Instance* vkInstance;
+    vk::PhysicalDevice* vkPhysicalDevice;
+    vk::Device* vkDevice;
+    vk::CommandBuffer* vkCommandBuffer;
+    PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
+    PFN_vkGetDeviceProcAddr vkGetDeviceProcAddr;
+};
+
+using ApiContext = std::variant<D3D11Context, D3D12Context, VulkanContext>;
+
+using EvalContext = std::variant<ID3D11DeviceContext*, ID3D12GraphicsCommandList*, vk::CommandBuffer*>;
+
+using XessInitParams = std::variant<xess_d3d11_init_params_t, xess_d3d12_init_params_t, xess_vk_init_params_t>;
+
 class XeSSFeature : public virtual IFeature
 {
-  private:
-    ID3D12PipelineLibrary* _localPipeline = nullptr;
-    ID3D12Heap* _localBufferHeap = nullptr;
-    ID3D12Heap* _localTextureHeap = nullptr;
-
   protected:
     xess_context_handle_t _xessContext = nullptr;
 
@@ -64,6 +89,25 @@ class XeSSFeature : public virtual IFeature
     std::string Name() const { return "XeSS"; }
 
     XeSSFeature(unsigned int handleId, NVSDK_NGX_Parameter* InParameters);
+
+    bool Init(ApiContext* context, const NVSDK_NGX_Parameter* InParameters);
+
+    bool Evaluate(EvalContext* context, const NVSDK_NGX_Parameter* InParameters,
+                  const NVSDK_NGX_Parameter* OutParameters);
+
+    uint32_t GetInitFlags();
+
+    xess_quality_settings_t GetQualitySetting();
+
+    virtual XessInitParams CreateInitParams(xess_2d_t outputResolution, xess_quality_settings_t qualitySetting, uint32_t initFlags) = 0;
+
+    virtual bool CheckInitializationContext(ApiContext* context) = 0;
+
+    virtual xess_result_t CreateXessContext(ApiContext* context, xess_context_handle_t* pXessContext) = 0;
+
+    virtual xess_result_t ApiInit(ApiContext* context, XessInitParams* xessInitParams) = 0;
+
+    virtual void InitMenuAndOutput(ApiContext* context) = 0;
 
     ~XeSSFeature();
 };

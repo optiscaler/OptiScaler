@@ -8,6 +8,7 @@
 #define _CRT_SECURE_NO_DEPRECATE
 #include <Windows.h>
 #include <string>
+#include <variant>
 #include <stdint.h>
 #include <libloaderapi.h>
 #include <ranges>

@@ -17,4 +17,13 @@ class XeSSFeatureDx11on12 : public XeSSFeature, public IFeature_Dx11wDx12
     bool Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_Parameter* InParameters) override;
 
     ~XeSSFeatureDx11on12();
+
+    bool CheckInitializationContext(ApiContext* context) override;
+    xess_result_t CreateXessContext(ApiContext* context, xess_context_handle_t* pXessContext) override;
+    xess_result_t ApiInit(ApiContext* context, XessInitParams* xessInitParams) override;
+
+    XessInitParams CreateInitParams(xess_2d_t outputResolution, xess_quality_settings_t qualitySetting,
+                                    uint32_t initFlags) override;
+
+    void InitMenuAndOutput(ApiContext* context) override;
 };
