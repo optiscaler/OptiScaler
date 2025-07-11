@@ -5,6 +5,7 @@
 #include <upscalers/IFeature.h>
 #include <menu/menu_overlay_dx.h>
 #include <future>
+#include <optional>
 
 // #define USE_QUEUE_FOR_FG
 
@@ -100,10 +101,11 @@ bool FSRFG_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* ou
 
     auto frameIndex = _frameCount % BUFFER_COUNT;
 
+    std::optional<OwnedLockGuard> lock;
     if (Config::Instance()->FGUseMutexForSwapchain.value_or_default())
     {
         LOG_TRACE("Waiting Mutex 1, current: {}", Mutex.getOwner());
-        Mutex.lock(1);
+        lock.emplace(Mutex, 1);
         LOG_TRACE("Accuired Mutex: {}", Mutex.getOwner());
     }
 
@@ -250,10 +252,9 @@ bool FSRFG_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* ou
         }
     }
 
-    if (Config::Instance()->FGUseMutexForSwapchain.value_or_default())
+    if (lock)
     {
         LOG_TRACE("Releasing Mutex: {}", Mutex.getOwner());
-        Mutex.unlockThis(1);
     }
 
     return retCode == FFX_API_RETURN_OK;
@@ -522,10 +523,11 @@ void FSRFG_Dx12::FgDone()
 {
     return;
 
+    std::optional<OwnedLockGuard> lock;
     if (Config::Instance()->FGUseMutexForSwapchain.value_or_default())
     {
         LOG_TRACE("Waiting Mutex 1, current: {}", Mutex.getOwner());
-        Mutex.lock(1);
+        lock.emplace(Mutex, 1);
         LOG_TRACE("Accuired Mutex: {}", Mutex.getOwner());
     }
 
@@ -545,10 +547,9 @@ void FSRFG_Dx12::FgDone()
             LOG_INFO("D3D12_Configure result: {0:X}", result);
     }
 
-    if (Config::Instance()->FGUseMutexForSwapchain.value_or_default())
+    if (lock)
     {
         LOG_TRACE("Releasing Mutex: {}", Mutex.getOwner());
-        Mutex.unlockThis(1);
     }
 }
 
@@ -570,12 +571,11 @@ void FSRFG_Dx12::StopAndDestroyContext(bool destroy, bool shutDown, bool useMute
 
     LOG_DEBUG("");
 
-    bool mutexTaken = false;
+    std::optional<OwnedLockGuard> lock;
     if (Config::Instance()->FGUseMutexForSwapchain.value_or_default() && useMutex)
     {
         LOG_TRACE("Waiting Mutex 1, current: {}", Mutex.getOwner());
-        Mutex.lock(1);
-        mutexTaken = true;
+        lock.emplace(Mutex, 1);
         LOG_TRACE("Accuired Mutex: {}", Mutex.getOwner());
     }
 
@@ -610,10 +610,9 @@ void FSRFG_Dx12::StopAndDestroyContext(bool destroy, bool shutDown, bool useMute
     if (shutDown || State::Instance().isShuttingDown)
         ReleaseObjects();
 
-    if (mutexTaken)
+    if (lock)
     {
         LOG_TRACE("Releasing Mutex: {}", Mutex.getOwner());
-        Mutex.unlockThis(1);
     }
 }
 
@@ -703,10 +702,11 @@ bool FSRFG_Dx12::ReleaseSwapchain(HWND hwnd)
 
     LOG_DEBUG("");
 
+    std::optional<OwnedLockGuard> lock;
     if (Config::Instance()->FGUseMutexForSwapchain.value_or_default())
     {
         LOG_TRACE("Waiting Mutex 1, current: {}", Mutex.getOwner());
-        Mutex.lock(1);
+        lock.emplace(Mutex, 1);
         LOG_TRACE("Accuired Mutex: {}", Mutex.getOwner());
     }
 
@@ -723,10 +723,9 @@ bool FSRFG_Dx12::ReleaseSwapchain(HWND hwnd)
         _swapChainContext = nullptr;
     }
 
-    if (Config::Instance()->FGUseMutexForSwapchain.value_or_default())
+    if (lock)
     {
         LOG_TRACE("Releasing Mutex: {}", Mutex.getOwner());
-        Mutex.unlockThis(1);
     }
 
     return true;

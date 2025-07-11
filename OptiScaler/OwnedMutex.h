@@ -8,7 +8,10 @@
 class OwnedMutex
 {
   private:
+    // shared* as basic mutex must only be unlocked by thread that locked it
     std::shared_mutex mtx;
+
+    // Written under mutex, read independently
     std::atomic<uint32_t> owner {}; // don't use 0
 
   public:
@@ -33,6 +36,7 @@ class OwnedMutex
         mtx.unlock();
     }
 
+    // Result is truthful only if and while locked
     uint32_t getOwner() { return owner.load(std::memory_order_seq_cst); }
 };
 
@@ -47,6 +51,8 @@ class OwnedLockGuard
     {
         _mutex.lock(_owner_id);
     }
+
+    OwnedLockGuard(const OwnedLockGuard&) = delete;
 
     ~OwnedLockGuard() { _mutex.unlockThis(_owner_id); }
 };
