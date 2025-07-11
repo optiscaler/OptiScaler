@@ -453,6 +453,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="upscalers\xess\XeSSFeature_Dx11on12.h" />
     <ClInclude Include="upscalers\xess\XeSSFeature_Vk.h" />
     <ClInclude Include="Util.h" />
+    <ClInclude Include="UtilCom.h" />
     <ClInclude Include="upscalers\xess\XeSSFeature_Dx11.h" />
     <ClInclude Include="proxies\XeSS_Proxy.h" />
   </ItemGroup>
