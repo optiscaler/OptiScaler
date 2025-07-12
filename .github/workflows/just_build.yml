@@ -7,10 +7,10 @@ name: Build
 
 on:
   workflow_dispatch:
-#  push:
-#    branches: [ "master" ]
-#  pull_request:
-#    branches: [ "master" ]
+  # push:
+  #   branches: [ "master" ]
+  #  pull_request:
+  #    branches: [ "master" ]
     
 env:
   # Path to the solution file relative to the root of the project.
@@ -100,6 +100,98 @@ jobs:
       # See https://docs.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference
       run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} ${{env.SOLUTION_FILE_PATH}} /verbosity:minimal
       
+    - name: Download latest dlssg-to-fsr3 release
+      id: dlssg_download
+      shell: powershell
+      run: |
+        # Get the latest release info from the API
+        $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/xXJSONDeruloXx/dlssg-to-fsr3/releases/latest"
+        
+        # Find the standard ZIP asset (not Universal or DLSSTweaks.Edition)
+        $asset = $releases.assets | Where-Object { 
+          $_.name -like "dlssg-to-fsr3-*.zip" -and 
+          $_.name -notlike "*Universal*" -and 
+          $_.name -notlike "*DLSSTweaks.Edition*" 
+        } | Select-Object -First 1
+        
+        if (-not $asset) {
+            Write-Error "Could not find appropriate dlssg-to-fsr3 release asset"
+            exit 1
+        }
+        
+        Write-Output "Downloading $($asset.name)..."
+        
+        # Download the asset
+        $downloadUrl = $asset.browser_download_url
+        $zipPath = "${{ github.workspace }}\dlssg-to-fsr3.zip"
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath
+        
+        # Extract the ZIP file
+        $extractPath = "${{ github.workspace }}\dlssg-temp"
+        Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
+        
+        # Find the DLL file in the extracted directory
+        $dllPath = Get-ChildItem -Path $extractPath -Recurse -Filter "dlssg_to_fsr3_amd_is_better.dll" | Select-Object -First 1 -ExpandProperty FullName
+        
+        if (-not $dllPath) {
+            Write-Error "Could not find dlssg_to_fsr3_amd_is_better.dll in the extracted files"
+            exit 1
+        }
+        
+        # Copy the DLL to the artifact directory
+        Copy-Item -Path $dllPath -Destination "${{ github.workspace }}\x64\Release\a\"
+        
+        Write-Output "Successfully copied dlssg_to_fsr3_amd_is_better.dll to artifact directory"
+    
+    - name: Download latest fakenvapi release
+      id: fakenvapi_download
+      shell: powershell
+      run: |
+        # Get the latest release info from the API
+        $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/optiscaler/fakenvapi/releases/latest"
+        
+        # Find the fakenvapi.zip asset
+        $asset = $releases.assets | Where-Object { 
+          $_.name -eq "fakenvapi.zip"
+        } | Select-Object -First 1
+        
+        if (-not $asset) {
+            Write-Error "Could not find fakenvapi.zip in the latest release"
+            exit 1
+        }
+        
+        Write-Output "Downloading $($asset.name)..."
+        
+        # Download the asset
+        $downloadUrl = $asset.browser_download_url
+        $zipPath = "${{ github.workspace }}\fakenvapi.zip"
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath
+        
+        # Extract the ZIP file
+        $extractPath = "${{ github.workspace }}\fakenvapi-temp"
+        Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
+        
+        # Find the required files in the extracted directory
+        $nvapi64Path = Get-ChildItem -Path $extractPath -Recurse -Filter "nvapi64.dll" | Select-Object -First 1 -ExpandProperty FullName
+        $fakenvApiIniPath = Get-ChildItem -Path $extractPath -Recurse -Filter "fakenvapi.ini" | Select-Object -First 1 -ExpandProperty FullName
+        
+        if (-not $nvapi64Path) {
+            Write-Error "Could not find nvapi64.dll in the extracted files"
+            exit 1
+        }
+        
+        if (-not $fakenvApiIniPath) {
+            Write-Error "Could not find fakenvapi.ini in the extracted files"
+            exit 1
+        }
+        
+        # Copy the files to the artifact directory
+        Copy-Item -Path $nvapi64Path -Destination "${{ github.workspace }}\x64\Release\a\"
+        Copy-Item -Path $fakenvApiIniPath -Destination "${{ github.workspace }}\x64\Release\a\"
+        
+        Write-Output "Successfully copied nvapi64.dll and fakenvapi.ini to artifact directory"
+      continue-on-error: false
+
     - name: upload-unsigned-artifact
       id: upload-unsigned-artifact
       uses: actions/upload-artifact@v4
@@ -132,12 +224,13 @@ jobs:
       run: |
         $zipName = "${{ steps.get_version.outputs.filename }}.7z"
         7z a -r ${{ github.workspace }}\$zipName ${{ github.workspace }}\x64\Release\a\*.*
-
       continue-on-error: false
-        
-    - uses: actions/upload-artifact@v4
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
       with:
         name: '${{ steps.get_version.outputs.filename }}'
         path: '${{ github.workspace }}\${{ steps.get_version.outputs.filename }}.7z'
         compression-level: 0
+        if-no-files-found: error
         if-no-files-found: error
