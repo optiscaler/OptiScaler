@@ -344,7 +344,7 @@ class Config
     CustomOptional<std::wstring> PluginPath { L"plugins" };
     CustomOptional<bool> LoadSpecialK { false };
     CustomOptional<bool> LoadReShade { false };
-    CustomOptional<bool> LoadAsiPlugins { true };
+    CustomOptional<bool> LoadAsiPlugins { false };
 
     // Frame Generation
     CustomOptional<FGType> FGType { FGType::NoFG };
