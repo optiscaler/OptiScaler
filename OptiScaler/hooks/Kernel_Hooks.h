@@ -611,7 +611,10 @@ class KernelHooks
         }
 
         // sl.dlss.dll
-        if (CheckDllNameW(&lcaseLibName, &slDlssNamesW))
+        // Try to catch something like this:
+        // C:\ProgramData/NVIDIA/NGX/models/sl_dlss_0/versions/133120/files/190_E658703.dll
+        if (CheckDllNameW(&lcaseLibName, &slDlssNamesW) ||
+            (lcaseLibName.contains(L"/versions/") && lcaseLibName.contains(L"/sl_dlss_")))
         {
             auto dlssModule = KernelBaseProxy::LoadLibraryExW_()(lpLibFullPath, NULL, 0);
 
@@ -621,14 +624,15 @@ class KernelHooks
             }
             else
             {
-                LOG_ERROR("Trying to load dll: {}", lcaseLibNameA);
+                LOG_ERROR("Trying to load dll as sl.dlss: {}", lcaseLibNameA);
             }
 
             return dlssModule;
         }
 
         // sl.dlss_g.dll
-        if (CheckDllNameW(&lcaseLibName, &slDlssgNamesW))
+        if (CheckDllNameW(&lcaseLibName, &slDlssgNamesW) ||
+            (lcaseLibName.contains(L"/versions/") && lcaseLibName.contains(L"/sl_dlss_g_")))
         {
             auto dlssgModule = KernelBaseProxy::LoadLibraryExW_()(lpLibFullPath, NULL, 0);
 
@@ -638,14 +642,15 @@ class KernelHooks
             }
             else
             {
-                LOG_ERROR("Trying to load dll: {}", lcaseLibNameA);
+                LOG_ERROR("Trying to load dll as sl.dlss_g: {}", lcaseLibNameA);
             }
 
             return dlssgModule;
         }
 
         // sl.reflex.dll
-        if (CheckDllNameW(&lcaseLibName, &slReflexNamesW))
+        if (CheckDllNameW(&lcaseLibName, &slReflexNamesW) ||
+            (lcaseLibName.contains(L"/versions/") && lcaseLibName.contains(L"/sl_reflex_")))
         {
             auto reflexModule = KernelBaseProxy::LoadLibraryExW_()(lpLibFullPath, NULL, 0);
 
@@ -655,14 +660,15 @@ class KernelHooks
             }
             else
             {
-                LOG_ERROR("Trying to load dll: {}", lcaseLibNameA);
+                LOG_ERROR("Trying to load dll as sl.reflex: {}", lcaseLibNameA);
             }
 
             return reflexModule;
         }
 
         // sl.common.dll
-        if (CheckDllNameW(&lcaseLibName, &slCommonNamesW))
+        if (CheckDllNameW(&lcaseLibName, &slCommonNamesW) ||
+            (lcaseLibName.contains(L"/versions/") && lcaseLibName.contains(L"/sl_common_")))
         {
             auto commonModule = KernelBaseProxy::LoadLibraryExW_()(lpLibFullPath, NULL, 0);
 
@@ -672,7 +678,7 @@ class KernelHooks
             }
             else
             {
-                LOG_ERROR("Trying to load dll: {}", lcaseLibNameA);
+                LOG_ERROR("Trying to load dll as sl.common: {}", lcaseLibNameA);
             }
 
             return commonModule;
