@@ -186,14 +186,14 @@ extern "C"
     /// FFX_ERROR_BACKEND_API_ERROR         The operation failed because of an error returned from the backend.
     ///
     /// @ingroup ffxOpticalflow
-    FFX_API FfxErrorCode ffxOpticalflowContextCreate(FfxOpticalflowContext* context,
-                                                     FfxOpticalflowContextDescription* contextDescription);
+    //FFX_API FfxErrorCode ffxOpticalflowContextCreate(FfxOpticalflowContext* context,
+    //                                                 FfxOpticalflowContextDescription* contextDescription);
 
-    FFX_API FfxErrorCode ffxOpticalflowGetSharedResourceDescriptions(
-        FfxOpticalflowContext* context, FfxOpticalflowSharedResourceDescriptions* SharedResources);
+    //FFX_API FfxErrorCode ffxOpticalflowGetSharedResourceDescriptions(
+    //    FfxOpticalflowContext* context, FfxOpticalflowSharedResourceDescriptions* SharedResources);
 
-    FFX_API FfxErrorCode ffxOpticalflowContextDispatch(FfxOpticalflowContext* context,
-                                                       const FfxOpticalflowDispatchDescription* dispatchDescription);
+    //FFX_API FfxErrorCode ffxOpticalflowContextDispatch(FfxOpticalflowContext* context,
+    //                                                   const FfxOpticalflowDispatchDescription* dispatchDescription);
 
     /// Destroy the FidelityFX OpticalFlow context.
     ///
@@ -206,7 +206,7 @@ extern "C"
     /// <c><i>NULL</i></c>.
     ///
     /// @ingroup ffxOpticalflow
-    FFX_API FfxErrorCode ffxOpticalflowContextDestroy(FfxOpticalflowContext* context);
+    //FFX_API FfxErrorCode ffxOpticalflowContextDestroy(FfxOpticalflowContext* context);
 
 #if defined(__cplusplus)
 }
