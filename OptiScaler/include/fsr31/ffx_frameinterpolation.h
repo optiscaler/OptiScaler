@@ -210,11 +210,11 @@ extern "C"
     /// FFX_ERROR_BACKEND_API_ERROR         The operation failed because of an error returned from the backend.
     ///
     /// @ingroup FRAMEINTERPOLATION
-    FFX_API FfxErrorCode ffxFrameInterpolationContextCreate(
-        FfxFrameInterpolationContext* context, FfxFrameInterpolationContextDescription* contextDescription);
+    //FFX_API FfxErrorCode ffxFrameInterpolationContextCreate(
+    //    FfxFrameInterpolationContext* context, FfxFrameInterpolationContextDescription* contextDescription);
 
-    FFX_API FfxErrorCode ffxFrameInterpolationGetSharedResourceDescriptions(
-        FfxFrameInterpolationContext* pContext, FfxFrameInterpolationSharedResourceDescriptions* SharedResources);
+    //FFX_API FfxErrorCode ffxFrameInterpolationGetSharedResourceDescriptions(
+    //    FfxFrameInterpolationContext* pContext, FfxFrameInterpolationSharedResourceDescriptions* SharedResources);
 
     typedef struct FfxFrameInterpolationPrepareDescription
     {
@@ -240,8 +240,8 @@ extern "C"
         FfxResource reconstructedPrevDepth; ///< The reconstructed depth buffer data
     } FfxFrameInterpolationPrepareDescription;
 
-    FFX_API FfxErrorCode ffxFrameInterpolationPrepare(FfxFrameInterpolationContext* context,
-                                                      const FfxFrameInterpolationPrepareDescription* params);
+    //FFX_API FfxErrorCode ffxFrameInterpolationPrepare(FfxFrameInterpolationContext* context,
+    //                                                  const FfxFrameInterpolationPrepareDescription* params);
 
     typedef enum FfxFrameInterpolationDispatchFlags
     {
@@ -301,8 +301,8 @@ extern "C"
         FfxResource reconstructedPrevDepth; ///< The reconstructed depth buffer data
     } FfxFrameInterpolationDispatchDescription;
 
-    FFX_API FfxErrorCode ffxFrameInterpolationDispatch(FfxFrameInterpolationContext* context,
-                                                       const FfxFrameInterpolationDispatchDescription* params);
+    //FFX_API FfxErrorCode ffxFrameInterpolationDispatch(FfxFrameInterpolationContext* context,
+    //                                                   const FfxFrameInterpolationDispatchDescription* params);
 
     /// Destroy the FidelityFX Super Resolution context.
     ///
@@ -315,7 +315,7 @@ extern "C"
     /// <c><i>NULL</i></c>.
     ///
     /// @ingroup FRAMEINTERPOLATION
-    FFX_API FfxErrorCode ffxFrameInterpolationContextDestroy(FfxFrameInterpolationContext* context);
+    //FFX_API FfxErrorCode ffxFrameInterpolationContextDestroy(FfxFrameInterpolationContext* context);
 
 #if defined(__cplusplus)
 }

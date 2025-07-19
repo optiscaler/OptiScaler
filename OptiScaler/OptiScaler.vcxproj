@@ -199,7 +199,7 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalDependencies>WindowsApp.lib;Dbghelp.lib;dxgi.lib;d3d11.lib;d3d12.lib;vulkan-1.lib;dxguid.lib;freetype.lib;ffx_fsr2_api_x64d.lib;ffx_fsr2_api_dx11_x64d.lib;ffx_fsr2_api_dx12_x64d.lib;ffx_fsr2_api_vk_x64d.lib;ffx_fsr2_212_api_dx12_x64d.lib;ffx_fsr2_212_api_vk_x64d.lib;ffx_fsr2_212_api_x64d.lib;d3dcompiler.lib;d3dx11.lib;ffx_backend_dx11_x64d.lib;ffx_fsr3_x64d.lib;ffx_fsr3upscaler_x64d.lib;ffx_opticalflow_x64d.lib;ffx_frameinterpolation_x64d.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>WindowsApp.lib;Dbghelp.lib;dxgi.lib;d3d11.lib;d3d12.lib;vulkan-1.lib;dxguid.lib;freetype.lib;ffx_fsr2_api_x64d.lib;ffx_fsr2_api_dx11_x64d.lib;ffx_fsr2_api_dx12_x64d.lib;ffx_fsr2_api_vk_x64d.lib;ffx_fsr2_212_api_dx12_x64d.lib;ffx_fsr2_212_api_vk_x64d.lib;ffx_fsr2_212_api_x64d.lib;d3dcompiler.lib;d3dx11.lib;ffx_backend_dx11_x64d.lib;ffx_fsr3_x64d.lib;ffx_fsr3upscaler_x64d.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <ModuleDefinitionFile>Source.def</ModuleDefinitionFile>
       <DelayLoadDLLs>vulkan-1.dll;dxgi.dll;d3d12.dll;D3DCOMPILER_47.dll;Dbghelp.dll;d3d11.dll</DelayLoadDLLs>
       <StackReserveSize>
@@ -234,7 +234,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalDependencies>WindowsApp.lib;Dbghelp.lib;dxgi.lib;d3d11.lib;d3d12.lib;vulkan-1.lib;dxguid.lib;freetype.lib;ffx_fsr2_api_x64.lib;ffx_fsr2_api_dx11_x64.lib;ffx_fsr2_api_dx12_x64.lib;ffx_fsr2_api_vk_x64.lib;ffx_fsr2_212_api_dx12_x64.lib;ffx_fsr2_212_api_vk_x64.lib;ffx_fsr2_212_api_x64.lib;d3dcompiler.lib;ffx_backend_dx11_x64.lib;ffx_fsr3_x64.lib;ffx_frameinterpolation_x64.lib;ffx_fsr3upscaler_x64.lib;ffx_opticalflow_x64.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>WindowsApp.lib;Dbghelp.lib;dxgi.lib;d3d11.lib;d3d12.lib;vulkan-1.lib;dxguid.lib;freetype.lib;ffx_fsr2_api_x64.lib;ffx_fsr2_api_dx11_x64.lib;ffx_fsr2_api_dx12_x64.lib;ffx_fsr2_api_vk_x64.lib;ffx_fsr2_212_api_dx12_x64.lib;ffx_fsr2_212_api_vk_x64.lib;ffx_fsr2_212_api_x64.lib;d3dcompiler.lib;ffx_backend_dx11_x64.lib;ffx_fsr3_x64.lib;ffx_fsr3upscaler_x64.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <ModuleDefinitionFile>Source.def</ModuleDefinitionFile>
       <DelayLoadDLLs>vulkan-1.dll;dxgi.dll;d3d12.dll;D3DCOMPILER_47.dll;Dbghelp.dll;d3d11.dll</DelayLoadDLLs>
     </Link>
@@ -282,7 +282,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalDependencies>WindowsApp.lib;Dbghelp.lib;dxgi.lib;d3d11.lib;d3d12.lib;vulkan-1.lib;dxguid.lib;freetype.lib;ffx_fsr2_api_x64.lib;ffx_fsr2_api_dx11_x64.lib;ffx_fsr2_api_dx12_x64.lib;ffx_fsr2_api_vk_x64.lib;ffx_fsr2_212_api_dx12_x64.lib;ffx_fsr2_212_api_vk_x64.lib;ffx_fsr2_212_api_x64.lib;d3dcompiler.lib;ffx_backend_dx11_x64.lib;ffx_fsr3_x64.lib;ffx_frameinterpolation_x64.lib;ffx_fsr3upscaler_x64.lib;ffx_opticalflow_x64.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>WindowsApp.lib;Dbghelp.lib;dxgi.lib;d3d11.lib;d3d12.lib;vulkan-1.lib;dxguid.lib;freetype.lib;ffx_fsr2_api_x64.lib;ffx_fsr2_api_dx11_x64.lib;ffx_fsr2_api_dx12_x64.lib;ffx_fsr2_api_vk_x64.lib;ffx_fsr2_212_api_dx12_x64.lib;ffx_fsr2_212_api_vk_x64.lib;ffx_fsr2_212_api_x64.lib;d3dcompiler.lib;ffx_backend_dx11_x64.lib;ffx_fsr3_x64.lib;ffx_fsr3upscaler_x64.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <ModuleDefinitionFile>Source.def</ModuleDefinitionFile>
       <DelayLoadDLLs>vulkan-1.dll;dxgi.dll;d3d12.dll;D3DCOMPILER_47.dll;Dbghelp.dll;d3d11.dll</DelayLoadDLLs>
     </Link>
