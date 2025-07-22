@@ -1679,13 +1679,19 @@ class KernelHooks
         }
 
         // FSR 4 Init in case of missing amdxc64.dll
-        if (lpProcName != nullptr && hModule == amdxc64Mark && lstrcmpA(lpProcName, "AmdExtD3DCreateInterface") == 0)
+        // 2nd check is amdxcffx64.dll trying to queue amdxc64 but amdxc64 not being loaded
+        if (lpProcName != nullptr && (hModule == amdxc64Mark || hModule == nullptr) &&
+            lstrcmpA(lpProcName, "AmdExtD3DCreateInterface") == 0)
+        {
             return (FARPROC) &customAmdExtD3DCreateInterface;
+        }
 
         if (State::Instance().isRunningOnLinux && lpProcName != nullptr &&
             hModule == KernelBaseProxy::GetModuleHandleW_()(L"gdi32.dll") &&
             lstrcmpA(lpProcName, "D3DKMTEnumAdapters2") == 0)
+        {
             return (FARPROC) &customD3DKMTEnumAdapters2;
+        }
 
         return o_K32_GetProcAddress(hModule, lpProcName);
     }

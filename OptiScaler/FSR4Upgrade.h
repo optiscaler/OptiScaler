@@ -177,6 +177,74 @@ uint64_t hkgetModelBlob(uint32_t preset, uint64_t unknown, uint64_t* source, uin
     return result;
 }
 
+// Internal interfaces needed for custom the IAmdExtFfxApi
+MIDL_INTERFACE("BA019D53-CCAB-4CBD-B56A-7230ED4330AD")
+IAmdExtFfxSecond : public IUnknown
+{
+  public:
+    virtual HRESULT unknown1() = 0; // not used
+    virtual HRESULT unknown2(uint64_t a) = 0;
+    virtual HRESULT unknown3() = 0;
+};
+
+struct AmdExtFfxSecond : public IAmdExtFfxSecond
+{
+    HRESULT STDMETHODCALLTYPE unknown1()
+    {
+        LOG_FUNC();
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE unknown2(uint64_t a)
+    {
+        LOG_TRACE(": {}", a);
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE unknown3()
+    {
+        LOG_FUNC();
+        return S_OK;
+    }
+
+    HRESULT __stdcall QueryInterface(REFIID riid, void** ppvObject) override { return E_NOTIMPL; }
+    ULONG __stdcall AddRef(void) override { return 0; }
+    ULONG __stdcall Release(void) override { return 0; }
+};
+
+static AmdExtFfxSecond* _amdExtFfxSecond = nullptr;
+
+MIDL_INTERFACE("014937EC-9288-446F-A9AC-D75A8E3A984F")
+IAmdExtFfxFirst : public IUnknown
+{
+  public:
+    virtual HRESULT queryInternal(IUnknown * pOuter, REFIID riid, void** ppvObject) = 0;
+};
+
+struct AmdExtFfxFirst : public IAmdExtFfxFirst
+{
+    HRESULT STDMETHODCALLTYPE queryInternal(IUnknown* pOuter, REFIID riid, void** ppvObject) override
+    {
+        if (riid == __uuidof(IAmdExtFfxSecond))
+        {
+            if (_amdExtFfxSecond == nullptr)
+                _amdExtFfxSecond = new AmdExtFfxSecond();
+
+            *ppvObject = _amdExtFfxSecond;
+
+            LOG_INFO("Custom IAmdExtFfxSecond queried, returning custom AmdExtFfxSecond");
+
+            return S_OK;
+        }
+
+        return E_NOINTERFACE;
+    }
+
+    HRESULT __stdcall QueryInterface(REFIID riid, void** ppvObject) override { return E_NOTIMPL; }
+    ULONG __stdcall AddRef(void) override { return 0; }
+    ULONG __stdcall Release(void) override { return 0; }
+};
+
+static AmdExtFfxFirst* _amdExtFfxFirst = nullptr;
+
 /* Potato_of_Doom's Implementation */
 #pragma region IAmdExtFfxApi
 
@@ -378,8 +446,19 @@ inline static HRESULT STDMETHODCALLTYPE hkAmdExtD3DCreateInterface(IUnknown* pOu
 
 inline static HRESULT STDMETHODCALLTYPE customAmdExtD3DCreateInterface(IUnknown* pOuter, REFIID riid, void** ppvObject)
 {
-    // If querying IAmdExtFfxApi
-    if (riid == __uuidof(IAmdExtFfxApi))
+    if (riid == __uuidof(IAmdExtFfxFirst))
+    {
+        // Required for the custom AmdExtFfxApi, lack of it triggers visual glitches
+        if (_amdExtFfxFirst == nullptr)
+            _amdExtFfxFirst = new AmdExtFfxFirst();
+
+        *ppvObject = _amdExtFfxFirst;
+
+        LOG_INFO("Custom IAmdExtFfxFirst queried, returning custom AmdExtFfxFirst");
+
+        return S_OK;
+    }
+    else if (riid == __uuidof(IAmdExtFfxApi))
     {
         if (_amdExtFfxApi == nullptr)
             _amdExtFfxApi = new AmdExtFfxApi();
