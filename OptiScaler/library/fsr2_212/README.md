@@ -1,0 +1,1 @@
+Precompiled libs for https://github.com/optiscaler/FidelityFX-FSR2-212
