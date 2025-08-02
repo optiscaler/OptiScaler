@@ -3,14 +3,6 @@
 #include <pch.h>
 #include <sl.h>
 
-// camera data
-// hudless, depth, color, ui(?)
-//
-// init values
-// fg feature creation
-// fg dispatch
-//
-
 class Sl_Inputs_Dx12
 {
   private:
@@ -26,12 +18,12 @@ class Sl_Inputs_Dx12
 
     bool allRequiredSent = false;
 
+    bool dispatchFG(ID3D12GraphicsCommandList* cmdBuffer);
+
   public:
     bool setConstants(const sl::Constants& constants);
     bool evaluateState(ID3D12Device* device);
     bool reportResource(const sl::ResourceTag& tag, ID3D12GraphicsCommandList* cmdBuffer);
-    bool readyToDispatch();
-    bool dispatchFG(ID3D12GraphicsCommandList* cmdBuffer);
     void reportEngineType(sl::EngineType type) { engineType = type; };
 
     // TODO: some shutdown and cleanup methods

@@ -1573,8 +1573,7 @@ void ResTrack_Dx12::hkClose(ID3D12GraphicsCommandList* This)
                 {
                     LOG_DEBUG("Hudless CmdList: {:X}", (size_t) This);
 
-                    if (State::Instance().activeFgInput == FGInput::Upscaler)
-                        fg->SetHudlessReady();
+                    fg->SetHudlessReady();
 
                     // if (fg->ReadyForExecute())
                     //     fg->Dispatch(This, true, State::Instance().lastFrameTime);
@@ -1590,11 +1589,8 @@ void ResTrack_Dx12::hkClose(ID3D12GraphicsCommandList* This)
                 {
                     LOG_DEBUG("Upscaler CmdList: {:X}", (size_t) This);
 
-                    if (State::Instance().activeFgInput == FGInput::Upscaler)
-                    {
-                        fg->SetVelocityReady();
-                        fg->SetDepthReady();
-                    }
+                    fg->SetVelocityReady();
+                    fg->SetDepthReady();
 
                     // if (fg->ReadyForExecute())
                     //     fg->Dispatch(This, true, State::Instance().lastFrameTime);

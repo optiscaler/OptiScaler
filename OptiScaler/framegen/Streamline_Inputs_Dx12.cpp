@@ -101,8 +101,6 @@ bool Sl_Inputs_Dx12::reportResource(const sl::ResourceTag& tag, ID3D12GraphicsCo
         const auto copy = alwaysCopy ? true : tag.lifecycle == sl::eOnlyValidNow;
         fgOutput->SetHudless(cmdBuffer, hudlessResource, (D3D12_RESOURCE_STATES) tag.resource->state, copy);
 
-        fgOutput->SetHudlessReady();
-
         auto static lastFormat = DXGI_FORMAT_UNKNOWN;
         auto format = hudlessResource->GetDesc().Format;
 
@@ -131,7 +129,6 @@ bool Sl_Inputs_Dx12::reportResource(const sl::ResourceTag& tag, ID3D12GraphicsCo
         Config::Instance()->FGMakeDepthCopy.set_volatile_value(copy);
 
         fgOutput->SetDepth(cmdBuffer, depthResource, (D3D12_RESOURCE_STATES) tag.resource->state);
-        fgOutput->SetDepthReady();
     }
     else if (tag.type == sl::kBufferTypeMotionVectors)
     {
@@ -149,7 +146,6 @@ bool Sl_Inputs_Dx12::reportResource(const sl::ResourceTag& tag, ID3D12GraphicsCo
         Config::Instance()->FGMakeMVCopy.set_volatile_value(copy);
 
         fgOutput->SetVelocity(cmdBuffer, mvResource, (D3D12_RESOURCE_STATES) tag.resource->state);
-        fgOutput->SetVelocityReady();
     }
     else if (tag.type == sl::kBufferTypeUIColorAndAlpha)
     {
@@ -176,16 +172,6 @@ bool Sl_Inputs_Dx12::reportResource(const sl::ResourceTag& tag, ID3D12GraphicsCo
     }
 
     return true;
-}
-
-bool Sl_Inputs_Dx12::readyToDispatch()
-{
-    auto fgOutput = reinterpret_cast<IFGFeature_Dx12*>(State::Instance().currentFG);
-
-    if (fgOutput == nullptr)
-        return false;
-
-    return fgOutput->ReadyForExecute();
 }
 
 bool Sl_Inputs_Dx12::dispatchFG(ID3D12GraphicsCommandList* cmdBuffer)
