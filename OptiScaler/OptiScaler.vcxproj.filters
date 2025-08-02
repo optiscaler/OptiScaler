@@ -515,9 +515,6 @@
     <ClInclude Include="framegen\Streamline_Inputs_Dx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="misc\CommandListManager.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Config.cpp">
@@ -810,9 +807,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="framegen\Streamline_Inputs_Dx12.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="misc\CommandListManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
