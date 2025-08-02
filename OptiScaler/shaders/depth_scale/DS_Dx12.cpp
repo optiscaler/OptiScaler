@@ -126,7 +126,7 @@ void DS_Dx12::SetBufferState(ID3D12GraphicsCommandList* InCommandList, D3D12_RES
     barrier.Transition.pResource = _buffer;
     barrier.Transition.StateBefore = _bufferState;
     barrier.Transition.StateAfter = InState;
-    barrier.Transition.Subresource = 0;
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     InCommandList->ResourceBarrier(1, &barrier);
     _bufferState = InState;
 }

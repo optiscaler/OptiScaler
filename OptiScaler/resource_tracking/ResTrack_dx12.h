@@ -237,10 +237,9 @@ class ResTrack_Dx12
     inline static bool _presentDone = true;
     inline static std::mutex _drawMutex;
 
-    inline static ID3D12GraphicsCommandList* _commandList[BUFFER_COUNT] = { nullptr, nullptr, nullptr, nullptr };
-    inline static ID3D12GraphicsCommandList* _upscalerCommandList[BUFFER_COUNT] = { nullptr, nullptr, nullptr,
-                                                                                    nullptr };
-    inline static ID3D12Fence* _hudlessFence[BUFFER_COUNT] = { nullptr, nullptr, nullptr, nullptr };
+    inline static ID3D12GraphicsCommandList* _hudlessCommandList[BUFFER_COUNT] = { nullptr, nullptr, nullptr, nullptr };
+    inline static ID3D12GraphicsCommandList* _inputsCommandList[BUFFER_COUNT] = { nullptr, nullptr, nullptr, nullptr };
+
     inline static ULONG64 _lastHudlessFrame = 0;
     inline static std::mutex _hudlessMutex;
     inline static void* _hudlessMutexQueue = nullptr;
@@ -327,7 +326,6 @@ class ResTrack_Dx12
   public:
     static void HookDevice(ID3D12Device* device);
     static void ClearPossibleHudless();
-    static void PresentDone();
-    static void SetUpscalerCmdList(ID3D12GraphicsCommandList* cmdList);
+    static void SetInputsCmdList(ID3D12GraphicsCommandList* cmdList);
     static void SetHudlessCmdList(ID3D12GraphicsCommandList* cmdList);
 };

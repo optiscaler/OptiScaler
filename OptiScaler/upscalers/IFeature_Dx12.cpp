@@ -11,7 +11,7 @@ void IFeature_Dx12::ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID
     barrier.Transition.pResource = InResource;
     barrier.Transition.StateBefore = InBeforeState;
     barrier.Transition.StateAfter = InAfterState;
-    barrier.Transition.Subresource = 0;
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     InCommandList->ResourceBarrier(1, &barrier);
 }
 

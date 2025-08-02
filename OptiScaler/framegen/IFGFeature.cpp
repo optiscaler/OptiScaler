@@ -4,6 +4,12 @@
 
 int IFGFeature::GetIndex() { return (_frameCount % BUFFER_COUNT); }
 
+UINT64 IFGFeature::StartNewFrame()
+{
+    LOG_FUNC();
+    return ++_frameCount;
+}
+
 bool IFGFeature::CheckForRealObject(std::string functionName, IUnknown* pObject, IUnknown** ppRealObject)
 {
     if (streamlineRiid.Data1 == 0)

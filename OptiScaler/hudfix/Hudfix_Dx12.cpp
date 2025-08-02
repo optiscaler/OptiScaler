@@ -42,7 +42,7 @@ bool Hudfix_Dx12::CreateObjects()
             result = _commandList[i]->Close();
             if (result != S_OK)
             {
-                LOG_ERROR("_commandList->Close: {:X}", (unsigned long) result);
+                LOG_ERROR("_hudlessCommandList->Close: {:X}", (unsigned long) result);
                 break;
             }
 
@@ -187,7 +187,7 @@ void Hudfix_Dx12::ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID3D
     barrier.Transition.pResource = InResource;
     barrier.Transition.StateBefore = InBeforeState;
     barrier.Transition.StateAfter = InAfterState;
-    barrier.Transition.Subresource = 0;
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     InCommandList->ResourceBarrier(1, &barrier);
 }
 
@@ -698,23 +698,24 @@ bool Hudfix_Dx12::CheckForHudless(std::string callerName, ID3D12GraphicsCommandL
         // needs conversion?
         if (resource->format != scDesc.BufferDesc.Format)
         {
-            if (_formatTransfer == nullptr || !_formatTransfer->IsFormatCompatible(scDesc.BufferDesc.Format))
+            if (_formatTransfer[fIndex] == nullptr ||
+                !_formatTransfer[fIndex]->IsFormatCompatible(scDesc.BufferDesc.Format))
             {
                 LOG_DEBUG("Format change, recreate the FormatTransfer");
 
-                if (_formatTransfer != nullptr)
-                    delete _formatTransfer;
+                if (_formatTransfer[fIndex] != nullptr)
+                    delete _formatTransfer[fIndex];
 
-                _formatTransfer = nullptr;
+                _formatTransfer[fIndex] = nullptr;
                 State::Instance().skipHeapCapture = true;
-                _formatTransfer =
+                _formatTransfer[fIndex] =
                     new FT_Dx12("FormatTransfer", State::Instance().currentD3D12Device, scDesc.BufferDesc.Format);
                 State::Instance().skipHeapCapture = false;
             }
 
-            if (_formatTransfer != nullptr &&
-                _formatTransfer->CreateBufferResource(State::Instance().currentD3D12Device, resource->buffer,
-                                                      D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
+            if (_formatTransfer[fIndex] != nullptr &&
+                _formatTransfer[fIndex]->CreateBufferResource(State::Instance().currentD3D12Device, resource->buffer,
+                                                              D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
             {
                 // This will prevent resource tracker to check these operations
                 // Will reset after FG dispatch
@@ -722,8 +723,8 @@ bool Hudfix_Dx12::CheckForHudless(std::string callerName, ID3D12GraphicsCommandL
 
                 ResourceBarrier(cmdList, _captureBuffer[fIndex], D3D12_RESOURCE_STATE_COPY_DEST,
                                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-                _formatTransfer->Dispatch(State::Instance().currentD3D12Device, cmdList, _captureBuffer[fIndex],
-                                          _formatTransfer->Buffer());
+                _formatTransfer[fIndex]->Dispatch(State::Instance().currentD3D12Device, cmdList, _captureBuffer[fIndex],
+                                                  _formatTransfer[fIndex]->Buffer());
                 ResourceBarrier(cmdList, _captureBuffer[fIndex], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
                                 D3D12_RESOURCE_STATE_COPY_DEST);
 
@@ -732,10 +733,8 @@ bool Hudfix_Dx12::CheckForHudless(std::string callerName, ID3D12GraphicsCommandL
                 auto fg = reinterpret_cast<IFGFeature_Dx12*>(State::Instance().currentFG);
 
                 if (fg != nullptr)
-                {
-                    fg->SetHudless(cmdList, _formatTransfer->Buffer(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, false);
-                    fg->SetHudlessReady();
-                }
+                    fg->SetHudless(cmdList, _formatTransfer[fIndex]->Buffer(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                                   false);
             }
             else
             {

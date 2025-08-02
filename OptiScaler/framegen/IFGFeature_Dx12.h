@@ -99,7 +99,6 @@ class IFGFeature_Dx12 : public virtual IFGFeature
 
     virtual void EvaluateState(ID3D12Device* device, FG_Constants& fgConstants) = 0;
 
-    // virtual bool Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* output, double frameTime) = 0;
     virtual bool Dispatch(ID3D12GraphicsCommandList* cmdList, bool useHudless, double frameTime) = 0;
 
     virtual void* FrameGenerationContext() = 0;
@@ -115,9 +114,8 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     void SetHudless(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* hudless, D3D12_RESOURCE_STATES state,
                     bool makeCopy = false);
 
-    ID3D12CommandList* GetCommandList();
     bool NoHudless();
-    ID3D12CommandList* ExecuteHudlessCmdList(ID3D12CommandQueue* queue = nullptr);
+    ID3D12CommandList* GetCommandList();
 
     IFGFeature_Dx12() = default;
 

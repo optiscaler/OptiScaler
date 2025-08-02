@@ -18,10 +18,6 @@ class FSRFG_Dx12 : public virtual IFGFeature_Dx12
     const char* Name() override final;
     feature_version Version() override final;
 
-    UINT64 UpdateFrameCount() override final;
-    void UpscaleEnd() override final;
-
-    void FgDone() override final;
     void StopAndDestroyContext(bool destroy, bool shutDown, bool useMutex) override final;
 
     // IFGFeature_Dx12
@@ -35,7 +31,6 @@ class FSRFG_Dx12 : public virtual IFGFeature_Dx12
 
     void EvaluateState(ID3D12Device* device, FG_Constants& fgConstants) override final;
 
-    // bool Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* output, double frameTime) override final;
     bool Dispatch(ID3D12GraphicsCommandList* cmdList, bool useHudless, double frameTime) override final;
 
     void* FrameGenerationContext() override final;

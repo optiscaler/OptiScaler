@@ -81,7 +81,7 @@ bool Sl_Inputs_Dx12::reportResource(const sl::ResourceTag& tag, ID3D12GraphicsCo
 
     if (allRequiredSent)
     {
-        fgOutput->UpdateFrameCount();
+        fgOutput->StartNewFrame();
         allRequiredSent = false;
     }
 
@@ -121,7 +121,7 @@ bool Sl_Inputs_Dx12::reportResource(const sl::ResourceTag& tag, ID3D12GraphicsCo
 
         depthSent = true;
 
-        ResTrack_Dx12::SetUpscalerCmdList(cmdBuffer);
+        ResTrack_Dx12::SetInputsCmdList(cmdBuffer);
 
         auto depthResource = (ID3D12Resource*) tag.resource->native;
 
@@ -136,7 +136,7 @@ bool Sl_Inputs_Dx12::reportResource(const sl::ResourceTag& tag, ID3D12GraphicsCo
 
         mvsSent = true;
 
-        ResTrack_Dx12::SetUpscalerCmdList(cmdBuffer);
+        ResTrack_Dx12::SetInputsCmdList(cmdBuffer);
 
         auto mvResource = (ID3D12Resource*) tag.resource->native;
 
