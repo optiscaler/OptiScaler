@@ -77,7 +77,7 @@ bool Sl_Inputs_Dx12::reportResource(const sl::ResourceTag& tag, ID3D12GraphicsCo
 
     // It's possible for only some resources to be marked ready if FGEnabled is enabled during resource tagging
     if (fgOutput == nullptr || !Config::Instance()->FGEnabled.value_or_default())
-        return false; 
+        return false;
 
     if (allRequiredSent)
     {
@@ -278,6 +278,6 @@ bool Sl_Inputs_Dx12::dispatchFG(ID3D12GraphicsCommandList* cmdBuffer)
                             reinterpret_cast<float*>(&slConstants.value().cameraFwd));
 
     fgOutput->SetReset(slConstants.value().reset == sl::Boolean::eTrue);
-    
+
     return fgOutput->Dispatch(cmdBuffer, true, State::Instance().lastFrameTime);
 }

@@ -1505,10 +1505,8 @@ void ResTrack_Dx12::hkClose(ID3D12GraphicsCommandList* This)
     auto fg = State::Instance().currentFG;
     auto index = fg != nullptr ? fg->GetIndex() : 0;
 
-    if ((State::Instance().activeFgInput == FGInput::Upscaler ||
-         State::Instance().activeFgInput == FGInput::DLSSG) &&
-        fg != nullptr &&
-        (_inputsCommandList[index] != nullptr || _hudlessCommandList[index] != nullptr))
+    if ((State::Instance().activeFgInput == FGInput::Upscaler || State::Instance().activeFgInput == FGInput::DLSSG) &&
+        fg != nullptr && (_inputsCommandList[index] != nullptr || _hudlessCommandList[index] != nullptr))
     {
 
         if (fg->IsActive() && fg->TargetFrame() < fg->FrameCount())

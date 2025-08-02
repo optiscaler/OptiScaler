@@ -300,10 +300,10 @@ static HRESULT hkFGPresent(void* This, UINT SyncInterval, UINT Flags)
         }
     }
 
-    //if (willPresent && State::Instance().currentCommandQueue != nullptr &&
-    //    State::Instance().activeFgInput == FGInput::DLSSG && fg != nullptr)
+    // if (willPresent && State::Instance().currentCommandQueue != nullptr &&
+    //     State::Instance().activeFgInput == FGInput::DLSSG && fg != nullptr)
     //{
-    //    auto cmdList = fg->GetCommandList();
+    //     auto cmdList = fg->GetCommandList();
 
     //    if (cmdList)
     //    {
@@ -1654,8 +1654,7 @@ static void HookToDevice(ID3D12Device* InDevice)
         DetourTransactionCommit();
     }
 
-    if ((State::Instance().activeFgInput == FGInput::Upscaler ||
-         State::Instance().activeFgInput == FGInput::DLSSG) &&
+    if ((State::Instance().activeFgInput == FGInput::Upscaler || State::Instance().activeFgInput == FGInput::DLSSG) &&
         Config::Instance()->OverlayMenu.value_or_default())
         ResTrack_Dx12::HookDevice(InDevice);
 }
