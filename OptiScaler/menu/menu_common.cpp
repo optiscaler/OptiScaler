@@ -2601,6 +2601,32 @@ bool MenuCommon::RenderMenu()
                             ImGui::Checkbox("FG Only Generated", &State::Instance().FGonlyGenerated);
                             ShowHelpMarker("Display only FSR 3.1 generated frames");
 
+                            ImGui::SameLine(0.0f, 16.0f);
+                            auto debugResetLines = Config::Instance()->FGDebugResetLines.value_or_default();
+                            if (ImGui::Checkbox("Debug Reset Lines", &debugResetLines))
+                            {
+                                Config::Instance()->FGDebugResetLines = debugResetLines;
+                                LOG_DEBUG("Enabled set FGDebugLines: {}", debugResetLines);
+                            }
+                            ShowHelpMarker("Enables drawing of interpolation skip lines");
+
+                            auto debugTearLines = Config::Instance()->FGDebugTearLines.value_or_default();
+                            if (ImGui::Checkbox("Debug Tear Lines", &debugTearLines))
+                            {
+                                Config::Instance()->FGDebugTearLines = debugTearLines;
+                                LOG_DEBUG("Enabled set FGDebugLines: {}", debugTearLines);
+                            }
+                            ShowHelpMarker("Enables drawing of tear and interpolation skip lines");
+
+                            ImGui::SameLine(0.0f, 16.0f);
+                            auto debugPacingLines = Config::Instance()->FGDebugPacingLines.value_or_default();
+                            if (ImGui::Checkbox("Debug Pacing Lines", &debugPacingLines))
+                            {
+                                Config::Instance()->FGDebugPacingLines = debugPacingLines;
+                                LOG_DEBUG("Enabled set FGDebugLines: {}", debugPacingLines);
+                            }
+                            ShowHelpMarker("Enables drawing of pacing lines");
+
                             ImGui::Spacing();
                             if (ImGui::TreeNode("FG Rectangle Settings"))
                             {
@@ -2852,32 +2878,6 @@ bool MenuCommon::RenderMenu()
                             ShowHelpMarker("Relax resolution checks for Hudless by 32 pixels \n"
                                            "Helps games which use black borders for some \n"
                                            "resolutions and screen ratios (e.g. Witcher 3)");
-
-                            ImGui::SameLine(0.0f, 16.0f);
-                            auto debugResetLines = Config::Instance()->FGDebugResetLines.value_or_default();
-                            if (ImGui::Checkbox("Debug Reset Lines", &debugResetLines))
-                            {
-                                Config::Instance()->FGDebugResetLines = debugResetLines;
-                                LOG_DEBUG("Enabled set FGDebugLines: {}", debugResetLines);
-                            }
-                            ShowHelpMarker("Enables drawing of interpolation skip lines");
-
-                            auto debugTearLines = Config::Instance()->FGDebugTearLines.value_or_default();
-                            if (ImGui::Checkbox("Debug Tear Lines", &debugTearLines))
-                            {
-                                Config::Instance()->FGDebugTearLines = debugTearLines;
-                                LOG_DEBUG("Enabled set FGDebugLines: {}", debugTearLines);
-                            }
-                            ShowHelpMarker("Enables drawing of tear and interpolation skip lines");
-
-                            ImGui::SameLine(0.0f, 16.0f);
-                            auto debugPacingLines = Config::Instance()->FGDebugPacingLines.value_or_default();
-                            if (ImGui::Checkbox("Debug Pacing Lines", &debugPacingLines))
-                            {
-                                Config::Instance()->FGDebugPacingLines = debugPacingLines;
-                                LOG_DEBUG("Enabled set FGDebugLines: {}", debugPacingLines);
-                            }
-                            ShowHelpMarker("Enables drawing of pacing lines");
 
                             ImGui::BeginDisabled(State::Instance().FGresetCapturedResources);
                             ImGui::PushItemWidth(95.0f * Config::Instance()->MenuScale.value_or_default());
