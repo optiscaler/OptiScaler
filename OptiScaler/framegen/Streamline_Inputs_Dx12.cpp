@@ -2,6 +2,7 @@
 #include "IFGFeature_Dx12.h"
 #include <Config.h>
 #include <resource_tracking/ResTrack_dx12.h>
+#include <magic_enum.hpp>
 
 bool Sl_Inputs_Dx12::setConstants(const sl::Constants& values)
 {
@@ -9,8 +10,6 @@ bool Sl_Inputs_Dx12::setConstants(const sl::Constants& values)
 
     if (fgOutput == nullptr)
         return false;
-
-    fgOutput->UpdateFrameCount();
 
     slConstants = sl::Constants {};
 
@@ -71,23 +70,37 @@ bool Sl_Inputs_Dx12::evaluateState(ID3D12Device* device)
 
 bool Sl_Inputs_Dx12::reportResource(const sl::ResourceTag& tag, ID3D12GraphicsCommandList* cmdBuffer)
 {
-    // TODO: disable if FG disabled
-
     if (!cmdBuffer)
         LOG_ERROR("cmdBuffer is null");
 
     auto fgOutput = reinterpret_cast<IFGFeature_Dx12*>(State::Instance().currentFG);
 
-    // It's possible for some only resources to be marked ready if FGEnabled is enabled during resource tagging
-    if (fgOutput == nullptr || !fgOutput->IsActive() || !Config::Instance()->FGEnabled.value_or_default())
-        return false;
+    // It's possible for only some resources to be marked ready if FGEnabled is enabled during resource tagging
+    if (fgOutput == nullptr || !Config::Instance()->FGEnabled.value_or_default())
+        return false; 
+
+    if (allRequiredSent)
+    {
+        fgOutput->UpdateFrameCount();
+        allRequiredSent = false;
+    }
+
+    // Can cause unforeseen consequences
+    static const bool alwaysCopy = false;
 
     if (tag.type == sl::kBufferTypeHUDLessColor)
     {
+        LOG_TRACE("Hudless lifecycle: {}", magic_enum::enum_name(tag.lifecycle));
+
+        hudlessSent = true;
+
+        ResTrack_Dx12::SetHudlessCmdList(cmdBuffer);
+
         auto hudlessResource = (ID3D12Resource*) tag.resource->native;
 
-        fgOutput->SetHudless(cmdBuffer, hudlessResource, (D3D12_RESOURCE_STATES) tag.resource->state,
-                             tag.lifecycle == sl::eOnlyValidNow);
+        const auto copy = alwaysCopy ? true : tag.lifecycle == sl::eOnlyValidNow;
+        fgOutput->SetHudless(cmdBuffer, hudlessResource, (D3D12_RESOURCE_STATES) tag.resource->state, copy);
+
         fgOutput->SetHudlessReady();
 
         auto static lastFormat = DXGI_FORMAT_UNKNOWN;
@@ -106,23 +119,60 @@ bool Sl_Inputs_Dx12::reportResource(const sl::ResourceTag& tag, ID3D12GraphicsCo
     else if (tag.type == sl::kBufferTypeDepth || tag.type == sl::kBufferTypeHiResDepth ||
              tag.type == sl::kBufferTypeLinearDepth)
     {
+        LOG_TRACE("Depth lifecycle: {}", magic_enum::enum_name(tag.lifecycle));
+
+        depthSent = true;
+
+        ResTrack_Dx12::SetUpscalerCmdList(cmdBuffer);
+
         auto depthResource = (ID3D12Resource*) tag.resource->native;
 
-        Config::Instance()->FGMakeDepthCopy.set_volatile_value(tag.lifecycle == sl::eOnlyValidNow);
+        const auto copy = alwaysCopy ? true : tag.lifecycle == sl::eOnlyValidNow;
+        Config::Instance()->FGMakeDepthCopy.set_volatile_value(copy);
 
         fgOutput->SetDepth(cmdBuffer, depthResource, (D3D12_RESOURCE_STATES) tag.resource->state);
         fgOutput->SetDepthReady();
     }
     else if (tag.type == sl::kBufferTypeMotionVectors)
     {
+        LOG_TRACE("MVs lifecycle: {}", magic_enum::enum_name(tag.lifecycle));
+
+        mvsSent = true;
+
+        ResTrack_Dx12::SetUpscalerCmdList(cmdBuffer);
+
         auto mvResource = (ID3D12Resource*) tag.resource->native;
 
         auto fg = reinterpret_cast<IFGFeature_Dx12*>(State::Instance().currentFG);
 
-        Config::Instance()->FGMakeMVCopy.set_volatile_value(tag.lifecycle == sl::eOnlyValidNow);
+        const auto copy = alwaysCopy ? true : tag.lifecycle == sl::eOnlyValidNow;
+        Config::Instance()->FGMakeMVCopy.set_volatile_value(copy);
 
         fgOutput->SetVelocity(cmdBuffer, mvResource, (D3D12_RESOURCE_STATES) tag.resource->state);
         fgOutput->SetVelocityReady();
+    }
+    else if (tag.type == sl::kBufferTypeUIColorAndAlpha)
+    {
+        LOG_TRACE("UIColorAndAlpha lifecycle: {}", magic_enum::enum_name(tag.lifecycle));
+
+        uiSent = true;
+
+        // Assumes that the game won't stop sending it once it starts.
+        // dispatchFG will stop getting called if this assumption is not true
+        uiRequired = true;
+    }
+
+    // Will trigger frame count update on the next call to reportResource
+    allRequiredSent = hudlessSent && depthSent && mvsSent && (uiRequired && uiSent || !uiRequired);
+
+    if (allRequiredSent)
+    {
+        State::Instance().slFGInputs.dispatchFG((ID3D12GraphicsCommandList*) cmdBuffer);
+
+        depthSent = false;
+        hudlessSent = false;
+        mvsSent = false;
+        uiSent = false;
     }
 
     return true;
@@ -151,8 +201,8 @@ bool Sl_Inputs_Dx12::dispatchFG(ID3D12GraphicsCommandList* cmdBuffer)
     if (State::Instance().FGchanged)
         return false;
 
-    ResTrack_Dx12::SetUpscalerCmdList(cmdBuffer);
-    ResTrack_Dx12::SetHudlessCmdList(cmdBuffer);
+    if (!fgOutput->IsActive())
+        return false;
 
     // Nukem's function, licensed under GPLv3
     auto loadCameraMatrix = [&]()
@@ -230,7 +280,10 @@ bool Sl_Inputs_Dx12::dispatchFG(ID3D12GraphicsCommandList* cmdBuffer)
 
     fgOutput->SetJitter(slConstants.value().jitterOffset.x, slConstants.value().jitterOffset.y);
 
-    bool multiplyByResolution = slConstants.value().mvecScale.x != 1.f || slConstants.value().mvecScale.y != 1.f;
+    // Streamline is not 100% clear on if we should multiply by resolution or not.
+    // But UE games and Dead Rising expect that multiplication to be done, even if the scale is 1.0.
+    // bool multiplyByResolution = slConstants.value().mvecScale.x != 1.f || slConstants.value().mvecScale.y != 1.f;
+    bool multiplyByResolution = true;
     fgOutput->SetMVScale(slConstants.value().mvecScale.x, slConstants.value().mvecScale.y, multiplyByResolution);
 
     fgOutput->SetCameraData(reinterpret_cast<float*>(&slConstants.value().cameraPos),
@@ -238,5 +291,7 @@ bool Sl_Inputs_Dx12::dispatchFG(ID3D12GraphicsCommandList* cmdBuffer)
                             reinterpret_cast<float*>(&slConstants.value().cameraRight),
                             reinterpret_cast<float*>(&slConstants.value().cameraFwd));
 
+    fgOutput->SetReset(slConstants.value().reset == sl::Boolean::eTrue);
+    
     return fgOutput->Dispatch(cmdBuffer, true, State::Instance().lastFrameTime);
 }

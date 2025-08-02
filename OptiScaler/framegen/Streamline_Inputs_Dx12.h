@@ -18,6 +18,14 @@ class Sl_Inputs_Dx12
     bool infiniteDepth = false;
     sl::EngineType engineType = sl::EngineType::eCount;
 
+    bool depthSent = false;
+    bool hudlessSent = false;
+    bool mvsSent = false;
+    bool uiSent = false;
+    bool uiRequired = false;
+
+    bool allRequiredSent = false;
+
   public:
     bool setConstants(const sl::Constants& constants);
     bool evaluateState(ID3D12Device* device);

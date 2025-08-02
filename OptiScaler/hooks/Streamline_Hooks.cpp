@@ -135,12 +135,9 @@ sl::Result StreamlineHooks::hkslSetTag(sl::ViewportHandle& viewport, sl::Resourc
         if (State::Instance().activeFgInput == FGInput::DLSSG &&
             (tags[i].type == sl::kBufferTypeHUDLessColor || tags[i].type == sl::kBufferTypeDepth ||
              tags[i].type == sl::kBufferTypeHiResDepth || tags[i].type == sl::kBufferTypeLinearDepth ||
-             tags[i].type == sl::kBufferTypeMotionVectors))
+             tags[i].type == sl::kBufferTypeMotionVectors || tags[i].type == sl::kBufferTypeUIColorAndAlpha))
         {
             State::Instance().slFGInputs.reportResource(tags[i], (ID3D12GraphicsCommandList*) cmdBuffer);
-
-            if (State::Instance().slFGInputs.readyToDispatch())
-                State::Instance().slFGInputs.dispatchFG((ID3D12GraphicsCommandList*) cmdBuffer);
         }
 
         // TODO: any use for kBufferTypeUIColorAndAlpha ???
@@ -378,9 +375,10 @@ sl::Result StreamlineHooks::hkslSetConstants(const sl::Constants& values, const 
 
     State::Instance().slFGInputs.setConstants(values);
 
+    // With sl that's the best "fg starts soon-ish" we get
     auto fg = State::Instance().currentFG;
     if (fg != nullptr)
-        fg->Present(); // clear readiness for the next frames
+        fg->Present();
 
     return o_slSetConstants(values, frame, viewport);
 }
