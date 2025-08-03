@@ -3074,6 +3074,37 @@ bool MenuCommon::RenderMenu()
                     }
                 }
 
+                // Streamline FG Inputs
+                if (State::Instance().api == DX12 && !State::Instance().isWorkingAsNvngx &&
+                    State::Instance().activeFgInput == FGInput::DLSSG)
+                {
+                    SeparatorWithHelpMarker("Frame Generation (FSR-FG via Streamline hooking)",
+                                            "Select DLSS FG in-game");
+
+                    auto fgOutput = reinterpret_cast<IFGFeature_Dx12*>(State::Instance().currentFG);
+
+                    if (!ReflexHooks::isReflexHooked())
+                    {
+                        ImGui::TextColored(ImVec4(1.f, 0.f, 0.f, 1.f), "Reflex not hooked");
+                        ImGui::Text("If you are using an AMD/Intel GPU then make sure you have fakenvapi");
+                    }
+                    else if (fgOutput != nullptr)
+                    {
+                        ImGui::Text("Current Streamline FG state:");
+                        ImGui::SameLine();
+                        if (fgOutput->IsActive())
+                        {
+                            ImGui::TextColored(ImVec4(0.f, 1.f, 0.25f, 1.f), "ON");
+                        }
+                        else
+                        {
+                            ImGui::TextColored(ImVec4(1.f, 0.f, 0.f, 1.f), "OFF");
+                            ImGui::Text("Please select DLSS Frame Generation in the game options\n"
+                                        "You might need to select DLSS first");
+                        }
+                    }
+                }
+
                 if (currentFeature != nullptr && !currentFeature->IsFrozen())
                 {
                     // FSR Common -----------------
