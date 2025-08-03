@@ -2743,7 +2743,6 @@ bool MenuCommon::RenderMenu()
                 }
 
                 // OptiFG
-                // TODO: this needs to be separated into settings related to upscaler inputs and FSR FG output tweaks
                 if (Config::Instance()->OverlayMenu.value_or_default() && State::Instance().api == DX12 &&
                     !State::Instance().isWorkingAsNvngx && State::Instance().activeFgInput == FGInput::Upscaler)
                 {

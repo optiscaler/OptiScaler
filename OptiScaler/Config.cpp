@@ -108,37 +108,62 @@ bool Config::Reload(std::filesystem::path iniPath)
             }
         }
 
+        // FSR FG
+        {
+            FGEnabled.set_from_config(readBool("FSRFG", "Enabled"));
+            FGDebugView.set_from_config(readBool("FSRFG", "DebugView"));
+            FGDebugTearLines.set_from_config(readBool("FSRFG", "DebugTearLines"));
+            FGDebugResetLines.set_from_config(readBool("FSRFG", "DebugResetLines"));
+            FGDebugPacingLines.set_from_config(readBool("FSRFG", "DebugPacingLines"));
+            FGAsync.set_from_config(readBool("FSRFG", "AllowAsync"));
+            FGRectLeft.set_from_config(readInt("FSRFG", "RectLeft"));
+            FGRectTop.set_from_config(readInt("FSRFG", "RectTop"));
+            FGRectWidth.set_from_config(readInt("FSRFG", "RectWidth"));
+            FGRectHeight.set_from_config(readInt("FSRFG", "RectHeight"));
+            FGUseMutexForSwapchain.set_from_config(readBool("FSRFG", "UseMutexForSwapchain"));
+            FGFramePacingTuning.set_from_config(readBool("FSRFG", "FramePacingTuning"));
+            FGFPTSafetyMarginInMs.set_from_config(readFloat("FSRFG", "FPTSafetyMarginInMs"));
+            FGFPTVarianceFactor.set_from_config(readFloat("FSRFG", "FPTVarianceFactor"));
+            FGFPTAllowHybridSpin.set_from_config(readBool("FSRFG", "FPTHybridSpin"));
+            FGFPTHybridSpinTime.set_from_config(readInt("FSRFG", "FPTHybridSpinTime"));
+            FGFPTAllowWaitForSingleObjectOnFence.set_from_config(readInt("FSRFG", "FPTWaitForSingleObjectOnFence"));
+        }
+
         // OptiFG
         {
-            FGEnabled.set_from_config(readBool("OptiFG", "Enabled"));
-            FGDebugView.set_from_config(readBool("OptiFG", "DebugView"));
-            FGDebugTearLines.set_from_config(readBool("OptiFG", "DebugTearLines"));
-            FGDebugResetLines.set_from_config(readBool("OptiFG", "DebugResetLines"));
-            FGDebugPacingLines.set_from_config(readBool("OptiFG", "DebugPacingLines"));
-            FGAsync.set_from_config(readBool("OptiFG", "AllowAsync"));
+            {
+                // If settings in the FSRFG section are not set, try using the old OptiFG section
+                FGEnabled.set_from_config(readBool("OptiFG", "Enabled"));
+                FGDebugView.set_from_config(readBool("OptiFG", "DebugView"));
+                FGDebugTearLines.set_from_config(readBool("OptiFG", "DebugTearLines"));
+                FGDebugResetLines.set_from_config(readBool("OptiFG", "DebugResetLines"));
+                FGDebugPacingLines.set_from_config(readBool("OptiFG", "DebugPacingLines"));
+                FGAsync.set_from_config(readBool("OptiFG", "AllowAsync"));
+                FGRectLeft.set_from_config(readInt("OptiFG", "RectLeft"));
+                FGRectTop.set_from_config(readInt("OptiFG", "RectTop"));
+                FGRectWidth.set_from_config(readInt("OptiFG", "RectWidth"));
+                FGRectHeight.set_from_config(readInt("OptiFG", "RectHeight"));
+                FGUseMutexForSwapchain.set_from_config(readBool("OptiFG", "UseMutexForSwapchain"));
+                FGFramePacingTuning.set_from_config(readBool("OptiFG", "FramePacingTuning"));
+                FGFPTSafetyMarginInMs.set_from_config(readFloat("OptiFG", "FPTSafetyMarginInMs"));
+                FGFPTVarianceFactor.set_from_config(readFloat("OptiFG", "FPTVarianceFactor"));
+                FGFPTAllowHybridSpin.set_from_config(readBool("OptiFG", "FPTHybridSpin"));
+                FGFPTHybridSpinTime.set_from_config(readInt("OptiFG", "FPTHybridSpinTime"));
+                FGFPTAllowWaitForSingleObjectOnFence.set_from_config(
+                    readInt("OptiFG", "FPTWaitForSingleObjectOnFence"));
+            }
+
             FGHUDFix.set_from_config(readBool("OptiFG", "HUDFix"));
             FGHUDLimit.set_from_config(readInt("OptiFG", "HUDLimit"));
             FGHUDFixExtended.set_from_config(readBool("OptiFG", "HUDFixExtended"));
             FGImmediateCapture.set_from_config(readBool("OptiFG", "HUDFixImmediate"));
-            FGRectLeft.set_from_config(readInt("OptiFG", "RectLeft"));
-            FGRectTop.set_from_config(readInt("OptiFG", "RectTop"));
-            FGRectWidth.set_from_config(readInt("OptiFG", "RectWidth"));
-            FGRectHeight.set_from_config(readInt("OptiFG", "RectHeight"));
             FGAlwaysTrackHeaps.set_from_config(readBool("OptiFG", "AlwaysTrackHeaps"));
             FGResourceBlocking.set_from_config(readBool("OptiFG", "ResourceBlocking"));
             FGMakeDepthCopy.set_from_config(readBool("OptiFG", "MakeDepthCopy"));
             FGMakeMVCopy.set_from_config(readBool("OptiFG", "MakeMVCopy"));
-            FGUseMutexForSwapchain.set_from_config(readBool("OptiFG", "UseMutexForSwapchain"));
 
             FGEnableDepthScale.set_from_config(readBool("OptiFG", "EnableDepthScale"));
             FGDepthScaleMax.set_from_config(readFloat("OptiFG", "DepthScaleMax"));
-
-            FGFramePacingTuning.set_from_config(readBool("OptiFG", "FramePacingTuning"));
-            FGFPTSafetyMarginInMs.set_from_config(readFloat("OptiFG", "FPTSafetyMarginInMs"));
-            FGFPTVarianceFactor.set_from_config(readFloat("OptiFG", "FPTVarianceFactor"));
-            FGFPTAllowHybridSpin.set_from_config(readBool("OptiFG", "FPTHybridSpin"));
-            FGFPTHybridSpinTime.set_from_config(readInt("OptiFG", "FPTHybridSpinTime"));
-            FGFPTAllowWaitForSingleObjectOnFence.set_from_config(readInt("OptiFG", "FPTWaitForSingleObjectOnFence"));
 
             FGHudfixHalfSync.set_from_config(readBool("OptiFG", "HUDFixHalfSync"));
             FGHudfixFullSync.set_from_config(readBool("OptiFG", "HUDFixFullSync"));
@@ -711,50 +736,53 @@ bool Config::SaveIni()
         ini.SetValue("FrameGen", "FGOutput", FGOutputString.c_str());
     }
 
+    // FSR FG
+    {
+        ini.SetValue("FSRFG", "Enabled", GetBoolValue(Instance()->FGEnabled.value_for_config()).c_str());
+        ini.SetValue("FSRFG", "DebugView", GetBoolValue(Instance()->FGDebugView.value_for_config()).c_str());
+        ini.SetValue("FSRFG", "DebugTearLines", GetBoolValue(Instance()->FGDebugTearLines.value_for_config()).c_str());
+        ini.SetValue("FSRFG", "DebugResetLines",
+                     GetBoolValue(Instance()->FGDebugResetLines.value_for_config()).c_str());
+        ini.SetValue("FSRFG", "DebugPacingLines",
+                     GetBoolValue(Instance()->FGDebugPacingLines.value_for_config()).c_str());
+        ini.SetValue("FSRFG", "AllowAsync", GetBoolValue(Instance()->FGAsync.value_for_config()).c_str());
+        ini.SetValue("FSRFG", "RectLeft", GetIntValue(Instance()->FGRectLeft.value_for_config()).c_str());
+        ini.SetValue("FSRFG", "RectTop", GetIntValue(Instance()->FGRectTop.value_for_config()).c_str());
+        ini.SetValue("FSRFG", "RectWidth", GetIntValue(Instance()->FGRectWidth.value_for_config()).c_str());
+        ini.SetValue("FSRFG", "RectHeight", GetIntValue(Instance()->FGRectHeight.value_for_config()).c_str());
+        ini.SetValue("FSRFG", "UseMutexForSwapchain",
+                     GetBoolValue(Instance()->FGUseMutexForSwapchain.value_for_config()).c_str());
+        ini.SetValue("FSRFG", "FramePacingTuning",
+                     GetBoolValue(Instance()->FGFramePacingTuning.value_for_config()).c_str());
+        ini.SetValue("FSRFG", "FPTSafetyMarginInMs",
+                     GetFloatValue(Instance()->FGFPTSafetyMarginInMs.value_for_config()).c_str());
+        ini.SetValue("FSRFG", "FPTVarianceFactor",
+                     GetFloatValue(Instance()->FGFPTVarianceFactor.value_for_config()).c_str());
+        ini.SetValue("FSRFG", "FPTHybridSpin",
+                     GetBoolValue(Instance()->FGFPTAllowHybridSpin.value_for_config()).c_str());
+        ini.SetValue("FSRFG", "FPTHybridSpinTime",
+                     GetIntValue(Instance()->FGFPTHybridSpinTime.value_for_config()).c_str());
+        ini.SetValue("FSRFG", "FPTWaitForSingleObjectOnFence",
+                     GetBoolValue(Instance()->FGFPTAllowWaitForSingleObjectOnFence.value_for_config()).c_str());
+    }
+
     // OptiFG
     {
-        ini.SetValue("OptiFG", "Enabled", GetBoolValue(Instance()->FGEnabled.value_for_config()).c_str());
-        ini.SetValue("OptiFG", "DebugView", GetBoolValue(Instance()->FGDebugView.value_for_config()).c_str());
-        ini.SetValue("OptiFG", "DebugTearLines", GetBoolValue(Instance()->FGDebugTearLines.value_for_config()).c_str());
-        ini.SetValue("OptiFG", "DebugResetLines",
-                     GetBoolValue(Instance()->FGDebugResetLines.value_for_config()).c_str());
-        ini.SetValue("OptiFG", "DebugPacingLines",
-                     GetBoolValue(Instance()->FGDebugPacingLines.value_for_config()).c_str());
-        ini.SetValue("OptiFG", "AllowAsync", GetBoolValue(Instance()->FGAsync.value_for_config()).c_str());
         ini.SetValue("OptiFG", "HUDFix", GetBoolValue(Instance()->FGHUDFix.value_for_config()).c_str());
         ini.SetValue("OptiFG", "HUDLimit", GetIntValue(Instance()->FGHUDLimit.value_for_config()).c_str());
         ini.SetValue("OptiFG", "HUDFixExtended", GetBoolValue(Instance()->FGHUDFixExtended.value_for_config()).c_str());
         ini.SetValue("OptiFG", "HUDFixImmediate",
                      GetBoolValue(Instance()->FGImmediateCapture.value_for_config()).c_str());
-        ini.SetValue("OptiFG", "RectLeft", GetIntValue(Instance()->FGRectLeft.value_for_config()).c_str());
-        ini.SetValue("OptiFG", "RectTop", GetIntValue(Instance()->FGRectTop.value_for_config()).c_str());
-        ini.SetValue("OptiFG", "RectWidth", GetIntValue(Instance()->FGRectWidth.value_for_config()).c_str());
-        ini.SetValue("OptiFG", "RectHeight", GetIntValue(Instance()->FGRectHeight.value_for_config()).c_str());
         ini.SetValue("OptiFG", "AlwaysTrackHeaps",
                      GetBoolValue(Instance()->FGAlwaysTrackHeaps.value_for_config()).c_str());
         ini.SetValue("OptiFG", "ResourceBlocking",
                      GetBoolValue(Instance()->FGResourceBlocking.value_for_config()).c_str());
         ini.SetValue("OptiFG", "MakeDepthCopy", GetBoolValue(Instance()->FGMakeDepthCopy.value_for_config()).c_str());
         ini.SetValue("OptiFG", "MakeMVCopy", GetBoolValue(Instance()->FGMakeMVCopy.value_for_config()).c_str());
-        ini.SetValue("OptiFG", "UseMutexForSwapchain",
-                     GetBoolValue(Instance()->FGUseMutexForSwapchain.value_for_config()).c_str());
 
         ini.SetValue("OptiFG", "EnableDepthScale",
                      GetBoolValue(Instance()->FGEnableDepthScale.value_for_config()).c_str());
         ini.SetValue("OptiFG", "DepthScaleMax", GetFloatValue(Instance()->FGDepthScaleMax.value_for_config()).c_str());
-
-        ini.SetValue("OptiFG", "FramePacingTuning",
-                     GetBoolValue(Instance()->FGFramePacingTuning.value_for_config()).c_str());
-        ini.SetValue("OptiFG", "FPTSafetyMarginInMs",
-                     GetFloatValue(Instance()->FGFPTSafetyMarginInMs.value_for_config()).c_str());
-        ini.SetValue("OptiFG", "FPTVarianceFactor",
-                     GetFloatValue(Instance()->FGFPTVarianceFactor.value_for_config()).c_str());
-        ini.SetValue("OptiFG", "FPTHybridSpin",
-                     GetBoolValue(Instance()->FGFPTAllowHybridSpin.value_for_config()).c_str());
-        ini.SetValue("OptiFG", "FPTHybridSpinTime",
-                     GetIntValue(Instance()->FGFPTHybridSpinTime.value_for_config()).c_str());
-        ini.SetValue("OptiFG", "FPTWaitForSingleObjectOnFence",
-                     GetBoolValue(Instance()->FGFPTAllowWaitForSingleObjectOnFence.value_for_config()).c_str());
 
         ini.SetValue("OptiFG", "HUDFixHalfSync", GetBoolValue(Instance()->FGHudfixHalfSync.value_for_config()).c_str());
         ini.SetValue("OptiFG", "HUDFixFullSync", GetBoolValue(Instance()->FGHudfixFullSync.value_for_config()).c_str());
