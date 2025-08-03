@@ -65,6 +65,7 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     bool _velocityReady[BUFFER_COUNT] = { false, false, false, false };
     bool _depthReady[BUFFER_COUNT] = { false, false, false, false };
     bool _hudlessReady[BUFFER_COUNT] = { false, false, false, false };
+    bool _uiReady[BUFFER_COUNT] = { false, false, false, false };
     bool _hudlessDispatchReady[BUFFER_COUNT] = { false, false, false, false };
     bool _noHudless[BUFFER_COUNT] = { false, false, false, false };
 
@@ -74,6 +75,8 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     Dx12Resource _paramDepthCopy[BUFFER_COUNT] {};
     Dx12Resource _paramHudless[BUFFER_COUNT] {};
     Dx12Resource _paramHudlessCopy[BUFFER_COUNT] {};
+    Dx12Resource _paramUi[BUFFER_COUNT] {};
+    Dx12Resource _paramUiCopy[BUFFER_COUNT] {};
 
     ID3D12GraphicsCommandList* _commandList[BUFFER_COUNT] = { nullptr, nullptr, nullptr, nullptr };
     ID3D12CommandAllocator* _commandAllocators[BUFFER_COUNT] = { nullptr, nullptr, nullptr, nullptr };
@@ -113,6 +116,8 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     void SetDepth(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* depth, D3D12_RESOURCE_STATES state);
     void SetHudless(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* hudless, D3D12_RESOURCE_STATES state,
                     bool makeCopy = false);
+    void SetUI(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* ui, D3D12_RESOURCE_STATES state,
+               bool makeCopy = false);
 
     bool NoHudless();
     ID3D12CommandList* GetCommandList();
@@ -123,6 +128,7 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     void SetVelocityReady() override;
     void SetDepthReady() override;
     void SetHudlessReady() override;
+    void SetUIReady() override;
     void SetHudlessDispatchReady() override;
     void Present() override;
     bool UpscalerInputsReady() override;

@@ -139,8 +139,6 @@ sl::Result StreamlineHooks::hkslSetTag(sl::ViewportHandle& viewport, sl::Resourc
         {
             State::Instance().slFGInputs.reportResource(tags[i], (ID3D12GraphicsCommandList*) cmdBuffer);
         }
-
-        // TODO: any use for kBufferTypeUIColorAndAlpha ???
     }
     auto result = o_slSetTag(viewport, tags, numTags, cmdBuffer);
     return result;

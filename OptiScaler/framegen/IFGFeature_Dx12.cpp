@@ -297,6 +297,34 @@ void IFGFeature_Dx12::SetHudless(ID3D12GraphicsCommandList* cmdList, ID3D12Resou
     }
 }
 
+void IFGFeature_Dx12::SetUI(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* ui, D3D12_RESOURCE_STATES state,
+                            bool makeCopy)
+{
+    auto index = GetIndex();
+    LOG_TRACE("Setting ui, index: {}, Resource: {:X}, CmdList: {:X}", index, (size_t) ui, (size_t) cmdList);
+
+    ui->SetName(std::format(L"UiResource_{}", index).c_str());
+
+    if (cmdList == nullptr || !makeCopy)
+    {
+        _paramUi[index].resource = ui;
+        _paramUi[index].setState(state);
+        return;
+    }
+
+    if (makeCopy && CopyResource(cmdList, ui, &_paramUiCopy[index].resource, state))
+    {
+        _paramUi[index].resource = _paramUiCopy[index].resource;
+        _paramUi[index].setState(D3D12_RESOURCE_STATE_COPY_DEST);
+        _paramUiCopy[index].resource->SetName(std::format(L"UiCopyResource_{}", index).c_str());
+    }
+    else
+    {
+        _paramUi[index].resource = ui;
+        _paramUi[index].setState(state);
+    }
+}
+
 void IFGFeature_Dx12::CreateObjects(ID3D12Device* InDevice)
 {
     _device = InDevice;
@@ -379,6 +407,8 @@ void IFGFeature_Dx12::SetDepthReady() { _depthReady[GetIndex()] = true; }
 
 void IFGFeature_Dx12::SetHudlessReady() { _hudlessReady[GetIndex()] = true; }
 
+void IFGFeature_Dx12::SetUIReady() { _uiReady[GetIndex()] = true; }
+
 void IFGFeature_Dx12::SetHudlessDispatchReady() { _hudlessDispatchReady[GetIndex()] = true; }
 
 void IFGFeature_Dx12::Present()
@@ -387,11 +417,15 @@ void IFGFeature_Dx12::Present()
     _velocityReady[fIndex] = false;
     _depthReady[fIndex] = false;
     _hudlessReady[fIndex] = false;
+    _uiReady[fIndex] = false;
     _hudlessDispatchReady[fIndex] = false;
 }
 
 bool IFGFeature_Dx12::UpscalerInputsReady() { return _velocityReady[GetIndex()] && _depthReady[GetIndex()]; }
 bool IFGFeature_Dx12::HudlessReady() { return _hudlessReady[GetIndex()]; }
+
+// Only makes sense for upscaler inputs because the list of buffers
+// we want ready might differ depending on FG inputs and what the game provides
 bool IFGFeature_Dx12::ReadyForExecute()
 {
     auto fIndex = GetIndex();

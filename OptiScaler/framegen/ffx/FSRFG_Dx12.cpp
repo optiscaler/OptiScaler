@@ -261,6 +261,7 @@ bool FSRFG_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, bool useHudless, d
     _velocityReady[fIndex] = false;
     _depthReady[fIndex] = false;
     _hudlessReady[fIndex] = false;
+    _uiReady[fIndex] = false;
 
     return retCode == FFX_API_RETURN_OK;
 }
@@ -497,7 +498,6 @@ void FSRFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
 
     ffxCreateBackendDX12Desc backendDesc {};
     backendDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_DX12;
-
     backendDesc.device = device;
 
     ffxCreateContextDescFrameGeneration createFg {};

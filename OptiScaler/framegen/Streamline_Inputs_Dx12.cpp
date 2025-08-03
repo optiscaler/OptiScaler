@@ -153,9 +153,22 @@ bool Sl_Inputs_Dx12::reportResource(const sl::ResourceTag& tag, ID3D12GraphicsCo
 
         uiSent = true;
 
+        ResTrack_Dx12::SetInputsCmdList(cmdBuffer);
+
+        auto uiResource = (ID3D12Resource*) tag.resource->native;
+
+        auto fg = reinterpret_cast<IFGFeature_Dx12*>(State::Instance().currentFG);
+
+        const auto copy = alwaysCopy ? true : tag.lifecycle == sl::eOnlyValidNow;
+        fgOutput->SetUI(cmdBuffer, uiResource, (D3D12_RESOURCE_STATES) tag.resource->state, copy);
+
         // Assumes that the game won't stop sending it once it starts.
         // dispatchFG will stop getting called if this assumption is not true
-        uiRequired = true;
+        if (!uiRequired)
+        {
+            uiSent = false;
+            uiRequired = true;
+        }
     }
 
     // Will trigger frame count update on the next call to reportResource

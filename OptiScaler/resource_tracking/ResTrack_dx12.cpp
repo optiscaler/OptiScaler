@@ -1533,6 +1533,9 @@ void ResTrack_Dx12::hkClose(ID3D12GraphicsCommandList* This)
                     fg->SetVelocityReady();
                     fg->SetDepthReady();
 
+                    // Technically we don't check if UI wasn't ready but it should be fine
+                    fg->SetUIReady();
+
                     _inputsCmdList = _inputsCommandList[index];
                     _inputsCommandList[index] = nullptr;
                 }
