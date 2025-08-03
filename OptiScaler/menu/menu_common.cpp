@@ -3078,7 +3078,7 @@ bool MenuCommon::RenderMenu()
                 if (State::Instance().api == DX12 && !State::Instance().isWorkingAsNvngx &&
                     State::Instance().activeFgInput == FGInput::DLSSG)
                 {
-                    SeparatorWithHelpMarker("Frame Generation (FSR-FG via Streamline hooking)",
+                    SeparatorWithHelpMarker("Frame Generation (Streamline FG Inputs)",
                                             "Select DLSS FG in-game");
 
                     auto fgOutput = reinterpret_cast<IFGFeature_Dx12*>(State::Instance().currentFG);
