@@ -2563,7 +2563,7 @@ bool MenuCommon::RenderMenu()
                         ShowHelpMarker("Enable frame generation");
 
                         bool fgAsync = Config::Instance()->FGAsync.value_or_default();
-                        if (ImGui::Checkbox("FG Allow Async", &fgAsync))
+                        if (ImGui::Checkbox("Allow Async", &fgAsync))
                         {
                             Config::Instance()->FGAsync = fgAsync;
 
@@ -2580,7 +2580,7 @@ bool MenuCommon::RenderMenu()
                         ImGui::SameLine(0.0f, 16.0f);
 
                         bool fgDV = Config::Instance()->FGDebugView.value_or_default();
-                        if (ImGui::Checkbox("FG Debug View", &fgDV))
+                        if (ImGui::Checkbox("Debug View##2", &fgDV))
                         {
                             Config::Instance()->FGDebugView = fgDV;
 
@@ -2746,12 +2746,10 @@ bool MenuCommon::RenderMenu()
                 if (Config::Instance()->OverlayMenu.value_or_default() && State::Instance().api == DX12 &&
                     !State::Instance().isWorkingAsNvngx && State::Instance().activeFgInput == FGInput::Upscaler)
                 {
-                    ImGui::SeparatorText("Frame Generation (OptiFG)");
+                    SeparatorWithHelpMarker("Frame Generation (OptiFG)", "Using upscaler data for FG");
 
                     if (currentFeature != nullptr && !currentFeature->IsFrozen() && FfxApiProxy::InitFfxDx12())
                     {
-                        ShowHelpMarker("Enable frame generation (OptiFG)");
-
                         bool fgHudfix = Config::Instance()->FGHUDFix.value_or_default();
                         if (ImGui::Checkbox("HUDFix", &fgHudfix))
                         {
@@ -2803,37 +2801,6 @@ bool MenuCommon::RenderMenu()
                         ImGui::PopItemWidth();
 
                         ImGui::EndDisabled();
-
-                        bool fgAsync = Config::Instance()->FGAsync.value_or_default();
-
-                        if (ImGui::Checkbox("Allow Async", &fgAsync))
-                        {
-                            Config::Instance()->FGAsync = fgAsync;
-
-                            if (Config::Instance()->FGEnabled.value_or_default())
-                            {
-                                State::Instance().FGchanged = true;
-                                State::Instance().SCchanged = true;
-                                LOG_DEBUG("Async set FGChanged");
-                            }
-                        }
-                        ShowHelpMarker(
-                            "Enable Async for better FG performance\nMight cause crashes, especially with HUD Fix!");
-
-                        ImGui::SameLine(0.0f, 16.0f);
-
-                        bool fgDV = Config::Instance()->FGDebugView.value_or_default();
-                        if (ImGui::Checkbox("Debug View##2", &fgDV))
-                        {
-                            Config::Instance()->FGDebugView = fgDV;
-
-                            if (Config::Instance()->FGEnabled.value_or_default())
-                            {
-                                State::Instance().FGchanged = true;
-                                LOG_DEBUG("DebugView set FGChanged");
-                            }
-                        }
-                        ShowHelpMarker("Enable FSR 3.1 frame generation debug view");
 
                         bool depthScale = Config::Instance()->FGEnableDepthScale.value_or_default();
                         if (ImGui::Checkbox("Scale Depth to fix DLSS RR", &depthScale))
@@ -3078,8 +3045,7 @@ bool MenuCommon::RenderMenu()
                 if (State::Instance().api == DX12 && !State::Instance().isWorkingAsNvngx &&
                     State::Instance().activeFgInput == FGInput::DLSSG)
                 {
-                    SeparatorWithHelpMarker("Frame Generation (Streamline FG Inputs)",
-                                            "Select DLSS FG in-game");
+                    SeparatorWithHelpMarker("Frame Generation (Streamline FG Inputs)", "Select DLSS FG in-game");
 
                     auto fgOutput = reinterpret_cast<IFGFeature_Dx12*>(State::Instance().currentFG);
 
