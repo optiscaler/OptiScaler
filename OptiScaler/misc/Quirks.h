@@ -7,7 +7,7 @@
 enum class GameQuirk : uint64_t
 {
     // Config-level quirks, de facto customized defaults
-    ForceNoFSRSwapchain,
+    ForceNoUpscalerFGInputs,
     DisableFSR3Inputs,
     DisableFSR2Inputs,
     DisableFFXInputs,
@@ -184,7 +184,8 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("tll-l.exe", GameQuirk::DisableDxgiSpoofing),
 
     // SL spoof enough to unlock everything DLSS
-    QUIRK_ENTRY("cyberpunk2077.exe", GameQuirk::CyberpunkHudlessStateOverride, GameQuirk::ForceNoFSRSwapchain,
+    QUIRK_ENTRY("cyberpunk2077.exe", GameQuirk::CyberpunkHudlessStateOverride,
+                GameQuirk::ForceNoUpscalerFGInputs, // TODO: maybe disable just hudfix?
                 GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("witcher3.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("alanwake2.exe", GameQuirk::DisableDxgiSpoofing),
@@ -243,8 +244,8 @@ static void printQuirks(flag_set<GameQuirk>& quirks)
         spdlog::info("Quirk: Fix DLSS/DLSSG barriers on Vulkan");
     if (quirks & GameQuirk::ForceUnrealEngine)
         spdlog::info("Quirk: Force detected engine as Unreal Engine");
-    if (quirks & GameQuirk::ForceNoFSRSwapchain)
-        spdlog::info("Quirk: Disabling FSR Swapchain");
+    if (quirks & GameQuirk::ForceNoUpscalerFGInputs)
+        spdlog::info("Quirk: Disabling OptiFG (upscaler inputs for FG)");
     if (quirks & GameQuirk::ForceAutoExposure)
         spdlog::info("Quirk: Enabling AutoExposure");
     if (quirks & GameQuirk::DisableFFXInputs)

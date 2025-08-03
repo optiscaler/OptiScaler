@@ -2542,6 +2542,7 @@ bool MenuCommon::RenderMenu()
 
                 // FSR FG controls
                 if (State::Instance().activeFgOutput == FGOutput::FSRFG &&
+                    State::Instance().activeFgInput != FGInput::NoFG &&
                     Config::Instance()->OverlayMenu.value_or_default() && !State::Instance().isWorkingAsNvngx &&
                     State::Instance().api == DX12)
                 {
