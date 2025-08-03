@@ -1094,6 +1094,13 @@ static HRESULT hkCreateSwapChainForHwnd(IDXGIFactory* This, IUnknown* pDevice, H
 {
     LOG_DEBUG("Caller: {}", Util::WhoIsTheCaller(_ReturnAddress()));
 
+    static bool firstCall = static_cast<bool>(State::Instance().gameQuirks & GameQuirk::NoFSRFGFirstSwapchain);
+    if (firstCall)
+    {
+        LOG_DEBUG("Skipping FG swapchain creation");
+        _skipFGSwapChainCreation = true;
+    }
+
     *ppSwapChain = nullptr;
 
     if (State::Instance().vulkanCreatingSC)
@@ -1363,6 +1370,13 @@ static HRESULT hkCreateSwapChainForHwnd(IDXGIFactory* This, IUnknown* pDevice, H
             if (sc3 != nullptr)
                 sc3->Release();
         }
+    }
+
+    if (firstCall)
+    {
+        LOG_DEBUG("Unsetting skip FG swapchain creation");
+        _skipFGSwapChainCreation = false;
+        firstCall = false;
     }
 
     return result;

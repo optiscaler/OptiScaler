@@ -81,7 +81,9 @@ bool Sl_Inputs_Dx12::reportResource(const sl::ResourceTag& tag, ID3D12GraphicsCo
 
     if (allRequiredSent)
     {
-        fgOutput->StartNewFrame();
+        if (!(State::Instance().gameQuirks & GameQuirk::SetConstantsMarksNewFrame))
+            fgOutput->StartNewFrame();
+
         allRequiredSent = false;
     }
 
@@ -117,7 +119,7 @@ bool Sl_Inputs_Dx12::reportResource(const sl::ResourceTag& tag, ID3D12GraphicsCo
     else if (tag.type == sl::kBufferTypeDepth || tag.type == sl::kBufferTypeHiResDepth ||
              tag.type == sl::kBufferTypeLinearDepth)
     {
-        LOG_TRACE("Depth lifecycle: {}", magic_enum::enum_name(tag.lifecycle));
+        LOG_TRACE("Depth lifecycle: {}, type: {}", magic_enum::enum_name(tag.lifecycle), tag.type);
 
         depthSent = true;
 

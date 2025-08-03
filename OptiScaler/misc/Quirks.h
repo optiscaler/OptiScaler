@@ -7,7 +7,7 @@
 enum class GameQuirk : uint64_t
 {
     // Config-level quirks, de facto customized defaults
-    ForceNoOptiFG,
+    ForceNoFSRSwapchain,
     DisableFSR3Inputs,
     DisableFSR2Inputs,
     DisableFFXInputs,
@@ -31,6 +31,8 @@ enum class GameQuirk : uint64_t
     KernelBaseHooks,
     VulkanDLSSBarrierFixup,
     ForceUnrealEngine,
+    NoFSRFGFirstSwapchain,
+    SetConstantsMarksNewFrame,
     // Don't forget to add the new entry to printQuirks
     _
 };
@@ -49,8 +51,10 @@ struct QuirkEntry
 // exeName has to be lowercase
 static const QuirkEntry quirkTable[] = {
     // Red Dead Redemption
-    QUIRK_ENTRY("rdr.exe", GameQuirk::SkipFsr3Method, GameQuirk::ForceNoOptiFG),
-    QUIRK_ENTRY("playrdr.exe", GameQuirk::SkipFsr3Method, GameQuirk::ForceNoOptiFG),
+    QUIRK_ENTRY("rdr.exe", GameQuirk::SkipFsr3Method, GameQuirk::SetConstantsMarksNewFrame,
+                GameQuirk::NoFSRFGFirstSwapchain),
+    QUIRK_ENTRY("playrdr.exe", GameQuirk::SkipFsr3Method, GameQuirk::SetConstantsMarksNewFrame,
+                GameQuirk::NoFSRFGFirstSwapchain),
 
     // No Man's Sky
     QUIRK_ENTRY("nms.exe", GameQuirk::KernelBaseHooks, GameQuirk::VulkanDLSSBarrierFixup),
@@ -180,7 +184,7 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("tll-l.exe", GameQuirk::DisableDxgiSpoofing),
 
     // SL spoof enough to unlock everything DLSS
-    QUIRK_ENTRY("cyberpunk2077.exe", GameQuirk::CyberpunkHudlessStateOverride, GameQuirk::ForceNoOptiFG,
+    QUIRK_ENTRY("cyberpunk2077.exe", GameQuirk::CyberpunkHudlessStateOverride, GameQuirk::ForceNoFSRSwapchain,
                 GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("witcher3.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("alanwake2.exe", GameQuirk::DisableDxgiSpoofing),
@@ -239,8 +243,8 @@ static void printQuirks(flag_set<GameQuirk>& quirks)
         spdlog::info("Quirk: Fix DLSS/DLSSG barriers on Vulkan");
     if (quirks & GameQuirk::ForceUnrealEngine)
         spdlog::info("Quirk: Force detected engine as Unreal Engine");
-    if (quirks & GameQuirk::ForceNoOptiFG)
-        spdlog::info("Quirk: Disabling OptiFG");
+    if (quirks & GameQuirk::ForceNoFSRSwapchain)
+        spdlog::info("Quirk: Disabling FSR Swapchain");
     if (quirks & GameQuirk::ForceAutoExposure)
         spdlog::info("Quirk: Enabling AutoExposure");
     if (quirks & GameQuirk::DisableFFXInputs)
@@ -265,6 +269,10 @@ static void printQuirks(flag_set<GameQuirk>& quirks)
         spdlog::info("Quirk: Don't use resource barrier fix for Unreal Engine games");
     if (quirks & GameQuirk::SkipFirst10Frames)
         spdlog::info("Quirk: Skipping upscaling for first 10 frames");
+    if (quirks & GameQuirk::NoFSRFGFirstSwapchain)
+        spdlog::info("Quirk: Skip turning the first swapchain created into an FSR swapchain");
+    if (quirks & GameQuirk::SetConstantsMarksNewFrame)
+        spdlog::info("Quirk: slSetConstants marks new frame");
 
     return;
 }

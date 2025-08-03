@@ -949,8 +949,8 @@ static void CheckQuirks()
     printQuirks(quirks);
 
     // Apply config-level quirks
-    if (quirks & GameQuirk::ForceNoOptiFG && Config::Instance()->FGInput.value_or_default() == FGInput::Upscaler)
-        Config::Instance()->FGInput.set_volatile_value(FGInput::NoFG);
+    if (quirks & GameQuirk::ForceNoFSRSwapchain && Config::Instance()->FGOutput.value_or_default() == FGOutput::FSRFG)
+        Config::Instance()->FGOutput.set_volatile_value(FGOutput::NoFG);
 
     if (quirks & GameQuirk::DisableFSR3Inputs && !Config::Instance()->EnableFsr3Inputs.has_value())
         Config::Instance()->UseFsr3Inputs.set_volatile_value(false);

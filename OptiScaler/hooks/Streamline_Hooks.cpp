@@ -376,7 +376,11 @@ sl::Result StreamlineHooks::hkslSetConstants(const sl::Constants& values, const 
     // With sl that's the best "fg starts soon-ish" we get
     auto fg = State::Instance().currentFG;
     if (fg != nullptr)
+    {
         fg->Present();
+        if (State::Instance().gameQuirks & GameQuirk::SetConstantsMarksNewFrame)
+            fg->StartNewFrame();
+    }
 
     return o_slSetConstants(values, frame, viewport);
 }
