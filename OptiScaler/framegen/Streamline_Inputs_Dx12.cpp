@@ -35,7 +35,27 @@ bool Sl_Inputs_Dx12::evaluateState(ID3D12Device* device)
 
     if (!slConstants.has_value())
     {
-        LOG_ERROR("Called without constants being set");
+        LOG_WARN("Called without constants being set");
+        return false;
+    }
+
+    static UINT64 lastFrameCount = 0;
+    static UINT64 repeatsInRow = 0;
+    if (lastFrameCount == fgOutput->FrameCount())
+    {
+        repeatsInRow++;
+    }
+    else
+    {
+        lastFrameCount = fgOutput->FrameCount();
+        repeatsInRow = 0;
+    }
+
+    if (repeatsInRow > 10 && fgOutput->IsActive())
+    {
+        LOG_WARN("Many frame count repeats in a row, stopping FG");
+        State::Instance().FGchanged = true;
+        repeatsInRow = 0;
         return false;
     }
 

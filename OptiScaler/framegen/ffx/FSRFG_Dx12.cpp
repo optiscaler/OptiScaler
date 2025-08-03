@@ -285,17 +285,23 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
     // If fg is active but upscaling paused
     if ((State::Instance().currentFeature == nullptr && State::Instance().activeFgInput == FGInput::Upscaler) ||
         State::Instance().FGchanged || fIndex < 0 || !IsActive() ||
-        (State::Instance().currentFeature && State::Instance().currentFeature->FrameCount() == 0) ||
-        params->frameID == _lastUpscaledFrameId)
+        (State::Instance().currentFeature && State::Instance().currentFeature->FrameCount() == 0))
     {
         LOG_WARN("Upscaling paused! frameID: {}", params->frameID);
+        params->numGeneratedFrames = 0;
+    }
+
+    static UINT64 _lastFrameId = 0;
+    if (params->frameID == _lastFrameId)
+    {
+        LOG_WARN("Dispatched with the same frame id! frameID: {}", params->frameID);
         params->numGeneratedFrames = 0;
     }
 
     auto dispatchResult = FfxApiProxy::D3D12_Dispatch()(&_fgContext, &params->header);
     LOG_DEBUG("D3D12_Dispatch result: {}, fIndex: {}", (UINT) dispatchResult, fIndex);
 
-    _lastUpscaledFrameId = params->frameID;
+    _lastFrameId = params->frameID;
 
     return dispatchResult;
 }
