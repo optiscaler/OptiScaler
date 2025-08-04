@@ -76,6 +76,11 @@ bool XeSSFeature::InitXeSS(ID3D12Device* device, const NVSDK_NGX_Parameter* InPa
     if (!LowResMV())
         xessParams.initFlags |= XESS_INIT_FLAG_HIGH_RES_MV;
 
+    int responsiveMask = 0;
+    if (InParameters->Get("XeSS.ResponsivePixelMask", &responsiveMask) == NVSDK_NGX_Result_Success &&
+        responsiveMask > 0)
+        xessParams.initFlags |= XESS_INIT_FLAG_RESPONSIVE_PIXEL_MASK;
+
     if (!Config::Instance()->DisableReactiveMask.value_or(true))
     {
         xessParams.initFlags |= XESS_INIT_FLAG_RESPONSIVE_PIXEL_MASK;

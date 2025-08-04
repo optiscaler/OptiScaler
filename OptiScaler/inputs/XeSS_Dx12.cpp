@@ -39,6 +39,12 @@ static bool CreateDLSSContext(xess_context_handle_t handle, ID3D12GraphicsComman
     if ((initParams->initFlags & XESS_INIT_FLAG_HIGH_RES_MV) == 0)
         initFlags |= NVSDK_NGX_DLSS_Feature_Flags_MVLowRes;
 
+    if (initParams->initFlags & XESS_INIT_FLAG_EXPOSURE_SCALE_TEXTURE)
+        params->Set("XeSS.ExposureScaleTexture", 1);
+
+    if (initParams->initFlags & XESS_INIT_FLAG_RESPONSIVE_PIXEL_MASK)
+        params->Set("XeSS.ResponsivePixelMask", 1);
+
     params->Set(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags, initFlags);
 
     params->Set(NVSDK_NGX_Parameter_Width, pExecParams->inputWidth);
