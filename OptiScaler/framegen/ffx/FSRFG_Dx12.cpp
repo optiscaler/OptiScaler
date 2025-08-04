@@ -94,6 +94,8 @@ bool FSRFG_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, bool useHudless, d
         m_FrameGenerationConfig.HUDLessColor = FfxApiResource({});
     }
 
+    _lastHudlessFormat = m_FrameGenerationConfig.HUDLessColor.description.format;
+
     m_FrameGenerationConfig.frameGenerationEnabled = true;
     m_FrameGenerationConfig.flags = 0;
 
@@ -298,6 +300,15 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
         params->numGeneratedFrames = 0;
     }
 
+    if (_lastHudlessFormat != FFX_API_SURFACE_FORMAT_UNKNOWN &&
+        _lastHudlessFormat != params->presentColor.description.format &&
+        (_usingHudlessFormat == FFX_API_SURFACE_FORMAT_UNKNOWN || _usingHudlessFormat != _lastHudlessFormat))
+    {
+        LOG_DEBUG("Hudless format doesn't match, hudless: {}, present: {}", _lastHudlessFormat,
+                  params->presentColor.description.format);
+        State::Instance().FGchanged = true;
+    }
+
     auto dispatchResult = FfxApiProxy::D3D12_Dispatch()(&_fgContext, &params->header);
     LOG_DEBUG("D3D12_Dispatch result: {}, fIndex: {}", (UINT) dispatchResult, fIndex);
 
@@ -484,6 +495,13 @@ void FSRFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
 {
     LOG_DEBUG("");
 
+    // Changing the format of the hudless resource requires a new context
+    if (_fgContext != nullptr && _lastHudlessFormat != FFX_API_SURFACE_FORMAT_UNKNOWN)
+    {
+        auto result = FfxApiProxy::D3D12_DestroyContext()(&_fgContext, nullptr);
+        _fgContext = nullptr;
+    }
+
     if (_fgContext != nullptr)
     {
         ffxConfigureDescFrameGeneration m_FrameGenerationConfig = {};
@@ -505,6 +523,12 @@ void FSRFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
     ffxCreateBackendDX12Desc backendDesc {};
     backendDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_DX12;
     backendDesc.device = device;
+
+    // Only gets linked if _lastHudlessFormat != FFX_API_SURFACE_FORMAT_UNKNOWN
+    ffxCreateContextDescFrameGenerationHudless hudlessDesc {};
+    hudlessDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION_HUDLESS;
+    hudlessDesc.hudlessBackBufferFormat = _lastHudlessFormat;
+    hudlessDesc.header.pNext = &backendDesc.header;
 
     ffxCreateContextDescFrameGeneration createFg {};
     createFg.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION;
@@ -548,7 +572,18 @@ void FSRFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
         createFg.flags |= FFX_FRAMEGENERATION_ENABLE_DEPTH_INFINITE;
 
     createFg.backBufferFormat = ffxApiGetSurfaceFormatDX12(desc.BufferDesc.Format);
-    createFg.header.pNext = &backendDesc.header;
+
+    if (_lastHudlessFormat != FFX_API_SURFACE_FORMAT_UNKNOWN)
+    {
+        _usingHudlessFormat = _lastHudlessFormat;
+        _lastHudlessFormat = FFX_API_SURFACE_FORMAT_UNKNOWN;
+        createFg.header.pNext = &hudlessDesc.header;
+    }
+    else
+    {
+        _usingHudlessFormat = FFX_API_SURFACE_FORMAT_UNKNOWN;
+        createFg.header.pNext = &backendDesc.header;
+    }
 
     State::Instance().skipSpoofing = true;
     State::Instance().skipHeapCapture = true;
