@@ -150,11 +150,11 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
 
         attachment_desc.format = pCreateInfo->imageFormat;
         attachment_desc.samples = VK_SAMPLE_COUNT_1_BIT;
-        attachment_desc.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        attachment_desc.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
         attachment_desc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         attachment_desc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         attachment_desc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        attachment_desc.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        attachment_desc.initialLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         attachment_desc.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
         VkAttachmentReference color_attachment = {};
