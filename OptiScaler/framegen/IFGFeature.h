@@ -72,6 +72,7 @@ class IFGFeature
 
     bool _isActive = false;
     UINT64 _targetFrame = 0;
+    FG_Constants _constants {};
 
     std::unordered_map<FG_ResourceType, bool> _resourceReady[BUFFER_COUNT] {};
 
@@ -115,6 +116,12 @@ class IFGFeature
     bool IsActive();
     bool IsPaused();
     bool IsDispatched();
+    bool IsLowResMV();
+    bool IsAsync();
+    bool IsHdr();
+    bool IsJitteredMVs();
+    bool IsInvertedDepth();
+    bool IsInfiniteDepth();
 
     void SetJitter(float x, float y);
     void SetMVScale(float x, float y);

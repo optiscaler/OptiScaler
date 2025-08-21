@@ -1499,16 +1499,16 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
         fgConstants.displayWidth = feature->DisplayWidth();
         fgConstants.displayHeight = feature->DisplayHeight();
 
-        if (feature->GetFeatureFlags() & NVSDK_NGX_DLSS_Feature_Flags_IsHDR)
+        if (feature->IsHdr())
             fgConstants.flags |= FG_Flags::Hdr;
 
-        if (feature->GetFeatureFlags() & NVSDK_NGX_DLSS_Feature_Flags_DepthInverted)
+        if (feature->DepthInverted())
             fgConstants.flags |= FG_Flags::InvertedDepth;
 
-        if (feature->GetFeatureFlags() & NVSDK_NGX_DLSS_Feature_Flags_MVJittered)
+        if (feature->JitteredMV())
             fgConstants.flags |= FG_Flags::JitteredMVs;
 
-        if ((feature->GetFeatureFlags() & NVSDK_NGX_DLSS_Feature_Flags_MVLowRes) == 0)
+        if (!feature->LowResMV())
             fgConstants.flags |= FG_Flags::DisplayResolutionMVs;
 
         if (Config::Instance()->FGAsync.value_or_default())

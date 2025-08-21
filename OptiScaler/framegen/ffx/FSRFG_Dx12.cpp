@@ -539,6 +539,8 @@ void FSRFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
 {
     LOG_DEBUG("");
 
+    _constants = fgConstants;
+
     // Changing the format of the hudless resource requires a new context
     if (_fgContext != nullptr && (_lastHudlessFormat != _usingHudlessFormat))
     {
@@ -691,6 +693,8 @@ void FSRFG_Dx12::Deactivate()
 void FSRFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
 {
     LOG_FUNC();
+
+    _constants = fgConstants;
 
     // If needed hooks are missing or XeFG proxy is not inited or FG swapchain is not created
     if (!Config::Instance()->OverlayMenu.value_or_default() || !FfxApiProxy::InitFfxDx12() ||

@@ -344,6 +344,7 @@ void XeFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
     LOG_DEBUG("");
 
     _device = device;
+    _constants = fgConstants;
 
     if (_fgContext == nullptr && _swapChainContext != nullptr)
     {
@@ -356,7 +357,7 @@ void XeFG_Dx12::Activate()
 {
     LOG_DEBUG("");
 
-    if (_swapChainContext != nullptr && _fgContext != nullptr && !_isActive)
+    if (_swapChainContext != nullptr && _fgContext != nullptr && !_isActive && IsLowResMV())
     {
         auto result = XeFGProxy::SetEnabled()(_swapChainContext, true);
 
@@ -552,6 +553,8 @@ void* XeFG_Dx12::SwapchainContext() { return _swapChainContext; }
 void XeFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
 {
     LOG_FUNC();
+
+    _constants = fgConstants;
 
     // If needed hooks are missing or XeFG proxy is not inited or FG swapchain is not created
     if (!Config::Instance()->OverlayMenu.value_or_default() || !XeFGProxy::InitXeFG() ||

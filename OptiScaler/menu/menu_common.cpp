@@ -5,6 +5,7 @@
 #include <hooks/HooksDx.h>
 
 #include <proxies/XeSS_Proxy.h>
+#include <proxies/XeFG_Proxy.h>
 #include <proxies/FfxApi_Proxy.h>
 
 #include "DLSSG_Mod.h"
@@ -2905,16 +2906,24 @@ bool MenuCommon::RenderMenu()
                     }
                 }
 
-                // FSR FG controls
+                // XeFG controls
                 if (State::Instance().activeFgOutput == FGOutput::XeFG &&
                     State::Instance().activeFgInput != FGInput::NoFG &&
                     Config::Instance()->OverlayMenu.value_or_default() && !State::Instance().isWorkingAsNvngx &&
                     State::Instance().api == DX12)
                 {
                     if (State::Instance().activeFgInput != FGInput::Upscaler ||
-                        (currentFeature != nullptr && !currentFeature->IsFrozen()) && FfxApiProxy::InitFfxDx12())
+                        (currentFeature != nullptr && !currentFeature->IsFrozen()) && XeFGProxy::InitXeFG())
                     {
                         ImGui::SeparatorText("Frame Generation (XeFG)");
+
+                        if (!State::Instance().currentFG->IsLowResMV())
+                        {
+                            Config::Instance()->FGEnabled.reset();
+                            Config::Instance()->FGXeFGDebugView.reset();
+                        }
+
+                        ImGui::BeginDisabled(!State::Instance().currentFG->IsLowResMV());
 
                         bool fgActive = Config::Instance()->FGEnabled.value_or_default();
                         if (ImGui::Checkbox("Active##3", &fgActive))
@@ -2926,7 +2935,10 @@ bool MenuCommon::RenderMenu()
                                 State::Instance().FGchanged = true;
                         }
 
-                        ShowHelpMarker("Enable frame generation");
+                        if (State::Instance().currentFG->IsLowResMV())
+                            ShowHelpMarker("Enable frame generation");
+                        else
+                            ShowHelpMarker("Can't enable frame generation\n\nDisplay Size MV is ACTIVE!");
 
                         bool fgDV = Config::Instance()->FGXeFGDebugView.value_or_default();
                         if (ImGui::Checkbox("Debug View##2", &fgDV))
@@ -2941,9 +2953,12 @@ bool MenuCommon::RenderMenu()
                         }
                         ShowHelpMarker("Enable XeFG frame generation debug view");
 
-                        ImGui::SameLine(0.0f, 16.0f);
-                        ImGui::Checkbox("Only Generated##2", &State::Instance().FGonlyGenerated);
-                        ShowHelpMarker("Display only XeFG generated frames");
+                        // Disable this for now
+                        // ImGui::SameLine(0.0f, 16.0f);
+                        // ImGui::Checkbox("Only Generated##2", &State::Instance().FGonlyGenerated);
+                        // ShowHelpMarker("Display only XeFG generated frames");
+
+                        ImGui::EndDisabled();
 
                         ImGui::Spacing();
                         if (ImGui::CollapsingHeader("Advanced XeFG Settings"))
