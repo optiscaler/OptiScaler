@@ -728,7 +728,7 @@
     <ClCompile Include="include\imgui\imgui_draw.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="menu\menu_common.cpp">
+    <ClCompile Include="menu\menu_common_zh_UI.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="menu\menu_dx_base.cpp">
