@@ -285,11 +285,19 @@ class XeFGProxy
     {
         if (_xefgVersion.major == 0 && _xefgSwapChainGetVersion != nullptr)
         {
-            if (auto result = _xefgSwapChainGetVersion((xefg_swapchain_version_t*) &_xefgVersion);
-                result == XESS_RESULT_SUCCESS)
+            xefg_swapchain_version_t tempVersion;
+            if (auto result = _xefgSwapChainGetVersion(&tempVersion); result == XESS_RESULT_SUCCESS)
+            {
+                _xefgVersion.major = tempVersion.major;
+                _xefgVersion.minor = tempVersion.minor;
+                _xefgVersion.patch = tempVersion.patch;
+
                 LOG_INFO("XeFG Version: v{}.{}.{}", _xefgVersion.major, _xefgVersion.minor, _xefgVersion.patch);
+            }
             else
+            {
                 LOG_ERROR("Can't get XeFG version: {}", (UINT) result);
+            }
         }
 
         if (_xefgVersion.major == 0)

@@ -543,7 +543,11 @@ bool XeFG_Dx12::Dispatch()
     else
     {
         auto usingHudless = IsUsingHudless(fIndex);
-        if (_haveHudless.value() != usingHudless)
+        static auto version = Version();
+
+        // SDK version 2.1.1 fixed this
+        // https://github.com/intel/xess/issues/48
+        if (version < feature_version { 1, 2, 2 } && _haveHudless.value() != usingHudless)
         {
             LOG_INFO("Hudless state changed {} -> {}, skipping rendering for 10 frames", _haveHudless.value(),
                      usingHudless);
@@ -961,7 +965,11 @@ bool XeFG_Dx12::SetResource(Dx12Resource* inputResource)
     }
 
     // Depth Invert
-    if (_device != nullptr && type == FG_ResourceType::Depth &&
+    // https://github.com/intel/xess/issues/50
+    static auto version = Version();
+
+    // SDK version 2.1.1 fixed this
+    if (version < feature_version { 1, 2, 2 } && _device != nullptr && type == FG_ResourceType::Depth &&
         !Config::Instance()->FGXeFGDepthInverted.value_or_default())
     {
         if (_depthInvert.get() == nullptr)
@@ -1025,19 +1033,24 @@ bool XeFG_Dx12::SetResource(Dx12Resource* inputResource)
 
     xefg_swapchain_d3d12_resource_data_t resourceParam = GetResourceData(type);
 
-    // HACK: XeFG docs lie and cmd list is technically required as it checks for it
-    // But it doesn't seem to use it when the validity is UNTIL_NEXT_PRESENT
-    // https://github.com/intel/xess/issues/45
-    if (fResource->cmdList == nullptr && resourceParam.validity == XEFG_SWAPCHAIN_RV_UNTIL_NEXT_PRESENT)
-        fResource->cmdList = (ID3D12GraphicsCommandList*) 1;
-
-    // HACK: XeFG seems to crash if the resource is in COPY_SOURCE state
-    // even though the docs say it's the preferred state
-    if (inputResource->state == D3D12_RESOURCE_STATE_COPY_SOURCE)
+    // SDK version 2.1.1 fixes those issues
+    if (version < feature_version { 1, 2, 2 })
     {
-        ResourceBarrier(inputResource->cmdList, inputResource->resource, inputResource->state,
-                        D3D12_RESOURCE_STATE_COPY_DEST);
-        resourceParam.incomingState = D3D12_RESOURCE_STATE_COPY_DEST;
+        // HACK: XeFG docs lie and cmd list is technically required as it checks for it
+        // But it doesn't seem to use it when the validity is UNTIL_NEXT_PRESENT
+        // https://github.com/intel/xess/issues/45
+        if (fResource->cmdList == nullptr && resourceParam.validity == XEFG_SWAPCHAIN_RV_UNTIL_NEXT_PRESENT)
+            fResource->cmdList = (ID3D12GraphicsCommandList*) 1;
+
+        // HACK: XeFG seems to crash if the resource is in COPY_SOURCE state
+        // even though the docs say it's the preferred state
+        // https://github.com/intel/xess/issues/47
+        if (inputResource->state == D3D12_RESOURCE_STATE_COPY_SOURCE)
+        {
+            ResourceBarrier(inputResource->cmdList, inputResource->resource, inputResource->state,
+                            D3D12_RESOURCE_STATE_COPY_DEST);
+            resourceParam.incomingState = D3D12_RESOURCE_STATE_COPY_DEST;
+        }
     }
 
     auto frameId = static_cast<uint32_t>(_frameCount);
