@@ -117,7 +117,7 @@ static bool IsRunningOnWine()
     return false;
 }
 
-UINT customD3D12SDKVersion = 615;
+UINT customD3D12SDKVersion = 618;
 
 const char8_t* customD3D12SDKPath = u8".\\D3D12_Optiscaler\\"; // Hardcoded for now
 
