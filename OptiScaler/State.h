@@ -165,9 +165,11 @@ class State
     // quirks
     std::vector<std::string> detectedQuirks {};
 
-    // FSR3.x
-    std::vector<const char*> fsr3xVersionNames {};
-    std::vector<uint64_t> fsr3xVersionIds {};
+    // FFX
+    std::vector<const char*> ffxUpscalerVersionNames {};
+    std::vector<uint64_t> ffxUpscalerVersionIds {};
+    std::vector<const char*> ffxFGVersionNames {};
+    std::vector<uint64_t> ffxFGVersionIds {};
     uint32_t currentFsr4Model {};
 
     // Linux checks

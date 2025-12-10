@@ -156,10 +156,10 @@ bool FSR31FeatureVk::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
     // get number of versions for allocation
     FfxApiProxy::VULKAN_Query()(nullptr, &versionQuery.header);
 
-    State::Instance().fsr3xVersionIds.resize(versionCount);
-    State::Instance().fsr3xVersionNames.resize(versionCount);
-    versionQuery.versionIds = State::Instance().fsr3xVersionIds.data();
-    versionQuery.versionNames = State::Instance().fsr3xVersionNames.data();
+    State::Instance().ffxUpscalerVersionIds.resize(versionCount);
+    State::Instance().ffxUpscalerVersionNames.resize(versionCount);
+    versionQuery.versionIds = State::Instance().ffxUpscalerVersionIds.data();
+    versionQuery.versionNames = State::Instance().ffxUpscalerVersionNames.data();
     // fill version ids and names arrays.
     FfxApiProxy::VULKAN_Query()(nullptr, &versionQuery.header);
 
@@ -218,13 +218,13 @@ bool FSR31FeatureVk::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
 
     _contextDesc.header.pNext = &backendDesc.header;
 
-    if (Config::Instance()->Fsr3xIndex.value_or_default() < 0 ||
-        Config::Instance()->Fsr3xIndex.value_or_default() >= State::Instance().fsr3xVersionIds.size())
-        Config::Instance()->Fsr3xIndex.set_volatile_value(0);
+    if (Config::Instance()->FfxUpscalerIndex.value_or_default() < 0 ||
+        Config::Instance()->FfxUpscalerIndex.value_or_default() >= State::Instance().ffxUpscalerVersionIds.size())
+        Config::Instance()->FfxUpscalerIndex.set_volatile_value(0);
 
     ffxOverrideVersion ov = { 0 };
     ov.header.type = FFX_API_DESC_TYPE_OVERRIDE_VERSION;
-    ov.versionId = State::Instance().fsr3xVersionIds[Config::Instance()->Fsr3xIndex.value_or_default()];
+    ov.versionId = State::Instance().ffxUpscalerVersionIds[Config::Instance()->FfxUpscalerIndex.value_or_default()];
     backendDesc.header.pNext = &ov.header;
 
     LOG_DEBUG("_createContext!");
@@ -238,7 +238,7 @@ bool FSR31FeatureVk::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
         return false;
     }
 
-    auto version = State::Instance().fsr3xVersionNames[Config::Instance()->Fsr3xIndex.value_or_default()];
+    auto version = State::Instance().ffxUpscalerVersionNames[Config::Instance()->FfxUpscalerIndex.value_or_default()];
     _name = "FSR";
     parse_version(version);
 

@@ -728,6 +728,22 @@ void FSRFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
         return;
     }
 
+    ffxQueryDescGetVersions versionQuery {};
+    versionQuery.header.type = FFX_API_QUERY_DESC_TYPE_GET_VERSIONS;
+    versionQuery.createDescType = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION;
+    versionQuery.device = device; // only for DirectX 12 applications
+    uint64_t versionCount = 0;
+    versionQuery.outputCount = &versionCount;
+    // get number of versions for allocation
+    FfxApiProxy::D3D12_Query(nullptr, &versionQuery.header);
+
+    State::Instance().ffxFGVersionIds.resize(versionCount);
+    State::Instance().ffxFGVersionNames.resize(versionCount);
+    versionQuery.versionIds = State::Instance().ffxFGVersionIds.data();
+    versionQuery.versionNames = State::Instance().ffxFGVersionNames.data();
+    // fill version ids and names arrays.
+    FfxApiProxy::D3D12_Query(nullptr, &versionQuery.header);
+
     ffxCreateBackendDX12Desc backendDesc {};
     backendDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_DX12;
     backendDesc.device = device;
@@ -798,6 +814,16 @@ void FSRFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
 
     State::Instance().skipSpoofing = true;
     State::Instance().skipHeapCapture = true;
+
+    // Currently 0 is non-ML FG and 1 is ML FG
+    if (Config::Instance()->FfxFGIndex.value_or_default() < 0 ||
+        Config::Instance()->FfxFGIndex.value_or_default() >= State::Instance().ffxFGVersionIds.size())
+        Config::Instance()->FfxFGIndex.set_volatile_value(0);
+
+    ffxOverrideVersion override = { 0 };
+    override.header.type = FFX_API_DESC_TYPE_OVERRIDE_VERSION;
+    override.versionId = State::Instance().ffxFGVersionIds[Config::Instance()->FfxFGIndex.value_or_default()];
+    backendDesc.header.pNext = &override.header;
 
     ffxReturnCode_t retCode = FfxApiProxy::D3D12_CreateContext(&_fgContext, &createFg.header, nullptr);
 

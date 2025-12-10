@@ -634,11 +634,11 @@ bool FSR31FeatureDx11::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
 
     State::Instance().skipSpoofing = true;
     uint64_t versionCount = 0;
-    State::Instance().fsr3xVersionIds.resize(versionCount);
-    State::Instance().fsr3xVersionNames.resize(versionCount);
-    State::Instance().fsr3xVersionIds.push_back(1);
+    State::Instance().ffxUpscalerVersionIds.resize(versionCount);
+    State::Instance().ffxUpscalerVersionNames.resize(versionCount);
+    State::Instance().ffxUpscalerVersionIds.push_back(1);
     auto version_number = "3.1.2";
-    State::Instance().fsr3xVersionNames.push_back(version_number);
+    State::Instance().ffxUpscalerVersionNames.push_back(version_number);
 
     const size_t scratchBufferSize = Fsr31::ffxGetScratchMemorySizeDX11(1);
     void* scratchBuffer = calloc(scratchBufferSize, 1);
@@ -739,9 +739,9 @@ bool FSR31FeatureDx11::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
         _upscalerContextDesc.maxUpscaleSize.height = TargetHeight();
     }
 
-    if (Config::Instance()->Fsr3xIndex.value_or_default() < 0 ||
-        Config::Instance()->Fsr3xIndex.value_or_default() >= State::Instance().fsr3xVersionIds.size())
-        Config::Instance()->Fsr3xIndex.set_volatile_value(0);
+    if (Config::Instance()->FfxUpscalerIndex.value_or_default() < 0 ||
+        Config::Instance()->FfxUpscalerIndex.value_or_default() >= State::Instance().ffxUpscalerVersionIds.size())
+        Config::Instance()->FfxUpscalerIndex.set_volatile_value(0);
 
     LOG_DEBUG("_createContext!");
     auto ret = ffxFsr3ContextCreate(&_upscalerContext, &_upscalerContextDesc);
@@ -754,7 +754,7 @@ bool FSR31FeatureDx11::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
 
     LOG_INFO("_createContext success!");
 
-    auto version = State::Instance().fsr3xVersionNames[Config::Instance()->Fsr3xIndex.value_or_default()];
+    auto version = State::Instance().ffxUpscalerVersionNames[Config::Instance()->FfxUpscalerIndex.value_or_default()];
     _name = "FSR";
     parse_version(version);
 

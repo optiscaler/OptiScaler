@@ -44,6 +44,18 @@ class FfxApiProxy
 
     inline static FfxModule main_vk;
 
+    enum class FFXStructType
+    {
+        General,
+        Upscaling,
+        Swapchain,
+        FG,
+        VulkanSwapchain,
+        Unknown
+    };
+
+    inline static ankerl::unordered_dense::map<ffxContext*, FFXStructType> contextToType;
+
     inline static bool _skipDestroyCalls = false;
 
     static inline void parse_version(const char* version_str, feature_version* _version)
@@ -63,16 +75,6 @@ class FfxApiProxy
 
         LOG_WARN("can't parse {0}", version_str);
     }
-
-    enum class FFXStructType
-    {
-        General,
-        Upscaling,
-        Swapchain,
-        FG,
-        VulkanSwapchain,
-        Unknown
-    };
 
     static FFXStructType GetType(ffxStructType_t type)
     {
@@ -602,6 +604,8 @@ class FfxApiProxy
         auto type = GetType(desc->type);
         auto isFg = type == FFXStructType::FG || type == FFXStructType::Swapchain;
 
+        contextToType[context] = type;
+
         if (isFg && fg_dx12.dll != nullptr)
             return fg_dx12.CreateContext(context, desc, memCb);
         else if (!isFg && upscaling_dx12.dll != nullptr)
@@ -631,6 +635,24 @@ class FfxApiProxy
     static ffxReturnCode_t D3D12_DestroyContext(ffxContext* context, const ffxAllocationCallbacks* memCb)
     {
         ffxReturnCode_t result = FFX_API_RETURN_ERROR;
+
+        auto type = contextToType[context];
+
+        switch (type)
+        {
+        case FFXStructType::General:
+            return main_dx12.DestroyContext(context, memCb);
+
+        case FFXStructType::Upscaling:
+            return upscaling_dx12.DestroyContext(context, memCb);
+
+        case FFXStructType::FG:
+        case FFXStructType::Swapchain:
+            return fg_dx12.DestroyContext(context, memCb);
+
+        default:
+            break;
+        }
 
         if (main_dx12.dll != nullptr && !_skipDestroyCalls)
         {

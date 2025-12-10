@@ -330,7 +330,8 @@ class Config
 
     // FSR
     CustomOptional<bool> FsrDebugView { false };
-    CustomOptional<int> Fsr3xIndex { 0 };
+    CustomOptional<int> FfxUpscalerIndex { 0 };
+    CustomOptional<int> FfxFGIndex { 0 };
     CustomOptional<bool> FsrUseMaskForTransparency { true };
     CustomOptional<bool> Fsr4Update { false };
     CustomOptional<uint32_t, NoDefault> Fsr4Model;
