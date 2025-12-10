@@ -646,14 +646,20 @@ class FfxApiProxy
         switch (type)
         {
         case FFXStructType::General:
-            return main_dx12.DestroyContext(context, memCb);
+            if (main_dx12.dll != nullptr)
+                return main_dx12.DestroyContext(context, memCb);
+            break;
 
         case FFXStructType::Upscaling:
-            return upscaling_dx12.DestroyContext(context, memCb);
+            if (upscaling_dx12.dll != nullptr)
+                return upscaling_dx12.DestroyContext(context, memCb);
+            break;
 
         case FFXStructType::FG:
         case FFXStructType::Swapchain:
-            return fg_dx12.DestroyContext(context, memCb);
+            if (fg_dx12.dll != nullptr)
+                return fg_dx12.DestroyContext(context, memCb);
+            break;
 
         default:
             break;
