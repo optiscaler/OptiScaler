@@ -635,8 +635,13 @@ class FfxApiProxy
     static ffxReturnCode_t D3D12_DestroyContext(ffxContext* context, const ffxAllocationCallbacks* memCb)
     {
         ffxReturnCode_t result = FFX_API_RETURN_ERROR;
+        auto type = FFXStructType::Unknown;
 
-        auto type = contextToType[context];
+        if (contextToType.contains(context))
+        {
+            type = contextToType[context];
+            contextToType.erase(context);
+        }
 
         switch (type)
         {
