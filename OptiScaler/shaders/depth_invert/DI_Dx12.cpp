@@ -90,48 +90,30 @@ DI_Dx12::DI_Dx12(std::string InName, ID3D12Device* InDevice) : _name(InName), _d
 
     LOG_DEBUG("{0} start!", _name);
 
-    // Describe and create the root signature
-    // ---------------------------------------------------
-    D3D12_DESCRIPTOR_RANGE descriptorRanges[2];
+    CD3DX12_DESCRIPTOR_RANGE1 descriptorRanges[] = {
+        // 1 SRV starting at register t0, space 0
+        CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0),
 
-    // SRV Range (Input Texture)
-    descriptorRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-    descriptorRanges[0].NumDescriptors = 1;
-    descriptorRanges[0].BaseShaderRegister = 0; // Assuming t0 register in HLSL for SRV
-    descriptorRanges[0].RegisterSpace = 0;
-    descriptorRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+        // 1 UAV starting at register u0, space 0
+        CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0),
+    };
 
-    // UAV Range (Output Texture)
-    descriptorRanges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-    descriptorRanges[1].NumDescriptors = 1;
-    descriptorRanges[1].BaseShaderRegister = 0; // Assuming u0 register in HLSL for UAV
-    descriptorRanges[1].RegisterSpace = 0;
-    descriptorRanges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    CD3DX12_ROOT_PARAMETER1 rootParameter {};
+    rootParameter.InitAsDescriptorTable(std::size(descriptorRanges), descriptorRanges);
 
-    // Define ONE root parameter (descriptor table)
-    D3D12_ROOT_PARAMETER rootParameter = {};
-    rootParameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-    rootParameter.DescriptorTable.NumDescriptorRanges = std::size(descriptorRanges);
-    rootParameter.DescriptorTable.pDescriptorRanges = descriptorRanges;
-    rootParameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-
-    D3D12_ROOT_SIGNATURE_DESC rootSigDesc;
-    rootSigDesc.NumParameters = 1;
-    rootSigDesc.pParameters = &rootParameter;
-    rootSigDesc.NumStaticSamplers = 0;
-    rootSigDesc.pStaticSamplers = nullptr;
-    rootSigDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
+    rootSigDesc.Init_1_1(1, &rootParameter);
 
     ID3DBlob* errorBlob;
     ID3DBlob* signatureBlob;
 
     do
     {
-        auto hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signatureBlob, &errorBlob);
+        auto hr = D3D12SerializeVersionedRootSignature(&rootSigDesc, &signatureBlob, &errorBlob);
 
         if (FAILED(hr))
         {
-            LOG_ERROR("[{0}] D3D12SerializeRootSignature error {1:x}", _name, hr);
+            LOG_ERROR("[{0}] D3D12SerializeVersionedRootSignature error {1:x}", _name, hr);
             break;
         }
 
