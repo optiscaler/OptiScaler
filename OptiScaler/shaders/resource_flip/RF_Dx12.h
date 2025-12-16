@@ -4,6 +4,9 @@
 
 #include <d3d12.h>
 #include <d3dx/d3dx12.h>
+#include <shaders/Shaders_Dx12Utils.h>
+
+#define RF_NUM_OF_HEAPS 2
 
 class RF_Dx12
 {

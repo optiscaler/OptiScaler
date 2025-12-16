@@ -4,117 +4,27 @@
 
 #include <Config.h>
 
-inline static DXGI_FORMAT TranslateTypelessFormats(DXGI_FORMAT format)
-{
-    switch (format)
-    {
-    case DXGI_FORMAT_R32G32B32A32_TYPELESS:
-        return DXGI_FORMAT_R32G32B32A32_FLOAT;
-    case DXGI_FORMAT_R32G32B32_TYPELESS:
-        return DXGI_FORMAT_R32G32B32_FLOAT;
-    case DXGI_FORMAT_R16G16B16A16_TYPELESS:
-        return DXGI_FORMAT_R16G16B16A16_FLOAT;
-    case DXGI_FORMAT_R10G10B10A2_TYPELESS:
-        return DXGI_FORMAT_R10G10B10A2_UINT;
-    case DXGI_FORMAT_R8G8B8A8_TYPELESS:
-        return DXGI_FORMAT_R8G8B8A8_UNORM;
-    case DXGI_FORMAT_B8G8R8A8_TYPELESS:
-        return DXGI_FORMAT_B8G8R8A8_UNORM;
-    case DXGI_FORMAT_R16G16_TYPELESS:
-        return DXGI_FORMAT_R16G16_FLOAT;
-    case DXGI_FORMAT_R32G32_TYPELESS:
-        return DXGI_FORMAT_R32G32_FLOAT;
-    default:
-        return format;
-    }
-}
-
-bool RCAS_Dx12::CreateComputeShader(ID3D12Device* device, ID3D12RootSignature* rootSignature,
-                                    ID3D12PipelineState** pipelineState, ID3DBlob* shaderBlob)
-{
-    D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
-    psoDesc.pRootSignature = rootSignature;
-    psoDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
-    psoDesc.CS = CD3DX12_SHADER_BYTECODE(shaderBlob->GetBufferPointer(), shaderBlob->GetBufferSize());
-
-    HRESULT hr = device->CreateComputePipelineState(&psoDesc, __uuidof(ID3D12PipelineState*), (void**) pipelineState);
-
-    if (FAILED(hr))
-    {
-        LOG_ERROR("CreateComputePipelineState error {0:x}", hr);
-        return false;
-    }
-
-    return true;
-}
-
 bool RCAS_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InSource, D3D12_RESOURCE_STATES InState)
 {
-    if (InDevice == nullptr || InSource == nullptr)
-        return false;
-
-    D3D12_RESOURCE_DESC texDesc = InSource->GetDesc();
-
-    if (_buffer != nullptr)
-    {
-        auto bufDesc = _buffer->GetDesc();
-
-        if (bufDesc.Width != (UINT64) (texDesc.Width) || bufDesc.Height != (UINT) (texDesc.Height) ||
-            bufDesc.Format != texDesc.Format)
-        {
-            _buffer->Release();
-            _buffer = nullptr;
-        }
-        else
-            return true;
-    }
-
     LOG_DEBUG("[{0}] Start!", _name);
 
-    D3D12_HEAP_PROPERTIES heapProperties;
-    D3D12_HEAP_FLAGS heapFlags;
-    HRESULT hr = InSource->GetHeapProperties(&heapProperties, &heapFlags);
+    auto resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS |
+                         D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS;
 
-    if (hr != S_OK)
+    auto result = ShaderDx12Utils::CreateBufferResource(InDevice, InSource, InState, &_buffer, resourceFlags);
+
+    if (result)
     {
-        LOG_ERROR("[{0}] GetHeapProperties result: {1:x}", _name.c_str(), hr);
-        return false;
+        _buffer->SetName(L"RCAS_Buffer");
+        _bufferState = InState;
     }
 
-    texDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS |
-                     D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS;
-    texDesc.Width = texDesc.Width;
-    texDesc.Height = texDesc.Height;
-
-    hr = InDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &texDesc, InState, nullptr,
-                                           IID_PPV_ARGS(&_buffer));
-
-    if (hr != S_OK)
-    {
-        LOG_ERROR("[{0}] CreateCommittedResource result: {1:x}", _name, hr);
-        return false;
-    }
-
-    _buffer->SetName(L"RCAS_Buffer");
-    _bufferState = InState;
-
-    return true;
+    return result;
 }
 
 void RCAS_Dx12::SetBufferState(ID3D12GraphicsCommandList* InCommandList, D3D12_RESOURCE_STATES InState)
 {
-    if (_bufferState == InState)
-        return;
-
-    D3D12_RESOURCE_BARRIER barrier = {};
-    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Transition.pResource = _buffer;
-    barrier.Transition.StateBefore = _bufferState;
-    barrier.Transition.StateAfter = InState;
-    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    InCommandList->ResourceBarrier(1, &barrier);
-
-    _bufferState = InState;
+    return ShaderDx12Utils::SetBufferState(InCommandList, InState, _buffer, &_bufferState);
 }
 
 bool RCAS_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InResource,
@@ -137,7 +47,7 @@ bool RCAS_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCm
     // Create SRV for Input Texture
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Format = TranslateTypelessFormats(inDesc.Format);
+    srvDesc.Format = ShaderDx12Utils::TranslateTypelessFormats(inDesc.Format);
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Texture2D.MipLevels = 1;
 
@@ -146,7 +56,7 @@ bool RCAS_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCm
     // Create SRV for Motion Texture
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc2 = {};
     srvDesc2.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc2.Format = TranslateTypelessFormats(mvDesc.Format);
+    srvDesc2.Format = ShaderDx12Utils::TranslateTypelessFormats(mvDesc.Format);
     srvDesc2.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc2.Texture2D.MipLevels = 1;
 
@@ -154,7 +64,7 @@ bool RCAS_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCm
 
     // Create UAV for Output Texture
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-    uavDesc.Format = TranslateTypelessFormats(outDesc.Format);
+    uavDesc.Format = ShaderDx12Utils::TranslateTypelessFormats(outDesc.Format);
     uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
     uavDesc.Texture2D.MipSlice = 0;
 
@@ -361,7 +271,7 @@ RCAS_Dx12::RCAS_Dx12(std::string InName, ID3D12Device* InDevice) : _name(InName)
         }
 
         // create pso objects
-        if (!CreateComputeShader(InDevice, _rootSignature, &_pipelineState, _recEncodeShader))
+        if (!ShaderDx12Utils::CreateComputeShader(InDevice, _rootSignature, &_pipelineState, _recEncodeShader))
         {
             LOG_ERROR("[{0}] CreateComputeShader error!", _name);
             return;

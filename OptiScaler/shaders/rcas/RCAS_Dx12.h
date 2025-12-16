@@ -6,7 +6,7 @@
 
 #include <d3d12.h>
 #include <d3dx/d3dx12.h>
-#include <shaders/Shaders_Common.h>
+#include <shaders/Shaders_Dx12Utils.h>
 
 #define RCAS_NUM_OF_HEAPS 2
 
@@ -40,9 +40,6 @@ class RCAS_Dx12
     ID3D12RootSignature* _rootSignature = nullptr;
     ID3D12PipelineState* _pipelineState = nullptr;
     FrameDescriptorHeap _frameHeaps[RCAS_NUM_OF_HEAPS];
-
-    inline static bool CreateComputeShader(ID3D12Device* device, ID3D12RootSignature* rootSignature,
-                                           ID3D12PipelineState** pipelineState, ID3DBlob* shaderBlob);
 
     ID3D12Device* _device = nullptr;
     ID3D12Resource* _buffer = nullptr;

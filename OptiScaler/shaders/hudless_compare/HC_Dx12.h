@@ -5,6 +5,7 @@
 #include <d3d12.h>
 #include <d3dx/d3dx12.h>
 #include <dxgi1_6.h>
+#include <shaders/Shaders_Dx12Utils.h>
 
 class HC_Dx12
 {
@@ -41,8 +42,6 @@ class HC_Dx12
     // ID3D12CommandAllocator* _commandAllocator[2] = {};
 
     static DXGI_FORMAT ToSRGB(DXGI_FORMAT f);
-
-    static DXGI_FORMAT TranslateTypelessFormats(DXGI_FORMAT format);
 
     static void ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
                                 D3D12_RESOURCE_STATES InBeforeState, D3D12_RESOURCE_STATES InAfterState);

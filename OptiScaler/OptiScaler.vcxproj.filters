@@ -224,13 +224,13 @@
     <ClInclude Include="shaders\format_transfer\precompile\R8G8B8A8_Shader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="shaders\fsr1\ffx_fsr1.h">
+    <ClInclude Include="shaders\output_scaling\fsr1\ffx_fsr1.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="shaders\fsr1\FSR_EASU_Shader.h">
+    <ClInclude Include="shaders\output_scaling\fsr1\FSR_EASU_Shader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="shaders\fsr1\FSR_EASU_Shader_Dx11.h">
+    <ClInclude Include="shaders\output_scaling\fsr1\FSR_EASU_Shader_Dx11.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="shaders\output_scaling\OS_Common.h">
@@ -624,6 +624,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="shaders\depth_invert\precompiled\DI_Shader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\Shaders_Dx12Utils.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

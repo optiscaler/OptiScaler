@@ -4,6 +4,7 @@
 
 #include <d3d12.h>
 #include <d3dx/d3dx12.h>
+#include <shaders/Shaders_Dx12Utils.h>
 
 class DS_Dx12
 {

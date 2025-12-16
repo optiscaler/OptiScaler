@@ -6,41 +6,6 @@
 #include <State.h>
 #include "precompiled/DI_Shader.h"
 
-inline static DXGI_FORMAT TranslateTypelessFormats(DXGI_FORMAT format)
-{
-    switch (format)
-    {
-    case DXGI_FORMAT_R32G32B32A32_TYPELESS:
-        return DXGI_FORMAT_R32G32B32A32_FLOAT;
-    case DXGI_FORMAT_R32G32B32_TYPELESS:
-        return DXGI_FORMAT_R32G32B32_FLOAT;
-    case DXGI_FORMAT_R16G16B16A16_TYPELESS:
-        return DXGI_FORMAT_R16G16B16A16_FLOAT;
-    case DXGI_FORMAT_R10G10B10A2_TYPELESS:
-        return DXGI_FORMAT_R10G10B10A2_UINT;
-    case DXGI_FORMAT_R8G8B8A8_TYPELESS:
-        return DXGI_FORMAT_R8G8B8A8_UNORM;
-    case DXGI_FORMAT_B8G8R8A8_TYPELESS:
-        return DXGI_FORMAT_B8G8R8A8_UNORM;
-    case DXGI_FORMAT_R16G16_TYPELESS:
-        return DXGI_FORMAT_R16G16_FLOAT;
-    case DXGI_FORMAT_R32G32_TYPELESS:
-        return DXGI_FORMAT_R32G32_FLOAT;
-    case DXGI_FORMAT_R24G8_TYPELESS:
-        return DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
-    case DXGI_FORMAT_R32G8X24_TYPELESS:
-        return DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
-    case DXGI_FORMAT_R32_TYPELESS:
-        return DXGI_FORMAT_R32_FLOAT;
-    case DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS:
-        return DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
-    case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
-        return DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
-    default:
-        return format;
-    }
-}
-
 static bool CreateComputeShader(ID3D12Device* device, ID3D12RootSignature* rootSignature,
                                 ID3D12PipelineState** pipelineState, ID3DBlob* shaderBlob)
 {
@@ -130,6 +95,7 @@ void DI_Dx12::SetBufferState(ID3D12GraphicsCommandList* InCommandList, D3D12_RES
     barrier.Transition.StateAfter = InState;
     barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     InCommandList->ResourceBarrier(1, &barrier);
+
     _bufferState = InState;
 }
 
@@ -170,7 +136,7 @@ bool DI_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCmdL
     // Create SRV for Input Texture
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Format = TranslateTypelessFormats(inDesc.Format);
+    srvDesc.Format = ShaderDx12Utils::TranslateTypelessFormats(inDesc.Format);
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Texture2D.MipLevels = 1;
     InDevice->CreateShaderResourceView(InResource, &srvDesc, _cpuSrvHandle[_counter]);
