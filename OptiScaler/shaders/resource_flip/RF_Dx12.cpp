@@ -7,25 +7,6 @@
 
 #include "precompiled/RF_Shader.h"
 
-static bool CreateComputeShader(ID3D12Device* device, ID3D12RootSignature* rootSignature,
-                                ID3D12PipelineState** pipelineState, ID3DBlob* shaderBlob)
-{
-    D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
-    psoDesc.pRootSignature = rootSignature;
-    psoDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
-    psoDesc.CS = CD3DX12_SHADER_BYTECODE(shaderBlob->GetBufferPointer(), shaderBlob->GetBufferSize());
-
-    HRESULT hr = device->CreateComputePipelineState(&psoDesc, __uuidof(ID3D12PipelineState*), (void**) pipelineState);
-
-    if (FAILED(hr))
-    {
-        LOG_ERROR("CreateComputePipelineState error {0:x}", hr);
-        return false;
-    }
-
-    return true;
-}
-
 bool RF_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InResource,
                        ID3D12Resource* OutResource, UINT64 width, UINT height, bool velocity)
 {
@@ -35,41 +16,8 @@ bool RF_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCmdL
     LOG_DEBUG("[{0}] Start!", _name);
 
     _counter++;
-    _counter = _counter % 2;
-
-    if (_cpuSrvHandle[_counter].ptr == NULL)
-        _cpuSrvHandle[_counter] = _srvHeap[_counter]->GetCPUDescriptorHandleForHeapStart();
-
-    if (_cpuUavHandle[_counter].ptr == NULL)
-    {
-        _cpuUavHandle[_counter] = _cpuSrvHandle[_counter];
-        _cpuUavHandle[_counter].ptr +=
-            InDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    }
-
-    if (_cpuCbvHandle[_counter].ptr == NULL)
-    {
-        _cpuCbvHandle[_counter] = _cpuUavHandle[_counter];
-        _cpuCbvHandle[_counter].ptr +=
-            InDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    }
-
-    if (_gpuSrvHandle[_counter].ptr == NULL)
-        _gpuSrvHandle[_counter] = _srvHeap[_counter]->GetGPUDescriptorHandleForHeapStart();
-
-    if (_gpuUavHandle[_counter].ptr == NULL)
-    {
-        _gpuUavHandle[_counter] = _gpuSrvHandle[_counter];
-        _gpuUavHandle[_counter].ptr +=
-            InDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    }
-
-    if (_gpuCbvHandle[_counter].ptr == NULL)
-    {
-        _gpuCbvHandle[_counter] = _gpuUavHandle[_counter];
-        _gpuCbvHandle[_counter].ptr +=
-            InDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    }
+    _counter = _counter % RF_NUM_OF_HEAPS;
+    FrameDescriptorHeap& currentHeap = _frameHeaps[_counter];
 
     auto inDesc = InResource->GetDesc();
     auto outDesc = OutResource->GetDesc();
@@ -80,14 +28,14 @@ bool RF_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCmdL
     srvDesc.Format = ShaderDx12Utils::TranslateTypelessFormats(inDesc.Format);
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Texture2D.MipLevels = 1;
-    InDevice->CreateShaderResourceView(InResource, &srvDesc, _cpuSrvHandle[_counter]);
+    InDevice->CreateShaderResourceView(InResource, &srvDesc, currentHeap.GetSrvCPU(0));
 
     // Create UAV for Output Texture
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
     uavDesc.Format = ShaderDx12Utils::TranslateTypelessFormats(outDesc.Format);
     uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
     uavDesc.Texture2D.MipSlice = 0;
-    InDevice->CreateUnorderedAccessView(OutResource, nullptr, &uavDesc, _cpuUavHandle[_counter]);
+    InDevice->CreateUnorderedAccessView(OutResource, nullptr, &uavDesc, currentHeap.GetUavCPU(0));
 
     RFConstants constants {};
 
@@ -122,17 +70,15 @@ bool RF_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCmdL
     D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
     cbvDesc.BufferLocation = _constantBuffer->GetGPUVirtualAddress();
     cbvDesc.SizeInBytes = sizeof(constants);
-    InDevice->CreateConstantBufferView(&cbvDesc, _cpuCbvHandle[_counter]);
+    InDevice->CreateConstantBufferView(&cbvDesc, currentHeap.GetCbvCPU(0));
 
-    ID3D12DescriptorHeap* heaps[] = { _srvHeap[_counter] };
+    ID3D12DescriptorHeap* heaps[] = { currentHeap.Heap };
     InCmdList->SetDescriptorHeaps(_countof(heaps), heaps);
 
     InCmdList->SetComputeRootSignature(_rootSignature);
     InCmdList->SetPipelineState(_pipelineState);
 
-    InCmdList->SetComputeRootDescriptorTable(0, _gpuSrvHandle[_counter]);
-    InCmdList->SetComputeRootDescriptorTable(1, _gpuUavHandle[_counter]);
-    InCmdList->SetComputeRootDescriptorTable(2, _gpuCbvHandle[_counter]);
+    InCmdList->SetComputeRootDescriptorTable(0, currentHeap.GetTableGPUStart());
 
     UINT dispatchWidth = 0;
     UINT dispatchHeight = 0;
@@ -305,7 +251,7 @@ RF_Dx12::RF_Dx12(std::string InName, ID3D12Device* InDevice) : _name(InName), _d
         }
 
         // create pso objects
-        if (!CreateComputeShader(InDevice, _rootSignature, &_pipelineState, _recEncodeShader))
+        if (!ShaderDx12Utils::CreateComputeShader(InDevice, _rootSignature, &_pipelineState, _recEncodeShader))
         {
             LOG_ERROR("[{0}] CreateComputeShader error!", _name);
             return;
@@ -318,40 +264,22 @@ RF_Dx12::RF_Dx12(std::string InName, ID3D12Device* InDevice) : _name(InName), _d
         }
     }
 
-    D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-    heapDesc.NumDescriptors = 3; // SRV + UAV + CBV
-    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-
     State::Instance().skipHeapCapture = true;
 
-    auto hr = InDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&_srvHeap[0]));
-
-    if (FAILED(hr))
+    for (int i = 0; i < RF_NUM_OF_HEAPS; ++i)
     {
-        LOG_ERROR("[{0}] CreateDescriptorHeap[0] error {1:x}", _name, hr);
-        return;
+        if (!_frameHeaps[i].Initialize(InDevice, 1, 1, 1))
+        {
+            LOG_ERROR("[{0}] Failed to init heap", _name);
+            _init = false;
+            State::Instance().skipHeapCapture = false;
+            return;
+        }
     }
-
-    hr = InDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&_srvHeap[1]));
-
-    if (FAILED(hr))
-    {
-        LOG_ERROR("[{0}] CreateDescriptorHeap[1] error {1:x}", _name, hr);
-        return;
-    }
-
-    hr = InDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&_srvHeap[2]));
 
     State::Instance().skipHeapCapture = false;
 
-    if (FAILED(hr))
-    {
-        LOG_ERROR("[{0}] CreateDescriptorHeap[2] error {1:x}", _name, hr);
-        return;
-    }
-
-    _init = _srvHeap[2] != nullptr;
+    _init = true;
 }
 
 RF_Dx12::~RF_Dx12()
@@ -371,22 +299,13 @@ RF_Dx12::~RF_Dx12()
         _rootSignature = nullptr;
     }
 
-    if (_srvHeap[0] != nullptr)
+    for (int i = 0; i < RF_NUM_OF_HEAPS; ++i)
     {
-        _srvHeap[0]->Release();
-        _srvHeap[0] = nullptr;
-    }
-
-    if (_srvHeap[1] != nullptr)
-    {
-        _srvHeap[1]->Release();
-        _srvHeap[1] = nullptr;
-    }
-
-    if (_srvHeap[2] != nullptr)
-    {
-        _srvHeap[2]->Release();
-        _srvHeap[2] = nullptr;
+        if (_frameHeaps[i].Heap != nullptr)
+        {
+            _frameHeaps[i].Heap->Release();
+            _frameHeaps[i].Heap = nullptr;
+        }
     }
 
     if (_constantBuffer != nullptr)

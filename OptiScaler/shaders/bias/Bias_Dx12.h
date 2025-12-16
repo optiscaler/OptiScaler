@@ -6,6 +6,8 @@
 #include <d3dx/d3dx12.h>
 #include <shaders/Shaders_Dx12Utils.h>
 
+#define BIAS_NUM_OF_HEAPS 2
+
 class Bias_Dx12
 {
   private:
@@ -20,16 +22,7 @@ class Bias_Dx12
 
     ID3D12RootSignature* _rootSignature = nullptr;
     ID3D12PipelineState* _pipelineState = nullptr;
-    ID3D12DescriptorHeap* _srvHeap[2] = { nullptr, nullptr };
-    D3D12_CPU_DESCRIPTOR_HANDLE _cpuSrvHandle[2] { { NULL }, { NULL } };
-    D3D12_CPU_DESCRIPTOR_HANDLE _cpuUavHandle[2] { { NULL }, { NULL } };
-    D3D12_CPU_DESCRIPTOR_HANDLE _cpuCbvHandle[2] { { NULL }, { NULL } };
-    D3D12_GPU_DESCRIPTOR_HANDLE _gpuSrvHandle[2] { { NULL }, { NULL } };
-    D3D12_GPU_DESCRIPTOR_HANDLE _gpuUavHandle[2] { { NULL }, { NULL } };
-    D3D12_GPU_DESCRIPTOR_HANDLE _gpuCbvHandle[2] { { NULL }, { NULL } };
-
-    inline static bool CreateComputeShader(ID3D12Device* device, ID3D12RootSignature* rootSignature,
-                                           ID3D12PipelineState** pipelineState, ID3DBlob* shaderBlob);
+    FrameDescriptorHeap _frameHeaps[BIAS_NUM_OF_HEAPS];
 
     ID3D12Device* _device = nullptr;
     ID3D12Resource* _buffer = nullptr;

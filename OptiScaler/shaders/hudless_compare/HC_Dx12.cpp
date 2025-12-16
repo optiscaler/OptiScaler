@@ -24,56 +24,19 @@ DXGI_FORMAT HC_Dx12::ToSRGB(DXGI_FORMAT f)
 bool HC_Dx12::CreateBufferResource(UINT index, ID3D12Device* InDevice, ID3D12Resource* InSource,
                                    D3D12_RESOURCE_STATES InState)
 {
-    if (InDevice == nullptr || InSource == nullptr)
-        return false;
-
-    D3D12_RESOURCE_DESC texDesc = InSource->GetDesc();
-
-    if (_buffer[index] != nullptr)
-    {
-        auto bufDesc = _buffer[index]->GetDesc();
-
-        if (bufDesc.Width != (UINT64) (texDesc.Width) || bufDesc.Height != (UINT) (texDesc.Height) ||
-            bufDesc.Format != texDesc.Format)
-        {
-            _buffer[index]->Release();
-            _buffer[index] = nullptr;
-        }
-        else
-        {
-            return true;
-        }
-    }
-
     LOG_DEBUG("[{0}] Start!", _name);
 
-    D3D12_HEAP_PROPERTIES heapProperties;
-    D3D12_HEAP_FLAGS heapFlags;
-    HRESULT hr = InSource->GetHeapProperties(&heapProperties, &heapFlags);
+    auto resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
-    if (hr != S_OK)
+    auto result = ShaderDx12Utils::CreateBufferResource(InDevice, InSource, InState, &_buffer[index], resourceFlags);
+
+    if (result)
     {
-        LOG_ERROR("[{0}] GetHeapProperties result: {1:x}", _name.c_str(), hr);
-        return false;
+        _buffer[index]->SetName(L"HC_Buffer");
+        _bufferState[index] = InState;
     }
 
-    texDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
-    texDesc.Width = texDesc.Width;
-    texDesc.Height = texDesc.Height;
-
-    hr = InDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &texDesc, InState, nullptr,
-                                           IID_PPV_ARGS(&_buffer[index]));
-
-    if (hr != S_OK)
-    {
-        LOG_ERROR("[{0}] CreateCommittedResource result: {1:x}", _name, hr);
-        return false;
-    }
-
-    _buffer[index]->SetName(L"HC_Buffer");
-    _bufferState[index] = InState;
-
-    return true;
+    return result;
 }
 
 void HC_Dx12::ResourceBarrier(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* resource,

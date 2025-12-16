@@ -22,6 +22,11 @@ class FrameDescriptorHeap
     UINT uavOffset = 0;
     UINT cbvOffset = 0;
 
+
+
+    // TODO: Add rtv (HC)
+
+
     // Initialize the heap based on counts
     bool Initialize(ID3D12Device* device, UINT numSrv, UINT numUav, UINT numCbv)
     {
@@ -148,28 +153,29 @@ namespace ShaderDx12Utils
 
     static bool CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InResource, D3D12_RESOURCE_STATES InState,
                                      ID3D12Resource** OutResource, D3D12_RESOURCE_FLAGS ResourceFlags,
-                                     uint64_t InWidth = 0, uint32_t InHeight = 0)
+                                     uint64_t InWidth = 0, uint32_t InHeight = 0,
+                                     DXGI_FORMAT InFormat = DXGI_FORMAT_UNKNOWN)
     {
         if (InDevice == nullptr || InResource == nullptr)
             return false;
 
         auto inDesc = InResource->GetDesc();
 
-        if (InWidth == 0 && InHeight == 0)
+        if (InWidth != 0 && InHeight != 0)
         {
-            InWidth = inDesc.Width;
-            InHeight = inDesc.Height;
+            inDesc.Width = InWidth;
+            inDesc.Height = InHeight;
         }
 
         if (*OutResource != nullptr)
         {
             auto bufDesc = (*OutResource)->GetDesc();
 
-            if (bufDesc.Width != InWidth || bufDesc.Height != InHeight || bufDesc.Format != inDesc.Format)
+            if (bufDesc.Width != inDesc.Width || bufDesc.Height != inDesc.Height || bufDesc.Format != inDesc.Format)
             {
                 (*OutResource)->Release();
                 (*OutResource) = nullptr;
-                LOG_WARN("Release {}x{}, new one: {}x{}", bufDesc.Width, bufDesc.Height, InWidth, InHeight);
+                LOG_WARN("Release {}x{}, new one: {}x{}", bufDesc.Width, bufDesc.Height, inDesc.Width, inDesc.Height);
             }
             else
             {
@@ -187,7 +193,9 @@ namespace ShaderDx12Utils
             return false;
         }
 
-        inDesc.Flags = ResourceFlags;
+        inDesc.Flags |= ResourceFlags;
+        if (InFormat != DXGI_FORMAT_UNKNOWN)
+            inDesc.Format = InFormat;
 
         hr = InDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &inDesc, InState, nullptr,
                                                IID_PPV_ARGS(OutResource));
@@ -198,7 +206,7 @@ namespace ShaderDx12Utils
             return false;
         }
 
-        LOG_DEBUG("Created new one: {}x{}", InWidth, InHeight);
+        LOG_DEBUG("Created new one: {}x{}", inDesc.Width, inDesc.Height);
         return true;
     }
 
