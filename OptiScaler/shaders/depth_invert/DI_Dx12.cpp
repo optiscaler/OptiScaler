@@ -92,43 +92,32 @@ DI_Dx12::DI_Dx12(std::string InName, ID3D12Device* InDevice) : _name(InName), _d
 
     // Describe and create the root signature
     // ---------------------------------------------------
-    D3D12_DESCRIPTOR_RANGE descriptorRange[2];
+    D3D12_DESCRIPTOR_RANGE descriptorRanges[2];
 
     // SRV Range (Input Texture)
-    descriptorRange[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-    descriptorRange[0].NumDescriptors = 1;
-    descriptorRange[0].BaseShaderRegister = 0; // Assuming t0 register in HLSL for SRV
-    descriptorRange[0].RegisterSpace = 0;
-    descriptorRange[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    descriptorRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    descriptorRanges[0].NumDescriptors = 1;
+    descriptorRanges[0].BaseShaderRegister = 0; // Assuming t0 register in HLSL for SRV
+    descriptorRanges[0].RegisterSpace = 0;
+    descriptorRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
     // UAV Range (Output Texture)
-    descriptorRange[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-    descriptorRange[1].NumDescriptors = 1;
-    descriptorRange[1].BaseShaderRegister = 0; // Assuming u0 register in HLSL for UAV
-    descriptorRange[1].RegisterSpace = 0;
-    descriptorRange[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    descriptorRanges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+    descriptorRanges[1].NumDescriptors = 1;
+    descriptorRanges[1].BaseShaderRegister = 0; // Assuming u0 register in HLSL for UAV
+    descriptorRanges[1].RegisterSpace = 0;
+    descriptorRanges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-    // Define the root parameter (descriptor table)
-    // ---------------------------------------------------
-    D3D12_ROOT_PARAMETER rootParameters[2];
+    // Define ONE root parameter (descriptor table)
+    D3D12_ROOT_PARAMETER rootParameter = {};
+    rootParameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    rootParameter.DescriptorTable.NumDescriptorRanges = std::size(descriptorRanges);
+    rootParameter.DescriptorTable.pDescriptorRanges = descriptorRanges;
+    rootParameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-    // Root Parameter for SRV
-    rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-    rootParameters[0].DescriptorTable.NumDescriptorRanges = 1;                 // One range (SRV)
-    rootParameters[0].DescriptorTable.pDescriptorRanges = &descriptorRange[0]; // Point to the SRV range
-    rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-
-    // Root Parameter for UAV
-    rootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-    rootParameters[1].DescriptorTable.NumDescriptorRanges = 1;                 // One range (UAV)
-    rootParameters[1].DescriptorTable.pDescriptorRanges = &descriptorRange[1]; // Point to the UAV range
-    rootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-
-    // A root signature is an array of root parameters
-    // ---------------------------------------------------
     D3D12_ROOT_SIGNATURE_DESC rootSigDesc;
-    rootSigDesc.NumParameters = 2;
-    rootSigDesc.pParameters = rootParameters;
+    rootSigDesc.NumParameters = 1;
+    rootSigDesc.pParameters = &rootParameter;
     rootSigDesc.NumStaticSamplers = 0;
     rootSigDesc.pStaticSamplers = nullptr;
     rootSigDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
