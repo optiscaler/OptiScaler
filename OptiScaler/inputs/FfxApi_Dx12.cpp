@@ -321,7 +321,7 @@ ffxReturnCode_t ffxCreateContext_Dx12(ffxContext* context, ffxCreateContextDescH
         auto ffxApiResult = FfxApiProxy::D3D12_CreateContext(context, desc, memCb);
         state.skipHeapCapture = false;
 
-        LOG_ERROR("D3D12_CreateContext result: {:X} ({}), context: {:X}", (UINT) ffxApiResult,
+        LOG_DEBUG("D3D12_CreateContext result: {:X} ({}), context: {:X}", (UINT) ffxApiResult,
                   FfxApiProxy::ReturnCodeToString(ffxApiResult), (size_t) *context);
 
         if (!upscaleContext)

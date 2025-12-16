@@ -950,7 +950,7 @@ class FfxApiProxy
         switch (result)
         {
         case FFX_API_RETURN_OK:
-            return "The oparation was successful.";
+            return "The operation was successful.";
         case FFX_API_RETURN_ERROR:
             return "An error occurred that is not further specified.";
         case FFX_API_RETURN_ERROR_UNKNOWN_DESCTYPE:
