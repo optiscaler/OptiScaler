@@ -6,6 +6,9 @@
 
 #include <d3d12.h>
 #include <d3dx/d3dx12.h>
+#include <shaders/Shaders_Common.h>
+
+#define RCAS_NUM_OF_HEAPS 2
 
 class RCAS_Dx12
 {
@@ -36,15 +39,7 @@ class RCAS_Dx12
 
     ID3D12RootSignature* _rootSignature = nullptr;
     ID3D12PipelineState* _pipelineState = nullptr;
-    ID3D12DescriptorHeap* _srvHeap[4] = { nullptr, nullptr, nullptr, nullptr };
-    D3D12_CPU_DESCRIPTOR_HANDLE _cpuSrvHandle[2] { { NULL }, { NULL } };
-    D3D12_CPU_DESCRIPTOR_HANDLE _cpuSrvHandle2[2] { { NULL }, { NULL } };
-    D3D12_CPU_DESCRIPTOR_HANDLE _cpuUavHandle[2] { { NULL }, { NULL } };
-    D3D12_CPU_DESCRIPTOR_HANDLE _cpuCbvHandle[2] { { NULL }, { NULL } };
-    D3D12_GPU_DESCRIPTOR_HANDLE _gpuSrvHandle[2] { { NULL }, { NULL } };
-    D3D12_GPU_DESCRIPTOR_HANDLE _gpuSrvHandle2[2] { { NULL }, { NULL } };
-    D3D12_GPU_DESCRIPTOR_HANDLE _gpuUavHandle[2] { { NULL }, { NULL } };
-    D3D12_GPU_DESCRIPTOR_HANDLE _gpuCbvHandle[2] { { NULL }, { NULL } };
+    FrameDescriptorHeap _frameHeaps[RCAS_NUM_OF_HEAPS];
 
     inline static bool CreateComputeShader(ID3D12Device* device, ID3D12RootSignature* rootSignature,
                                            ID3D12PipelineState** pipelineState, ID3DBlob* shaderBlob);

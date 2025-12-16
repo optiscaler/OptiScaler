@@ -127,55 +127,8 @@ bool RCAS_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCm
     LOG_DEBUG("[{0}] Start!", _name);
 
     _counter++;
-    _counter = _counter % 2;
-
-    if (_cpuSrvHandle[_counter].ptr == NULL)
-        _cpuSrvHandle[_counter] = _srvHeap[_counter]->GetCPUDescriptorHandleForHeapStart();
-
-    if (_cpuSrvHandle2[_counter].ptr == NULL)
-    {
-        _cpuSrvHandle2[_counter] = _cpuSrvHandle[_counter];
-        _cpuSrvHandle2[_counter].ptr +=
-            InDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    }
-
-    if (_cpuUavHandle[_counter].ptr == NULL)
-    {
-        _cpuUavHandle[_counter] = _cpuSrvHandle2[_counter];
-        _cpuUavHandle[_counter].ptr +=
-            InDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    }
-
-    if (_cpuCbvHandle[_counter].ptr == NULL)
-    {
-        _cpuCbvHandle[_counter] = _cpuUavHandle[_counter];
-        _cpuCbvHandle[_counter].ptr +=
-            InDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    }
-
-    if (_gpuSrvHandle[_counter].ptr == NULL)
-        _gpuSrvHandle[_counter] = _srvHeap[_counter]->GetGPUDescriptorHandleForHeapStart();
-
-    if (_gpuSrvHandle2[_counter].ptr == NULL)
-    {
-        _gpuSrvHandle2[_counter] = _gpuSrvHandle[_counter];
-        _gpuSrvHandle2[_counter].ptr +=
-            InDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    }
-
-    if (_gpuUavHandle[_counter].ptr == NULL)
-    {
-        _gpuUavHandle[_counter] = _gpuSrvHandle2[_counter];
-        _gpuUavHandle[_counter].ptr +=
-            InDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    }
-
-    if (_gpuCbvHandle[_counter].ptr == NULL)
-    {
-        _gpuCbvHandle[_counter] = _gpuUavHandle[_counter];
-        _gpuCbvHandle[_counter].ptr +=
-            InDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    }
+    _counter = _counter % RCAS_NUM_OF_HEAPS;
+    FrameDescriptorHeap& currentHeap = _frameHeaps[_counter];
 
     auto inDesc = InResource->GetDesc();
     auto mvDesc = InMotionVectors->GetDesc();
@@ -188,7 +141,7 @@ bool RCAS_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCm
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Texture2D.MipLevels = 1;
 
-    InDevice->CreateShaderResourceView(InResource, &srvDesc, _cpuSrvHandle[_counter]);
+    InDevice->CreateShaderResourceView(InResource, &srvDesc, currentHeap.GetSrvCPU(0));
 
     // Create SRV for Motion Texture
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc2 = {};
@@ -197,7 +150,7 @@ bool RCAS_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCm
     srvDesc2.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc2.Texture2D.MipLevels = 1;
 
-    InDevice->CreateShaderResourceView(InMotionVectors, &srvDesc2, _cpuSrvHandle2[_counter]);
+    InDevice->CreateShaderResourceView(InMotionVectors, &srvDesc2, currentHeap.GetSrvCPU(1));
 
     // Create UAV for Output Texture
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
@@ -205,7 +158,7 @@ bool RCAS_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCm
     uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
     uavDesc.Texture2D.MipSlice = 0;
 
-    InDevice->CreateUnorderedAccessView(OutResource, nullptr, &uavDesc, _cpuUavHandle[_counter]);
+    InDevice->CreateUnorderedAccessView(OutResource, nullptr, &uavDesc, currentHeap.GetUavCPU(0));
 
     if (_constantBuffer == nullptr)
     {
@@ -271,18 +224,15 @@ bool RCAS_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCm
     D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
     cbvDesc.BufferLocation = _constantBuffer->GetGPUVirtualAddress();
     cbvDesc.SizeInBytes = sizeof(constants);
-    InDevice->CreateConstantBufferView(&cbvDesc, _cpuCbvHandle[_counter]);
+    InDevice->CreateConstantBufferView(&cbvDesc, currentHeap.GetCbvCPU(0));
 
-    ID3D12DescriptorHeap* heaps[] = { _srvHeap[_counter] };
+    ID3D12DescriptorHeap* heaps[] = { currentHeap.Heap };
     InCmdList->SetDescriptorHeaps(_countof(heaps), heaps);
 
     InCmdList->SetComputeRootSignature(_rootSignature);
     InCmdList->SetPipelineState(_pipelineState);
 
-    InCmdList->SetComputeRootDescriptorTable(0, _gpuSrvHandle[_counter]);
-    InCmdList->SetComputeRootDescriptorTable(1, _gpuSrvHandle2[_counter]);
-    InCmdList->SetComputeRootDescriptorTable(2, _gpuUavHandle[_counter]);
-    InCmdList->SetComputeRootDescriptorTable(3, _gpuCbvHandle[_counter]);
+    InCmdList->SetComputeRootDescriptorTable(0, currentHeap.GetTableGPUStart());
 
     UINT dispatchWidth = 0;
     UINT dispatchHeight = 0;
@@ -305,70 +255,39 @@ RCAS_Dx12::RCAS_Dx12(std::string InName, ID3D12Device* InDevice) : _name(InName)
 
     LOG_DEBUG("{0} start!", _name);
 
-    // Describe and create the root signature
-    // ---------------------------------------------------
-    D3D12_DESCRIPTOR_RANGE descriptorRange[4];
+    D3D12_DESCRIPTOR_RANGE descriptorRanges[3];
 
-    // SRV Range (Input Texture)
-    descriptorRange[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-    descriptorRange[0].NumDescriptors = 1;
-    descriptorRange[0].BaseShaderRegister = 0; // Assuming t0 register in HLSL for SRV
-    descriptorRange[0].RegisterSpace = 0;
-    descriptorRange[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-
-    // SRV Range (Motion Texture)
-    descriptorRange[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-    descriptorRange[1].NumDescriptors = 1;
-    descriptorRange[1].BaseShaderRegister = 1; // Assuming t1 register in HLSL for SRV
-    descriptorRange[1].RegisterSpace = 0;
-    descriptorRange[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    // SRV Range (Input Texture + Motion Texture)
+    descriptorRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    descriptorRanges[0].NumDescriptors = 2;     // <--- two resources
+    descriptorRanges[0].BaseShaderRegister = 0; // Starts at t0 register in HLSL for SRV
+    descriptorRanges[0].RegisterSpace = 0;
+    descriptorRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
     // UAV Range (Output Texture)
-    descriptorRange[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-    descriptorRange[2].NumDescriptors = 1;
-    descriptorRange[2].BaseShaderRegister = 0; // Assuming u0 register in HLSL for UAV
-    descriptorRange[2].RegisterSpace = 0;
-    descriptorRange[2].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    descriptorRanges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+    descriptorRanges[1].NumDescriptors = 1;
+    descriptorRanges[1].BaseShaderRegister = 0; // Assuming u0 register in HLSL for UAV
+    descriptorRanges[1].RegisterSpace = 0;
+    descriptorRanges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
     // CBV Range (Params)
-    descriptorRange[3].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-    descriptorRange[3].NumDescriptors = 1;
-    descriptorRange[3].BaseShaderRegister = 0; // Assuming b0 register in HLSL for CBV
-    descriptorRange[3].RegisterSpace = 0;
-    descriptorRange[3].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    descriptorRanges[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+    descriptorRanges[2].NumDescriptors = 1;
+    descriptorRanges[2].BaseShaderRegister = 0; // Assuming b0 register in HLSL for CBV
+    descriptorRanges[2].RegisterSpace = 0;
+    descriptorRanges[2].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-    // Define the root parameter (descriptor table)
-    // ---------------------------------------------------
-    D3D12_ROOT_PARAMETER rootParameters[4];
+    // Define ONE root parameter (descriptor table)
+    D3D12_ROOT_PARAMETER rootParameter = {};
+    rootParameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    rootParameter.DescriptorTable.NumDescriptorRanges = std::size(descriptorRanges);
+    rootParameter.DescriptorTable.pDescriptorRanges = descriptorRanges;
+    rootParameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-    // Root Parameter for SRV 1
-    rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-    rootParameters[0].DescriptorTable.NumDescriptorRanges = 1;                 // One range (SRV)
-    rootParameters[0].DescriptorTable.pDescriptorRanges = &descriptorRange[0]; // Point to the SRV range
-    rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-
-    rootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-    rootParameters[1].DescriptorTable.NumDescriptorRanges = 1;                 // One range (SRV)
-    rootParameters[1].DescriptorTable.pDescriptorRanges = &descriptorRange[1]; // Point to the SRV range
-    rootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-
-    // Root Parameter for UAV
-    rootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-    rootParameters[2].DescriptorTable.NumDescriptorRanges = 1;                 // One range (UAV)
-    rootParameters[2].DescriptorTable.pDescriptorRanges = &descriptorRange[2]; // Point to the UAV range
-    rootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-
-    // Root Parameter for CBV
-    rootParameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-    rootParameters[3].DescriptorTable.NumDescriptorRanges = 1;                 // One range (CBV)
-    rootParameters[3].DescriptorTable.pDescriptorRanges = &descriptorRange[3]; // Point to the CBV range
-    rootParameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-
-    // A root signature is an array of root parameters
-    // ---------------------------------------------------
     D3D12_ROOT_SIGNATURE_DESC rootSigDesc;
-    rootSigDesc.NumParameters = 4;
-    rootSigDesc.pParameters = rootParameters;
+    rootSigDesc.NumParameters = 1;
+    rootSigDesc.pParameters = &rootParameter;
     rootSigDesc.NumStaticSamplers = 0;
     rootSigDesc.pStaticSamplers = nullptr;
     rootSigDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
@@ -455,79 +374,28 @@ RCAS_Dx12::RCAS_Dx12(std::string InName, ID3D12Device* InDevice) : _name(InName)
         }
     }
 
-    D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-    heapDesc.NumDescriptors = 4; // SRV x 2 + UAV + CBV
-    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-
     State::Instance().skipHeapCapture = true;
 
-    auto hr = InDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&_srvHeap[0]));
-
-    if (FAILED(hr))
+    for (int i = 0; i < RCAS_NUM_OF_HEAPS; ++i)
     {
-        LOG_ERROR("[{0}] CreateDescriptorHeap[0] error {1:x}", _name, (unsigned int) hr);
-        return;
+        if (!_frameHeaps[i].Initialize(InDevice, 2, 1, 1))
+        {
+            LOG_ERROR("[{0}] Failed to init heap", _name);
+            _init = false;
+            State::Instance().skipHeapCapture = false;
+            return;
+        }
     }
-
-    hr = InDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&_srvHeap[1]));
-
-    if (FAILED(hr))
-    {
-        LOG_ERROR("[{0}] CreateDescriptorHeap[1] error {1:x}", _name, (unsigned int) hr);
-        return;
-    }
-
-    hr = InDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&_srvHeap[2]));
-
-    if (FAILED(hr))
-    {
-        LOG_ERROR("[{0}] CreateDescriptorHeap[2] error {1:x}", _name, (unsigned int) hr);
-        return;
-    }
-
-    hr = InDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&_srvHeap[3]));
 
     State::Instance().skipHeapCapture = false;
 
-    if (FAILED(hr))
-    {
-        LOG_ERROR("[{0}] CreateDescriptorHeap[3] error {1:x}", _name, (unsigned int) hr);
-        return;
-    }
-
-    _init = _srvHeap[3] != nullptr;
+    _init = true;
 }
 
 RCAS_Dx12::~RCAS_Dx12()
 {
     if (!_init || State::Instance().isShuttingDown)
         return;
-
-    // ID3D12Fence* d3d12Fence = nullptr;
-
-    // do
-    //{
-    //	if (_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&d3d12Fence)) != S_OK)
-    //		break;
-
-    //	d3d12Fence->Signal(999);
-
-    //	HANDLE fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-
-    //	if (fenceEvent != NULL && d3d12Fence->SetEventOnCompletion(999, fenceEvent) == S_OK)
-    //	{
-    //		WaitForSingleObject(fenceEvent, INFINITE);
-    //		CloseHandle(fenceEvent);
-    //	}
-
-    //} while (false);
-
-    // if (d3d12Fence != nullptr)
-    //{
-    //	d3d12Fence->Release();
-    //	d3d12Fence = nullptr;
-    // }
 
     if (_rootSignature != nullptr)
     {
@@ -541,28 +409,13 @@ RCAS_Dx12::~RCAS_Dx12()
         _pipelineState = nullptr;
     }
 
-    if (_srvHeap[0] != nullptr)
+    for (int i = 0; i < RCAS_NUM_OF_HEAPS; ++i)
     {
-        _srvHeap[0]->Release();
-        _srvHeap[0] = nullptr;
-    }
-
-    if (_srvHeap[1] != nullptr)
-    {
-        _srvHeap[1]->Release();
-        _srvHeap[1] = nullptr;
-    }
-
-    if (_srvHeap[2] != nullptr)
-    {
-        _srvHeap[2]->Release();
-        _srvHeap[2] = nullptr;
-    }
-
-    if (_srvHeap[3] != nullptr)
-    {
-        _srvHeap[3]->Release();
-        _srvHeap[3] = nullptr;
+        if (_frameHeaps[i].Heap != nullptr)
+        {
+            _frameHeaps[i].Heap->Release();
+            _frameHeaps[i].Heap = nullptr;
+        }
     }
 
     if (_buffer != nullptr)
