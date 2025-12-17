@@ -14,10 +14,13 @@ class FrameDescriptorHeap
     }
 
   public:
-    ID3D12DescriptorHeap* Heap = nullptr;
-    UINT descriptorSize = 0;
+    ID3D12DescriptorHeap* heapCSU = nullptr; // Cbv + Srv + Uav
+    ID3D12DescriptorHeap* heapRtv = nullptr;
+    UINT descriptorSizeCSU = 0;
+    UINT descriptorSizeRtv = 0;
 
-    UINT totalDescriptors = 0;
+    UINT totalDescriptorsCSU = 0;
+    UINT totalDescriptorsRtv = 0;
     UINT srvOffset = 0;
     UINT uavOffset = 0;
     UINT cbvOffset = 0;
@@ -25,22 +28,40 @@ class FrameDescriptorHeap
     // TODO: Add rtv (HC)
 
     // Initialize the heap based on counts
-    bool Initialize(ID3D12Device* device, UINT numSrv, UINT numUav, UINT numCbv)
+    bool Initialize(ID3D12Device* device, UINT numSrv, UINT numUav, UINT numCbv, UINT numRtv = 0)
     {
-        totalDescriptors = numSrv + numUav + numCbv;
-        descriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        totalDescriptorsCSU = numSrv + numUav + numCbv;
+        totalDescriptorsRtv = numRtv;
 
-        srvOffset = 0;
-        uavOffset = numSrv;
-        cbvOffset = numSrv + numUav;
+        if (totalDescriptorsCSU > 0)
+        {
+            descriptorSizeCSU = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-        D3D12_DESCRIPTOR_HEAP_DESC desc = {};
-        desc.NumDescriptors = totalDescriptors;
-        desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+            srvOffset = 0;
+            uavOffset = numSrv;
+            cbvOffset = numSrv + numUav;
 
-        if (FAILED(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&Heap))))
-            return false;
+            D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+            desc.NumDescriptors = totalDescriptorsCSU;
+            desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+            desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+
+            if (FAILED(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&heapCSU))))
+                return false;
+        }
+
+        if (totalDescriptorsRtv > 0)
+        {
+            descriptorSizeRtv = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
+            D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+            desc.NumDescriptors = totalDescriptorsRtv;
+            desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+            desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+            if (FAILED(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&heapRtv))))
+                return false;
+        }
 
         return true;
     }
@@ -51,8 +72,8 @@ class FrameDescriptorHeap
         if (srvOffset + index >= uavOffset)
             return getEmpty();
 
-        CD3DX12_CPU_DESCRIPTOR_HANDLE handle(Heap->GetCPUDescriptorHandleForHeapStart());
-        handle.Offset(srvOffset + index, descriptorSize);
+        CD3DX12_CPU_DESCRIPTOR_HANDLE handle(heapCSU->GetCPUDescriptorHandleForHeapStart());
+        handle.Offset(srvOffset + index, descriptorSizeCSU);
         return handle;
     }
 
@@ -61,31 +82,44 @@ class FrameDescriptorHeap
         if (uavOffset + index >= cbvOffset)
             return getEmpty();
 
-        CD3DX12_CPU_DESCRIPTOR_HANDLE handle(Heap->GetCPUDescriptorHandleForHeapStart());
-        handle.Offset(uavOffset + index, descriptorSize);
+        CD3DX12_CPU_DESCRIPTOR_HANDLE handle(heapCSU->GetCPUDescriptorHandleForHeapStart());
+        handle.Offset(uavOffset + index, descriptorSizeCSU);
         return handle;
     }
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE GetCbvCPU(UINT index)
     {
-        if (cbvOffset + index >= totalDescriptors)
+        if (cbvOffset + index >= totalDescriptorsCSU)
             return getEmpty();
 
-        CD3DX12_CPU_DESCRIPTOR_HANDLE handle(Heap->GetCPUDescriptorHandleForHeapStart());
-        handle.Offset(cbvOffset + index, descriptorSize);
+        CD3DX12_CPU_DESCRIPTOR_HANDLE handle(heapCSU->GetCPUDescriptorHandleForHeapStart());
+        handle.Offset(cbvOffset + index, descriptorSizeCSU);
         return handle;
     }
 
-    // Get the GPU handle for the ENTIRE table (starts at SRV 0)
+    CD3DX12_CPU_DESCRIPTOR_HANDLE GetRtvCPU(UINT index)
+    {
+        if (index >= totalDescriptorsRtv)
+            return getEmpty();
+
+        CD3DX12_CPU_DESCRIPTOR_HANDLE handle(heapRtv->GetCPUDescriptorHandleForHeapStart());
+        handle.Offset(index, descriptorSizeRtv);
+        return handle;
+    }
+
+    // Get the GPU handle for the ENTIRE table (starts at SRV 0), only CSU
     CD3DX12_GPU_DESCRIPTOR_HANDLE GetTableGPUStart()
     {
-        return CD3DX12_GPU_DESCRIPTOR_HANDLE(Heap->GetGPUDescriptorHandleForHeapStart());
+        return CD3DX12_GPU_DESCRIPTOR_HANDLE(heapCSU->GetGPUDescriptorHandleForHeapStart());
     }
 
     ~FrameDescriptorHeap()
     {
-        if (Heap)
-            Heap->Release();
+        if (heapCSU)
+            heapCSU->Release();
+
+        if (heapRtv)
+            heapRtv->Release();
     }
 };
 
