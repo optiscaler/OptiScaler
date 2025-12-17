@@ -93,7 +93,7 @@ bool Bias_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCm
     cbvDesc.SizeInBytes = sizeof(constants);
     InDevice->CreateConstantBufferView(&cbvDesc, currentHeap.GetCbvCPU(0));
 
-    ID3D12DescriptorHeap* heaps[] = { currentHeap.heapCSU };
+    ID3D12DescriptorHeap* heaps[] = { currentHeap.GetHeapCSU() };
     InCmdList->SetDescriptorHeaps(_countof(heaps), heaps);
 
     InCmdList->SetComputeRootSignature(_rootSignature);
@@ -271,11 +271,7 @@ Bias_Dx12::~Bias_Dx12()
 
     for (int i = 0; i < BIAS_NUM_OF_HEAPS; ++i)
     {
-        if (_frameHeaps[i].heapCSU != nullptr)
-        {
-            _frameHeaps[i].heapCSU->Release();
-            _frameHeaps[i].heapCSU = nullptr;
-        }
+        _frameHeaps[i].ReleaseHeaps();
     }
 
     if (_buffer != nullptr)

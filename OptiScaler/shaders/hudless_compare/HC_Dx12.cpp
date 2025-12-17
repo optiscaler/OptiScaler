@@ -318,7 +318,7 @@ bool HC_Dx12::Dispatch(IDXGISwapChain3* sc, ID3D12GraphicsCommandList* cmdList, 
         _device->CreateConstantBufferView(&cbv, currentHeap.GetCbvCPU(0));
     }
 
-    ID3D12DescriptorHeap* heaps[] = { currentHeap.heapCSU };
+    ID3D12DescriptorHeap* heaps[] = { currentHeap.GetHeapCSU() };
     cmdList->SetDescriptorHeaps(_countof(heaps), heaps);
 
     cmdList->SetGraphicsRootSignature(_rootSignature);
@@ -367,17 +367,7 @@ HC_Dx12::~HC_Dx12()
 
     for (int i = 0; i < HC_NUM_OF_HEAPS; ++i)
     {
-        if (_frameHeaps[i].heapCSU != nullptr)
-        {
-            _frameHeaps[i].heapCSU->Release();
-            _frameHeaps[i].heapCSU = nullptr;
-        }
-
-        if (_frameHeaps[i].heapRtv != nullptr)
-        {
-            _frameHeaps[i].heapRtv->Release();
-            _frameHeaps[i].heapRtv = nullptr;
-        }
+        _frameHeaps[i].ReleaseHeaps();
     }
 
     if (_constantBuffer != nullptr)

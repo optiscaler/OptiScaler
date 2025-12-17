@@ -6,16 +6,9 @@
 
 class FrameDescriptorHeap
 {
-    static inline CD3DX12_CPU_DESCRIPTOR_HANDLE getEmpty()
-    {
-        LOG_ERROR("Trying to get a handle outside the range");
-        static CD3DX12_CPU_DESCRIPTOR_HANDLE empty {};
-        return empty;
-    }
-
-  public:
     ID3D12DescriptorHeap* heapCSU = nullptr; // Cbv + Srv + Uav
     ID3D12DescriptorHeap* heapRtv = nullptr;
+
     UINT descriptorSizeCSU = 0;
     UINT descriptorSizeRtv = 0;
 
@@ -25,8 +18,14 @@ class FrameDescriptorHeap
     UINT uavOffset = 0;
     UINT cbvOffset = 0;
 
-    // TODO: Add rtv (HC)
+    static inline CD3DX12_CPU_DESCRIPTOR_HANDLE getEmpty()
+    {
+        LOG_ERROR("Trying to get a handle outside the range");
+        static CD3DX12_CPU_DESCRIPTOR_HANDLE empty {};
+        return empty;
+    }
 
+  public:
     // Initialize the heap based on counts
     bool Initialize(ID3D12Device* device, UINT numSrv, UINT numUav, UINT numCbv, UINT numRtv = 0)
     {
@@ -113,7 +112,10 @@ class FrameDescriptorHeap
         return CD3DX12_GPU_DESCRIPTOR_HANDLE(heapCSU->GetGPUDescriptorHandleForHeapStart());
     }
 
-    ~FrameDescriptorHeap()
+    ID3D12DescriptorHeap* GetHeapCSU() { return heapCSU; }
+    ID3D12DescriptorHeap* GetHeapRtv() { return heapRtv; }
+
+    void ReleaseHeaps()
     {
         if (heapCSU)
             heapCSU->Release();
@@ -121,6 +123,8 @@ class FrameDescriptorHeap
         if (heapRtv)
             heapRtv->Release();
     }
+
+    ~FrameDescriptorHeap() { ReleaseHeaps(); }
 };
 
 namespace ShaderDx12Utils

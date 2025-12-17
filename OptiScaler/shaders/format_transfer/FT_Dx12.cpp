@@ -63,7 +63,7 @@ bool FT_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCmdL
     uavDesc.Texture2D.MipSlice = 0;
     InDevice->CreateUnorderedAccessView(OutResource, nullptr, &uavDesc, currentHeap.GetUavCPU(0));
 
-    ID3D12DescriptorHeap* heaps[] = { currentHeap.heapCSU };
+    ID3D12DescriptorHeap* heaps[] = { currentHeap.GetHeapCSU() };
     InCmdList->SetDescriptorHeaps(_countof(heaps), heaps);
 
     InCmdList->SetComputeRootSignature(_rootSignature);
@@ -291,11 +291,7 @@ FT_Dx12::~FT_Dx12()
 
     for (int i = 0; i < FT_NUM_OF_HEAPS; ++i)
     {
-        if (_frameHeaps[i].heapCSU != nullptr)
-        {
-            _frameHeaps[i].heapCSU->Release();
-            _frameHeaps[i].heapCSU = nullptr;
-        }
+        _frameHeaps[i].ReleaseHeaps();
     }
 
     if (_buffer != nullptr)
