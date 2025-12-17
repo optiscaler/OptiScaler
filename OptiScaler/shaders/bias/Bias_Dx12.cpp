@@ -10,7 +10,7 @@ bool Bias_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InS
     auto resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS |
                          D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS;
 
-    auto result = ShaderDx12Utils::CreateBufferResource(InDevice, InSource, InState, &_buffer, resourceFlags);
+    auto result = Shader_Dx12::CreateBufferResource(InDevice, InSource, InState, &_buffer, resourceFlags);
 
     if (result)
     {
@@ -23,7 +23,7 @@ bool Bias_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InS
 
 void Bias_Dx12::SetBufferState(ID3D12GraphicsCommandList* InCommandList, D3D12_RESOURCE_STATES InState)
 {
-    return ShaderDx12Utils::SetBufferState(InCommandList, InState, _buffer, &_bufferState);
+    return Shader_Dx12::SetBufferState(InCommandList, InState, _buffer, &_bufferState);
 }
 
 bool Bias_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InResource,
@@ -44,7 +44,7 @@ bool Bias_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCm
     // Create SRV for Input Texture
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Format = ShaderDx12Utils::TranslateTypelessFormats(inDesc.Format);
+    srvDesc.Format = Shader_Dx12::TranslateTypelessFormats(inDesc.Format);
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Texture2D.MipLevels = 1;
 
@@ -52,7 +52,7 @@ bool Bias_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCm
 
     // Create UAV for Output Texture
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-    uavDesc.Format = ShaderDx12Utils::TranslateTypelessFormats(outDesc.Format);
+    uavDesc.Format = Shader_Dx12::TranslateTypelessFormats(outDesc.Format);
     uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
     uavDesc.Texture2D.MipSlice = 0;
 
@@ -112,7 +112,7 @@ bool Bias_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCm
     return true;
 }
 
-Bias_Dx12::Bias_Dx12(std::string InName, ID3D12Device* InDevice) : _name(InName), _device(InDevice)
+Bias_Dx12::Bias_Dx12(std::string InName, ID3D12Device* InDevice) : Shader_Dx12(InName, InDevice)
 {
     if (InDevice == nullptr)
     {
@@ -221,7 +221,7 @@ Bias_Dx12::Bias_Dx12(std::string InName, ID3D12Device* InDevice) : _name(InName)
         }
 
         // create pso objects
-        if (!ShaderDx12Utils::CreateComputeShader(InDevice, _rootSignature, &_pipelineState, _recEncodeShader))
+        if (!Shader_Dx12::CreateComputeShader(InDevice, _rootSignature, &_pipelineState, _recEncodeShader))
         {
             LOG_ERROR("[{0}] CreateComputeShader error!", _name);
             return;
@@ -236,7 +236,7 @@ Bias_Dx12::Bias_Dx12(std::string InName, ID3D12Device* InDevice) : _name(InName)
 
     State::Instance().skipHeapCapture = true;
 
-    for (int i = 0; i < BIAS_NUM_OF_HEAPS; ++i)
+    for (int i = 0; i < BIAS_NUM_OF_HEAPS; i++)
     {
         if (!_frameHeaps[i].Initialize(InDevice, 1, 1, 1))
         {
@@ -269,7 +269,7 @@ Bias_Dx12::~Bias_Dx12()
         _pipelineState = nullptr;
     }
 
-    for (int i = 0; i < BIAS_NUM_OF_HEAPS; ++i)
+    for (int i = 0; i < BIAS_NUM_OF_HEAPS; i++)
     {
         _frameHeaps[i].ReleaseHeaps();
     }

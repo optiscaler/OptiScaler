@@ -5,10 +5,11 @@
 #include <d3d12.h>
 #include <d3dx/d3dx12.h>
 #include <shaders/Shaders_Dx12Utils.h>
+#include <shaders/Shader_Dx12.h>
 
 #define BIAS_NUM_OF_HEAPS 2
 
-class Bias_Dx12
+class Bias_Dx12 : public Shader_Dx12
 {
   private:
     struct alignas(256) InternalConstants
@@ -16,17 +17,9 @@ class Bias_Dx12
         float Bias;
     };
 
-    std::string _name = "";
-    bool _init = false;
-    int _counter = 0;
-
-    ID3D12RootSignature* _rootSignature = nullptr;
-    ID3D12PipelineState* _pipelineState = nullptr;
     FrameDescriptorHeap _frameHeaps[BIAS_NUM_OF_HEAPS];
 
-    ID3D12Device* _device = nullptr;
     ID3D12Resource* _buffer = nullptr;
-    ID3D12Resource* _constantBuffer = nullptr;
     D3D12_RESOURCE_STATES _bufferState = D3D12_RESOURCE_STATE_COMMON;
 
     UINT InNumThreadsX = 32;
@@ -39,7 +32,6 @@ class Bias_Dx12
                   float InBias, ID3D12Resource* OutResource);
 
     ID3D12Resource* Buffer() { return _buffer; }
-    bool IsInit() const { return _init; }
     bool CanRender() const { return _init && _buffer != nullptr; }
 
     Bias_Dx12(std::string InName, ID3D12Device* InDevice);

@@ -13,7 +13,7 @@ bool HC_Dx12::CreateBufferResource(UINT index, ID3D12Device* InDevice, ID3D12Res
 
     auto resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
-    auto result = ShaderDx12Utils::CreateBufferResource(InDevice, InSource, InState, &_buffer[index], resourceFlags);
+    auto result = Shader_Dx12::CreateBufferResource(InDevice, InSource, InState, &_buffer[index], resourceFlags);
 
     if (result)
     {
@@ -49,10 +49,8 @@ void HC_Dx12::SetBufferState(UINT index, ID3D12GraphicsCommandList* InCommandLis
     _bufferState[index] = InState;
 }
 
-HC_Dx12::HC_Dx12(std::string InName, ID3D12Device* InDevice)
+HC_Dx12::HC_Dx12(std::string InName, ID3D12Device* InDevice) : Shader_Dx12(InName, InDevice)
 {
-    _name = InName;
-
     DXGI_SWAP_CHAIN_DESC scDesc {};
     if (State::Instance().currentSwapchain->GetDesc(&scDesc) != S_OK)
     {
@@ -150,8 +148,8 @@ HC_Dx12::HC_Dx12(std::string InName, ID3D12Device* InDevice)
     graphicsPsoDesc.SampleMask = UINT_MAX;
     graphicsPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     graphicsPsoDesc.NumRenderTargets = 1;
-    graphicsPsoDesc.RTVFormats[0] = ShaderDx12Utils::TranslateTypelessFormats(
-        scDesc.BufferDesc.Format); // match swapchain RTV format (can be *_SRGB)
+    graphicsPsoDesc.RTVFormats[0] =
+        Shader_Dx12::TranslateTypelessFormats(scDesc.BufferDesc.Format); // match swapchain RTV format (can be *_SRGB)
     graphicsPsoDesc.SampleDesc = { 1, 0 };
 
     result = InDevice->CreateGraphicsPipelineState(&graphicsPsoDesc, IID_PPV_ARGS(&_pipelineState));
@@ -177,7 +175,7 @@ HC_Dx12::HC_Dx12(std::string InName, ID3D12Device* InDevice)
 
     State::Instance().skipHeapCapture = true;
 
-    for (int i = 0; i < HC_NUM_OF_HEAPS; ++i)
+    for (int i = 0; i < HC_NUM_OF_HEAPS; i++)
     {
         if (!_frameHeaps[i].Initialize(InDevice, 2, 0, 1, 1))
         {
@@ -191,7 +189,6 @@ HC_Dx12::HC_Dx12(std::string InName, ID3D12Device* InDevice)
     State::Instance().skipHeapCapture = false;
 
     _init = true;
-    _device = InDevice;
 }
 
 bool HC_Dx12::Dispatch(IDXGISwapChain3* sc, ID3D12GraphicsCommandList* cmdList, ID3D12Resource* hudless,
@@ -268,7 +265,7 @@ bool HC_Dx12::Dispatch(IDXGISwapChain3* sc, ID3D12GraphicsCommandList* cmdList, 
         srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
         srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         srv.Texture2D.MipLevels = 1;
-        srv.Format = ShaderDx12Utils::TranslateTypelessFormats(hudlessDesc.Format);
+        srv.Format = Shader_Dx12::TranslateTypelessFormats(hudlessDesc.Format);
         _device->CreateShaderResourceView(hudless, &srv, currentHeap.GetSrvCPU(0));
     }
 
@@ -277,14 +274,14 @@ bool HC_Dx12::Dispatch(IDXGISwapChain3* sc, ID3D12GraphicsCommandList* cmdList, 
         srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
         srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         srv.Texture2D.MipLevels = 1;
-        srv.Format = ShaderDx12Utils::TranslateTypelessFormats(scDesc.BufferDesc.Format);
+        srv.Format = Shader_Dx12::TranslateTypelessFormats(scDesc.BufferDesc.Format);
         _device->CreateShaderResourceView(_buffer[_counter], &srv, currentHeap.GetSrvCPU(1));
     }
 
     {
         D3D12_RENDER_TARGET_VIEW_DESC rtv {};
         rtv.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
-        rtv.Format = ShaderDx12Utils::TranslateTypelessFormats(scDesc.BufferDesc.Format);
+        rtv.Format = Shader_Dx12::TranslateTypelessFormats(scDesc.BufferDesc.Format);
         _device->CreateRenderTargetView(scBuffer, &rtv, currentHeap.GetRtvCPU(0));
     }
 
@@ -365,7 +362,7 @@ HC_Dx12::~HC_Dx12()
         _rootSignature = nullptr;
     }
 
-    for (int i = 0; i < HC_NUM_OF_HEAPS; ++i)
+    for (int i = 0; i < HC_NUM_OF_HEAPS; i++)
     {
         _frameHeaps[i].ReleaseHeaps();
     }

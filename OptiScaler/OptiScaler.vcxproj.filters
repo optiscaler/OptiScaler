@@ -629,6 +629,9 @@
     <ClInclude Include="shaders\Shaders_Dx12Utils.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="shaders\Shader_Dx12.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Config.cpp">
@@ -993,6 +996,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="hooks\Kernel_Hooks.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="shaders\Shader_Dx12.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

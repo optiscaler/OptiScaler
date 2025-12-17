@@ -5,23 +5,16 @@
 #include <d3d12.h>
 #include <d3dx/d3dx12.h>
 #include <shaders/Shaders_Dx12Utils.h>
+#include <shaders/Shader_Dx12.h>
 
 #define DS_NUM_OF_HEAPS 2
 
-class DS_Dx12
+class DS_Dx12 : public Shader_Dx12
 {
   private:
-    std::string _name = "";
-    bool _init = false;
-    int _counter = 0;
-
-    ID3D12RootSignature* _rootSignature = nullptr;
-    ID3D12PipelineState* _pipelineState = nullptr;
     FrameDescriptorHeap _frameHeaps[DS_NUM_OF_HEAPS];
 
-    ID3D12Device* _device = nullptr;
     ID3D12Resource* _buffer = nullptr;
-    ID3D12Resource* _constantBuffer = nullptr;
     D3D12_RESOURCE_STATES _bufferState = D3D12_RESOURCE_STATE_COMMON;
 
     uint32_t InNumThreadsX = 16;
@@ -35,7 +28,6 @@ class DS_Dx12
                   ID3D12Resource* OutResource);
 
     ID3D12Resource* Buffer() { return _buffer; }
-    bool IsInit() const { return _init; }
     bool CanRender() const { return _init && _buffer != nullptr; }
 
     DS_Dx12(std::string InName, ID3D12Device* InDevice);

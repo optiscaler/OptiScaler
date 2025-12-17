@@ -25,14 +25,14 @@ bool RF_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCmdL
     // Create SRV for Input Texture
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Format = ShaderDx12Utils::TranslateTypelessFormats(inDesc.Format);
+    srvDesc.Format = Shader_Dx12::TranslateTypelessFormats(inDesc.Format);
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Texture2D.MipLevels = 1;
     InDevice->CreateShaderResourceView(InResource, &srvDesc, currentHeap.GetSrvCPU(0));
 
     // Create UAV for Output Texture
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-    uavDesc.Format = ShaderDx12Utils::TranslateTypelessFormats(outDesc.Format);
+    uavDesc.Format = Shader_Dx12::TranslateTypelessFormats(outDesc.Format);
     uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
     uavDesc.Texture2D.MipSlice = 0;
     InDevice->CreateUnorderedAccessView(OutResource, nullptr, &uavDesc, currentHeap.GetUavCPU(0));
@@ -101,7 +101,7 @@ bool RF_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCmdL
     return true;
 }
 
-RF_Dx12::RF_Dx12(std::string InName, ID3D12Device* InDevice) : _name(InName), _device(InDevice)
+RF_Dx12::RF_Dx12(std::string InName, ID3D12Device* InDevice) : Shader_Dx12(InName, InDevice)
 {
     if (InDevice == nullptr)
     {
@@ -212,7 +212,7 @@ RF_Dx12::RF_Dx12(std::string InName, ID3D12Device* InDevice) : _name(InName), _d
         }
 
         // create pso objects
-        if (!ShaderDx12Utils::CreateComputeShader(InDevice, _rootSignature, &_pipelineState, _recEncodeShader))
+        if (!Shader_Dx12::CreateComputeShader(InDevice, _rootSignature, &_pipelineState, _recEncodeShader))
         {
             LOG_ERROR("[{0}] CreateComputeShader error!", _name);
             return;
@@ -227,7 +227,7 @@ RF_Dx12::RF_Dx12(std::string InName, ID3D12Device* InDevice) : _name(InName), _d
 
     State::Instance().skipHeapCapture = true;
 
-    for (int i = 0; i < RF_NUM_OF_HEAPS; ++i)
+    for (int i = 0; i < RF_NUM_OF_HEAPS; i++)
     {
         if (!_frameHeaps[i].Initialize(InDevice, 1, 1, 1))
         {
@@ -260,7 +260,7 @@ RF_Dx12::~RF_Dx12()
         _rootSignature = nullptr;
     }
 
-    for (int i = 0; i < RF_NUM_OF_HEAPS; ++i)
+    for (int i = 0; i < RF_NUM_OF_HEAPS; i++)
     {
         _frameHeaps[i].ReleaseHeaps();
     }

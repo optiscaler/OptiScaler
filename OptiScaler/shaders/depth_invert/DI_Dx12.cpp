@@ -14,8 +14,8 @@ bool DI_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InSou
 
     auto resourceFormat = DXGI_FORMAT_R32_FLOAT;
 
-    auto result = ShaderDx12Utils::CreateBufferResource(InDevice, InSource, InState, &_buffer, resourceFlags, InWidth,
-                                                        InHeight, resourceFormat);
+    auto result = Shader_Dx12::CreateBufferResource(InDevice, InSource, InState, &_buffer, resourceFlags, InWidth,
+                                                    InHeight, resourceFormat);
 
     if (result)
     {
@@ -28,7 +28,7 @@ bool DI_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InSou
 
 void DI_Dx12::SetBufferState(ID3D12GraphicsCommandList* InCommandList, D3D12_RESOURCE_STATES InState)
 {
-    return ShaderDx12Utils::SetBufferState(InCommandList, InState, _buffer, &_bufferState);
+    return Shader_Dx12::SetBufferState(InCommandList, InState, _buffer, &_bufferState);
 }
 
 bool DI_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InResource,
@@ -49,7 +49,7 @@ bool DI_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCmdL
     // Create SRV for Input Texture
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Format = ShaderDx12Utils::TranslateTypelessFormats(inDesc.Format);
+    srvDesc.Format = Shader_Dx12::TranslateTypelessFormats(inDesc.Format);
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Texture2D.MipLevels = 1;
     InDevice->CreateShaderResourceView(InResource, &srvDesc, currentHeap.GetSrvCPU(0));
@@ -80,7 +80,7 @@ bool DI_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCmdL
     return true;
 }
 
-DI_Dx12::DI_Dx12(std::string InName, ID3D12Device* InDevice) : _name(InName), _device(InDevice)
+DI_Dx12::DI_Dx12(std::string InName, ID3D12Device* InDevice) : Shader_Dx12(InName, InDevice)
 {
     if (InDevice == nullptr)
     {
@@ -175,7 +175,7 @@ DI_Dx12::DI_Dx12(std::string InName, ID3D12Device* InDevice) : _name(InName), _d
         }
 
         // create pso objects
-        if (!ShaderDx12Utils::CreateComputeShader(InDevice, _rootSignature, &_pipelineState, _recEncodeShader))
+        if (!Shader_Dx12::CreateComputeShader(InDevice, _rootSignature, &_pipelineState, _recEncodeShader))
         {
             LOG_ERROR("[{0}] CreateComputeShader error!", _name);
             return;
@@ -190,7 +190,7 @@ DI_Dx12::DI_Dx12(std::string InName, ID3D12Device* InDevice) : _name(InName), _d
 
     State::Instance().skipHeapCapture = true;
 
-    for (int i = 0; i < DI_NUM_OF_HEAPS; ++i)
+    for (int i = 0; i < DI_NUM_OF_HEAPS; i++)
     {
         if (!_frameHeaps[i].Initialize(InDevice, 1, 1, 0))
         {
@@ -223,7 +223,7 @@ DI_Dx12::~DI_Dx12()
         _rootSignature = nullptr;
     }
 
-    for (int i = 0; i < DI_NUM_OF_HEAPS; ++i)
+    for (int i = 0; i < DI_NUM_OF_HEAPS; i++)
     {
         _frameHeaps[i].ReleaseHeaps();
     }
