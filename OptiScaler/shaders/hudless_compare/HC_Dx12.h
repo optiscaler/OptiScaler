@@ -5,7 +5,7 @@
 #include <d3d12.h>
 #include <d3dx/d3dx12.h>
 #include <dxgi1_6.h>
-#include <shaders/Shaders_Dx12Utils.h>
+#include <shaders/Shader_Dx12Utils.h>
 #include <shaders/Shader_Dx12.h>
 
 #define HC_NUM_OF_HEAPS 2

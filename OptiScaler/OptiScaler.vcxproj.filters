@@ -626,7 +626,7 @@
     <ClInclude Include="shaders\depth_invert\precompiled\DI_Shader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="shaders\Shaders_Dx12Utils.h">
+    <ClInclude Include="shaders\Shader_Dx12Utils.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="shaders\Shader_Dx12.h">
