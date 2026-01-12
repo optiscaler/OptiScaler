@@ -18,7 +18,7 @@
 * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 * SOFTWARE.
-*/ 
+*/
 
 #pragma once
 
@@ -89,7 +89,7 @@ using to_underlying = std::to_underlying;
 // static_cast<std::underlying_type_t<decltype(value)>>(value);
 // See c++23s std::to_underlying()
 template<class T>
-constexpr auto to_underlying(T value)
+inline constexpr auto to_underlying(T value)
 {
     return std::underlying_type_t<T>(value);
 }
@@ -138,7 +138,7 @@ using PFun_slPCLSetMarker = sl::Result(sl::PCLMarker marker, const sl::FrameToke
 using PFun_slPCLSetOptions = sl::Result(const sl::PCLOptions& options);
 
 //! HELPERS
-//! 
+//!
 inline sl::Result slPCLGetState(sl::PCLState& state)
 {
     SL_FEATURE_FUN_IMPORT_STATIC(sl::kFeaturePCL, slPCLGetState);

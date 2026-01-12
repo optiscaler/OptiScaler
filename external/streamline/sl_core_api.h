@@ -166,11 +166,11 @@ SL_API sl::Result slSetTagForFrame(const sl::FrameToken& frame, const sl::Viewpo
 //! or some other command buffer which is guaranteed, by the host application, to be executed BEFORE the provided command buffer.
 //! 
 //! This method is thread safe and requires DX/VK device to be created before calling it.
-SL_API sl::Result
+SL_API
 #if __cplusplus >= 201402L
 [[deprecated("Use the version of this function that takes a sl::FrameToken instead - slSetTagForFrame and set sl::PreferenceFlags::eUseFrameBasedResourceTagging.")]]
 #endif
-slSetTag(const sl::ViewportHandle& viewport, const sl::ResourceTag* tags, uint32_t numTags, sl::CommandBuffer* cmdBuffer);
+sl::Result slSetTag(const sl::ViewportHandle& viewport, const sl::ResourceTag* tags, uint32_t numTags, sl::CommandBuffer* cmdBuffer);
 
 //! Sets common constants.
 //!

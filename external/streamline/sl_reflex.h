@@ -18,7 +18,7 @@
 * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 * SOFTWARE.
-*/ 
+*/
 
 #pragma once
 
@@ -33,7 +33,7 @@ enum ReflexMode
     eLowLatency,
     eLowLatencyWithBoost,
 
-    // ReflexMode is a C-enum (rather than enum class) so we can't add an eCount value 
+    // ReflexMode is a C-enum (rather than enum class) so we can't add an eCount value
     // without polluting the global namespace (and conflicts with SMSCGMode::eCount in sl.dlss_g/defines.h)
     ReflexMode_eCount
 };
@@ -49,12 +49,13 @@ SL_STRUCT_BEGIN(ReflexOptions, StructType({ 0xf03af81a, 0x6d0b, 0x4902, { 0xa6, 
     //! It is overridden (ignored) by frameLimitUs if set in sl.reflex.json in non-production builds.
     uint32_t frameLimitUs = 0;
     //! This should only be enabled in specific scenarios with subtle caveats.
-    //! Most integrations should leave it unset unless advised otherwise by the Reflex team
+    //! Most integrations should leave unset unless advised otherwise by the Reflex team
     bool useMarkersToOptimize = false;
     //! Specifies the hot-key which should be used instead of custom message for PC latency marker
     //! Possible values: VK_F13, VK_F14, VK_F15
     uint16_t virtualKey = 0;
     //! ThreadID for PCL Stats messages
+    //! Most integrations should leave unset unless advised otherwise by the Reflex team
     uint32_t idThread = 0;
 
     //! IMPORTANT: New members go here or if optional can be chained in a new struct, see sl_struct.h for details
@@ -79,12 +80,21 @@ SL_STRUCT_BEGIN(ReflexReport, StructType({ 0xd569b37, 0xa1c8, 0x4453, { 0xbe, 0x
     uint64_t gpuRenderEndTime{};
     uint32_t gpuActiveRenderTimeUs{};
     uint32_t gpuFrameTimeUs{};
-
-    //! IMPORTANT: New members go here or if optional can be chained in a new struct, see sl_struct.h for details
+    //! IMPORTANT: This struct cannot have new members because it is arrayed by ReflexState.
 SL_STRUCT_END()
 
+// {68bb0632-5e1c-402b-899d-b49f633c56c2}
+SL_STRUCT_BEGIN(ReflexReport2, StructType({ 0x68bb0632, 0x5e1c, 0x402b, { 0x89, 0x9d, 0xb4, 0x9f, 0x63, 0x3c, 0x56, 0xc2 } }), kStructVersion1)
+    //! Various latency related stats
+    uint64_t cameraConstructedTime{};
+    uint32_t crossAdapterCopyTimeUs{};
+    //! IMPORTANT: This struct cannot have new members because it is arrayed by ReflexState.
+SL_STRUCT_END()
+
+inline constexpr int kReflexFrameReportCount = 64;
+
 // {F0BB5985-DAF9-4728-B2FD-AE80A2BD7989}
-SL_STRUCT_BEGIN(ReflexState, StructType({ 0xf0bb5985, 0xdaf9, 0x4728, { 0xb2, 0xfd, 0xae, 0x80, 0xa2, 0xbd, 0x79, 0x89 } }), kStructVersion1)
+SL_STRUCT_BEGIN(ReflexState, StructType({ 0xf0bb5985, 0xdaf9, 0x4728, { 0xb2, 0xfd, 0xae, 0x80, 0xa2, 0xbd, 0x79, 0x89 } }), kStructVersion2)
     //! Specifies if low-latency mode is available or not
     bool lowLatencyAvailable = false;
     //! Specifies if the frameReport below contains valid data or not
@@ -92,9 +102,12 @@ SL_STRUCT_BEGIN(ReflexState, StructType({ 0xf0bb5985, 0xdaf9, 0x4728, { 0xb2, 0x
     //! Specifies low latency Windows message id (if ReflexOptions::virtualKey is 0)
     uint32_t statsWindowMessage;
     //! Reflex report per frame
-    ReflexReport frameReport[64];
+    ReflexReport frameReport[kReflexFrameReportCount];
     //! Specifies ownership of flash indicator toggle (true = driver, false = application)
     bool flashIndicatorDriverControlled = false;
+    // kStructVersion2
+    //! Reflex report per frame
+    ReflexReport2 frameReport2[kReflexFrameReportCount];
 
     //! IMPORTANT: New members go here or if optional can be chained in a new struct, see sl_struct.h for details
 SL_STRUCT_END()
@@ -187,7 +200,7 @@ using PFun_slReflexSetCameraData = sl::Result(const sl::ViewportHandle& viewport
 using PFun_slReflexGetPredictedCameraData = sl::Result(const sl::ViewportHandle& viewport, const sl::FrameToken& frame, sl::ReflexPredictedCameraData& outCameraData);
 
 //! HELPERS
-//! 
+//!
 inline sl::Result slReflexGetState(sl::ReflexState& state)
 {
     SL_FEATURE_FUN_IMPORT_STATIC(sl::kFeatureReflex, slReflexGetState);
@@ -217,4 +230,3 @@ inline sl::Result slReflexGetPredictedCameraData(const sl::ViewportHandle& viewp
     SL_FEATURE_FUN_IMPORT_STATIC(sl::kFeatureReflex, slReflexGetPredictedCameraData);
     return s_slReflexGetPredictedCameraData(viewport, frame, outCameraData);
 }
-

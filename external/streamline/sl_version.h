@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023 NVIDIA CORPORATION. All rights reserved
+* Copyright (c) 2022-2024 NVIDIA CORPORATION. All rights reserved
 *
 * Permission is hereby granted, free of charge, to any person obtaining a copy
 * of this software and associated documentation files (the "Software"), to deal
@@ -22,8 +22,8 @@
 #pragma once
 
 #define SL_VERSION_MAJOR 2
-#define SL_VERSION_MINOR 7
-#define SL_VERSION_PATCH 32
+#define SL_VERSION_MINOR 10
+#define SL_VERSION_PATCH 0
 
 #include <cstdint>
 #include <string>
@@ -80,7 +80,7 @@ struct Version
         else if (major < rhs.major) return true;
         // major version the same
         if (minor > rhs.minor) return false;
-        else if (minor < rhs.minor) return true;
+        else if (minor > rhs.minor) return true;
         // minor version the same
         if (build > rhs.build) return false;
         else if (build < rhs.build) return true;
