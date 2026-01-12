@@ -46,6 +46,9 @@ enum class DLSSGFlags : uint32_t
     eRequestVRAMEstimate = 1 << 2,
     eRetainResourcesWhenOff = 1 << 3,
     eEnableFullscreenMenuDetection = 1 << 4,
+
+    //! All DLSS-FG flags.  This isn't expected to be used directly by integrations, but may be useful for e.g. writing helpers.
+    eAll = eShowOnlyInterpolatedFrame | eDynamicResolutionEnabled | eRequestVRAMEstimate | eRetainResourcesWhenOff | eEnableFullscreenMenuDetection
 };
 
 enum class DLSSGQueueParallelismMode : uint32_t
@@ -65,7 +68,7 @@ enum class DLSSGQueueParallelismMode : uint32_t
 SL_ENUM_OPERATORS_32(DLSSGFlags)
 
 // {FAC5F1CB-2DFD-4F36-A1E6-3A9E865256C5}
-SL_STRUCT_BEGIN(DLSSGOptions, StructType({ 0xfac5f1cb, 0x2dfd, 0x4f36, { 0xa1, 0xe6, 0x3a, 0x9e, 0x86, 0x52, 0x56, 0xc5 } }), kStructVersion3)
+SL_STRUCT_BEGIN(DLSSGOptions, StructType({ 0xfac5f1cb, 0x2dfd, 0x4f36, { 0xa1, 0xe6, 0x3a, 0x9e, 0x86, 0x52, 0x56, 0xc5 } }), kStructVersion4)
     //! Specifies which mode should be used.
     DLSSGMode mode = DLSSGMode::eOff;
     //! Number of frames to generate inbetween fully rendered frames. Cannot exceed DLSSGState::numFramesToGenerateMax.
@@ -106,6 +109,8 @@ SL_STRUCT_BEGIN(DLSSGOptions, StructType({ 0xfac5f1cb, 0x2dfd, 0x4f36, { 0xa1, 0
     // kStructVersion3
     //! Optional - determines the level of client and DLSSG queue parallelism to use for performance gain - must be same for all viewports.
     DLSSGQueueParallelismMode queueParallelismMode{};
+    // kStructVersion4
+    Boolean bReserved16 = eInvalid;
     //! IMPORTANT: New members go here or if optional can be chained in a new struct, see sl_struct.h for details
 SL_STRUCT_END()
 
@@ -124,7 +129,10 @@ enum class DLSSGStatus : uint32_t
     eFailCommonConstantsInvalid = 1 << 3,
     //! D3D integrations must use SwapChain::GetCurrentBackBufferIndex API
     eFailGetCurrentBackBufferIndexNotCalled = 1 << 4,
-    eReserved5 = 1 << 5
+    //! Reserved for future use, do not use
+    eReserved5 = 1 << 5,
+
+    eAll = eFailResolutionTooLow | eFailReflexNotDetectedAtRuntime | eFailHDRFormatNotSupported | eFailCommonConstantsInvalid | eFailGetCurrentBackBufferIndexNotCalled | eReserved5
 };
 
 // Adds various useful operators for our enum
@@ -145,6 +153,7 @@ SL_STRUCT_BEGIN(DLSSGState, StructType({ 0xcc8ac8e1, 0xa179, 0x44f5, { 0x97, 0xf
     //!     For 2x only supporting devices, numFramesToGenerateMax is 1.
     //!     For 3x and 4x supporting devices, numFramesToGenerateMax is 3.
     uint32_t numFramesToGenerateMax{};
+    //! Reserved for future use, do not use
     sl::Boolean bReserved4{};
     //! Hint to the application to display VSync support in the user interface
     sl::Boolean bIsVsyncSupportAvailable{};

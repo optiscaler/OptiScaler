@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023 NVIDIA CORPORATION. All rights reserved
+ * Copyright (c) 2022-2024 NVIDIA CORPORATION. All rights reserved
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -74,7 +74,7 @@ struct StructType
 //!         // Safe to access D, E
 //!     }
 //! }
-
+//!
 //! --- OPTION 2 ---
 //!
 //! New members are optional and added to a new struct which is then chained as needed:
@@ -99,6 +99,7 @@ struct StructType
 constexpr inline uint32_t kStructVersion1 = 1;
 constexpr inline uint32_t kStructVersion2 = 2;
 constexpr inline uint32_t kStructVersion3 = 3;
+constexpr inline uint32_t kStructVersion4 = 4;
 
 struct BaseStructure
 {
@@ -113,7 +114,7 @@ struct BaseStructure
     struct name : public sl::BaseStructure                                                                             \
     {                                                                                                                  \
         name() : sl::BaseStructure(guid, version) {}                                                                   \
-        constexpr static sl::StructType s_structType = guid;
+        inline constexpr static sl::StructType s_structType = guid;
 
 #define SL_STRUCT_END()                                                                                                \
     }                                                                                                                  \
@@ -126,7 +127,7 @@ struct BaseStructure
         name() : sl::BaseStructure(guid, version) {}                                                                   \
                                                                                                                        \
       public:                                                                                                          \
-        constexpr static sl::StructType s_structType = guid;
+        inline constexpr static sl::StructType s_structType = guid;
 
 // Deprecated: please use SL_STRUCT_BEGIN/SL_STRUCT_END instead
 #define SL_STRUCT(name, guid, version) SL_STRUCT_BEGIN(name, guid, version)

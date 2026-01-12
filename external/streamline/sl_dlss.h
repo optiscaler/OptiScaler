@@ -22,6 +22,15 @@
 
 #pragma once
 
+#include <stdint.h>
+#include "sl.h"
+
+#if __cplusplus >= 201402L
+#define SR_DEPRECATED_SHARPENING [[deprecated("Sharpness is not supported")]]
+#else
+#define SR_DEPRECATED_SHARPENING
+#endif
+
 namespace sl
 {
 
@@ -42,21 +51,21 @@ enum class DLSSPreset : uint32_t
     //! Default behavior, may or may not change after an OTA
     eDefault,
     //! Fixed DL models
-    ePresetA,   // Intended for Perf/Balanced/Quality modes. An older variant best suited to combat ghosting for elements with missing inputs (such as motion vectors)
-    ePresetB,   // Intended for Ultra Perf mode. Similar to Preset A but for Ultra Performance mode
-    ePresetC,   // Intended for Perf/Balanced/Quality modes. Preset which generally favors current frame information. Generally well-suited for fast-paced game content
-    ePresetD,   // Intended for Perf/Balanced/Quality modes. Similar to Preset E. Preset E is generally recommended over Preset D
-    ePresetE,   // Intended for Perf/Balanced/Quality modes. Preset for most performance and image stability
-    ePresetF,   // Intended for Ultra Perf/DLAA modes. The default preset for Ultra Perf and DLAA modes
-    ePresetG,   // Reverts to default, not recommended to use
-    ePresetH,   // Reverts to default, not recommended to use
-    ePresetI,   // Reverts to default, not recommended to use
-    ePresetJ,   // Similar to preset K. Preset J might exhibit slightly less ghosting at the cost of extra flickering. Preset K is generally recommended over preset J
-    ePresetK,   // Default preset for DLAA/Perf/Balanced/Quality modes that is transformer based. Best image quality preset at a higher performance cost
-    ePresetL,   // Reverts to default, not recommended to use
-    ePresetM,   // Reverts to default, not recommended to use
-    ePresetN,   // Reverts to default, not recommended to use
-    ePresetO,   // Reverts to default, not recommended to use
+                    // ePresetA removed, use presets J or K
+                    // ePresetB removed, use presets J or K
+                    // ePresetC removed, use presets J or K
+                    // ePresetD removed, use presets J or K
+                    // ePresetE removed, use presets J or K
+    ePresetF = 6,   // Intended for Ultra Perf/DLAA modes. The default preset for Ultra Perf
+    ePresetG = 7,   // Reverts to default, not recommended to use
+    ePresetH = 8,   // Reverts to default, not recommended to use
+    ePresetI = 9,   // Reverts to default, not recommended to use
+    ePresetJ = 10,  // Similar to preset K. Preset J might exhibit slightly less ghosting at the cost of extra flickering. Preset K is generally recommended over preset J
+    ePresetK = 11,  // Default preset for DLAA/Perf/Balanced/Quality modes that is transformer based. Best image quality preset at a higher performance cost
+    ePresetL = 12,  // Reverts to default, not recommended to use
+    ePresetM = 13,  // Reverts to default, not recommended to use
+    ePresetN = 14,  // Reverts to default, not recommended to use
+    ePresetO = 15,  // Reverts to default, not recommended to use
 
     eCount
 };
@@ -69,8 +78,8 @@ SL_STRUCT_BEGIN(DLSSOptions, StructType({ 0x6ac826e4, 0x4c61, 0x4101, { 0xa9, 0x
     uint32_t outputWidth = INVALID_UINT;
     //! Specifies output (final) target height
     uint32_t outputHeight = INVALID_UINT;
-    //! Specifies sharpening level in range [0,1]
-    float sharpness = 0.0f;
+    //! Specifies sharpening level in range [0,1] this is a deprecated field
+    float sharpness SR_DEPRECATED_SHARPENING = 0.0f;
     //! Specifies pre-exposure value
     float preExposure = 1.0f;
     //! Specifies exposure scale value
@@ -139,7 +148,7 @@ SL_STRUCT_END()
 //!
 //! @param options Specifies DLSS options to use
 //! @param settings Reference to a structure where settings are returned
-//! @return sl::ResultCode::eOk if successful, error code otherwise (see sl_result.h for details)
+//! @return sl::Result::eOk if successful, error code otherwise (see sl_result.h for details)
 //!
 //! This method is NOT thread safe.
 using PFun_slDLSSGetOptimalSettings = sl::Result(const sl::DLSSOptions & options, sl::DLSSOptimalSettings & settings);
@@ -150,7 +159,7 @@ using PFun_slDLSSGetOptimalSettings = sl::Result(const sl::DLSSOptions & options
 //!
 //! @param viewport Specified viewport we are working with
 //! @param state Reference to a structure where state is to be returned
-//! @return sl::ResultCode::eOk if successful, error code otherwise (see sl_result.h for details)
+//! @return sl::Result::eOk if successful, error code otherwise (see sl_result.h for details)
 //!
 //! This method is NOT thread safe.
 using PFun_slDLSSGetState = sl::Result(const sl::ViewportHandle & viewport, sl::DLSSState & state);
@@ -161,7 +170,7 @@ using PFun_slDLSSGetState = sl::Result(const sl::ViewportHandle & viewport, sl::
 //!
 //! @param viewport Specified viewport we are working with
 //! @param options Specifies DLSS options to use
-//! @return sl::ResultCode::eOk if successful, error code otherwise (see sl_result.h for details)
+//! @return sl::Result::eOk if successful, error code otherwise (see sl_result.h for details)
 //!
 //! This method is NOT thread safe.
 using PFun_slDLSSSetOptions = sl::Result(const sl::ViewportHandle& viewport, const sl::DLSSOptions& options);
