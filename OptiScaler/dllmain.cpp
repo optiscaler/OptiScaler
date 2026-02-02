@@ -1011,7 +1011,7 @@ static void printQuirks(flag_set<GameQuirk>& quirks)
 {
     auto state = &State::Instance();
 
-    if (quirks & GameQuirk::CyberpunkHudlessStateOverride)
+    if (quirks & GameQuirk::CyberpunkHudlessFixes)
     {
         spdlog::info("Quirk: Fixing DLSSG's hudless in Cyberpunk");
         state->detectedQuirks.push_back("Fixing DLSSG's hudless in Cyberpunk");

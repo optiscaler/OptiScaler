@@ -38,7 +38,7 @@ enum class GameQuirk : uint64_t
     SetHudlessValidNow,
 
     // Quirks that are applied deeper in code
-    CyberpunkHudlessStateOverride,
+    CyberpunkHudlessFixes,
     SkipFsr3Method,
     FastFeatureReset,
     LoadD3D12Manually,
@@ -134,7 +134,7 @@ static const QuirkEntry quirkTable[] = {
 
     // Cyberpunk 2077
     // SL spoof enough to unlock everything DLSS
-    QUIRK_ENTRY("cyberpunk2077.exe", GameQuirk::CyberpunkHudlessStateOverride, GameQuirk::DisableHudfix,
+    QUIRK_ENTRY("cyberpunk2077.exe", GameQuirk::CyberpunkHudlessFixes, GameQuirk::DisableHudfix,
                 GameQuirk::DisableDxgiSpoofing),
 
     // Forza Horizon 5

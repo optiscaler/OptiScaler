@@ -47,6 +47,35 @@ static inline int GetFormatIndex(DXGI_FORMAT format)
     return -1;
 }
 
+static D3D12_RESOURCE_STATES GetD3D12State(FfxApiResourceState state)
+{
+    switch (state)
+    {
+    case FFX_API_RESOURCE_STATE_COMMON:
+        return D3D12_RESOURCE_STATE_COMMON;
+    case FFX_API_RESOURCE_STATE_UNORDERED_ACCESS:
+        return D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    case FFX_API_RESOURCE_STATE_COMPUTE_READ:
+        return D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    case FFX_API_RESOURCE_STATE_PIXEL_READ:
+        return D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    case FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ:
+        return (D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    case FFX_API_RESOURCE_STATE_COPY_SRC:
+        return D3D12_RESOURCE_STATE_COPY_SOURCE;
+    case FFX_API_RESOURCE_STATE_COPY_DEST:
+        return D3D12_RESOURCE_STATE_COPY_DEST;
+    case FFX_API_RESOURCE_STATE_GENERIC_READ:
+        return D3D12_RESOURCE_STATE_GENERIC_READ;
+    case FFX_API_RESOURCE_STATE_INDIRECT_ARGUMENT:
+        return D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
+    case FFX_API_RESOURCE_STATE_RENDER_TARGET:
+        return D3D12_RESOURCE_STATE_RENDER_TARGET;
+    default:
+        return D3D12_RESOURCE_STATE_COMMON;
+    }
+}
+
 static inline bool FormatsCompatible(DXGI_FORMAT format1, DXGI_FORMAT format2)
 {
     if (format1 == format2)
@@ -578,6 +607,29 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
         state.SCchanged = true;
 
         return FFX_API_RETURN_OK;
+    }
+
+    if (State::Instance().gameQuirks & GameQuirk::CyberpunkHudlessFixes)
+    {
+        auto presentWithHud = (ID3D12Resource*) params->presentColor.resource;
+        auto hudlessResource = _resourceCopy[fIndex][FG_ResourceType::HudlessColor];
+        auto hudlessState = D3D12_RESOURCE_STATE_COPY_DEST;
+
+        if (presentWithHud && hudlessResource)
+        {
+            auto cmdList = (ID3D12GraphicsCommandList*) params->commandList;
+
+            if (_hudCopy[fIndex].get() == nullptr)
+            {
+                _hudCopy[fIndex] = std::make_unique<HudCopy_Dx12>("HudCopy", _device);
+            }
+
+            if (auto hudCopy = _hudCopy[fIndex].get(); hudCopy && hudCopy->IsInit())
+            {
+                hudCopy->Dispatch(_device, cmdList, hudlessResource, presentWithHud, hudlessState,
+                                  GetD3D12State((FfxApiResourceState) params->presentColor.state));
+            }
+        }
     }
 
     auto dispatchResult = FfxApiProxy::D3D12_Dispatch(&_fgContext, &params->header);

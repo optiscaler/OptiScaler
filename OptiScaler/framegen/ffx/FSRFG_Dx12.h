@@ -5,6 +5,7 @@
 #include <proxies/FfxApi_Proxy.h>
 
 #include <shaders/format_transfer/FT_Dx12.h>
+#include <shaders/hud_copy/HudCopy_Dx12.h>
 
 #include <ffx_framegeneration.h>
 
@@ -19,6 +20,8 @@ class FSRFG_Dx12 : public virtual IFGFeature_Dx12
 
     uint32_t _maxRenderWidth = 0;
     uint32_t _maxRenderHeight = 0;
+
+    std::unique_ptr<HudCopy_Dx12> _hudCopy[BUFFER_COUNT];
 
     std::unique_ptr<FT_Dx12> _hudlessTransfer[BUFFER_COUNT];
     ID3D12Resource* _hudlessCopyResource[BUFFER_COUNT] {};
