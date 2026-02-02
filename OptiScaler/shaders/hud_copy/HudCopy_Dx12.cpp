@@ -23,7 +23,7 @@ void HudCopy_Dx12::ResourceBarrier(ID3D12GraphicsCommandList* cmdList, ID3D12Res
 
 bool HudCopy_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* cmdList, ID3D12Resource* hudless,
                             ID3D12Resource* present, D3D12_RESOURCE_STATES hudlessState,
-                            D3D12_RESOURCE_STATES presentState)
+                            D3D12_RESOURCE_STATES presentState, float hudDetectionThreshold)
 {
     if (!_init || InDevice == nullptr || hudless == nullptr || present == nullptr || cmdList == nullptr)
         return false;
@@ -85,7 +85,7 @@ bool HudCopy_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* c
     InDevice->CreateUnorderedAccessView(_buffer, nullptr, &uavDesc, currentHeap.GetUavCPU(0));
 
     InternalCompareParams constants {};
-    constants.DiffThreshold = 0.01f;
+    constants.DiffThreshold = hudDetectionThreshold;
 
     // Copy the updated constant buffer data to the constant buffer resource
     BYTE* pCBDataBegin;

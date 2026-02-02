@@ -3,13 +3,6 @@
 #include "pch.h"
 #include <d3dcompiler.h>
 
-struct CompareParams
-{
-    float DiffThreshold = 0.02f;
-    float PinkAmount = 0.6f;
-    float InvOutputSize[2] = { 0, 0 };
-};
-
 static std::string shaderCode = R"(
 cbuffer Params : register(b0)
 {

@@ -30,7 +30,8 @@ class HudCopy_Dx12 : public Shader_Dx12
 
   public:
     bool Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* cmdList, ID3D12Resource* hudless,
-                  ID3D12Resource* present, D3D12_RESOURCE_STATES hudlessState, D3D12_RESOURCE_STATES presentState);
+                  ID3D12Resource* present, D3D12_RESOURCE_STATES hudlessState, D3D12_RESOURCE_STATES presentState,
+                  float hudDetectionThreshold);
 
     HudCopy_Dx12(std::string InName, ID3D12Device* InDevice);
 

@@ -103,6 +103,7 @@ static std::vector<std::string> splashText = { "Cope smarter, not harder",
                                                "All your pixels are belong to us",
                                                "Upscaling for the masses, not the classes",
                                                "Generating discord since 2023",
+                                               "Enabling DLSS since 2023",
                                                "[Reducted] never looked better",
                                                "Free and always free",
                                                "Getting unshackled from green chains in progress...",
@@ -111,9 +112,10 @@ static std::vector<std::string> splashText = { "Cope smarter, not harder",
                                                "Did you really just pay 70€ for this game?!",
                                                "Guess who forgot about a nullptr check again",
                                                "AI can't outslop this",
-                                               "<Your funny text goes here>",
                                                "Guess we're pre-alpha build demos now",
-                                               "New app on the block - TH" };
+                                               "New app on the block - TH",
+                                               "One more stutter and I might lose it",
+                                               "<Your funny text goes here>" };
 
 static ImVec2 updateNoticePosition(-1000.0f, -1000.0f);
 static ImVec2 updateNoticeSize(0.0f, 0.0f);

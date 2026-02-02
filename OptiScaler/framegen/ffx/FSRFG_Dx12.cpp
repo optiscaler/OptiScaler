@@ -615,6 +615,17 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
         auto hudlessResource = _resourceCopy[fIndex][FG_ResourceType::HudlessColor];
         auto hudlessState = D3D12_RESOURCE_STATE_COPY_DEST;
 
+        if (hudlessResource == nullptr)
+        {
+            auto hudless = _frameResources[fIndex][FG_ResourceType::HudlessColor];
+            if (hudless.validity == FG_ResourceValidity::UntilPresent)
+                hudlessResource = hudless.GetResource();
+
+            // hudless.state only holds the state for the original resource, not the copy that we could get here
+            if (hudlessResource && hudlessResource == hudless.resource)
+                hudlessState = hudless.state;
+        }
+
         if (presentWithHud && hudlessResource)
         {
             auto cmdList = (ID3D12GraphicsCommandList*) params->commandList;
@@ -626,8 +637,13 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
 
             if (auto hudCopy = _hudCopy[fIndex].get(); hudCopy && hudCopy->IsInit())
             {
+                // FSR FG inputs in Cyberprank are even more broken than other FG inputs so use a more aggressive
+                // threshold
+                float hudDetectionThreshold = State::Instance().activeFgInput == FGInput::FSRFG ? 0.03f : 0.01f;
+
                 hudCopy->Dispatch(_device, cmdList, hudlessResource, presentWithHud, hudlessState,
-                                  GetD3D12State((FfxApiResourceState) params->presentColor.state));
+                                  GetD3D12State((FfxApiResourceState) params->presentColor.state),
+                                  hudDetectionThreshold);
             }
         }
     }
