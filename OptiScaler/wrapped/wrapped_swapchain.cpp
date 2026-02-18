@@ -489,8 +489,13 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::Present(UINT SyncInterval, UIN
         result = LocalPresent(_real, SyncInterval, Flags, nullptr, _device, _handle, _uwp);
 
         // When Reflex can't be used to limit, sleep in present
-        if (!State::Instance().reflexLimitsFps && State::Instance().activeFgOutput == FGOutput::NoFG)
-            FrameLimit::sleep(false);
+        // For DX11 games with FG (Dx11withDx12), there's no separate FG swapchain,
+        // so we need to limit here even when FG is active
+        if (!State::Instance().reflexLimitsFps && (State::Instance().activeFgOutput == FGOutput::NoFG ||
+            State::Instance().currentFGSwapchain == nullptr))
+        {
+            FrameLimit::sleep(State::Instance().currentFG != nullptr && State::Instance().currentFG->IsActive());
+        }
     }
     else
     {
@@ -771,8 +776,13 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::Present1(UINT SyncInterval, UI
         result = LocalPresent(_real1, SyncInterval, Flags, pPresentParameters, _device, _handle, _uwp);
 
         // When Reflex can't be used to limit, sleep in present
-        if (!State::Instance().reflexLimitsFps && State::Instance().activeFgOutput == FGOutput::NoFG)
-            FrameLimit::sleep(false);
+        // For DX11 games with FG (Dx11withDx12), there's no separate FG swapchain,
+        // so we need to limit here even when FG is active
+        if (!State::Instance().reflexLimitsFps && (State::Instance().activeFgOutput == FGOutput::NoFG ||
+            State::Instance().currentFGSwapchain == nullptr))
+        {
+            FrameLimit::sleep(State::Instance().currentFG != nullptr && State::Instance().currentFG->IsActive());
+        }
     }
     else
     {
