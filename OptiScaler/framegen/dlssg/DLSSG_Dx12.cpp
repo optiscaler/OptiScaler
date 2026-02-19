@@ -141,7 +141,7 @@ void DLSSG_Dx12::ShutdownStreamline()
         if (SLProxy::FreeResources() != nullptr)
         {
             sl::ViewportHandle vp(0);
-            SLProxy::FreeResources()(sl::kFeatureDLSS_G, &vp, 1);
+            SLProxy::FreeResources()(sl::kFeatureDLSS_G, vp);
         }
     }
 
@@ -252,7 +252,7 @@ bool DLSSG_Dx12::CreateSwapchain(IDXGIFactory* factory, ID3D12CommandQueue* cmdQ
         ScopedSkipParentWrapping skipWrapping {};
         State::DisableChecks(0x534C4F50, "");
 
-        auto result = SLProxy::UpgradeInterface()(realFactory);
+        auto result = SLProxy::UpgradeInterface()((void**)&realFactory);
 
         State::EnableChecks(0x534C4F50);
 
@@ -370,7 +370,7 @@ bool DLSSG_Dx12::CreateSwapchain1(IDXGIFactory* factory, ID3D12CommandQueue* cmd
         ScopedSkipParentWrapping skipWrapping {};
         State::DisableChecks(0x534C4F50, "");
 
-        auto result = SLProxy::UpgradeInterface()(realFactory);
+        auto result = SLProxy::UpgradeInterface()((void**)&realFactory);
 
         State::EnableChecks(0x534C4F50);
 
@@ -874,8 +874,9 @@ bool DLSSG_Dx12::Dispatch()
     }
 
     // Get new frame token
-    _currentFrameToken = nullptr;
-    auto tokenResult = SLProxy::GetNewFrameToken()(_currentFrameToken, nullptr);
+    sl::FrameToken* newToken = nullptr;
+    auto tokenResult = SLProxy::GetNewFrameToken()(newToken, nullptr);
+    _currentFrameToken = newToken;
     if (tokenResult != sl::Result::eOk || _currentFrameToken == nullptr)
     {
         LOG_ERROR("slGetNewFrameToken failed: {}", (int) tokenResult);
