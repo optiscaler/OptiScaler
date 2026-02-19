@@ -98,6 +98,8 @@ bool Config::Reload(std::filesystem::path iniPath)
                     FGOutput.set_from_config(FGOutput::Nukems);
                 else if (lstrcmpiA(FGOutputString.value().c_str(), "xefg") == 0)
                     FGOutput.set_from_config(FGOutput::XeFG);
+                else if (lstrcmpiA(FGOutputString.value().c_str(), "dlssg") == 0)
+                    FGOutput.set_from_config(FGOutput::DLSSG);
             }
 
             FGDrawUIOverFG.set_from_config(readBool("FrameGen", "DrawUIOverFG"));
@@ -183,6 +185,14 @@ bool Config::Reload(std::filesystem::path iniPath)
             FGXeFGSkipResizeBuffers.set_from_config(readBool("XeFG", "SkipResizeBuffers"));
             FGXeFGModifyBufferState.set_from_config(readBool("XeFG", "ModifyBufferState"));
             FGXeFGModifySCIndex.set_from_config(readBool("XeFG", "ModifySCIndex"));
+        }
+
+        // DLSS-G Output
+        {
+            FGDLSSGInterpolationCount.set_from_config(readInt("DLSSG", "InterpolationCount"));
+            if (FGDLSSGInterpolationCount.has_value() &&
+                (FGDLSSGInterpolationCount.value() < 1 || FGDLSSGInterpolationCount.value() > 3))
+                FGDLSSGInterpolationCount.reset();
         }
 
         // FSR FG Inputs
@@ -743,6 +753,8 @@ bool Config::SaveIni()
                 FGOutputString = "Nukems";
             else if (FGOutputHeld.value() == FGOutput::XeFG)
                 FGOutputString = "XeFG";
+            else if (FGOutputHeld.value() == FGOutput::DLSSG)
+                FGOutputString = "DLSSG";
         }
         ini.SetValue("FrameGen", "FGOutput", FGOutputString.c_str());
         ini.SetValue("FrameGen", "DrawUIOverFG", GetBoolValue(Instance()->FGDrawUIOverFG.value_for_config()).c_str());
@@ -810,6 +822,12 @@ bool Config::SaveIni()
         ini.SetValue("XeFG", "ModifyBufferState",
                      GetBoolValue(Instance()->FGXeFGModifyBufferState.value_for_config()).c_str());
         ini.SetValue("XeFG", "ModifySCIndex", GetBoolValue(Instance()->FGXeFGModifySCIndex.value_for_config()).c_str());
+    }
+
+    // DLSS-G Output
+    {
+        ini.SetValue("DLSSG", "InterpolationCount",
+                     GetIntValue(Instance()->FGDLSSGInterpolationCount.value_for_config()).c_str());
     }
 
     // OptiFG

@@ -70,7 +70,8 @@ void fakenvapi::reportFGPresent(IDXGISwapChain* pSwapChain, bool fg_state, bool 
                 Fake_InformPresentFG(frame_interpolated, 0);
             }
         }
-        else if (State::Instance().activeFgOutput == FGOutput::XeFG)
+        else if (State::Instance().activeFgOutput == FGOutput::XeFG ||
+                 State::Instance().activeFgOutput == FGOutput::DLSSG)
         {
             if (updateModeAndContext())
             {
@@ -90,7 +91,8 @@ void fakenvapi::reportFGPresent(IDXGISwapChain* pSwapChain, bool fg_state, bool 
 
 bool fakenvapi::updateModeAndContext()
 {
-    if (!isUsingFakenvapi() && State::Instance().activeFgOutput == FGOutput::XeFG)
+    if (!isUsingFakenvapi() &&
+        (State::Instance().activeFgOutput == FGOutput::XeFG || State::Instance().activeFgOutput == FGOutput::DLSSG))
         auto loaded = fakenvapi::loadForNvidia();
 
     if (!isUsingFakenvapi() && !isUsingFakenvapiOnNvidia())
@@ -129,7 +131,8 @@ bool fakenvapi::updateModeAndContext()
 
 bool fakenvapi::setModeAndContext(void* context, Mode mode)
 {
-    if (!isUsingFakenvapi() && State::Instance().activeFgOutput == FGOutput::XeFG)
+    if (!isUsingFakenvapi() &&
+        (State::Instance().activeFgOutput == FGOutput::XeFG || State::Instance().activeFgOutput == FGOutput::DLSSG))
         auto loaded = fakenvapi::loadForNvidia();
 
     if (!isUsingFakenvapi() && !isUsingFakenvapiOnNvidia())

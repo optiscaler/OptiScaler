@@ -4,6 +4,7 @@
 
 #include <framegen/ffx/FSRFG_Dx12.h>
 #include <framegen/xefg/XeFG_Dx12.h>
+#include <framegen/dlssg/DLSSG_Dx12.h>
 
 #include <inputs/FG/FSR3_Dx12_FG.h>
 #include <inputs/FG/FfxApi_Dx12_FG.h>
@@ -44,10 +45,17 @@ static bool CheckForFGStatus()
         Config::Instance()->FGOutput.set_volatile_value(FGOutput::NoFG);
         State::Instance().activeFgOutput = Config::Instance()->FGOutput.value_or_default();
     }
-
-    if (State::Instance().activeFgOutput != FGOutput::FSRFG && State::Instance().activeFgOutput != FGOutput::XeFG)
+    else if (State::Instance().activeFgOutput == FGOutput::DLSSG && !SLProxy::InitSL())
     {
-        LOG_WARN("FGOutput is not set to FSR-FG or XeFG");
+        LOG_DEBUG("Can't init SLProxy, disabling FGOutput");
+        Config::Instance()->FGOutput.set_volatile_value(FGOutput::NoFG);
+        State::Instance().activeFgOutput = Config::Instance()->FGOutput.value_or_default();
+    }
+
+    if (State::Instance().activeFgOutput != FGOutput::FSRFG && State::Instance().activeFgOutput != FGOutput::XeFG &&
+        State::Instance().activeFgOutput != FGOutput::DLSSG)
+    {
+        LOG_WARN("FGOutput is not set to FSR-FG, XeFG, or DLSS-G");
         return false;
     }
 
@@ -85,14 +93,12 @@ HRESULT FGHooks::CreateSwapChain(IDXGIFactory* pFactory, IUnknown* pDevice, DXGI
             State::Instance().currentFG =
                 new XeFG_Dx12(Config::Instance()->FGXeFGInterpolationCount.value_or_default());
         }
+        else if (State::Instance().activeFgOutput == FGOutput::DLSSG)
+        {
+            State::Instance().currentFG =
+                new DLSSG_Dx12(Config::Instance()->FGDLSSGInterpolationCount.value_or_default());
+        }
     }
-    // else
-    //{
-    //     // Release swapchain if FG Feaeture is FSR-FG
-    //     // Because it can't recreate swapchain on exsiting one
-    //     if (State::Instance().activeFgOutput == FGOutput::FSRFG)
-    //         State::Instance().currentFG->ReleaseSwapchain(pDesc->OutputWindow);
-    // }
 
     // Create FG swapchain
     auto fg = State::Instance().currentFG;
@@ -172,14 +178,12 @@ HRESULT FGHooks::CreateSwapChainForHwnd(IDXGIFactory* pFactory, IUnknown* pDevic
             State::Instance().currentFG =
                 new XeFG_Dx12(Config::Instance()->FGXeFGInterpolationCount.value_or_default());
         }
+        else if (State::Instance().activeFgOutput == FGOutput::DLSSG)
+        {
+            State::Instance().currentFG =
+                new DLSSG_Dx12(Config::Instance()->FGDLSSGInterpolationCount.value_or_default());
+        }
     }
-    // else
-    //{
-    //     // Release swapchain if FG Feaeture is FSR-FG
-    //     // Because it can't recreate swapchain on exsiting one
-    //     if (State::Instance().activeFgOutput == FGOutput::FSRFG)
-    //         State::Instance().currentFG->ReleaseSwapchain(hWnd);
-    // }
 
     // Create FG swapchain
     auto fg = State::Instance().currentFG;

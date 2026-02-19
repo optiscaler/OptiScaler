@@ -497,6 +497,9 @@ class Config
     CustomOptional<bool> FGXeFGModifyBufferState { false };
     CustomOptional<bool> FGXeFGModifySCIndex { false };
 
+    // DLSS-G Output
+    CustomOptional<int> FGDLSSGInterpolationCount { 1 };
+
     // fakenvapi
     CustomOptional<bool> FN_EnableLogs { true };
     CustomOptional<bool> FN_EnableTraceLogs { false };

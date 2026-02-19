@@ -25,7 +25,8 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_SetSleepMode(IUnknown* pDev, NV_SET_SLEEP_
     if (_minimumIntervalUs != 0)
         pSetSleepModeParams->minimumIntervalUs = _minimumIntervalUs;
 
-    if (State::Instance().activeFgOutput == FGOutput::XeFG && fakenvapi::ForNvidia_SetSleepMode)
+    if ((State::Instance().activeFgOutput == FGOutput::XeFG || State::Instance().activeFgOutput == FGOutput::DLSSG) &&
+        fakenvapi::ForNvidia_SetSleepMode)
         return fakenvapi::ForNvidia_SetSleepMode(pDev, pSetSleepModeParams);
     else
         return o_NvAPI_D3D_SetSleepMode(pDev, pSetSleepModeParams);
@@ -37,7 +38,8 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_Sleep(IUnknown* pDev)
     LOG_FUNC();
 #endif
 
-    if (State::Instance().activeFgOutput == FGOutput::XeFG && fakenvapi::ForNvidia_Sleep)
+    if ((State::Instance().activeFgOutput == FGOutput::XeFG || State::Instance().activeFgOutput == FGOutput::DLSSG) &&
+        fakenvapi::ForNvidia_Sleep)
         return fakenvapi::ForNvidia_Sleep(pDev);
     else
         return o_NvAPI_D3D_Sleep(pDev);
@@ -49,7 +51,8 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_GetLatency(IUnknown* pDev, NV_LATENCY_RESU
     LOG_FUNC();
 #endif
 
-    if (State::Instance().activeFgOutput == FGOutput::XeFG && fakenvapi::ForNvidia_GetLatency)
+    if ((State::Instance().activeFgOutput == FGOutput::XeFG || State::Instance().activeFgOutput == FGOutput::DLSSG) &&
+        fakenvapi::ForNvidia_GetLatency)
         return fakenvapi::ForNvidia_GetLatency(pDev, pGetLatencyParams);
     else
         return o_NvAPI_D3D_GetLatency(pDev, pGetLatencyParams);
@@ -125,7 +128,8 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_SetLatencyMarker(IUnknown* pDev,
     if (pSetLatencyMarkerParams->markerType == PRESENT_START && State::Instance().activeFgInput == FGInput::DLSSG)
         State::Instance().slFGInputs.markPresent(pSetLatencyMarkerParams->frameID);
 
-    if (State::Instance().activeFgOutput == FGOutput::XeFG && fakenvapi::ForNvidia_SetLatencyMarker)
+    if ((State::Instance().activeFgOutput == FGOutput::XeFG || State::Instance().activeFgOutput == FGOutput::DLSSG) &&
+        fakenvapi::ForNvidia_SetLatencyMarker)
         return fakenvapi::ForNvidia_SetLatencyMarker(pDev, pSetLatencyMarkerParams);
     else
         return o_NvAPI_D3D_SetLatencyMarker(pDev, pSetLatencyMarkerParams);
@@ -172,7 +176,8 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D12_SetAsyncFrameMarker(ID3D12CommandQueue* 
         }
     }
 
-    if (State::Instance().activeFgOutput == FGOutput::XeFG && fakenvapi::ForNvidia_SetAsyncFrameMarker)
+    if ((State::Instance().activeFgOutput == FGOutput::XeFG || State::Instance().activeFgOutput == FGOutput::DLSSG) &&
+        fakenvapi::ForNvidia_SetAsyncFrameMarker)
         return fakenvapi::ForNvidia_SetAsyncFrameMarker(pCommandQueue, pSetAsyncFrameMarkerParams);
     else
         return o_NvAPI_D3D12_SetAsyncFrameMarker(pCommandQueue, pSetAsyncFrameMarkerParams);
@@ -284,7 +289,9 @@ void* ReflexHooks::getHookedReflex(unsigned int InterfaceId)
 
 bool ReflexHooks::updateTimingData()
 {
-    bool canCall = ((State::Instance().activeFgOutput == FGOutput::XeFG && fakenvapi::ForNvidia_GetLatency) ||
+    bool canCall = (((State::Instance().activeFgOutput == FGOutput::XeFG ||
+                      State::Instance().activeFgOutput == FGOutput::DLSSG) &&
+                     fakenvapi::ForNvidia_GetLatency) ||
                     o_NvAPI_D3D_GetLatency);
 
     if (!canCall || !_lastSleepDev)

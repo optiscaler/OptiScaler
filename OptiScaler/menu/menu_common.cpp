@@ -6,6 +6,7 @@
 #include <proxies/XeSS_Proxy.h>
 #include <proxies/XeFG_Proxy.h>
 #include <proxies/FfxApi_Proxy.h>
+#include <proxies/SL_Proxy.h>
 
 #include <inputs/FG/DLSSG_Mod.h>
 
@@ -3091,6 +3092,12 @@ bool MenuCommon::RenderMenu()
                     disabledMaskInput[optiFgIndex] = XeFGProxy::Module() == nullptr;
                     fgInputDesc[optiFgIndex] = "libxess_fg.dll is missing";
                 }
+                else if (state.activeFgOutput == FGOutput::DLSSG && !SLProxy::IsReady())
+                {
+                    SLProxy::InitSL();
+                    disabledMaskInput[optiFgIndex] = !SLProxy::IsReady();
+                    fgInputDesc[optiFgIndex] = "sl/ subfolder with Streamline DLLs is missing";
+                }
 
                 // DLSSG inputs requirements
                 auto constexpr dlssgInputIndex = (uint32_t) FGInput::DLSSG;
@@ -3140,16 +3147,16 @@ bool MenuCommon::RenderMenu()
                 };
                 std::vector<std::string> fgOutputDesc = {
                     "",
-                    "Enable DLSS-FG in-game", 
-                    "FSR3/4 FG", 
-                    "Support not implemented", 
+                    "Enable DLSS-FG in-game",
+                    "FSR3/4 FG",
+                    "DLSS Frame Generation\nRequires sl/ subfolder with Streamline DLLs\nSupports MFG on RTX 50 series",
                     "XeFG",
                 };
-                std::vector<uint8_t> disabledMaskOutput = { 
-                    false, 
-                    false, 
-                    false, 
-                    true, 
+                std::vector<uint8_t> disabledMaskOutput = {
+                    false,
+                    false,
+                    false,
+                    false,
                     false,
                 };
                 // clang-format on
@@ -3180,15 +3187,23 @@ bool MenuCommon::RenderMenu()
                     fgOutputDesc[nukemsOutputIndex] = "Missing the dlssg_to_fsr3_amd_is_better.dll file";
                 }
 
-                // FSR FG / XeFG output requirements
+                // FSR FG / XeFG / DLSS-G output requirements
                 auto constexpr fsrfgOutputIndex = (uint32_t) FGOutput::FSRFG;
                 auto constexpr xefgOutputIndex = (uint32_t) FGOutput::XeFG;
+                auto constexpr dlssgOutputIndex = (uint32_t) FGOutput::DLSSG;
                 if (state.swapchainApi != API::DX12)
                 {
                     disabledMaskOutput[fsrfgOutputIndex] = true;
                     fgOutputDesc[fsrfgOutputIndex] = "Unsupported API";
                     disabledMaskOutput[xefgOutputIndex] = true;
                     fgOutputDesc[xefgOutputIndex] = "Unsupported API";
+                    disabledMaskOutput[dlssgOutputIndex] = true;
+                    fgOutputDesc[dlssgOutputIndex] = "Unsupported API";
+                }
+                else if (!state.SLFilesAvailable)
+                {
+                    disabledMaskOutput[dlssgOutputIndex] = true;
+                    fgOutputDesc[dlssgOutputIndex] = "Missing sl/ subfolder with Streamline DLLs";
                 }
 
                 constexpr auto fgOutputOptionsCount = std::size(fgOutputOptions);
@@ -3247,7 +3262,8 @@ bool MenuCommon::RenderMenu()
                         ImGui::Spacing();
                     }
 
-                    if ((state.activeFgOutput == FGOutput::FSRFG || state.activeFgOutput == FGOutput::XeFG) &&
+                    if ((state.activeFgOutput == FGOutput::FSRFG || state.activeFgOutput == FGOutput::XeFG ||
+                         state.activeFgOutput == FGOutput::DLSSG) &&
                         state.activeFgInput != FGInput::NoFG && state.activeFgInput != FGInput::Nukems)
                     {
                         ImGui::Checkbox("Show Detected UI", &state.FGHudlessCompare);
@@ -3826,6 +3842,66 @@ bool MenuCommon::RenderMenu()
                     }
                 }
 
+                // DLSS-G controls
+                if (state.activeFgOutput == FGOutput::DLSSG && state.activeFgInput != FGInput::NoFG &&
+                    !state.isWorkingAsNvngx && state.currentFGSwapchain != nullptr)
+                {
+                    if (SLProxy::IsReady() && currentFeature != nullptr && !currentFeature->IsFrozen())
+                    {
+                        ImGui::SeparatorText("Frame Generation (DLSS-G)");
+
+                        bool fgActive = config->FGEnabled.value_or_default();
+                        if (ImGui::Checkbox("Active##4", &fgActive))
+                        {
+                            config->FGEnabled = fgActive;
+                            LOG_DEBUG("Enabled set FGEnabled (DLSSG): {}", fgActive);
+
+                            if (config->FGEnabled.value_or_default())
+                                state.FGchanged = true;
+                        }
+                        ShowHelpMarker("Enable DLSS Frame Generation");
+
+                        // MFG dropdown - only show if hardware supports it
+                        if (state.DLSSGMaxFramesToGenerate > 1)
+                        {
+                            ImGui::SameLine(0.0f, 16.0f);
+
+                            const char* mfgModes[] = { "2X", "3X", "4X" };
+                            auto currentSet = config->FGDLSSGInterpolationCount.value_or_default() - 1;
+                            if (currentSet < 0) currentSet = 0;
+                            if (currentSet > 2) currentSet = 2;
+                            auto currentMode = mfgModes[currentSet];
+
+                            ImGui::PushItemWidth(95.0f * config->MenuScale.value_or_default());
+
+                            if (ImGui::BeginCombo("MFG##dlssg", currentMode))
+                            {
+                                for (uint32_t i = 0; i < state.DLSSGMaxFramesToGenerate && i < 3; i++)
+                                {
+                                    if (ImGui::Selectable(mfgModes[i], (currentSet == (int) i)))
+                                    {
+                                        LOG_DEBUG("DLSS-G Interpolation Count set to: {}", i + 1);
+                                        config->FGDLSSGInterpolationCount = (int) i + 1;
+
+                                        auto fgOutput = reinterpret_cast<IFGFeature_Dx12*>(state.currentFG);
+                                        if (fgOutput != nullptr)
+                                            fgOutput->SetInterpolatedFrameCount(i + 1);
+                                    }
+                                }
+
+                                ImGui::EndCombo();
+                            }
+
+                            ImGui::PopItemWidth();
+                            ShowHelpMarker("DLSS Multi Frame Generation\n"
+                                           "2X = 1 generated frame\n"
+                                           "3X = 2 generated frames\n"
+                                           "4X = 3 generated frames\n\n"
+                                           "Requires RTX 50 series GPU");
+                        }
+                    }
+                }
+
                 // OptiFG
                 if (state.api == DX12 && state.currentFGSwapchain != nullptr && !state.isWorkingAsNvngx &&
                     state.activeFgInput == FGInput::Upscaler)
@@ -3834,7 +3910,8 @@ bool MenuCommon::RenderMenu()
 
                     if (currentFeature != nullptr && !currentFeature->IsFrozen() &&
                         ((state.activeFgOutput == FGOutput::FSRFG && FfxApiProxy::IsFGReady()) ||
-                         (state.activeFgOutput == FGOutput::XeFG && XeFGProxy::Module() != nullptr)))
+                         (state.activeFgOutput == FGOutput::XeFG && XeFGProxy::Module() != nullptr) ||
+                         (state.activeFgOutput == FGOutput::DLSSG && SLProxy::IsReady())))
                     {
                         bool fgHudfix = config->FGHUDFix.value_or_default();
                         bool disableHudfix = static_cast<bool>(state.gameQuirks & GameQuirk::DisableHudfix);
@@ -4119,6 +4196,11 @@ bool MenuCommon::RenderMenu()
                     {
                         ImGui::TextColored({ 1.0f, 0.0f, 0.0f, 1.0f },
                                            "libxess_fg.dll is missing!"); // Probably never will be visible
+                    }
+                    else if (state.activeFgOutput == FGOutput::DLSSG && !SLProxy::IsReady())
+                    {
+                        ImGui::TextColored({ 1.0f, 0.0f, 0.0f, 1.0f },
+                                           "sl/ subfolder with Streamline DLLs is missing!");
                     }
                 }
 

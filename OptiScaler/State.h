@@ -156,6 +156,10 @@ class State
 
     int xefgMaxInterpolationCount = 1;
 
+    // DLSS-G Output
+    bool SLFilesAvailable = false;
+    uint32_t DLSSGMaxFramesToGenerate = 1;
+
     // DLSS
     bool dlssPresetsOverriddenExternally = false;
     bool dlssPresetsOverridenByOpti = false;
