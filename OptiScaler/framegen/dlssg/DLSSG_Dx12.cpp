@@ -30,28 +30,54 @@ bool DLSSG_Dx12::InitStreamline(ID3D12Device* device)
     static std::wstring slPluginPathStr = slPluginPath.wstring();
     static const wchar_t* pluginPaths[] = { slPluginPathStr.c_str() };
 
-    sl::Feature features[] = { sl::kFeatureDLSS_G, sl::kFeatureReflex };
+    sl::Feature features[] = { sl::kFeatureDLSS_G, sl::kFeatureReflex, sl::kFeaturePCL };
 
     sl::Preferences prefs {};
     prefs.showConsole = false;
-    prefs.logLevel = sl::LogLevel::eDefault;
     prefs.pathsToPlugins = pluginPaths;
     prefs.numPathsToPlugins = 1;
     prefs.pathToLogsAndData = nullptr;
     prefs.featuresToLoad = features;
-    prefs.numFeaturesToLoad = 2;
+    prefs.numFeaturesToLoad = _countof(features);
     prefs.renderAPI = sl::RenderAPI::eD3D12;
-    prefs.flags = sl::PreferenceFlags::eDisableCLStateTracking | sl::PreferenceFlags::eBypassOSVersionCheck;
+    prefs.flags = sl::PreferenceFlags::eDisableCLStateTracking | sl::PreferenceFlags::eBypassOSVersionCheck |
+                   sl::PreferenceFlags::eUseFrameBasedResourceTagging;
     prefs.engine = sl::EngineType::eCustom;
+    prefs.engineVersion = "1.0.0";
+
+    // applicationId is required for NGX initialization which DLSS-G depends on.
+    // Use the game's app ID if already known, otherwise use a generic DLSS-G capable app ID.
+    auto gameAppId = State::Instance().NVNGX_ApplicationId;
+    prefs.applicationId = (gameAppId != 0 && gameAppId != 1337) ? (uint32_t) gameAppId : 231;
+    LOG_INFO("Using SL applicationId: {} (game: {})", prefs.applicationId, gameAppId);
+
+    prefs.logLevel = sl::LogLevel::eVerbose;
+    prefs.logMessageCallback = [](sl::LogType type, const char* msg) {
+        if (msg == nullptr)
+            return;
+        switch (type)
+        {
+        case sl::LogType::eInfo:
+            LOG_INFO("[SL] {}", msg);
+            break;
+        case sl::LogType::eWarn:
+            LOG_WARN("[SL] {}", msg);
+            break;
+        case sl::LogType::eError:
+        case sl::LogType::eCount:
+            LOG_ERROR("[SL] {}", msg);
+            break;
+        }
+    };
 
     {
         ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
-        ScopedSkipSpoofing skipSpoofing {};
-        State::DisableChecks(0x534C4F50, "sl.");
+        // Do NOT use DisableChecks("") here - we need LoadLibrary hooks to remain active
+        // so that hookDlssg() and hookCommon() can install on sl.dlss_g.dll and sl.common.dll
+        // during slInit's internal plugin loading. These hooks patch the JSON config
+        // (hws.required=false) and spoof systemCaps->hwsSupported=true.
 
         auto result = SLProxy::Init()(prefs, sl::kSDKVersion);
-
-        State::EnableChecks(0x534C4F50);
 
         if (result != sl::Result::eOk)
         {
@@ -65,12 +91,8 @@ bool DLSSG_Dx12::InitStreamline(ID3D12Device* device)
     // Register device
     {
         ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
-        ScopedSkipSpoofing skipSpoofing {};
-        State::DisableChecks(0x534C4F50, "sl.");
 
         auto result = SLProxy::SetD3DDevice()(device);
-
-        State::EnableChecks(0x534C4F50);
 
         if (result != sl::Result::eOk)
         {
@@ -83,6 +105,28 @@ bool DLSSG_Dx12::InitStreamline(ID3D12Device* device)
     _deviceRegistered = true;
     LOG_INFO("slSetD3DDevice succeeded");
 
+    // Diagnostic: check feature support and loaded status
+    if (SLProxy::IsFeatureSupported() != nullptr)
+    {
+        sl::AdapterInfo adapterInfo {};
+        auto supportResult = SLProxy::IsFeatureSupported()(sl::kFeatureDLSS_G, adapterInfo);
+        LOG_INFO("slIsFeatureSupported(DLSS_G): {} (0=OK)", (int) supportResult);
+    }
+
+    if (SLProxy::IsFeatureLoaded() != nullptr)
+    {
+        bool loaded = false;
+        auto loadedResult = SLProxy::IsFeatureLoaded()(sl::kFeatureDLSS_G, loaded);
+        LOG_INFO("slIsFeatureLoaded(DLSS_G): result={}, loaded={}", (int) loadedResult, loaded);
+    }
+
+    if (SLProxy::GetFeatureRequirements() != nullptr)
+    {
+        sl::FeatureRequirements reqs {};
+        auto reqResult = SLProxy::GetFeatureRequirements()(sl::kFeatureDLSS_G, reqs);
+        LOG_INFO("slGetFeatureRequirements(DLSS_G): result={}, flags={:#x}", (int) reqResult, (uint32_t) reqs.flags);
+    }
+
     // Resolve DLSS-G feature functions (requires device to be set)
     if (!SLProxy::ResolveDLSSGFunctions())
     {
@@ -92,6 +136,37 @@ bool DLSSG_Dx12::InitStreamline(ID3D12Device* device)
     }
 
     _dlssgFeatureReady = true;
+
+    // Resolve PCL feature functions (required for DLSS-G frame lifecycle)
+    if (!SLProxy::ResolvePCLFunctions())
+    {
+        LOG_WARN("PCL feature functions not available - DLSS-G requires PCL markers!");
+    }
+
+    // Resolve Reflex feature functions (required for DLSS-G)
+    if (!SLProxy::ResolveReflexFunctions())
+    {
+        LOG_WARN("Reflex feature functions not available - DLSS-G requires Reflex!");
+    }
+
+    // Initialize Reflex - DLSS-G REQUIRES Reflex to be active
+    // The programming guide states: "It is REQUIRED for sl.reflex to be integrated"
+    if (SLProxy::ReflexSetOptions() != nullptr)
+    {
+        sl::ReflexOptions reflexOptions {};
+        reflexOptions.mode = sl::ReflexMode::eLowLatency;
+        reflexOptions.useMarkersToOptimize = false;
+        reflexOptions.virtualKey = 0;
+        reflexOptions.idThread = 0;
+        reflexOptions.frameLimitUs = 0;
+
+        auto reflexResult = SLProxy::ReflexSetOptions()(reflexOptions);
+        LOG_INFO("slReflexSetOptions (eLowLatency) result: {} (0=OK)", (int) reflexResult);
+    }
+    else
+    {
+        LOG_ERROR("Cannot initialize Reflex - slReflexSetOptions not available!");
+    }
 
     // Query MFG capabilities
     sl::DLSSGState dlssgState {};
@@ -147,7 +222,7 @@ void DLSSG_Dx12::ShutdownStreamline()
 
     {
         ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
-        State::DisableChecks(0x534C4F50, "sl.");
+        State::DisableChecks(0x534C4F50, "");
 
         SLProxy::Shutdown()();
 
@@ -419,7 +494,12 @@ void DLSSG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
     LOG_DEBUG("");
 
     _device = device;
-    CreateObjects(device);
+
+    if (!_objectsCreated)
+    {
+        CreateObjects(device);
+        _objectsCreated = true;
+    }
 
     if (!_slInitialized)
     {
@@ -428,22 +508,12 @@ void DLSSG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
 
     if (_slInitialized && _dlssgFeatureReady)
     {
-        // Configure DLSS-G options
-        sl::DLSSGOptions options {};
-        options.mode = sl::DLSSGMode::eOn;
-        options.numFramesToGenerate = _numFramesToGenerate;
-        options.flags = sl::DLSSGFlags::eEnableFullscreenMenuDetection;
-
-        sl::ViewportHandle viewport(0);
-        auto result = SLProxy::DLSSGSetOptions()(viewport, options);
-        if (result != sl::Result::eOk)
-        {
-            LOG_ERROR("slDLSSGSetOptions failed: {}", (int) result);
-        }
-        else
-        {
-            LOG_INFO("DLSS-G configured: mode=On, numFramesToGenerate={}", _numFramesToGenerate);
-        }
+        // Do NOT set DLSS-G mode=On here. The FG input (upscaler) may not be providing
+        // data yet (e.g. during loading screens). If we set mode=On now, SL's present
+        // hooks will expect slEvaluateFeature calls that never come, causing a deadlock.
+        // Instead, keep mode=eOff and let Activate() set mode=On when EvaluateState()
+        // confirms the upscaler is actually running.
+        LOG_INFO("DLSS-G context created, feature ready (mode=Off until Activate)");
 
         _lastDispatchedFrame = 0;
     }
@@ -461,7 +531,7 @@ void DLSSG_Dx12::Activate()
 {
     LOG_DEBUG("");
 
-    if (!_slInitialized || !_dlssgFeatureReady)
+    if (!_slInitialized || !_dlssgFeatureReady || !_objectsCreated)
         return;
 
     if (!_isActive)
@@ -578,8 +648,19 @@ void DLSSG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
                 DestroyFGContext();
         }
 
-        if (_slInitialized && _dlssgFeatureReady && State::Instance().activeFgInput == FGInput::Upscaler &&
-            !IsPaused() && !IsActive())
+        // Create command lists/allocators if not yet done (InitStreamline may have
+        // been called during CreateSwapchain, but CreateObjects deferred until now)
+        if (_slInitialized && _dlssgFeatureReady && !_objectsCreated)
+        {
+            _device = device;
+            CreateObjects(device);
+            _objectsCreated = true;
+            _lastDispatchedFrame = 0;
+            LOG_INFO("DLSS-G objects created (deferred from CreateSwapchain)");
+        }
+
+        if (_slInitialized && _dlssgFeatureReady && _objectsCreated &&
+            State::Instance().activeFgInput == FGInput::Upscaler && !IsPaused() && !IsActive())
             Activate();
     }
     else
@@ -656,42 +737,56 @@ void DLSSG_Dx12::SetSLConstants(int fIndex)
     // Reset flag
     slConstants.reset = _reset[fIndex] ? sl::Boolean::eTrue : sl::Boolean::eFalse;
 
-    // Build view & projection matrices from camera data for clipToPrevClip etc.
-    if (_cameraPosition[fIndex][0] != 0.0f || _cameraPosition[fIndex][1] != 0.0f ||
-        _cameraPosition[fIndex][2] != 0.0f)
+    // Build projection matrices from camera data.
+    // The Upscaler input path only provides near/far/fov/aspect (no camera position
+    // or orientation vectors), so we always build the projection matrix from those.
+    // When camera vectors are available, we also build view-dependent matrices.
     {
-        XMVECTOR right = XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(_cameraRight[fIndex]));
-        XMVECTOR up = XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(_cameraUp[fIndex]));
-        XMVECTOR forward = XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(_cameraForward[fIndex]));
-        XMVECTOR pos = XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(_cameraPosition[fIndex]));
-
-        float x = -XMVectorGetX(XMVector3Dot(pos, right));
-        float y = -XMVectorGetX(XMVector3Dot(pos, up));
-        float z = -XMVectorGetX(XMVector3Dot(pos, forward));
-
-        // Row-major view matrix
-        XMMATRIX view = { XMVectorSet(XMVectorGetX(right), XMVectorGetX(up), XMVectorGetX(forward), 0.0f),
-                          XMVectorSet(XMVectorGetY(right), XMVectorGetY(up), XMVectorGetY(forward), 0.0f),
-                          XMVectorSet(XMVectorGetZ(right), XMVectorGetZ(up), XMVectorGetZ(forward), 0.0f),
-                          XMVectorSet(x, y, z, 1.0f) };
-
         float nearVal = _cameraNear[fIndex];
         float farVal = _cameraFar[fIndex];
+        float vfov = _cameraVFov[fIndex];
+        float aspect = _cameraAspectRatio[fIndex];
 
-        if (nearVal > 0.f && farVal > 0.f &&
-            !XMScalarNearEqual(_cameraVFov[fIndex], 0.0f, 0.00001f) &&
-            !XMScalarNearEqual(_cameraAspectRatio[fIndex], 0.0f, 0.00001f))
+        if (nearVal > 0.f && !XMScalarNearEqual(vfov, 0.0f, 0.00001f) &&
+            !XMScalarNearEqual(aspect, 0.0f, 0.00001f))
         {
-            if (XMScalarNearEqual(nearVal, farVal, 0.00001f))
-                farVal++;
+            // Ensure far > near
+            if (farVal <= 0.f || XMScalarNearEqual(nearVal, farVal, 0.00001f))
+                farVal = nearVal + 10000.0f;
 
-            XMMATRIX proj = XMMatrixPerspectiveFovLH(_cameraVFov[fIndex], _cameraAspectRatio[fIndex], nearVal, farVal);
+            // Build perspective projection (this IS viewToClip when view = identity)
+            XMMATRIX proj;
+            if (IsInvertedDepth())
+                proj = XMMatrixPerspectiveFovLH(vfov, aspect, farVal, nearVal);  // reversed-Z
+            else
+                proj = XMMatrixPerspectiveFovLH(vfov, aspect, nearVal, farVal);
+
             XMMATRIX viewToClip = proj;
             XMMATRIX clipToView = XMMatrixInverse(nullptr, viewToClip);
 
-            // Copy to sl::float4x4
             memcpy(&slConstants.cameraViewToClip, viewToClip.r, sizeof(sl::float4x4));
             memcpy(&slConstants.clipToCameraView, clipToView.r, sizeof(sl::float4x4));
+
+            // clipToPrevClip and prevClipToClip: use identity (SL can derive from MVs)
+            // If we had previous-frame camera data we could compute these, but the
+            // Upscaler input path doesn't track previous-frame projection changes.
+            XMMATRIX identity = XMMatrixIdentity();
+            memcpy(&slConstants.clipToPrevClip, identity.r, sizeof(sl::float4x4));
+            memcpy(&slConstants.prevClipToClip, identity.r, sizeof(sl::float4x4));
+        }
+
+        // If we have camera position, set pinhole offset for SL
+        bool hasCamPos = (_cameraPosition[fIndex][0] != 0.0f || _cameraPosition[fIndex][1] != 0.0f ||
+                          _cameraPosition[fIndex][2] != 0.0f);
+        if (hasCamPos)
+        {
+            // cameraPinholeOffset = 0 (no stereo offset)
+            slConstants.cameraPinholeOffset = sl::float2(0.0f, 0.0f);
+        }
+        else
+        {
+            // Even without camera data, set pinhole to 0 to silence the SL warning
+            slConstants.cameraPinholeOffset = sl::float2(0.0f, 0.0f);
         }
     }
 
@@ -712,59 +807,66 @@ bool DLSSG_Dx12::TagResources(int fIndex, uint64_t willDispatchFrame)
     sl::ViewportHandle viewport(0);
     std::vector<sl::ResourceTag> tags;
 
+    // Persistent storage for sl::Resource objects — must outlive the slSetTagForFrame call.
+    // ResourceTag stores a raw Resource* pointer, so locals going out of scope would dangle.
+    std::vector<sl::Resource> slResources;
+    std::vector<sl::Extent> extents;
+    slResources.reserve(5);
+    extents.reserve(5);
+
     // Depth
     if (_frameResources[fIndex].contains(FG_ResourceType::Depth))
     {
         auto& fRes = _frameResources[fIndex][FG_ResourceType::Depth];
-        auto slRes = MakeSLResource(fRes.GetResource(), fRes.state);
-        sl::Extent extent = { fRes.top, fRes.left, (uint32_t) fRes.width, fRes.height };
-        tags.emplace_back(&slRes, sl::kBufferTypeDepth,
+        slResources.push_back(MakeSLResource(fRes.GetResource(), fRes.state));
+        extents.push_back({ fRes.top, fRes.left, (uint32_t) fRes.width, fRes.height });
+        tags.emplace_back(&slResources.back(), sl::kBufferTypeDepth,
                           (fRes.validity == FG_ResourceValidity::ValidNow) ? sl::eOnlyValidNow : sl::eValidUntilPresent,
-                          &extent);
+                          &extents.back());
     }
 
     // Motion Vectors
     if (_frameResources[fIndex].contains(FG_ResourceType::Velocity))
     {
         auto& fRes = _frameResources[fIndex][FG_ResourceType::Velocity];
-        auto slRes = MakeSLResource(fRes.GetResource(), fRes.state);
-        sl::Extent extent = { fRes.top, fRes.left, (uint32_t) fRes.width, fRes.height };
-        tags.emplace_back(&slRes, sl::kBufferTypeMotionVectors,
+        slResources.push_back(MakeSLResource(fRes.GetResource(), fRes.state));
+        extents.push_back({ fRes.top, fRes.left, (uint32_t) fRes.width, fRes.height });
+        tags.emplace_back(&slResources.back(), sl::kBufferTypeMotionVectors,
                           (fRes.validity == FG_ResourceValidity::ValidNow) ? sl::eOnlyValidNow : sl::eValidUntilPresent,
-                          &extent);
+                          &extents.back());
     }
 
     // HUDLess Color
     if (_frameResources[fIndex].contains(FG_ResourceType::HudlessColor))
     {
         auto& fRes = _frameResources[fIndex][FG_ResourceType::HudlessColor];
-        auto slRes = MakeSLResource(fRes.GetResource(), fRes.state);
-        sl::Extent extent = { fRes.top, fRes.left, (uint32_t) fRes.width, fRes.height };
-        tags.emplace_back(&slRes, sl::kBufferTypeHUDLessColor,
+        slResources.push_back(MakeSLResource(fRes.GetResource(), fRes.state));
+        extents.push_back({ fRes.top, fRes.left, (uint32_t) fRes.width, fRes.height });
+        tags.emplace_back(&slResources.back(), sl::kBufferTypeHUDLessColor,
                           (fRes.validity == FG_ResourceValidity::ValidNow) ? sl::eOnlyValidNow : sl::eValidUntilPresent,
-                          &extent);
+                          &extents.back());
     }
 
     // UI Color
     if (_frameResources[fIndex].contains(FG_ResourceType::UIColor))
     {
         auto& fRes = _frameResources[fIndex][FG_ResourceType::UIColor];
-        auto slRes = MakeSLResource(fRes.GetResource(), fRes.state);
-        sl::Extent extent = { fRes.top, fRes.left, (uint32_t) fRes.width, fRes.height };
-        tags.emplace_back(&slRes, sl::kBufferTypeUIColorAndAlpha,
+        slResources.push_back(MakeSLResource(fRes.GetResource(), fRes.state));
+        extents.push_back({ fRes.top, fRes.left, (uint32_t) fRes.width, fRes.height });
+        tags.emplace_back(&slResources.back(), sl::kBufferTypeUIColorAndAlpha,
                           (fRes.validity == FG_ResourceValidity::ValidNow) ? sl::eOnlyValidNow : sl::eValidUntilPresent,
-                          &extent);
+                          &extents.back());
     }
 
     // Bidirectional Distortion Field
     if (_frameResources[fIndex].contains(FG_ResourceType::Distortion))
     {
         auto& fRes = _frameResources[fIndex][FG_ResourceType::Distortion];
-        auto slRes = MakeSLResource(fRes.GetResource(), fRes.state);
-        sl::Extent extent = { fRes.top, fRes.left, (uint32_t) fRes.width, fRes.height };
-        tags.emplace_back(&slRes, sl::kBufferTypeBidirectionalDistortionField,
+        slResources.push_back(MakeSLResource(fRes.GetResource(), fRes.state));
+        extents.push_back({ fRes.top, fRes.left, (uint32_t) fRes.width, fRes.height });
+        tags.emplace_back(&slResources.back(), sl::kBufferTypeBidirectionalDistortionField,
                           (fRes.validity == FG_ResourceValidity::ValidNow) ? sl::eOnlyValidNow : sl::eValidUntilPresent,
-                          &extent);
+                          &extents.back());
     }
 
     if (tags.empty())
@@ -806,7 +908,13 @@ bool DLSSG_Dx12::TagResources(int fIndex, uint64_t willDispatchFrame)
         }
     }
 
-    LOG_DEBUG("Tagged {} resources for frame {}", tags.size(), (uint32_t) willDispatchFrame);
+    LOG_DEBUG("Tagged {} resources for frame {} (Depth:{}, MV:{}, Hudless:{}, UI:{}, Dist:{})",
+              tags.size(), (uint32_t) willDispatchFrame,
+              _frameResources[fIndex].contains(FG_ResourceType::Depth) ? 1 : 0,
+              _frameResources[fIndex].contains(FG_ResourceType::Velocity) ? 1 : 0,
+              _frameResources[fIndex].contains(FG_ResourceType::HudlessColor) ? 1 : 0,
+              _frameResources[fIndex].contains(FG_ResourceType::UIColor) ? 1 : 0,
+              _frameResources[fIndex].contains(FG_ResourceType::Distortion) ? 1 : 0);
     return true;
 }
 
@@ -816,15 +924,18 @@ bool DLSSG_Dx12::Dispatch()
 {
     LOG_FUNC();
 
-    UINT64 willDispatchFrame = 0;
-    auto fIndex = GetDispatchIndex(willDispatchFrame);
-    if (fIndex < 0)
-        return false;
-
+    // Check preconditions BEFORE GetDispatchIndex, which has the side effect
+    // of advancing _lastDispatchedFrame. Without these guards, the frame counter
+    // gets out of sync when DLSS-G isn't ready yet.
     if (!IsActive() || IsPaused())
         return false;
 
-    if (!_slInitialized || !_dlssgFeatureReady)
+    if (!_slInitialized || !_dlssgFeatureReady || !_objectsCreated)
+        return false;
+
+    UINT64 willDispatchFrame = 0;
+    auto fIndex = GetDispatchIndex(willDispatchFrame);
+    if (fIndex < 0)
         return false;
 
     LOG_DEBUG("_frameCount: {}, willDispatchFrame: {}, fIndex: {}", _frameCount, willDispatchFrame, fIndex);
@@ -873,7 +984,47 @@ bool DLSSG_Dx12::Dispatch()
         }
     }
 
-    // Get new frame token
+    // DLSS-G REQUIRES kBufferTypeHUDLessColor. If Hudfix didn't capture one,
+    // use the current backbuffer as a fallback. At this point in the Present
+    // chain the backbuffer contains the fully rendered frame (the best hudless
+    // approximation we have). DLSS-G's eEnableFullscreenMenuDetection flag
+    // provides its own HUD detection on top of this.
+    if (!_frameResources[fIndex].contains(FG_ResourceType::HudlessColor) ||
+        _frameResources[fIndex][FG_ResourceType::HudlessColor].resource == nullptr)
+    {
+        if (_swapChain != nullptr)
+        {
+            IDXGISwapChain3* sc3 = nullptr;
+            if (((IDXGISwapChain*) _swapChain)->QueryInterface(IID_PPV_ARGS(&sc3)) == S_OK)
+            {
+                UINT bbIndex = sc3->GetCurrentBackBufferIndex();
+                ID3D12Resource* backBuffer = nullptr;
+                if (sc3->GetBuffer(bbIndex, IID_PPV_ARGS(&backBuffer)) == S_OK && backBuffer != nullptr)
+                {
+                    auto desc = backBuffer->GetDesc();
+                    auto& fRes = _frameResources[fIndex][FG_ResourceType::HudlessColor];
+                    fRes.type = FG_ResourceType::HudlessColor;
+                    fRes.resource = backBuffer;
+                    fRes.state = D3D12_RESOURCE_STATE_PRESENT;
+                    fRes.validity = FG_ResourceValidity::UntilPresent;
+                    fRes.left = 0;
+                    fRes.top = 0;
+                    fRes.width = (LONG) desc.Width;
+                    fRes.height = desc.Height;
+                    fRes.cmdList = nullptr;
+                    fRes.frameIndex = fIndex;
+                    _noHudless[fIndex] = false;
+                    backBuffer->Release();  // GetBuffer AddRef'd; resource stays alive via swapchain
+                    LOG_DEBUG("Using backbuffer as HudlessColor fallback ({}x{})", desc.Width, desc.Height);
+                }
+                sc3->Release();
+            }
+        }
+    }
+
+    // Get new frame token — per the DLSS-G programming guide, this should be called
+    // "at the start of each frame" (simulation start). In OptiScaler's architecture,
+    // Dispatch() is called during FGPresent, which is the per-frame work before Present.
     sl::FrameToken* newToken = nullptr;
     auto tokenResult = SLProxy::GetNewFrameToken()(newToken, nullptr);
     _currentFrameToken = newToken;
@@ -883,8 +1034,28 @@ bool DLSSG_Dx12::Dispatch()
         return false;
     }
 
-    // Set SL constants for this frame
+    // PCL marker: Simulation start
+    // The DLSS-G programming guide requires these markers to be in sync with frame tokens.
+    // "If you see 'common constants cannot be found for frame N', PCL markers are out of sync."
+    if (SLProxy::PCLSetMarker() != nullptr)
+    {
+        SLProxy::PCLSetMarker()(sl::PCLMarker::eSimulationStart, *_currentFrameToken);
+    }
+
+    // Set SL constants for this frame — must be as early as possible after frame token
     SetSLConstants(fIndex);
+
+    // PCL marker: Simulation end
+    if (SLProxy::PCLSetMarker() != nullptr)
+    {
+        SLProxy::PCLSetMarker()(sl::PCLMarker::eSimulationEnd, *_currentFrameToken);
+    }
+
+    // PCL marker: Render submit start
+    if (SLProxy::PCLSetMarker() != nullptr)
+    {
+        SLProxy::PCLSetMarker()(sl::PCLMarker::eRenderSubmitStart, *_currentFrameToken);
+    }
 
     // Tag resources
     if (!TagResources(fIndex, willDispatchFrame))
@@ -893,21 +1064,19 @@ bool DLSSG_Dx12::Dispatch()
         return false;
     }
 
-    // Evaluate (trigger frame generation)
+    // PCL marker: Render submit end
+    if (SLProxy::PCLSetMarker() != nullptr)
     {
-        sl::ViewportHandle viewport(0);
-        sl::ResourceTag emptyTag {};
-        auto result = SLProxy::EvaluateFeature()(sl::kFeatureDLSS_G, *_currentFrameToken, nullptr, 0, nullptr);
-        if (result != sl::Result::eOk)
-        {
-            LOG_ERROR("slEvaluateFeature(DLSS_G) failed: {}", (int) result);
-
-            State::Instance().FGchanged = true;
-            UpdateTarget();
-            Deactivate();
-            return false;
-        }
+        SLProxy::PCLSetMarker()(sl::PCLMarker::eRenderSubmitEnd, *_currentFrameToken);
     }
+
+    // DLSS-G frame generation is triggered automatically by the SL interposer's
+    // Present hook — there is no slEvaluateFeature callback for DLSS-G.
+    // Our job in Dispatch is just to tag resources, set constants, and provide
+    // PCL markers each frame. The actual interpolation happens during Present.
+    //
+    // CRITICAL: ePresentStart and ePresentEnd markers must be called around
+    // the actual swapchain Present call in FG_Hooks.cpp, not here.
 
     _slFrameIndex++;
     LOG_DEBUG("DLSS-G dispatch OK, frame index: {}", _slFrameIndex);
@@ -921,6 +1090,14 @@ bool DLSSG_Dx12::Present()
 {
     auto fIndex = GetIndexWillBeDispatched();
     LOG_DEBUG("fIndex: {}", fIndex);
+
+    // Early out if DLSS-G is not fully initialized yet
+    // (objects may not be created until the upscaler starts providing data)
+    if (!_objectsCreated || !_slInitialized || !_dlssgFeatureReady)
+    {
+        _fgFramePresentId++;
+        return false;
+    }
 
     if (IsActive() && !IsPaused() && State::Instance().FGHudlessCompare)
     {
@@ -1168,12 +1345,23 @@ void DLSSG_Dx12::CreateObjects(ID3D12Device* InDevice)
 
 void DLSSG_Dx12::ReleaseObjects()
 {
+    _objectsCreated = false;
     _mvFlip.reset();
     _depthFlip.reset();
     _hudlessCompare.reset();
 
     for (size_t i = 0; i < BUFFER_COUNT; i++)
     {
+        if (_uiCommandList[i] != nullptr)
+        {
+            _uiCommandList[i]->Release();
+            _uiCommandList[i] = nullptr;
+        }
+        if (_uiCommandAllocator[i] != nullptr)
+        {
+            _uiCommandAllocator[i]->Release();
+            _uiCommandAllocator[i] = nullptr;
+        }
         if (_tagCommandList[i] != nullptr)
         {
             _tagCommandList[i]->Release();
@@ -1223,6 +1411,24 @@ bool DLSSG_Dx12::ReleaseSwapchain(HWND hwnd)
 }
 
 DLSSG_Dx12::~DLSSG_Dx12() { Shutdown(); }
+
+void DLSSG_Dx12::SetPCLPresentStart()
+{
+    if (_currentFrameToken != nullptr && SLProxy::PCLSetMarker() != nullptr)
+    {
+        auto result = SLProxy::PCLSetMarker()(sl::PCLMarker::ePresentStart, *_currentFrameToken);
+        LOG_DEBUG("PCL ePresentStart result: {}", (int) result);
+    }
+}
+
+void DLSSG_Dx12::SetPCLPresentEnd()
+{
+    if (_currentFrameToken != nullptr && SLProxy::PCLSetMarker() != nullptr)
+    {
+        auto result = SLProxy::PCLSetMarker()(sl::PCLMarker::ePresentEnd, *_currentFrameToken);
+        LOG_DEBUG("PCL ePresentEnd result: {}", (int) result);
+    }
+}
 
 bool DLSSG_Dx12::SetInterpolatedFrameCount(UINT interpolatedFrameCount)
 {

@@ -968,12 +968,31 @@ HRESULT FGHooks::FGPresent(void* This, UINT SyncInterval, UINT Flags, const DXGI
     if (willPresent)
         State::Instance().FGPresentIsCalled = true;
 
+    // DLSS-G requires PCL ePresentStart/ePresentEnd markers around the actual Present call.
+    // These markers MUST match the frame token and be in sync with the per-frame data.
+    // The programming guide states: "If you see 'common constants cannot be found for frame N',
+    // that indicates sl.reflex markers ePresentStart and ePresentEnd are out of sync."
+    bool isDLSSG = (State::Instance().activeFgOutput == FGOutput::DLSSG);
+    if (isDLSSG && willPresent && fg != nullptr)
+    {
+        auto dlssg = dynamic_cast<DLSSG_Dx12*>(fg);
+        if (dlssg != nullptr)
+            dlssg->SetPCLPresentStart();
+    }
+
     HRESULT result;
     if (pPresentParameters == nullptr)
         result = o_FGSCPresent(This, SyncInterval, Flags);
     else
         result = o_FGSCPresent1(This, SyncInterval, Flags, pPresentParameters);
     LOG_DEBUG("Result: {:X}", result);
+
+    if (isDLSSG && willPresent && fg != nullptr)
+    {
+        auto dlssg = dynamic_cast<DLSSG_Dx12*>(fg);
+        if (dlssg != nullptr)
+            dlssg->SetPCLPresentEnd();
+    }
 
     Hudfix_Dx12::PresentEnd();
 

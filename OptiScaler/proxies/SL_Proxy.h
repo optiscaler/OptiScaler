@@ -11,6 +11,7 @@
 #include <sl.h>
 #include <sl_dlss_g.h>
 #include <sl_reflex.h>
+#include <sl_pcl.h>
 
 class SLProxy
 {
@@ -41,6 +42,16 @@ class SLProxy
     // DLSS-G feature functions (resolved via slGetFeatureFunction after device is set)
     inline static PFun_slDLSSGSetOptions* _slDLSSGSetOptions = nullptr;
     inline static PFun_slDLSSGGetState* _slDLSSGGetState = nullptr;
+
+    // PCL feature functions (resolved via slGetFeatureFunction after device is set)
+    inline static PFun_slPCLSetMarker* _slPCLSetMarker = nullptr;
+    inline static PFun_slPCLSetOptions* _slPCLSetOptions = nullptr;
+    inline static PFun_slPCLGetState* _slPCLGetState = nullptr;
+
+    // Reflex feature functions (resolved via slGetFeatureFunction after device is set)
+    inline static PFun_slReflexSetOptions* _slReflexSetOptions = nullptr;
+    inline static PFun_slReflexSleep* _slReflexSleep = nullptr;
+    inline static PFun_slReflexGetState* _slReflexGetState = nullptr;
 
     static bool ResolveCoreAPIs()
     {
@@ -82,6 +93,8 @@ class SLProxy
     static HMODULE Module() { return _dll; }
     static bool IsReady() { return _dll != nullptr && _slInit != nullptr; }
     static bool IsDLSSGReady() { return IsReady() && _slDLSSGSetOptions != nullptr && _slDLSSGGetState != nullptr; }
+    static bool IsPCLReady() { return IsReady() && _slPCLSetMarker != nullptr; }
+    static bool IsReflexReady() { return IsReady() && _slReflexSetOptions != nullptr; }
 
     static bool InitSL()
     {
@@ -89,13 +102,33 @@ class SLProxy
             return true;
 
         auto dllPath = Util::DllPath();
-        std::filesystem::path slInterposerPath = dllPath.parent_path() / L"sl" / L"sl.interposer.dll";
+        // Use a renamed copy to bypass ALL name-based detection in OptiScaler's hook system.
+        // OptiScaler's LoadLibraryCheckW and CheckModulesInMemory match against "sl.interposer.dll"
+        // and "sl.interposer" - renaming avoids ALL hook interception paths entirely.
+        std::filesystem::path slDir = dllPath.parent_path() / L"sl";
+        std::filesystem::path slInterposerOriginal = slDir / L"sl.interposer.dll";
+        std::filesystem::path slInterposerRenamed = slDir / L"sl.interposer_output.dll";
 
-        LOG_INFO(L"Trying to load sl.interposer.dll from: {}", slInterposerPath.wstring());
+        // Create renamed copy if it doesn't exist
+        if (!std::filesystem::exists(slInterposerRenamed) && std::filesystem::exists(slInterposerOriginal))
+        {
+            std::error_code ec;
+            std::filesystem::copy_file(slInterposerOriginal, slInterposerRenamed,
+                                       std::filesystem::copy_options::overwrite_existing, ec);
+            if (ec)
+            {
+                LOG_ERROR(L"Failed to create sl.interposer_output.dll: {}", string_to_wstring(ec.message()));
+                return false;
+            }
+            LOG_INFO("Created sl.interposer_output.dll from sl.interposer.dll");
+        }
+
+        std::filesystem::path slInterposerPath = slInterposerRenamed;
+        LOG_INFO(L"Trying to load sl.interposer_output.dll from: {}", slInterposerPath.wstring());
 
         {
             ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
-            State::DisableChecks(0x534C4F50, "sl.interposer"); // "SLOP" owner ID
+            State::DisableChecks(0x534C4F50, ""); // "SLOP" owner ID - skip ALL checks for renamed DLL
 
             _dll = NtdllProxy::LoadLibraryExW_Ldr(slInterposerPath.c_str(), NULL, 0);
 
@@ -157,6 +190,82 @@ class SLProxy
         return true;
     }
 
+    // Resolve PCL feature functions - must be called AFTER slSetD3DDevice
+    static bool ResolvePCLFunctions()
+    {
+        if (_slGetFeatureFunction == nullptr)
+            return false;
+
+        void* funcPtr = nullptr;
+
+        auto result = _slGetFeatureFunction(sl::kFeaturePCL, "slPCLSetMarker", funcPtr);
+        if (result == sl::Result::eOk && funcPtr != nullptr)
+        {
+            _slPCLSetMarker = (PFun_slPCLSetMarker*) funcPtr;
+        }
+        else
+        {
+            LOG_WARN("Failed to resolve slPCLSetMarker: {} (PCL may not be loaded)", (int) result);
+        }
+
+        funcPtr = nullptr;
+        result = _slGetFeatureFunction(sl::kFeaturePCL, "slPCLSetOptions", funcPtr);
+        if (result == sl::Result::eOk && funcPtr != nullptr)
+        {
+            _slPCLSetOptions = (PFun_slPCLSetOptions*) funcPtr;
+        }
+
+        funcPtr = nullptr;
+        result = _slGetFeatureFunction(sl::kFeaturePCL, "slPCLGetState", funcPtr);
+        if (result == sl::Result::eOk && funcPtr != nullptr)
+        {
+            _slPCLGetState = (PFun_slPCLGetState*) funcPtr;
+        }
+
+        bool success = _slPCLSetMarker != nullptr;
+        LOG_INFO("PCL feature functions resolved: {} (SetMarker:{}, SetOptions:{}, GetState:{})",
+                 success, _slPCLSetMarker != nullptr, _slPCLSetOptions != nullptr, _slPCLGetState != nullptr);
+        return success;
+    }
+
+    // Resolve Reflex feature functions - must be called AFTER slSetD3DDevice
+    static bool ResolveReflexFunctions()
+    {
+        if (_slGetFeatureFunction == nullptr)
+            return false;
+
+        void* funcPtr = nullptr;
+
+        auto result = _slGetFeatureFunction(sl::kFeatureReflex, "slReflexSetOptions", funcPtr);
+        if (result == sl::Result::eOk && funcPtr != nullptr)
+        {
+            _slReflexSetOptions = (PFun_slReflexSetOptions*) funcPtr;
+        }
+        else
+        {
+            LOG_WARN("Failed to resolve slReflexSetOptions: {} (Reflex may not be loaded)", (int) result);
+        }
+
+        funcPtr = nullptr;
+        result = _slGetFeatureFunction(sl::kFeatureReflex, "slReflexSleep", funcPtr);
+        if (result == sl::Result::eOk && funcPtr != nullptr)
+        {
+            _slReflexSleep = (PFun_slReflexSleep*) funcPtr;
+        }
+
+        funcPtr = nullptr;
+        result = _slGetFeatureFunction(sl::kFeatureReflex, "slReflexGetState", funcPtr);
+        if (result == sl::Result::eOk && funcPtr != nullptr)
+        {
+            _slReflexGetState = (PFun_slReflexGetState*) funcPtr;
+        }
+
+        bool success = _slReflexSetOptions != nullptr;
+        LOG_INFO("Reflex feature functions resolved: {} (SetOptions:{}, Sleep:{}, GetState:{})",
+                 success, _slReflexSetOptions != nullptr, _slReflexSleep != nullptr, _slReflexGetState != nullptr);
+        return success;
+    }
+
     static feature_version Version()
     {
         if (_slVersion.major == 0 && _slGetFeatureVersion != nullptr)
@@ -208,4 +317,14 @@ class SLProxy
     // DLSS-G feature function accessors
     static PFun_slDLSSGSetOptions* DLSSGSetOptions() { return _slDLSSGSetOptions; }
     static PFun_slDLSSGGetState* DLSSGGetState() { return _slDLSSGGetState; }
+
+    // PCL feature function accessors
+    static PFun_slPCLSetMarker* PCLSetMarker() { return _slPCLSetMarker; }
+    static PFun_slPCLSetOptions* PCLSetOptions() { return _slPCLSetOptions; }
+    static PFun_slPCLGetState* PCLGetState() { return _slPCLGetState; }
+
+    // Reflex feature function accessors
+    static PFun_slReflexSetOptions* ReflexSetOptions() { return _slReflexSetOptions; }
+    static PFun_slReflexSleep* ReflexSleep() { return _slReflexSleep; }
+    static PFun_slReflexGetState* ReflexGetState() { return _slReflexGetState; }
 };

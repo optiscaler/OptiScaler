@@ -22,17 +22,16 @@
 #pragma once
 
 #define SL_VERSION_MAJOR 2
-#define SL_VERSION_MINOR 7
-#define SL_VERSION_PATCH 32
+#define SL_VERSION_MINOR 10
+#define SL_VERSION_PATCH 3
 
 #include <cstdint>
 #include <string>
 
 namespace sl
 {
-constexpr inline uint64_t kSDKVersionMagic = 0xfedc;
-constexpr inline uint64_t kSDKVersion = (uint64_t(SL_VERSION_MAJOR) << 48) | (uint64_t(SL_VERSION_MINOR) << 32) |
-                                        (uint64_t(SL_VERSION_PATCH) << 16) | kSDKVersionMagic;
+constexpr uint64_t kSDKVersionMagic = 0xfedc;
+constexpr uint64_t kSDKVersion = (uint64_t(SL_VERSION_MAJOR) << 48) | (uint64_t(SL_VERSION_MINOR) << 32) | (uint64_t(SL_VERSION_PATCH) << 16) | kSDKVersionMagic;
 
 struct Version
 {

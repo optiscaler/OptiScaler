@@ -15,6 +15,7 @@ class DLSSG_Dx12 : public virtual IFGFeature_Dx12
     bool _slInitialized = false;
     bool _deviceRegistered = false;
     bool _dlssgFeatureReady = false;
+    bool _objectsCreated = false;
 
     // MFG state
     uint32_t _numFramesToGenerateMax = 1;
@@ -73,6 +74,10 @@ class DLSSG_Dx12 : public virtual IFGFeature_Dx12
 
     // MFG accessors
     uint32_t GetMaxFramesToGenerate() const { return _numFramesToGenerateMax; }
+
+    // PCL marker helpers — called from FG_Hooks around the actual Present call
+    void SetPCLPresentStart();
+    void SetPCLPresentEnd();
 
     DLSSG_Dx12(UINT framesToInterpolate = 1) : IFGFeature_Dx12(), IFGFeature(framesToInterpolate)
     {

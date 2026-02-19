@@ -508,21 +508,27 @@ bool StreamlineHooks::hkdlssg_slOnPluginLoad(void* params, const char* loaderJSO
     // TODO: do it better than "static" and hoping for the best
     static std::string config;
 
+    bool isDlssgOutput = (State::Instance().activeFgOutput == FGOutput::DLSSG);
     bool shouldSpoofArch =
         Config::Instance()->StreamlineSpoofing.value_or_default() &&
-        (Config::Instance()->FGInput == FGInput::Nukems || Config::Instance()->FGInput == FGInput::DLSSG);
+        (Config::Instance()->FGInput == FGInput::Nukems || Config::Instance()->FGInput == FGInput::DLSSG ||
+         isDlssgOutput);
+
+    // For DLSSG output, ALWAYS ensure systemCaps->hwsSupported=true even if StreamlineSpoofing is off
+    bool needHwsSpoof = shouldSpoofArch || isDlssgOutput;
 
     uint32_t currentArch = 0;
-    if (shouldSpoofArch)
+    if (needHwsSpoof)
     {
         hookSystemCaps((sl::param::IParameters*) params);
         currentArch = getSystemCapsArch();
-        spoofArch(currentArch, sl::kFeatureDLSS_G);
+        if (shouldSpoofArch)
+            spoofArch(currentArch, sl::kFeatureDLSS_G);
     }
 
     auto result = o_dlssg_slOnPluginLoad(params, loaderJSON, pluginJSON);
 
-    if (shouldSpoofArch)
+    if (needHwsSpoof)
         setArch(currentArch);
 
     nlohmann::json configJson = nlohmann::json::parse(*pluginJSON);
@@ -552,7 +558,8 @@ bool StreamlineHooks::hkdlssg_slOnPluginLoad(void* params, const char* loaderJSO
             configJson["external"]["vk"]["device"]["1.3_features"].clear();
     }
 
-    if (State::Instance().activeFgInput == FGInput::DLSSG || State::Instance().activeFgInput == FGInput::Nukems)
+    if (State::Instance().activeFgInput == FGInput::DLSSG || State::Instance().activeFgInput == FGInput::Nukems ||
+        State::Instance().activeFgOutput == FGOutput::DLSSG)
     {
         if (configJson.contains("/vsync/supported"_json_pointer))
             configJson["vsync"]["supported"] = true; // disable eVSyncOffRequired
@@ -762,6 +769,11 @@ void* StreamlineHooks::hkdlssg_slGetPluginFunction(const char* functionName)
         o_dlssg_slOnPluginLoad = (PFN_slOnPluginLoad) o_dlssg_slGetPluginFunction(functionName);
         return &hkdlssg_slOnPluginLoad;
     }
+
+    // When DLSSG is the FG output, we drive SL directly via SLProxy.
+    // Only intercept slOnPluginLoad (above) for JSON patching; pass through everything else.
+    if (State::Instance().activeFgOutput == FGOutput::DLSSG)
+        return o_dlssg_slGetPluginFunction(functionName);
 
     if (strcmp(functionName, "slDLSSGSetOptions") == 0)
     {

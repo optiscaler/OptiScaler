@@ -213,10 +213,10 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
         if (dlssgModule != nullptr)
         {
-            if (State::Instance().activeFgOutput != FGOutput::DLSSG)
-                StreamlineHooks::hookDlssg(dlssgModule);
-            else
-                LOG_DEBUG("Skipping StreamlineHooks::hookDlssg - DLSSG output active");
+            // Always hook sl.dlss_g even for DLSSG output - needed for JSON patching
+            // (hws.required=false, vsync.supported=true) and systemCaps spoofing.
+            // The hook's slGetPluginFunction intercept is made output-aware in Streamline_Hooks.cpp.
+            StreamlineHooks::hookDlssg(dlssgModule);
         }
         else
         {
@@ -276,10 +276,9 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
         if (commonModule != nullptr)
         {
-            if (State::Instance().activeFgOutput != FGOutput::DLSSG)
-                StreamlineHooks::hookCommon(commonModule);
-            else
-                LOG_DEBUG("Skipping StreamlineHooks::hookCommon - DLSSG output active");
+            // Always hook sl.common even for DLSSG output - needed for systemCaps
+            // hwsSupported spoofing and architecture spoofing in setArch().
+            StreamlineHooks::hookCommon(commonModule);
         }
         else
         {
@@ -866,7 +865,8 @@ HMODULE LibraryLoadHooks::LoadFfxapiVk(std::wstring originalPath)
 
 void LibraryLoadHooks::CheckModulesInMemory()
 {
-    // Skip SL hooking when DLSSG is the FG output - we drive SL ourselves
+    // When DLSSG is FG output: skip interposer/dlss/reflex/pcl hooks, but ALLOW dlssg+common hooks
+    // (needed for JSON patching hws.required=false and systemCaps hwsSupported spoofing)
     bool skipSLHooks = (State::Instance().activeFgOutput == FGOutput::DLSSG);
 
     if (!skipSLHooks && !StreamlineHooks::isInterposerHooked())
@@ -893,7 +893,8 @@ void LibraryLoadHooks::CheckModulesInMemory()
         }
     }
 
-    if (!skipSLHooks && !StreamlineHooks::isDlssgHooked())
+    // Always hook sl.dlss_g - needed for JSON config patching even when DLSSG is output
+    if (!StreamlineHooks::isDlssgHooked())
     {
         HMODULE slDlssg = nullptr;
         slDlssg = GetDllNameWModule(&slDlssgNamesW);
@@ -926,7 +927,8 @@ void LibraryLoadHooks::CheckModulesInMemory()
         }
     }
 
-    if (!skipSLHooks && !StreamlineHooks::isCommonHooked())
+    // Always hook sl.common - needed for systemCaps hwsSupported spoofing even when DLSSG is output
+    if (!StreamlineHooks::isCommonHooked())
     {
         HMODULE slCommon = nullptr;
         slCommon = GetDllNameWModule(&slCommonNamesW);

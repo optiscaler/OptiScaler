@@ -65,6 +65,11 @@ bool Config::Reload(std::filesystem::path iniPath)
 
         // Frame Generation
         {
+            {
+                // Diagnostic: read the raw value from SimpleIni to debug FGEnabled loading
+                const char* rawEnabled = ini.GetValue("FrameGen", "Enabled", nullptr);
+                _log.push_back(std::format("FrameGen.Enabled(raw): {}", rawEnabled ? rawEnabled : "(null/missing)"));
+            }
             FGEnabled.set_from_config(readBool("FrameGen", "Enabled"));
             FGDebugView.set_from_config(readBool("FrameGen", "DebugView"));
 
@@ -659,6 +664,14 @@ bool Config::Reload(std::filesystem::path iniPath)
             OverrideVsync.set_from_config(readBool("V-Sync", "OverrideVsync"));
             ForceVsync.set_from_config(readBool("V-Sync", "ForceVsync"));
             VsyncInterval.set_from_config(readInt("V-Sync", "SyncInterval"));
+        }
+
+        // Auto-enable HAGS spoofing when DLSS-G will be used (as input or output)
+        if (!SpoofHAGS.has_value())
+        {
+            SpoofHAGS.set_volatile_value(FGInput.value_or_default() == FGInput::Nukems ||
+                                         FGInput.value_or_default() == FGInput::DLSSG ||
+                                         FGOutput.value_or_default() == FGOutput::DLSSG);
         }
 
         if (fakenvapi::isUsingFakenvapi())
@@ -1267,7 +1280,8 @@ bool Config::SaveIni()
         if (!Instance()->SpoofHAGS.has_value())
         {
             Instance()->SpoofHAGS.set_volatile_value(Instance()->FGInput.value_or_default() == FGInput::Nukems ||
-                                                     Instance()->FGInput.value_or_default() == FGInput::DLSSG);
+                                                     Instance()->FGInput.value_or_default() == FGInput::DLSSG ||
+                                                     Instance()->FGOutput.value_or_default() == FGOutput::DLSSG);
         }
     }
 
