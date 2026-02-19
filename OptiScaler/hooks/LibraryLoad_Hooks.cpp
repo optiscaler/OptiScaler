@@ -163,7 +163,15 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
         if (streamlineModule != nullptr)
         {
-            StreamlineHooks::hookInterposer(streamlineModule);
+            // Skip SL hooking when DLSSG is the FG output - we drive SL ourselves
+            if (State::Instance().activeFgOutput != FGOutput::DLSSG)
+            {
+                StreamlineHooks::hookInterposer(streamlineModule);
+            }
+            else
+            {
+                LOG_DEBUG("Skipping StreamlineHooks::hookInterposer - DLSSG output active");
+            }
             slInterposerModule = streamlineModule;
         }
         else
@@ -184,7 +192,10 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
         if (dlssModule != nullptr)
         {
-            StreamlineHooks::hookDlss(dlssModule);
+            if (State::Instance().activeFgOutput != FGOutput::DLSSG)
+                StreamlineHooks::hookDlss(dlssModule);
+            else
+                LOG_DEBUG("Skipping StreamlineHooks::hookDlss - DLSSG output active");
         }
         else
         {
@@ -202,7 +213,10 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
         if (dlssgModule != nullptr)
         {
-            StreamlineHooks::hookDlssg(dlssgModule);
+            if (State::Instance().activeFgOutput != FGOutput::DLSSG)
+                StreamlineHooks::hookDlssg(dlssgModule);
+            else
+                LOG_DEBUG("Skipping StreamlineHooks::hookDlssg - DLSSG output active");
         }
         else
         {
@@ -220,7 +234,10 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
         if (reflexModule != nullptr)
         {
-            StreamlineHooks::hookReflex(reflexModule);
+            if (State::Instance().activeFgOutput != FGOutput::DLSSG)
+                StreamlineHooks::hookReflex(reflexModule);
+            else
+                LOG_DEBUG("Skipping StreamlineHooks::hookReflex - DLSSG output active");
         }
         else
         {
@@ -238,7 +255,10 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
         if (pclModule != nullptr)
         {
-            StreamlineHooks::hookPcl(pclModule);
+            if (State::Instance().activeFgOutput != FGOutput::DLSSG)
+                StreamlineHooks::hookPcl(pclModule);
+            else
+                LOG_DEBUG("Skipping StreamlineHooks::hookPcl - DLSSG output active");
         }
         else
         {
@@ -256,7 +276,10 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
         if (commonModule != nullptr)
         {
-            StreamlineHooks::hookCommon(commonModule);
+            if (State::Instance().activeFgOutput != FGOutput::DLSSG)
+                StreamlineHooks::hookCommon(commonModule);
+            else
+                LOG_DEBUG("Skipping StreamlineHooks::hookCommon - DLSSG output active");
         }
         else
         {
@@ -843,7 +866,10 @@ HMODULE LibraryLoadHooks::LoadFfxapiVk(std::wstring originalPath)
 
 void LibraryLoadHooks::CheckModulesInMemory()
 {
-    if (!StreamlineHooks::isInterposerHooked())
+    // Skip SL hooking when DLSSG is the FG output - we drive SL ourselves
+    bool skipSLHooks = (State::Instance().activeFgOutput == FGOutput::DLSSG);
+
+    if (!skipSLHooks && !StreamlineHooks::isInterposerHooked())
     {
         // hook streamline right away if it's already loaded
         HMODULE slModule = nullptr;
@@ -856,7 +882,7 @@ void LibraryLoadHooks::CheckModulesInMemory()
         }
     }
 
-    if (!StreamlineHooks::isDlssHooked())
+    if (!skipSLHooks && !StreamlineHooks::isDlssHooked())
     {
         HMODULE slDlss = nullptr;
         slDlss = GetDllNameWModule(&slDlssNamesW);
@@ -867,7 +893,7 @@ void LibraryLoadHooks::CheckModulesInMemory()
         }
     }
 
-    if (!StreamlineHooks::isDlssgHooked())
+    if (!skipSLHooks && !StreamlineHooks::isDlssgHooked())
     {
         HMODULE slDlssg = nullptr;
         slDlssg = GetDllNameWModule(&slDlssgNamesW);
@@ -878,7 +904,7 @@ void LibraryLoadHooks::CheckModulesInMemory()
         }
     }
 
-    if (!StreamlineHooks::isReflexHooked())
+    if (!skipSLHooks && !StreamlineHooks::isReflexHooked())
     {
         HMODULE slReflex = nullptr;
         slReflex = GetDllNameWModule(&slReflexNamesW);
@@ -889,7 +915,7 @@ void LibraryLoadHooks::CheckModulesInMemory()
         }
     }
 
-    if (!StreamlineHooks::isPclHooked())
+    if (!skipSLHooks && !StreamlineHooks::isPclHooked())
     {
         HMODULE slPcl = nullptr;
         slPcl = GetDllNameWModule(&slPclNamesW);
@@ -900,7 +926,7 @@ void LibraryLoadHooks::CheckModulesInMemory()
         }
     }
 
-    if (!StreamlineHooks::isCommonHooked())
+    if (!skipSLHooks && !StreamlineHooks::isCommonHooked())
     {
         HMODULE slCommon = nullptr;
         slCommon = GetDllNameWModule(&slCommonNamesW);
