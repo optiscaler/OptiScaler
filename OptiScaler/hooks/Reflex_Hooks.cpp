@@ -417,7 +417,12 @@ void ReflexHooks::setFPSLimit(float fps)
         NV_SET_SLEEP_MODE_PARAMS temp {};
         memcpy(&temp, &_lastSleepParams, sizeof(NV_SET_SLEEP_MODE_PARAMS));
         temp.minimumIntervalUs = _minimumIntervalUs;
-        o_NvAPI_D3D_SetSleepMode(_lastSleepDev, &temp);
+
+        if (State::Instance().activeFgOutput == FGOutput::XeFG && fakenvapi::ForNvidia_SetSleepMode)
+            fakenvapi::ForNvidia_SetSleepMode(_lastSleepDev, &temp);
+        else
+            o_NvAPI_D3D_SetSleepMode(_lastSleepDev, &temp);
+
     }
 
     if (_lastVkSleepDev != nullptr)
