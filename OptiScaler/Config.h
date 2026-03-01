@@ -263,7 +263,7 @@ class Config
     CustomOptional<float> FpsOverlayAlpha { 0.4f };
     CustomOptional<float, NoDefault> FpsScale; // No value means same as MenuScale
     CustomOptional<bool> UseHQFont { true };
-    CustomOptional<bool> DisableSplash { false };
+    CustomOptional<bool> DisableSplash { true };
     CustomOptional<std::wstring, NoDefault> TTFFontPath;
     CustomOptional<int> FGShortcutKey { VK_END };
 
