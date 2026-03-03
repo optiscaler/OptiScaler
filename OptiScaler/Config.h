@@ -100,12 +100,13 @@ template <class T, HasDefaultValue defaultState = WithDefault> class CustomOptio
     }
 
     constexpr T value_or_default() &&
-        requires(defaultState != NoDefault) {
-            return this->has_value() ? std::move(this->value()) : std::move(_defaultValue);
-        }
+        requires(defaultState != NoDefault)
+    {
+        return this->has_value() ? std::move(this->value()) : std::move(_defaultValue);
+    }
 
-        constexpr std::optional<T> value_for_config(bool forceSave = false)
-            requires(defaultState == WithDefault)
+    constexpr std::optional<T> value_for_config(bool forceSave = false)
+        requires(defaultState == WithDefault)
     {
         if (_volatile)
         {
@@ -343,8 +344,8 @@ class Config
     // Output Scaling
     CustomOptional<bool> OutputScalingEnabled { false };
     CustomOptional<float> OutputScalingMultiplier { 1.5f };
-    CustomOptional<bool> OutputScalingUseFsr { true };
-    CustomOptional<uint32_t> OutputScalingDownscaler { 0 }; // 0 = Bicubic | 1 = Lanczos | 2 = Catmull-Rom | 3 = MAGC
+    CustomOptional<uint32_t> OutputScalingDownscaler { 0 }; // 0 = FSR 1 | 1 = Bicubic | 2 = Catmull-Rom | 3 = Lanczos2
+                                                            // | 4 = Lanczos3 | 5 = Kaiser2 | 6 = Kaiser3 | 7 = MAGIC
 
     // FSR
     CustomOptional<bool> FsrDebugView { false };

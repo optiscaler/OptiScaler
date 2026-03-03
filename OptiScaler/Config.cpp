@@ -452,11 +452,10 @@ bool Config::Reload(std::filesystem::path iniPath)
         // Output Scaling
         {
             OutputScalingEnabled.set_from_config(readBool("OutputScaling", "Enabled"));
-            OutputScalingUseFsr.set_from_config(readBool("OutputScaling", "UseFsr"));
             OutputScalingDownscaler.set_from_config(readInt("OutputScaling", "Downscaler"));
 
             if (OutputScalingDownscaler.has_value() &&
-                (OutputScalingDownscaler.value() < 0 || OutputScalingDownscaler.value() > 6))
+                (OutputScalingDownscaler.value() < 0 || OutputScalingDownscaler.value() > 7))
                 OutputScalingDownscaler.reset();
 
             if (auto setting = readFloat("OutputScaling", "Multiplier"); setting.has_value())
@@ -886,8 +885,6 @@ bool Config::SaveIni()
                      GetBoolValue(Instance()->OutputScalingEnabled.value_for_config()).c_str());
         ini.SetValue("OutputScaling", "Multiplier",
                      GetFloatValue(Instance()->OutputScalingMultiplier.value_for_config()).c_str());
-        ini.SetValue("OutputScaling", "UseFsr",
-                     GetBoolValue(Instance()->OutputScalingUseFsr.value_for_config()).c_str());
         ini.SetValue("OutputScaling", "Downscaler", GetIntValue(Instance()->OutputScalingDownscaler).c_str());
     }
 

@@ -4718,7 +4718,6 @@ bool MenuCommon::RenderMenu()
                             {
                                 _ssRatio = config->OutputScalingMultiplier.value_or(defaultRatio);
                                 _ssEnabled = config->OutputScalingEnabled.value_or_default();
-                                _ssUseFsr = config->OutputScalingUseFsr.value_or_default();
                                 _ssDownsampler = config->OutputScalingDownscaler.value_or_default();
                             }
 
@@ -4738,31 +4737,37 @@ bool MenuCommon::RenderMenu()
 
                             ImGui::BeginDisabled(!_ssEnabled);
                             {
-                                ImGui::Checkbox("Use FSR 1", &_ssUseFsr);
-                                ShowHelpMarker("Use FSR 1 for downscaling");
-
-                                ImGui::SameLine(0.0f, 6.0f);
-
-                                ImGui::BeginDisabled(_ssUseFsr || _ssRatio < 1.0f);
+                                ImGui::BeginDisabled(_ssRatio < 1.0f);
                                 {
-                                    const char* ds_modes[] = { "Bicubic", "Catmull-Rom", "Lanczos2", "Lanczos3",
-                                                               "Kaiser2", "Kaiser3",     "MAGIC" };
-                                    const std::string ds_modesDesc[] = { "", "", "", "", "", "", "" };
+                                    const char* ds_modes[] = { "FSR 1",    "Bicubic", "Catmull-Rom", "Lanczos2",
+                                                               "Lanczos3", "Kaiser2", "Kaiser3",     "MAGIC" };
+                                    const int ds_count = 8;
 
                                     ImGui::PushItemWidth(95.0f * config->MenuScale.value());
 
-                                    PopulateCombo("Downscaler", &config->OutputScalingDownscaler, ds_modes,
-                                                  ds_modesDesc, 7);
+                                    const char* selectedName =
+                                        (_ssDownsampler < ds_count) ? ds_modes[_ssDownsampler] : ds_modes[0];
+                                    if (ImGui::BeginCombo("Downscaler", selectedName))
+                                    {
+                                        for (int n = 0; n < ds_count; n++)
+                                        {
+                                            if (ImGui::Selectable(ds_modes[n], _ssDownsampler == (uint32_t) n))
+                                                _ssDownsampler = n;
+                                        }
+                                        ImGui::EndCombo();
+                                    }
 
                                     ImGui::PopItemWidth();
                                 }
                                 ImGui::EndDisabled();
+
+                                ShowHelpMarker("FSR 1 has the best performance.\n"
+                                               "Lanczos3 might produce a sharper image.");
                             }
                             ImGui::EndDisabled();
 
                             bool applyEnabled = _ssEnabled != config->OutputScalingEnabled.value_or_default() ||
                                                 _ssRatio != config->OutputScalingMultiplier.value_or(defaultRatio) ||
-                                                _ssUseFsr != config->OutputScalingUseFsr.value_or_default() ||
                                                 (_ssRatio > 1.0f &&
                                                  _ssDownsampler != config->OutputScalingDownscaler.value_or_default());
 
@@ -4771,8 +4776,7 @@ bool MenuCommon::RenderMenu()
                             {
                                 config->OutputScalingEnabled = _ssEnabled;
                                 config->OutputScalingMultiplier = _ssRatio;
-                                config->OutputScalingUseFsr = _ssUseFsr;
-                                _ssDownsampler = config->OutputScalingDownscaler.value_or_default();
+                                config->OutputScalingDownscaler = _ssDownsampler;
 
                                 if (currentFeature->Name() == "DLSSD")
                                     state.newBackend = "dlssd";

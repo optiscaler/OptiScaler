@@ -101,7 +101,7 @@ bool OS_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCmdL
     D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
 
     // fsr upscaling
-    if (Config::Instance()->OutputScalingUseFsr.value_or_default())
+    if (Config::Instance()->OutputScalingDownscaler.value_or_default() == 0)
     {
         // Copy the updated constant buffer data to the constant buffer resource
         UINT8* pCBDataBegin;
@@ -237,14 +237,14 @@ OS_Dx12::OS_Dx12(std::string InName, ID3D12Device* InDevice, bool InUpsample)
 
     // don't wanna compile fsr easu on runtime :)
     if (Config::Instance()->UsePrecompiledShaders.value_or_default() ||
-        Config::Instance()->OutputScalingUseFsr.value_or_default())
+        Config::Instance()->OutputScalingDownscaler.value_or_default() == 0)
     {
         D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
         computePsoDesc.pRootSignature = _rootSignature;
         computePsoDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
 
         // fsr upscaling
-        if (Config::Instance()->OutputScalingUseFsr.value_or_default())
+        if (Config::Instance()->OutputScalingDownscaler.value_or_default() == 0)
         {
             computePsoDesc.CS =
                 CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(FSR_EASU_cso), sizeof(FSR_EASU_cso));
@@ -262,38 +262,38 @@ OS_Dx12::OS_Dx12(std::string InName, ID3D12Device* InDevice, bool InUpsample)
 
                 switch (Config::Instance()->OutputScalingDownscaler.value_or_default())
                 {
-                case 0:
+                case 1:
                     computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_bicubic_cso),
                                                                 sizeof(bcds_bicubic_cso));
 
                     break;
 
-                case 1:
+                case 2:
                     computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_catmull_cso),
                                                                 sizeof(bcds_catmull_cso));
                     break;
 
-                case 2:
+                case 3:
                     computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_lanczos2_cso),
                                                                 sizeof(bcds_lanczos2_cso));
                     break;
 
-                case 3:
+                case 4:
                     computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_lanczos3_cso),
                                                                 sizeof(bcds_lanczos3_cso));
                     break;
 
-                case 4:
+                case 5:
                     computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_kaiser2_cso),
                                                                 sizeof(bcds_kaiser2_cso));
                     break;
 
-                case 5:
+                case 6:
                     computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_kaiser3_cso),
                                                                 sizeof(bcds_kaiser3_cso));
                     break;
 
-                case 6:
+                case 7:
                     computePsoDesc.CS =
                         CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_magc_cso), sizeof(bcds_magc_cso));
                     break;
@@ -331,31 +331,31 @@ OS_Dx12::OS_Dx12(std::string InName, ID3D12Device* InDevice, bool InUpsample)
 
             switch (Config::Instance()->OutputScalingDownscaler.value_or_default())
             {
-            case 0:
+            case 1:
                 _recEncodeShader = OS_CompileShader(downsampleCodeBC.c_str(), "CSMain", "cs_5_0");
                 break;
 
-            case 1:
+            case 2:
                 _recEncodeShader = OS_CompileShader(downsampleCodeCatmull.c_str(), "CSMain", "cs_5_0");
                 break;
 
-            case 2:
+            case 3:
                 _recEncodeShader = OS_CompileShader(downsampleCodeLanczos2.c_str(), "CSMain", "cs_5_0");
                 break;
 
-            case 3:
+            case 4:
                 _recEncodeShader = OS_CompileShader(downsampleCodeLanczos3.c_str(), "CSMain", "cs_5_0");
                 break;
 
-            case 4:
+            case 5:
                 _recEncodeShader = OS_CompileShader(downsampleCodeKaiser2.c_str(), "CSMain", "cs_5_0");
                 break;
 
-            case 5:
+            case 6:
                 _recEncodeShader = OS_CompileShader(downsampleCodeKaiser3.c_str(), "CSMain", "cs_5_0");
                 break;
 
-            case 6:
+            case 7:
                 _recEncodeShader = OS_CompileShader(downsampleCodeMAGIC.c_str(), "CSMain", "cs_5_0");
                 break;
 

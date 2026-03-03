@@ -144,7 +144,7 @@ DepthTransfer_Dx11::DepthTransfer_Dx11(std::string InName, ID3D11Device* InDevic
     LOG_DEBUG("{0} start!", _name);
 
     if (Config::Instance()->UsePrecompiledShaders.value_or_default() ||
-        Config::Instance()->OutputScalingUseFsr.value_or_default())
+        Config::Instance()->OutputScalingDownscaler.value_or_default() == 0)
     {
         HRESULT hr;
         hr = _device->CreateComputeShader(reinterpret_cast<const void*>(dt_dx11_cso), sizeof(dt_dx11_cso), nullptr,

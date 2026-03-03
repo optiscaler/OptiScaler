@@ -91,7 +91,6 @@ class MenuCommon
     // output scaling
     inline static float _ssRatio = 0.0f;
     inline static bool _ssEnabled = false;
-    inline static bool _ssUseFsr = false;
     inline static uint32_t _ssDownsampler = 0;
 
     // ui scale
