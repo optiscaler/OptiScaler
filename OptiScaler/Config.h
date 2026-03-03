@@ -20,12 +20,14 @@ template <class T, HasDefaultValue defaultState = WithDefault> class CustomOptio
     bool _volatile;
 
   public:
-    CustomOptional(T defaultValue) requires(defaultState != NoDefault)
+    CustomOptional(T defaultValue)
+        requires(defaultState != NoDefault)
         : std::optional<T>(), _defaultValue(std::move(defaultValue)), _configIni(std::nullopt), _volatile(false)
     {
     }
 
-    CustomOptional() requires(defaultState == NoDefault)
+    CustomOptional()
+        requires(defaultState == NoDefault)
         : std::optional<T>(), _defaultValue(T {}), _configIni(std::nullopt), _volatile(false)
     {
     }
@@ -83,24 +85,28 @@ template <class T, HasDefaultValue defaultState = WithDefault> class CustomOptio
     }
 
     // Needed for string literals for some reason
-    constexpr CustomOptional& operator=(const char* value) requires std::same_as<T, std::string>
+    constexpr CustomOptional& operator=(const char* value)
+        requires std::same_as<T, std::string>
     {
         _volatile = false;
         std::optional<T>::operator=(T(value));
         return *this;
     }
 
-    constexpr T value_or_default() const& requires(defaultState != NoDefault)
+    constexpr T value_or_default() const&
+        requires(defaultState != NoDefault)
     {
         return this->has_value() ? this->value() : _defaultValue;
     }
 
-    constexpr T value_or_default() && requires(defaultState != NoDefault)
+    constexpr T value_or_default() &&
+        requires(defaultState != NoDefault)
     {
         return this->has_value() ? std::move(this->value()) : std::move(_defaultValue);
     }
 
-    constexpr std::optional<T> value_for_config(bool forceSave = false) requires(defaultState == WithDefault)
+    constexpr std::optional<T> value_for_config(bool forceSave = false)
+        requires(defaultState == WithDefault)
     {
         if (_volatile)
         {
@@ -116,7 +122,8 @@ template <class T, HasDefaultValue defaultState = WithDefault> class CustomOptio
         return this->value();
     }
 
-    constexpr std::optional<T> value_for_config_ignore_default() requires(defaultState == WithDefault)
+    constexpr std::optional<T> value_for_config_ignore_default()
+        requires(defaultState == WithDefault)
     {
         if (_volatile)
             return _configIni;
@@ -127,7 +134,8 @@ template <class T, HasDefaultValue defaultState = WithDefault> class CustomOptio
         return std::nullopt;
     }
 
-    constexpr std::optional<T> value_for_config() requires(defaultState != WithDefault)
+    constexpr std::optional<T> value_for_config()
+        requires(defaultState != WithDefault)
     {
         if (_volatile)
             return _configIni;
