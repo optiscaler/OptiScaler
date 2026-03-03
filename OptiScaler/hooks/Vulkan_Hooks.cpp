@@ -256,11 +256,17 @@ PFN_vkVoidFunction hkvkGetInstanceProcAddr(VkInstance instance, const char* pNam
 
     if (procName == std::string("vkCreateInstance"))
     {
+        if (o_vkCreateInstance == nullptr)
+            o_vkCreateInstance = (PFN_vkCreateInstance) orgFunc;
+
         LOG_DEBUG("vkCreateInstance");
         return (PFN_vkVoidFunction) hkvkCreateInstance;
     }
     else if (procName == std::string("vkCreateDevice"))
     {
+        if (o_vkCreateDevice == nullptr)
+            o_vkCreateDevice = (PFN_vkCreateDevice) orgFunc;
+
         LOG_DEBUG("vkCreateDevice");
         return (PFN_vkVoidFunction) hkvkCreateDevice;
     }
@@ -283,11 +289,17 @@ PFN_vkVoidFunction hkvkGetDeviceProcAddr(VkDevice device, const char* pName)
 
     if (procName == std::string("vkCreateInstance"))
     {
+        if (o_vkCreateInstance == nullptr)
+            o_vkCreateInstance = (PFN_vkCreateInstance) orgFunc;
+
         LOG_DEBUG("vkCreateInstance");
         return (PFN_vkVoidFunction) hkvkCreateInstance;
     }
     else if (procName == std::string("vkCreateDevice"))
     {
+        if (o_vkCreateDevice == nullptr)
+            o_vkCreateDevice = (PFN_vkCreateDevice) orgFunc;
+
         LOG_DEBUG("vkCreateDevice");
         return (PFN_vkVoidFunction) hkvkCreateDevice;
     }
