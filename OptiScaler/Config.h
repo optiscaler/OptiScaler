@@ -171,6 +171,20 @@ enum FpsOverlay : uint32_t
     FpsOverlay_COUNT,
 };
 
+// Output scaling downscaler
+enum class Scaler : uint32_t
+{
+    FSR1 = 0,
+    Bicubic = 1,
+    CatmullRom = 2,
+    Lanczos2 = 3,
+    Lanczos3 = 4,
+    Kaiser2 = 5,
+    Kaiser3 = 6,
+    Magic = 7,
+    Count
+};
+
 class Config
 {
   public:
@@ -344,8 +358,7 @@ class Config
     // Output Scaling
     CustomOptional<bool> OutputScalingEnabled { false };
     CustomOptional<float> OutputScalingMultiplier { 1.5f };
-    CustomOptional<uint32_t> OutputScalingDownscaler { 0 }; // 0 = FSR 1 | 1 = Bicubic | 2 = Catmull-Rom | 3 = Lanczos2
-                                                            // | 4 = Lanczos3 | 5 = Kaiser2 | 6 = Kaiser3 | 7 = MAGIC
+    CustomOptional<Scaler> OutputScalingDownscaler { Scaler::FSR1 };
 
     // FSR
     CustomOptional<bool> FsrDebugView { false };

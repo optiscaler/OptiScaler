@@ -91,7 +91,7 @@ class MenuCommon
     // output scaling
     inline static float _ssRatio = 0.0f;
     inline static bool _ssEnabled = false;
-    inline static uint32_t _ssDownsampler = 0;
+    inline static Scaler _ssDownsampler = Scaler::FSR1;
 
     // ui scale
     inline static int _selectedScale = 5;

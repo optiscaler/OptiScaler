@@ -452,11 +452,13 @@ bool Config::Reload(std::filesystem::path iniPath)
         // Output Scaling
         {
             OutputScalingEnabled.set_from_config(readBool("OutputScaling", "Enabled"));
-            OutputScalingDownscaler.set_from_config(readInt("OutputScaling", "Downscaler"));
-
-            if (OutputScalingDownscaler.has_value() &&
-                (OutputScalingDownscaler.value() < 0 || OutputScalingDownscaler.value() > 7))
-                OutputScalingDownscaler.reset();
+            if (auto setting = readInt("OutputScaling", "Downscaler"); setting.has_value())
+            {
+                if (setting.value() >= 0 && setting.value() < static_cast<int>(Scaler::Count))
+                    OutputScalingDownscaler.set_from_config(static_cast<Scaler>(setting.value()));
+                else
+                    OutputScalingDownscaler.reset();
+            }
 
             if (auto setting = readFloat("OutputScaling", "Multiplier"); setting.has_value())
                 OutputScalingMultiplier.set_from_config(std::clamp(setting.value(), 0.5f, 3.0f));
@@ -694,6 +696,14 @@ std::string GetIntValue(std::optional<int> value, bool getHex = false)
         return std::format("{:#x}", value.value());
 
     return std::to_string(value.value());
+}
+
+std::string GetIntValue(std::optional<Scaler> value)
+{
+    if (!value.has_value())
+        return "auto";
+
+    return std::to_string(static_cast<int>(value.value()));
 }
 
 std::string GetFloatValue(std::optional<float> value)

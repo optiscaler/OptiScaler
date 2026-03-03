@@ -4741,18 +4741,36 @@ bool MenuCommon::RenderMenu()
                                 {
                                     const char* ds_modes[] = { "FSR1",     "Bicubic", "Catmull-Rom", "Lanczos2",
                                                                "Lanczos3", "Kaiser2", "Kaiser3",     "MAGIC" };
-                                    const int ds_count = 8;
+                                    const char* ds_desc[] = {
+    "Default option.\nGood enough image quality and very fast.",
+    "Fastest traditional option.\nProduces a very soft/blurry image, but might be okay for downscaling.",
+    "Designed primarily for downscaling.\nRetains good contrast with minimal artefacts, but softer than Lanczos.",
+    "Lighter and faster than Lanczos3.\nLess prone to ringing artefacts, but slightly blurrier.",
+    "Heavier version of Lanczos2.\nOffers the sharpest image, but is the most prone to ringing.",
+    "Similar to Lanczos2.\nSmoother and less prone to artefacts than Lanczos, but slightly blurrier.",
+    "Similar to Lanczos3.\nFar less prone to artefacting than Lanczos3, but much heavier on the GPU.",
+    "Specialised to prevent artifacts.\n Eliminates harsh halos for a natural look, but can appear slightly soft."
+                                    };
+                                    static_assert(std::size(ds_modes) == std::size(ds_desc));
+                                    const size_t ds_count = std::size(ds_modes);
 
                                     ImGui::PushItemWidth(95.0f * config->MenuScale.value());
 
-                                    const char* selectedName =
-                                        (_ssDownsampler < ds_count) ? ds_modes[_ssDownsampler] : ds_modes[0];
+                                    size_t selectedIndex = static_cast<size_t>(_ssDownsampler);
+                                    if (selectedIndex >= ds_count)
+                                        selectedIndex = static_cast<size_t>(Scaler::FSR1);
+
+                                    const char* selectedName = ds_modes[selectedIndex];
                                     if (ImGui::BeginCombo("Downscaler", selectedName))
                                     {
-                                        for (int n = 0; n < ds_count; n++)
+                                        for (size_t n = 0; n < ds_count; n++)
                                         {
-                                            if (ImGui::Selectable(ds_modes[n], _ssDownsampler == (uint32_t) n))
-                                                _ssDownsampler = n;
+                                            auto mode = static_cast<Scaler>(n);
+                                            if (ImGui::Selectable(ds_modes[n], _ssDownsampler == mode))
+                                                _ssDownsampler = mode;
+
+                                            if (ds_desc[n] != nullptr && ds_desc[n][0] != '\0')
+                                                ShowTooltip(ds_desc[n]);
                                         }
                                         ImGui::EndCombo();
                                     }
@@ -4760,9 +4778,6 @@ bool MenuCommon::RenderMenu()
                                     ImGui::PopItemWidth();
                                 }
                                 ImGui::EndDisabled();
-
-                                ShowHelpMarker("FSR1 has the best performance.\n"
-                                               "Lanczos3 might produce a sharper image.");
                             }
                             ImGui::EndDisabled();
 

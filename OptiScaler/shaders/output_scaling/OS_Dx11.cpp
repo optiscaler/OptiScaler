@@ -182,7 +182,7 @@ bool OS_Dx11::Dispatch(ID3D11Device* InDevice, ID3D11DeviceContext* InContext, I
     }
 
     // fsr upscaling
-    if (Config::Instance()->OutputScalingDownscaler.value_or_default() == 0)
+    if (Config::Instance()->OutputScalingDownscaler.value_or_default() == Scaler::FSR1)
     {
         // Copy the updated constant buffer data to the constant buffer resource
         D3D11_MAPPED_SUBRESOURCE mappedResource;
@@ -246,12 +246,12 @@ OS_Dx11::OS_Dx11(std::string InName, ID3D11Device* InDevice, bool InUpsample)
     LOG_DEBUG("{0} start!", _name);
 
     if (Config::Instance()->UsePrecompiledShaders.value_or_default() ||
-        Config::Instance()->OutputScalingDownscaler.value_or_default() == 0)
+        Config::Instance()->OutputScalingDownscaler.value_or_default() == Scaler::FSR1)
     {
         HRESULT hr;
 
         // fsr upscaling
-        if (Config::Instance()->OutputScalingDownscaler.value_or_default() == 0)
+        if (Config::Instance()->OutputScalingDownscaler.value_or_default() == Scaler::FSR1)
         {
             hr = _device->CreateComputeShader(reinterpret_cast<const void*>(FSR_EASU_cso), sizeof(FSR_EASU_cso),
                                               nullptr, &_computeShader);
@@ -270,37 +270,37 @@ OS_Dx11::OS_Dx11(std::string InName, ID3D11Device* InDevice, bool InUpsample)
 
                 switch (Config::Instance()->OutputScalingDownscaler.value_or_default())
                 {
-                case 1:
+                case Scaler::Bicubic:
                     hr = _device->CreateComputeShader(reinterpret_cast<const void*>(bcds_bicubic_cso),
                                                       sizeof(bcds_bicubic_cso), nullptr, &_computeShader);
                     break;
 
-                case 2:
+                case Scaler::CatmullRom:
                     hr = _device->CreateComputeShader(reinterpret_cast<const void*>(bcds_catmull_cso),
                                                       sizeof(bcds_catmull_cso), nullptr, &_computeShader);
                     break;
 
-                case 3:
+                case Scaler::Lanczos2:
                     hr = _device->CreateComputeShader(reinterpret_cast<const void*>(bcds_lanczos2_cso),
                                                       sizeof(bcds_lanczos2_cso), nullptr, &_computeShader);
                     break;
 
-                case 4:
+                case Scaler::Lanczos3:
                     hr = _device->CreateComputeShader(reinterpret_cast<const void*>(bcds_lanczos3_cso),
                                                       sizeof(bcds_lanczos3_cso), nullptr, &_computeShader);
                     break;
 
-                case 5:
+                case Scaler::Kaiser2:
                     hr = _device->CreateComputeShader(reinterpret_cast<const void*>(bcds_kaiser2_cso),
                                                       sizeof(bcds_kaiser2_cso), nullptr, &_computeShader);
                     break;
 
-                case 6:
+                case Scaler::Kaiser3:
                     hr = _device->CreateComputeShader(reinterpret_cast<const void*>(bcds_kaiser3_cso),
                                                       sizeof(bcds_kaiser3_cso), nullptr, &_computeShader);
                     break;
 
-                case 7:
+                case Scaler::Magic:
                     hr = _device->CreateComputeShader(reinterpret_cast<const void*>(bcds_magc_cso),
                                                       sizeof(bcds_magc_cso), nullptr, &_computeShader);
                     break;
@@ -335,31 +335,31 @@ OS_Dx11::OS_Dx11(std::string InName, ID3D11Device* InDevice, bool InUpsample)
 
             switch (Config::Instance()->OutputScalingDownscaler.value_or_default())
             {
-            case 1:
+            case Scaler::Bicubic:
                 shaderBlob = OS_CompileShader(downsampleCodeBC.c_str(), "CSMain", "cs_5_0");
                 break;
 
-            case 2:
+            case Scaler::CatmullRom:
                 shaderBlob = OS_CompileShader(downsampleCodeCatmull.c_str(), "CSMain", "cs_5_0");
                 break;
 
-            case 3:
+            case Scaler::Lanczos2:
                 shaderBlob = OS_CompileShader(downsampleCodeLanczos2.c_str(), "CSMain", "cs_5_0");
                 break;
 
-            case 4:
+            case Scaler::Lanczos3:
                 shaderBlob = OS_CompileShader(downsampleCodeLanczos3.c_str(), "CSMain", "cs_5_0");
                 break;
 
-            case 5:
+            case Scaler::Kaiser2:
                 shaderBlob = OS_CompileShader(downsampleCodeKaiser2.c_str(), "CSMain", "cs_5_0");
                 break;
 
-            case 6:
+            case Scaler::Kaiser3:
                 shaderBlob = OS_CompileShader(downsampleCodeKaiser3.c_str(), "CSMain", "cs_5_0");
                 break;
 
-            case 7:
+            case Scaler::Magic:
                 shaderBlob = OS_CompileShader(downsampleCodeMAGIC.c_str(), "CSMain", "cs_5_0");
                 break;
 
@@ -406,7 +406,7 @@ OS_Dx11::OS_Dx11(std::string InName, ID3D11Device* InDevice, bool InUpsample)
     }
 
     // FSR upscaling
-    if (Config::Instance()->OutputScalingDownscaler.value_or_default() == 0)
+    if (Config::Instance()->OutputScalingDownscaler.value_or_default() == Scaler::FSR1)
     {
         InNumThreadsX = 16;
         InNumThreadsY = 16;
