@@ -4739,7 +4739,7 @@ bool MenuCommon::RenderMenu()
                             {
                                 ImGui::BeginDisabled(_ssRatio < 1.0f);
                                 {
-                                    const char* ds_modes[] = { "FSR 1",    "Bicubic", "Catmull-Rom", "Lanczos2",
+                                    const char* ds_modes[] = { "FSR1",     "Bicubic", "Catmull-Rom", "Lanczos2",
                                                                "Lanczos3", "Kaiser2", "Kaiser3",     "MAGIC" };
                                     const int ds_count = 8;
 
@@ -4761,7 +4761,7 @@ bool MenuCommon::RenderMenu()
                                 }
                                 ImGui::EndDisabled();
 
-                                ShowHelpMarker("FSR 1 has the best performance.\n"
+                                ShowHelpMarker("FSR1 has the best performance.\n"
                                                "Lanczos3 might produce a sharper image.");
                             }
                             ImGui::EndDisabled();
