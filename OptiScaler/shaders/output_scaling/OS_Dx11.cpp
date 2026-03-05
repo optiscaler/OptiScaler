@@ -23,7 +23,6 @@
 
 static Constants constants {};
 static UpscaleShaderConstants fsr1Constants {};
-static bool constantsInited = false;
 
 #pragma warning(disable : 4244)
 
@@ -166,20 +165,17 @@ bool OS_Dx11::Dispatch(ID3D11Device* InDevice, ID3D11DeviceContext* InContext, I
     if (!InitializeViews(InResource, OutResource))
         return false;
 
-    if (!constantsInited)
-    {
-        FsrEasuCon(fsr1Constants.const0, fsr1Constants.const1, fsr1Constants.const2, fsr1Constants.const3,
-                   State::Instance().currentFeature->TargetWidth(), State::Instance().currentFeature->TargetHeight(),
-                   State::Instance().currentFeature->TargetWidth(), State::Instance().currentFeature->TargetHeight(),
-                   State::Instance().currentFeature->DisplayWidth(), State::Instance().currentFeature->DisplayHeight());
+    FsrEasuCon(fsr1Constants.const0, fsr1Constants.const1, fsr1Constants.const2, fsr1Constants.const3,
+               State::Instance().currentFeature->TargetWidth(), State::Instance().currentFeature->TargetHeight(),
+               State::Instance().currentFeature->TargetWidth(), State::Instance().currentFeature->TargetHeight(),
+               State::Instance().currentFeature->DisplayWidth(), State::Instance().currentFeature->DisplayHeight());
 
-        constants.srcWidth = State::Instance().currentFeature->TargetWidth();
-        constants.srcHeight = State::Instance().currentFeature->TargetHeight();
-        constants.destWidth = State::Instance().currentFeature->DisplayWidth();
-        constants.destHeight = State::Instance().currentFeature->DisplayHeight();
+    constants.srcWidth = State::Instance().currentFeature->TargetWidth();
+    constants.srcHeight = State::Instance().currentFeature->TargetHeight();
+    constants.destWidth = State::Instance().currentFeature->DisplayWidth();
+    constants.destHeight = State::Instance().currentFeature->DisplayHeight();
 
-        constantsInited = true;
-    }
+    constantsInited = true;
 
     // fsr upscaling
     if (Config::Instance()->OutputScalingDownscaler.value_or_default() == Scaler::FSR1)
