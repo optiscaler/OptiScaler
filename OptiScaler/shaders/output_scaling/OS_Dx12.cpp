@@ -85,12 +85,12 @@ bool OS_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCmdL
                State::Instance().currentFeature->TargetWidth(), State::Instance().currentFeature->TargetHeight(),
                State::Instance().currentFeature->TargetWidth(), State::Instance().currentFeature->TargetHeight(),
                State::Instance().currentFeature->DisplayWidth(), State::Instance().currentFeature->DisplayHeight());
-    
+
     constants.srcWidth = State::Instance().currentFeature->TargetWidth();
     constants.srcHeight = State::Instance().currentFeature->TargetHeight();
     constants.destWidth = State::Instance().currentFeature->DisplayWidth();
     constants.destHeight = State::Instance().currentFeature->DisplayHeight();
-    
+
     constantsInited = true;
 
     // Create CBV for Constants
