@@ -4818,6 +4818,9 @@ bool MenuCommon::RenderMenu()
                                 config->OutputScalingMultiplier = _ssRatio;
                                 config->OutputScalingDownscaler = _ssDownsampler;
 
+                                if (_ssRatio < 1.0f && _ssDownsampler > Scaler::Bicubic)
+                                    _ssDownsampler = Scaler::FSR1;
+
                                 if (currentFeature->Name() == "DLSSD")
                                     state.newBackend = "dlssd";
                                 else
