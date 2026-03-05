@@ -23,7 +23,6 @@
 
 static Constants constants {};
 static UpscaleShaderConstants fsr1Constants {};
-static bool constantsInited = false;
 
 #pragma warning(disable : 4244)
 
@@ -82,20 +81,17 @@ bool OS_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCmdL
 
     InDevice->CreateUnorderedAccessView(OutResource, nullptr, &uavDesc, currentHeap.GetUavCPU(0));
 
-    if (!constantsInited)
-    {
-        FsrEasuCon(fsr1Constants.const0, fsr1Constants.const1, fsr1Constants.const2, fsr1Constants.const3,
-                   State::Instance().currentFeature->TargetWidth(), State::Instance().currentFeature->TargetHeight(),
-                   State::Instance().currentFeature->TargetWidth(), State::Instance().currentFeature->TargetHeight(),
-                   State::Instance().currentFeature->DisplayWidth(), State::Instance().currentFeature->DisplayHeight());
-
-        constants.srcWidth = State::Instance().currentFeature->TargetWidth();
-        constants.srcHeight = State::Instance().currentFeature->TargetHeight();
-        constants.destWidth = State::Instance().currentFeature->DisplayWidth();
-        constants.destHeight = State::Instance().currentFeature->DisplayHeight();
-
-        constantsInited = true;
-    }
+    FsrEasuCon(fsr1Constants.const0, fsr1Constants.const1, fsr1Constants.const2, fsr1Constants.const3,
+               State::Instance().currentFeature->TargetWidth(), State::Instance().currentFeature->TargetHeight(),
+               State::Instance().currentFeature->TargetWidth(), State::Instance().currentFeature->TargetHeight(),
+               State::Instance().currentFeature->DisplayWidth(), State::Instance().currentFeature->DisplayHeight());
+    
+    constants.srcWidth = State::Instance().currentFeature->TargetWidth();
+    constants.srcHeight = State::Instance().currentFeature->TargetHeight();
+    constants.destWidth = State::Instance().currentFeature->DisplayWidth();
+    constants.destHeight = State::Instance().currentFeature->DisplayHeight();
+    
+    constantsInited = true;
 
     // Create CBV for Constants
     D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
