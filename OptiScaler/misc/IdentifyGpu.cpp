@@ -1,4 +1,4 @@
-#include "pch.h"
+ï»¿#include "pch.h"
 #include "IdentifyGpu.h"
 #include "fsr4/FSR4Upgrade.h"
 
@@ -44,7 +44,7 @@ std::vector<GpuInformation> IdentifyGpu::checkGpuInfo()
     DxgiProxy::Init();
 
     ComPtr<IDXGIFactory6> factory = nullptr;
-    HRESULT result = DxgiProxy::CreateDxgiFactory_()(__uuidof(factory), (IDXGIFactory**) factory.GetAddressOf());
+    HRESULT result = DxgiProxy::CreateDxgiFactory1_()(__uuidof(factory), (IDXGIFactory1**) factory.GetAddressOf());
 
     if (result != S_OK || factory == nullptr)
     {
@@ -206,7 +206,7 @@ std::vector<GpuInformation> IdentifyGpu::checkGpuInfo()
 }
 
 // !!! Doesn't fill out FSR 4 capability and dxvk/vkd3d-proton usages !!!
-// We are using Vulkan inside DLL_PROCESS_ATTACH which unlike dxgi technically works™
+// We are using Vulkan inside DLL_PROCESS_ATTACH which unlike dxgi technically works?
 // Not ideal + requires a GPU that supports Vulkan but every GPU we care about should
 std::vector<GpuInformation> IdentifyGpu::checkGpuInfoVulkan()
 {
