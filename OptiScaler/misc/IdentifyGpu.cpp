@@ -1,4 +1,4 @@
-#include "pch.h"
+ï»¿#include "pch.h"
 #include "IdentifyGpu.h"
 #include "fsr4/FSR4Upgrade.h"
 
@@ -92,7 +92,7 @@ std::vector<GpuInformation> IdentifyGpu::checkGpuInfo()
                 gpuInfo.usesDxvk = true;
 
             // Needed to be able to query amdxc and check for vkd3d-proton
-            if (gpuInfo.vendorId == VendorId::AMD || gpuInfo.usesDxvk)
+            if (gpuInfo.vendorId == VendorId::AMD && gpuInfo.usesDxvk)
             {
                 D3d12Proxy::Init();
                 D3d12Proxy::D3D12CreateDevice_()(adapter.Get(), D3D_FEATURE_LEVEL_12_0,
@@ -210,7 +210,7 @@ std::vector<GpuInformation> IdentifyGpu::checkGpuInfo()
 }
 
 // !!! Doesn't fill out FSR 4 capability and dxvk/vkd3d-proton usages !!!
-// We are using Vulkan inside DLL_PROCESS_ATTACH which unlike dxgi technically works™
+// We are using Vulkan inside DLL_PROCESS_ATTACH which unlike dxgi technically works?
 // Not ideal + requires a GPU that supports Vulkan but every GPU we care about should
 std::vector<GpuInformation> IdentifyGpu::checkGpuInfoVulkan()
 {
@@ -444,7 +444,7 @@ std::vector<GpuInformation> IdentifyGpu::getAllGpusVulkan()
 // !!! Use the Vulkan variants only inside DLL_PROCESS_ATTACH as they provide incomplete data !!!
 GpuInformation IdentifyGpu::getPrimaryGpuVulkan()
 {
-    // return GpuInformation {};
-    auto allGpus = getAllGpusVulkan();
-    return allGpus.size() > 0 ? allGpus[0] : GpuInformation {};
+    return GpuInformation {};
+    // auto allGpus = getAllGpusVulkan();
+    // return allGpus.size() > 0 ? allGpus[0] : GpuInformation {};
 }
