@@ -276,7 +276,7 @@ void IFeature::TickFrozenCheck()
 
     if (_isInited)
     {
-        static auto lastFrameCount = _frameCount;
+        long lastFrameCount = _frameCount;
 
         if (_frameCount == lastFrameCount)
             updatesWithoutFramecountChange++;
