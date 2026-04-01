@@ -111,12 +111,6 @@ bool Config::Reload(std::filesystem::path iniPath)
                 FGOutput.set_volatile_value(FGOutput::XeFG);
             }
 
-            if (auto forceXell = readBool("fakenvapi", "ForceXeLL"); forceXell.has_value() && forceXell.value())
-            {
-                FGInput.set_volatile_value(FGInput::ForceXeLL);
-                FGOutput.set_volatile_value(FGOutput::XeFG);
-            }
-
             auto ftInput = readInt("FrameGen", "FTSource");
             if (ftInput.has_value() && ftInput.value() >= 0 &&
                 ftInput.value() <= (FGOutput.value_or_default() == FGOutput::XeFG ? 2 : 1))
@@ -280,7 +274,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             else if (FsrNonLinearSRGB.has_value() && FsrNonLinearSRGB.value())
                 FsrNonLinearPQ.reset();
 
-            if (FsrNonLinearPQ.has_value() || FsrNonLinearPQ.has_value())
+            if (FsrNonLinearPQ.has_value() || FsrNonLinearSRGB.has_value())
                 FsrNonLinearColorSpace.set_volatile_value(true);
         }
 
@@ -1580,16 +1574,16 @@ std::optional<uint32_t> Config::readUInt(std::string section, std::string key)
     try
     {
         size_t idx = 0;
-        int result;
+        uint32_t result;
 
         // detect hex prefix
         if (s.size() > 2 && (s[0] == '0') && (s[1] == 'x' || s[1] == 'X'))
         {
-            result = std::stoi(s, &idx, 16);
+            result = static_cast<uint32_t>(std::stoul(s, &idx, 16));
         }
         else
         {
-            result = std::stoi(s, &idx, 10);
+            result = static_cast<uint32_t>(std::stoul(s, &idx, 10));
         }
 
         // ensure we consumed the whole string
@@ -1602,11 +1596,11 @@ std::optional<uint32_t> Config::readUInt(std::string section, std::string key)
     {
         return std::nullopt;
     }
-    catch (const std::invalid_argument&) // invalid float string for std::stof
+    catch (const std::invalid_argument&) // invalid uint string
     {
         return std::nullopt;
     }
-    catch (const std::out_of_range&) // out// out of range for 32 bit float
+    catch (const std::out_of_range&) // out of range for uint32_t
     {
         return std::nullopt;
     }
