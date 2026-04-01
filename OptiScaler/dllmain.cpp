@@ -1108,7 +1108,7 @@ static void printQuirks(flag_set<GameQuirk>& quirks)
         stringQuirks.push_back("Enabling AutoExposure");
 
     if (quirks & GameQuirk::DisableFFXInputs)
-        stringQuirks.push_back("Enabling AutoExposure");
+        stringQuirks.push_back("Disable FFX Inputs");
 
     if (quirks & GameQuirk::DisableFSR3Inputs)
         stringQuirks.push_back("Disable FSR 3.0 Inputs");
