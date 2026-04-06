@@ -477,6 +477,14 @@ bool Config::Reload(std::filesystem::path iniPath)
         // RCAS
         {
             RcasEnabled.set_from_config(readBool("CAS", "Enabled"));
+            RcasDepthEnabled.set_from_config(readBool("CAS", "DepthEnabled"));
+
+            if (auto setting = readFloat("CAS", "DepthSharpness"); setting.has_value())
+                RcasDepthSharpness.set_from_config(std::clamp(setting.value(), 0.0f, 1.0f));
+
+            if (auto setting = readFloat("CAS", "DepthThreshold"); setting.has_value())
+                RcasDepthThreshold.set_from_config(std::clamp(setting.value(), 0.0001f, 1.0f));
+
             MotionSharpnessEnabled.set_from_config(readBool("CAS", "MotionSharpnessEnabled"));
             MotionSharpnessDebug.set_from_config(readBool("CAS", "MotionSharpnessDebug"));
 
@@ -1169,6 +1177,9 @@ bool Config::SaveIni()
         ini.SetValue("CAS", "Enabled",
                      Instance()->RcasEnabled.has_value() ? (Instance()->RcasEnabled.value() ? "true" : "false")
                                                          : "auto");
+        ini.SetValue("CAS", "DepthEnabled", GetBoolValue(Instance()->RcasDepthEnabled.value_for_config()).c_str());
+        ini.SetValue("CAS", "DepthSharpness", GetFloatValue(Instance()->RcasDepthSharpness.value_for_config()).c_str());
+        ini.SetValue("CAS", "DepthThreshold", GetFloatValue(Instance()->RcasDepthThreshold.value_for_config()).c_str());
         ini.SetValue("CAS", "MotionSharpnessEnabled",
                      GetBoolValue(Instance()->MotionSharpnessEnabled.value_for_config()).c_str());
         ini.SetValue("CAS", "MotionSharpnessDebug",

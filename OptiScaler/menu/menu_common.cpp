@@ -4709,6 +4709,40 @@ bool MenuCommon::RenderMenu()
 
                         ImGui::BeginDisabled(!config->RcasEnabled.value_or(rcasEnabled));
 
+                        ImGui::Spacing();
+                        if (auto ch = ScopedCollapsingHeader("Depth Adaptive RCAS##2"); ch.IsHeaderOpen())
+                        {
+                            ScopedIndent indent {};
+                            ImGui::Spacing();
+
+                            if (bool depthEnabled = config->RcasDepthEnabled.value_or_default();
+                                ImGui::Checkbox("Depth Adaptive RCAS", &depthEnabled))
+                                config->RcasDepthEnabled = depthEnabled;
+
+                            ShowHelpMarker(
+                                "Uses depth to keep nearby detail while reducing shimmer around geometry edges.");
+
+                            ImGui::BeginDisabled(!config->RcasDepthEnabled.value_or_default());
+
+                            float depthSharpness = config->RcasDepthSharpness.value_or_default();
+                            if (ImGui::SliderFloat("Near Detail Boost", &depthSharpness, 0.0f, 1.0f, "%.2f"))
+                                config->RcasDepthSharpness = depthSharpness;
+
+                            float depthThreshold = config->RcasDepthThreshold.value_or_default();
+                            if (ImGui::SliderFloat("Edge Sensitivity", &depthThreshold, 0.0001f, 0.1f, "%.4f",
+                                                   ImGuiSliderFlags_Logarithmic))
+                                config->RcasDepthThreshold = depthThreshold;
+
+                            ShowHelpMarker("Higher Near Detail Boost sharpens close surfaces more.\n"
+                                           "Lower Edge Sensitivity reduces more shimmer but also softens more.\n"
+                                           "If the image gets too soft, raise Edge Sensitivity.");
+
+                            ImGui::EndDisabled();
+
+                            ImGui::Spacing();
+                            ImGui::Spacing();
+                        }
+
                         if (bool contrastEnabled = config->ContrastEnabled.value_or_default();
                             ImGui::Checkbox("Contrast Enabled", &contrastEnabled))
                             config->ContrastEnabled = contrastEnabled;

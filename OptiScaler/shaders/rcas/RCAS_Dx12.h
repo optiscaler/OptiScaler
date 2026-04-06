@@ -29,6 +29,12 @@ class RCAS_Dx12 : public Shader_Dx12
         float ScaleLimit;
         int DisplayWidth;
         int DisplayHeight;
+        int RenderWidth;
+        int RenderHeight;
+        int DepthEnabled;
+        int DepthInverted;
+        float DepthSharpness;
+        float DepthEdgeThreshold;
     };
 
     FrameDescriptorHeap _frameHeaps[RCAS_NUM_OF_HEAPS];
@@ -43,7 +49,8 @@ class RCAS_Dx12 : public Shader_Dx12
     bool CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InSource, D3D12_RESOURCE_STATES InState);
     void SetBufferState(ID3D12GraphicsCommandList* InCommandList, D3D12_RESOURCE_STATES InState);
     bool Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InResource,
-                  ID3D12Resource* InMotionVectors, RcasConstants InConstants, ID3D12Resource* OutResource);
+                  ID3D12Resource* InMotionVectors, ID3D12Resource* InDepth, RcasConstants InConstants,
+                  ID3D12Resource* OutResource);
 
     ID3D12Resource* Buffer() { return _buffer; }
     bool CanRender() const { return _init && _buffer != nullptr; }

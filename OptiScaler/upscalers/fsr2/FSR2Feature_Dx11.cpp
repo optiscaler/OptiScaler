@@ -564,12 +564,13 @@ bool FSR2FeatureDx11::Evaluate(ID3D11DeviceContext* InContext, NVSDK_NGX_Paramet
         rcasConstants.DisplaySizeMV = !(GetFeatureFlags() & NVSDK_NGX_DLSS_Feature_Flags_MVLowRes);
         rcasConstants.RenderHeight = RenderHeight();
         rcasConstants.RenderWidth = RenderWidth();
+        rcasConstants.DepthInverted = DepthInverted();
 
         if (useSS)
         {
             if (!RCAS->Dispatch(Device, InContext, (ID3D11Texture2D*) params.output.resource,
-                                (ID3D11Texture2D*) params.motionVectors.resource, rcasConstants,
-                                OutputScaler->Buffer()))
+                                (ID3D11Texture2D*) params.motionVectors.resource,
+                                (ID3D11Texture2D*) params.depth.resource, rcasConstants, OutputScaler->Buffer()))
             {
                 Config::Instance()->RcasEnabled.set_volatile_value(false);
                 return true;
@@ -578,7 +579,8 @@ bool FSR2FeatureDx11::Evaluate(ID3D11DeviceContext* InContext, NVSDK_NGX_Paramet
         else
         {
             if (!RCAS->Dispatch(Device, InContext, (ID3D11Texture2D*) params.output.resource,
-                                (ID3D11Texture2D*) params.motionVectors.resource, rcasConstants,
+                                (ID3D11Texture2D*) params.motionVectors.resource,
+                                (ID3D11Texture2D*) params.depth.resource, rcasConstants,
                                 (ID3D11Texture2D*) paramOutput))
             {
                 Config::Instance()->RcasEnabled.set_volatile_value(false);

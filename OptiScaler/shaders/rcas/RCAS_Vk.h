@@ -11,7 +11,8 @@ class RCAS_Vk : public Shader_Vk
     ~RCAS_Vk();
 
     bool Dispatch(VkDevice InDevice, VkCommandBuffer InCmdList, RcasConstants InConstants, VkImageView InResourceView,
-                  VkImageView InMotionVectorsView, VkImageView OutResourceView, VkExtent2D OutExtent);
+                  VkImageView InMotionVectorsView, VkImageView InDepthView, VkImageView OutResourceView,
+                  VkExtent2D OutExtent);
 
     bool CreateBufferResource(VkDevice device, VkPhysicalDevice physicalDevice, VkBuffer* buffer,
                               VkDeviceMemory* memory, VkDeviceSize size, VkBufferUsageFlags usage,
@@ -49,6 +50,12 @@ class RCAS_Vk : public Shader_Vk
         float ScaleLimit;
         int DisplayWidth;
         int DisplayHeight;
+        int RenderWidth;
+        int RenderHeight;
+        int DepthEnabled;
+        int DepthInverted;
+        float DepthSharpness;
+        float DepthEdgeThreshold;
     };
 
     VkBuffer _constantBuffer = VK_NULL_HANDLE;
@@ -66,7 +73,7 @@ class RCAS_Vk : public Shader_Vk
     void CreateDescriptorSets();
     void CreateConstantBuffer();
     void UpdateDescriptorSet(VkCommandBuffer cmdList, int setIndex, VkImageView inputView, VkImageView motionView,
-                             VkImageView outputView);
+                             VkImageView depthView, VkImageView outputView);
 
     VkImageView _intermediateImageView = VK_NULL_HANDLE;
     VkImage _intermediateImage = VK_NULL_HANDLE;

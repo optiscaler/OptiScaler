@@ -103,15 +103,22 @@ void RCAS_Vk::CreateDescriptorSetLayout()
     motionLayoutBinding.descriptorCount = 1;
     motionLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
-    // Binding 3: Dest (Storage Image)
+    // Binding 3: Depth (Sampled Image)
+    VkDescriptorSetLayoutBinding depthLayoutBinding {};
+    depthLayoutBinding.binding = 3;
+    depthLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    depthLayoutBinding.descriptorCount = 1;
+    depthLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    // Binding 4: Dest (Storage Image)
     VkDescriptorSetLayoutBinding destLayoutBinding {};
-    destLayoutBinding.binding = 3;
+    destLayoutBinding.binding = 4;
     destLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
     destLayoutBinding.descriptorCount = 1;
     destLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
     std::vector<VkDescriptorSetLayoutBinding> bindings = { uboLayoutBinding, sourceLayoutBinding, motionLayoutBinding,
-                                                           destLayoutBinding };
+                                                           depthLayoutBinding, destLayoutBinding };
 
     VkDescriptorSetLayoutCreateInfo layoutInfo {};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -139,7 +146,7 @@ void RCAS_Vk::CreateDescriptorPool()
 {
     std::vector<VkDescriptorPoolSize> poolSizes = {
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) },
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(2 * MAX_FRAMES_IN_FLIGHT) },
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(3 * MAX_FRAMES_IN_FLIGHT) },
         { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) }
     };
 
@@ -172,11 +179,14 @@ void RCAS_Vk::CreateDescriptorSets()
 }
 
 void RCAS_Vk::UpdateDescriptorSet(VkCommandBuffer cmdList, int setIndex, VkImageView inputView, VkImageView motionView,
-                                  VkImageView outputView)
+                                  VkImageView depthView, VkImageView outputView)
 {
     // Check if motion view invalid, if so use input view
     if (motionView == VK_NULL_HANDLE)
         motionView = inputView;
+
+    if (depthView == VK_NULL_HANDLE)
+        depthView = inputView;
 
     VkDescriptorSet descriptorSet = _descriptorSets[setIndex];
 
@@ -225,7 +235,22 @@ void RCAS_Vk::UpdateDescriptorSet(VkCommandBuffer cmdList, int setIndex, VkImage
     descriptorWriteMotion.descriptorCount = 1;
     descriptorWriteMotion.pImageInfo = &motionInfo;
 
-    // 3: Dest
+    // 3: Depth
+    VkDescriptorImageInfo depthInfo {};
+    depthInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    depthInfo.imageView = depthView;
+    depthInfo.sampler = _nearestSampler;
+
+    VkWriteDescriptorSet descriptorWriteDepth {};
+    descriptorWriteDepth.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWriteDepth.dstSet = descriptorSet;
+    descriptorWriteDepth.dstBinding = 3;
+    descriptorWriteDepth.dstArrayElement = 0;
+    descriptorWriteDepth.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    descriptorWriteDepth.descriptorCount = 1;
+    descriptorWriteDepth.pImageInfo = &depthInfo;
+
+    // 4: Dest
     VkDescriptorImageInfo destInfo {};
     destInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL; // RWTexture usually needs GENERAL
     destInfo.imageView = outputView;
@@ -234,22 +259,23 @@ void RCAS_Vk::UpdateDescriptorSet(VkCommandBuffer cmdList, int setIndex, VkImage
     VkWriteDescriptorSet descriptorWriteDest {};
     descriptorWriteDest.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     descriptorWriteDest.dstSet = descriptorSet;
-    descriptorWriteDest.dstBinding = 3;
+    descriptorWriteDest.dstBinding = 4;
     descriptorWriteDest.dstArrayElement = 0;
     descriptorWriteDest.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
     descriptorWriteDest.descriptorCount = 1;
     descriptorWriteDest.pImageInfo = &destInfo;
 
     std::vector<VkWriteDescriptorSet> descriptorWritesBuffer = { descriptorWriteUBO, descriptorWriteSource,
-                                                                 descriptorWriteMotion, descriptorWriteDest };
+                                                                 descriptorWriteMotion, descriptorWriteDepth,
+                                                                 descriptorWriteDest };
 
     vkUpdateDescriptorSets(_device, static_cast<uint32_t>(descriptorWritesBuffer.size()), descriptorWritesBuffer.data(),
                            0, nullptr);
 }
 
 bool RCAS_Vk::Dispatch(VkDevice InDevice, VkCommandBuffer InCmdList, RcasConstants InConstants,
-                       VkImageView InResourceView, VkImageView InMotionVectorsView, VkImageView OutResourceView,
-                       VkExtent2D OutExtent)
+                       VkImageView InResourceView, VkImageView InMotionVectorsView, VkImageView InDepthView,
+                       VkImageView OutResourceView, VkExtent2D OutExtent)
 {
     if (!_init || InDevice == VK_NULL_HANDLE || InCmdList == VK_NULL_HANDLE)
         return false;
@@ -264,11 +290,18 @@ bool RCAS_Vk::Dispatch(VkDevice InDevice, VkCommandBuffer InCmdList, RcasConstan
 
     constants.DisplayHeight = InConstants.DisplayHeight;
     constants.DisplayWidth = InConstants.DisplayWidth;
+    constants.RenderHeight = InConstants.RenderHeight;
+    constants.RenderWidth = InConstants.RenderWidth;
     constants.DynamicSharpenEnabled = Config::Instance()->MotionSharpnessEnabled.value_or_default() ? 1 : 0;
     constants.MotionSharpness = Config::Instance()->MotionSharpness.value_or_default();
     constants.MvScaleX = InConstants.MvScaleX;
     constants.MvScaleY = InConstants.MvScaleY;
     constants.Sharpness = InConstants.Sharpness;
+    constants.DepthEnabled =
+        Config::Instance()->RcasDepthEnabled.value_or_default() && InDepthView != VK_NULL_HANDLE ? 1 : 0;
+    constants.DepthInverted = InConstants.DepthInverted ? 1 : 0;
+    constants.DepthSharpness = Config::Instance()->RcasDepthSharpness.value_or_default();
+    constants.DepthEdgeThreshold = Config::Instance()->RcasDepthThreshold.value_or_default();
     constants.Debug = Config::Instance()->MotionSharpnessDebug.value_or_default() ? 1 : 0;
     constants.Threshold = Config::Instance()->MotionThreshold.value_or_default();
     constants.ScaleLimit = Config::Instance()->MotionScaleLimit.value_or_default();
@@ -286,7 +319,7 @@ bool RCAS_Vk::Dispatch(VkDevice InDevice, VkCommandBuffer InCmdList, RcasConstan
 
     // Prepare descriptors
     _currentSetIndex = (_currentSetIndex + 1) % MAX_FRAMES_IN_FLIGHT;
-    UpdateDescriptorSet(InCmdList, _currentSetIndex, InResourceView, InMotionVectorsView, OutResourceView);
+    UpdateDescriptorSet(InCmdList, _currentSetIndex, InResourceView, InMotionVectorsView, InDepthView, OutResourceView);
 
     vkCmdBindPipeline(InCmdList, VK_PIPELINE_BIND_POINT_COMPUTE, _pipeline);
 

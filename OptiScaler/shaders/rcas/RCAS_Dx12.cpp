@@ -27,7 +27,8 @@ void RCAS_Dx12::SetBufferState(ID3D12GraphicsCommandList* InCommandList, D3D12_R
 }
 
 bool RCAS_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InResource,
-                         ID3D12Resource* InMotionVectors, RcasConstants InConstants, ID3D12Resource* OutResource)
+                         ID3D12Resource* InMotionVectors, ID3D12Resource* InDepth, RcasConstants InConstants,
+                         ID3D12Resource* OutResource)
 {
     if (!_init || InDevice == nullptr || InCmdList == nullptr || InResource == nullptr || OutResource == nullptr ||
         InMotionVectors == nullptr)
@@ -41,6 +42,8 @@ bool RCAS_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCm
 
     auto inDesc = InResource->GetDesc();
     auto mvDesc = InMotionVectors->GetDesc();
+    auto depthResource = InDepth != nullptr ? InDepth : InResource;
+    auto depthDesc = depthResource->GetDesc();
     auto outDesc = OutResource->GetDesc();
 
     // Create SRV for Input Texture
@@ -61,6 +64,15 @@ bool RCAS_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCm
 
     InDevice->CreateShaderResourceView(InMotionVectors, &srvDesc2, currentHeap.GetSrvCPU(1));
 
+    // Create SRV for Depth Texture
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc3 = {};
+    srvDesc3.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc3.Format = Shader_Dx12::TranslateTypelessFormats(depthDesc.Format);
+    srvDesc3.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srvDesc3.Texture2D.MipLevels = 1;
+
+    InDevice->CreateShaderResourceView(depthResource, &srvDesc3, currentHeap.GetSrvCPU(2));
+
     // Create UAV for Output Texture
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
     uavDesc.Format = Shader_Dx12::TranslateTypelessFormats(outDesc.Format);
@@ -78,11 +90,17 @@ bool RCAS_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCm
 
     constants.DisplayHeight = InConstants.DisplayHeight;
     constants.DisplayWidth = InConstants.DisplayWidth;
+    constants.RenderHeight = InConstants.RenderHeight;
+    constants.RenderWidth = InConstants.RenderWidth;
     constants.DynamicSharpenEnabled = Config::Instance()->MotionSharpnessEnabled.value_or_default() ? 1 : 0;
     constants.MotionSharpness = Config::Instance()->MotionSharpness.value_or_default();
     constants.MvScaleX = InConstants.MvScaleX;
     constants.MvScaleY = InConstants.MvScaleY;
     constants.Sharpness = InConstants.Sharpness;
+    constants.DepthEnabled = Config::Instance()->RcasDepthEnabled.value_or_default() && InDepth != nullptr ? 1 : 0;
+    constants.DepthInverted = InConstants.DepthInverted ? 1 : 0;
+    constants.DepthSharpness = Config::Instance()->RcasDepthSharpness.value_or_default();
+    constants.DepthEdgeThreshold = Config::Instance()->RcasDepthThreshold.value_or_default();
     constants.Debug = Config::Instance()->MotionSharpnessDebug.value_or_default() ? 1 : 0;
     constants.Threshold = Config::Instance()->MotionThreshold.value_or_default();
     constants.ScaleLimit = Config::Instance()->MotionScaleLimit.value_or_default();
@@ -154,8 +172,8 @@ RCAS_Dx12::RCAS_Dx12(std::string InName, ID3D12Device* InDevice) : Shader_Dx12(I
     LOG_DEBUG("{0} start!", _name);
 
     CD3DX12_DESCRIPTOR_RANGE1 descriptorRanges[] = {
-        // 2 SRVs starting at register t0, space 0
-        CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 0),
+        // 3 SRVs starting at register t0, space 0
+        CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0, 0),
 
         // 1 UAV starting at register u0, space 0
         CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0),
@@ -269,7 +287,7 @@ RCAS_Dx12::RCAS_Dx12(std::string InName, ID3D12Device* InDevice) : Shader_Dx12(I
 
     for (int i = 0; i < RCAS_NUM_OF_HEAPS; i++)
     {
-        if (!_frameHeaps[i].Initialize(InDevice, 2, 1, 1))
+        if (!_frameHeaps[i].Initialize(InDevice, 3, 1, 1))
         {
             LOG_ERROR("[{0}] Failed to init heap", _name);
             _init = false;

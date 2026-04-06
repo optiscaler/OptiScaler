@@ -618,11 +618,12 @@ bool XeSSFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
         rcasConstants.DisplaySizeMV = !(GetFeatureFlags() & NVSDK_NGX_DLSS_Feature_Flags_MVLowRes);
         rcasConstants.RenderHeight = RenderHeight();
         rcasConstants.RenderWidth = RenderWidth();
+        rcasConstants.DepthInverted = DepthInverted();
 
         VkExtent2D outExtent = { DisplayWidth(), DisplayHeight() };
 
         RCAS->Dispatch(Device, InCmdBuffer, rcasConstants, RCAS->GetImageView(), params.velocityTexture.imageView,
-                       finalOutputView, outExtent);
+                       params.depthTexture.imageView, finalOutputView, outExtent);
     }
 
     _frameCount++;

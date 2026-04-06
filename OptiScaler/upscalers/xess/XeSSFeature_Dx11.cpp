@@ -532,11 +532,13 @@ bool XeSSFeature_Dx11::Evaluate(ID3D11DeviceContext* DeviceContext, NVSDK_NGX_Pa
         rcasConstants.DisplaySizeMV = !(GetFeatureFlags() & NVSDK_NGX_DLSS_Feature_Flags_MVLowRes);
         rcasConstants.RenderHeight = RenderHeight();
         rcasConstants.RenderWidth = RenderWidth();
+        rcasConstants.DepthInverted = DepthInverted();
 
         if (useSS)
         {
             if (!RCAS->Dispatch(Device, DeviceContext, (ID3D11Texture2D*) params.pOutputTexture,
-                                (ID3D11Texture2D*) params.pVelocityTexture, rcasConstants, OutputScaler->Buffer()))
+                                (ID3D11Texture2D*) params.pVelocityTexture, (ID3D11Texture2D*) params.pDepthTexture,
+                                rcasConstants, OutputScaler->Buffer()))
             {
                 Config::Instance()->RcasEnabled = false;
                 return true;
@@ -545,8 +547,8 @@ bool XeSSFeature_Dx11::Evaluate(ID3D11DeviceContext* DeviceContext, NVSDK_NGX_Pa
         else
         {
             if (!RCAS->Dispatch(Device, DeviceContext, (ID3D11Texture2D*) params.pOutputTexture,
-                                (ID3D11Texture2D*) params.pVelocityTexture, rcasConstants,
-                                (ID3D11Texture2D*) paramOutput))
+                                (ID3D11Texture2D*) params.pVelocityTexture, (ID3D11Texture2D*) params.pDepthTexture,
+                                rcasConstants, (ID3D11Texture2D*) paramOutput))
             {
                 Config::Instance()->RcasEnabled = false;
                 return true;

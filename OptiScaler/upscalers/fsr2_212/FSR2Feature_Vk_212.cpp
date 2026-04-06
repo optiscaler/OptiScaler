@@ -618,12 +618,15 @@ bool FSR2FeatureVk212::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter
         rcasConstants.DisplaySizeMV = !(GetFeatureFlags() & NVSDK_NGX_DLSS_Feature_Flags_MVLowRes);
         rcasConstants.RenderHeight = RenderHeight();
         rcasConstants.RenderWidth = RenderWidth();
+        rcasConstants.DepthInverted = DepthInverted();
 
         VkExtent2D outExtent = { DisplayWidth(), DisplayHeight() };
 
         RCAS->Dispatch(Device, InCmdBuffer, rcasConstants, RCAS->GetImageView(),
-                       ((NVSDK_NGX_Resource_VK*) paramVelocity)->Resource.ImageViewInfo.ImageView, finalOutputView,
-                       outExtent);
+                       ((NVSDK_NGX_Resource_VK*) paramVelocity)->Resource.ImageViewInfo.ImageView,
+                       paramDepth != nullptr ? ((NVSDK_NGX_Resource_VK*) paramDepth)->Resource.ImageViewInfo.ImageView
+                                             : VK_NULL_HANDLE,
+                       finalOutputView, outExtent);
     }
 
     _frameCount++;

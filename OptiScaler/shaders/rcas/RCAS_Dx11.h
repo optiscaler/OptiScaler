@@ -26,6 +26,12 @@ class RCAS_Dx11
         float ScaleLimit;
         int DisplayWidth;
         int DisplayHeight;
+        int RenderWidth;
+        int RenderHeight;
+        int DepthEnabled;
+        int DepthInverted;
+        float DepthSharpness;
+        float DepthEdgeThreshold;
     };
 
     std::string _name = "";
@@ -39,21 +45,25 @@ class RCAS_Dx11
     ID3D11Texture2D* _buffer = nullptr;
     ID3D11ShaderResourceView* _srvInput = nullptr;
     ID3D11ShaderResourceView* _srvMotionVectors = nullptr;
+    ID3D11ShaderResourceView* _srvDepth = nullptr;
     ID3D11UnorderedAccessView* _uavOutput = nullptr;
 
     ID3D11Texture2D* _currentInResource = nullptr;
     ID3D11Texture2D* _currentMotionVectors = nullptr;
+    ID3D11Texture2D* _currentDepth = nullptr;
     ID3D11Texture2D* _currentOutResource = nullptr;
 
     uint32_t InNumThreadsX = 16;
     uint32_t InNumThreadsY = 16;
 
-    bool InitializeViews(ID3D11Texture2D* InResource, ID3D11Texture2D* InMotionVectors, ID3D11Texture2D* OutResource);
+    bool InitializeViews(ID3D11Texture2D* InResource, ID3D11Texture2D* InMotionVectors, ID3D11Texture2D* InDepth,
+                         ID3D11Texture2D* OutResource);
 
   public:
     bool CreateBufferResource(ID3D11Device* InDevice, ID3D11Resource* InSource);
     bool Dispatch(ID3D11Device* InDevice, ID3D11DeviceContext* InContext, ID3D11Texture2D* InResource,
-                  ID3D11Texture2D* InMotionVectors, RcasConstants InConstants, ID3D11Texture2D* OutResource);
+                  ID3D11Texture2D* InMotionVectors, ID3D11Texture2D* InDepth, RcasConstants InConstants,
+                  ID3D11Texture2D* OutResource);
 
     ID3D11Texture2D* Buffer() { return _buffer; }
     bool IsInit() const { return _init; }

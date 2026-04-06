@@ -202,10 +202,11 @@ bool DLSSFeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
             rcasConstants.DisplaySizeMV = !(GetFeatureFlags() & NVSDK_NGX_DLSS_Feature_Flags_MVLowRes);
             rcasConstants.RenderHeight = RenderHeight();
             rcasConstants.RenderWidth = RenderWidth();
+            rcasConstants.DepthInverted = DepthInverted();
 
             if (useSS)
             {
-                if (!RCAS->Dispatch(Device, InCommandList, setBuffer, paramMotion, rcasConstants,
+                if (!RCAS->Dispatch(Device, InCommandList, setBuffer, paramMotion, paramDepth, rcasConstants,
                                     OutputScaler->Buffer()))
                 {
                     Config::Instance()->RcasEnabled.set_volatile_value(false);
@@ -214,7 +215,8 @@ bool DLSSFeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
             }
             else
             {
-                if (!RCAS->Dispatch(Device, InCommandList, setBuffer, paramMotion, rcasConstants, paramOutput))
+                if (!RCAS->Dispatch(Device, InCommandList, setBuffer, paramMotion, paramDepth, rcasConstants,
+                                    paramOutput))
                 {
                     Config::Instance()->RcasEnabled.set_volatile_value(false);
                     return true;

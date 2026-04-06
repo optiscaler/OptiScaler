@@ -100,12 +100,13 @@ template <class T, HasDefaultValue defaultState = WithDefault> class CustomOptio
     }
 
     constexpr T value_or_default() &&
-        requires(defaultState != NoDefault) {
-            return this->has_value() ? std::move(this->value()) : std::move(_defaultValue);
-        }
+        requires(defaultState != NoDefault)
+    {
+        return this->has_value() ? std::move(this->value()) : std::move(_defaultValue);
+    }
 
-        constexpr std::optional<T> value_for_config()
-            requires(defaultState == WithDefault)
+    constexpr std::optional<T> value_for_config()
+        requires(defaultState == WithDefault)
     {
         if (_volatile)
         {
@@ -252,6 +253,9 @@ class Config
 
     // CAS
     CustomOptional<bool> RcasEnabled { false };
+    CustomOptional<bool> RcasDepthEnabled { false };
+    CustomOptional<float> RcasDepthSharpness { 0.35f };
+    CustomOptional<float> RcasDepthThreshold { 0.01f };
     CustomOptional<bool> MotionSharpnessEnabled { false };
     CustomOptional<bool> MotionSharpnessDebug { false };
     CustomOptional<float> MotionSharpness { 0.4f };

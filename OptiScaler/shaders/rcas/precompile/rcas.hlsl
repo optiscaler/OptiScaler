@@ -23,6 +23,12 @@ cbuffer Params : register(b0)
     float ScaleLimit;
     int DisplayWidth;
     int DisplayHeight;
+    int RenderWidth;
+    int RenderHeight;
+    int DepthEnabled;
+    int DepthInverted;
+    float DepthSharpness;
+    float DepthEdgeThreshold;
 };
 
 #ifdef VK_MODE
@@ -38,7 +44,28 @@ Texture2D<float2> Motion : register(t1);
 #ifdef VK_MODE
 [[vk::binding(3, 0)]]
 #endif
+Texture2D<float> Depth : register(t2);
+
+#ifdef VK_MODE
+[[vk::binding(4, 0)]]
+#endif
 RWTexture2D<float3> Dest : register(u0);
+
+int2 getDepthCoord(int2 pixel)
+{
+    if (RenderWidth <= 0 || RenderHeight <= 0 || DisplayWidth <= 0 || DisplayHeight <= 0)
+        return pixel;
+
+    float2 uv = (float2(pixel) + 0.5f) / float2(DisplayWidth, DisplayHeight);
+    int2 coord = int2(uv * float2(RenderWidth, RenderHeight));
+
+    return clamp(coord, int2(0, 0), int2(RenderWidth - 1, RenderHeight - 1));
+}
+
+float sampleDepth(int2 pixel)
+{
+    return saturate(Depth.Load(int3(getDepthCoord(pixel), 0)).r);
+}
 
 float getRCASLuma(float3 rgb)
 {
@@ -49,6 +76,7 @@ float getRCASLuma(float3 rgb)
 void CSMain(uint3 DTid : SV_DispatchThreadID)
 {
     float setSharpness = Sharpness;
+    float depthEdge = 0.0f;
   
     if (DynamicSharpenEnabled > 0)
     {
@@ -75,6 +103,26 @@ void CSMain(uint3 DTid : SV_DispatchThreadID)
             setSharpness = 1.3f;
         else if (setSharpness < 0.0f)
             setSharpness = 0.0f;
+    }
+
+    if (DepthEnabled > 0 && setSharpness > 0.0f)
+    {
+        int2 pixel = int2(DTid.xy);
+        float depthCenter = sampleDepth(pixel);
+        float depthB = sampleDepth(pixel + int2(0, -1));
+        float depthD = sampleDepth(pixel + int2(-1, 0));
+        float depthF = sampleDepth(pixel + int2(1, 0));
+        float depthH = sampleDepth(pixel + int2(0, 1));
+
+        float depthMin = min(min(depthB, depthD), min(depthF, depthH));
+        float depthMax = max(max(depthB, depthD), max(depthF, depthH));
+        float nearWeight = DepthInverted > 0 ? depthCenter : (1.0f - depthCenter);
+
+        depthEdge = saturate((depthMax - depthMin) / max(DepthEdgeThreshold, 1e-5f));
+        nearWeight = sqrt(saturate(nearWeight));
+
+        setSharpness *= 1.0f + (nearWeight * DepthSharpness);
+        setSharpness = clamp(setSharpness, 0.0f, 1.3f);
     }
     
     float3 e = Source.Load(int3(DTid.x, DTid.y, 0)).rgb;
@@ -124,6 +172,9 @@ void CSMain(uint3 DTid : SV_DispatchThreadID)
         // This scales lobe strength based on local contrast without introducing softness
         lobe *= lerp(1.0, contrastFactor, Contrast); // Reduced intensity of effect with 0.5 multiplier
     }
+
+    if (DepthEnabled > 0)
+        lobe *= (1.0f - depthEdge);
     
     // Resolve with medium precision rcp
     float rcpL = rcp(4.0 * lobe + 1.0);

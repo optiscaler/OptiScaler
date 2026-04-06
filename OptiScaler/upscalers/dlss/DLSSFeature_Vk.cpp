@@ -254,11 +254,17 @@ bool DLSSFeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* I
                 rcasConstants.DisplaySizeMV = !(GetFeatureFlags() & NVSDK_NGX_DLSS_Feature_Flags_MVLowRes);
                 rcasConstants.RenderHeight = RenderHeight();
                 rcasConstants.RenderWidth = RenderWidth();
+                rcasConstants.DepthInverted = DepthInverted();
+
+                NVSDK_NGX_Resource_VK* paramDepth = nullptr;
+                InParameters->Get(NVSDK_NGX_Parameter_Depth, (void**) &paramDepth);
 
                 VkExtent2D outExtent = { DisplayWidth(), DisplayHeight() };
 
                 RCAS->Dispatch(Device, InCmdBuffer, rcasConstants, RCAS->GetImageView(),
-                               paramVelocity->Resource.ImageViewInfo.ImageView, finalOutputView, outExtent);
+                               paramVelocity->Resource.ImageViewInfo.ImageView,
+                               paramDepth != nullptr ? paramDepth->Resource.ImageViewInfo.ImageView : VK_NULL_HANDLE,
+                               finalOutputView, outExtent);
 
                 paramOutput->Resource.ImageViewInfo.Image = finalOutputImage;
                 paramOutput->Resource.ImageViewInfo.ImageView = finalOutputView;
