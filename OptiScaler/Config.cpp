@@ -480,7 +480,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             RcasDepthEnabled.set_from_config(readBool("CAS", "DepthEnabled"));
 
             if (auto setting = readFloat("CAS", "DepthSharpness"); setting.has_value())
-                RcasDepthSharpness.set_from_config(std::clamp(setting.value(), 0.0f, 1.0f));
+                RcasDepthSharpness.set_from_config(std::clamp(setting.value(), -1.0f, 1.0f));
 
             if (auto setting = readFloat("CAS", "DepthThreshold"); setting.has_value())
                 RcasDepthThreshold.set_from_config(std::clamp(setting.value(), 0.0001f, 1.0f));

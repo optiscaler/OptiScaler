@@ -4725,7 +4725,7 @@ bool MenuCommon::RenderMenu()
                             ImGui::BeginDisabled(!config->RcasDepthEnabled.value_or_default());
 
                             float depthSharpness = config->RcasDepthSharpness.value_or_default();
-                            if (ImGui::SliderFloat("Near Detail Boost", &depthSharpness, 0.0f, 1.0f, "%.2f"))
+                            if (ImGui::SliderFloat("Depth Sharpness Bias", &depthSharpness, -1.0f, 1.0f, "%.2f"))
                                 config->RcasDepthSharpness = depthSharpness;
 
                             float depthThreshold = config->RcasDepthThreshold.value_or_default();
@@ -4733,9 +4733,10 @@ bool MenuCommon::RenderMenu()
                                                    ImGuiSliderFlags_Logarithmic))
                                 config->RcasDepthThreshold = depthThreshold;
 
-                            ShowHelpMarker("Higher Near Detail Boost sharpens close surfaces more.\n"
-                                           "Lower Edge Sensitivity reduces more shimmer but also softens more.\n"
-                                           "If the image gets too soft, raise Edge Sensitivity.");
+                            ShowHelpMarker(
+                                "Positive Depth Sharpness Bias sharpens near surfaces more.\n"
+                                "Negative values sharpen near surfaces less, which favors distant detail instead.\n"
+                                "Lower Edge Sensitivity reduces more shimmer but also softens more.")
 
                             ImGui::EndDisabled();
 

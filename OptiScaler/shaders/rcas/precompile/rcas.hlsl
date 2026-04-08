@@ -64,7 +64,36 @@ int2 getDepthCoord(int2 pixel)
 
 float sampleDepth(int2 pixel)
 {
-    return saturate(Depth.Load(int3(getDepthCoord(pixel), 0)).r);
+    return Depth.Load(int3(getDepthCoord(pixel), 0)).r;
+}
+
+float getDepthNearWeight(float depth, int linearDepth)
+{
+    if (linearDepth > 0)
+    {
+        float linearValue = abs(depth);
+        float nearWeight = rcp(1.0f + linearValue);
+
+        if (DepthInverted > 0)
+            nearWeight = 1.0f - nearWeight;
+
+        return saturate(nearWeight);
+    }
+
+    return DepthInverted > 0 ? saturate(depth) : (1.0f - saturate(depth));
+}
+
+float getDepthEdgeSignal(float depthMin, float depthMax, int linearDepth)
+{
+    float depthRange = max(depthMax - depthMin, 0.0f);
+
+    if (linearDepth > 0)
+    {
+        float depthScale = max(max(abs(depthMin), abs(depthMax)), 1e-5f);
+        return depthRange / depthScale;
+    }
+
+    return depthRange;
 }
 
 float getRCASLuma(float3 rgb)
@@ -116,9 +145,12 @@ void CSMain(uint3 DTid : SV_DispatchThreadID)
 
         float depthMin = min(min(depthB, depthD), min(depthF, depthH));
         float depthMax = max(max(depthB, depthD), max(depthF, depthH));
-        float nearWeight = DepthInverted > 0 ? depthCenter : (1.0f - depthCenter);
+        float maxAbsDepth = max(abs(depthCenter), max(max(abs(depthB), abs(depthD)), max(abs(depthF), abs(depthH))));
+        // DLSSD often feeds linear depth instead of hardware depth.
+        int linearDepth = maxAbsDepth > 1.0f ? 1 : 0;
+        float nearWeight = getDepthNearWeight(depthCenter, linearDepth);
 
-        depthEdge = saturate((depthMax - depthMin) / max(DepthEdgeThreshold, 1e-5f));
+        depthEdge = saturate(getDepthEdgeSignal(depthMin, depthMax, linearDepth) / max(DepthEdgeThreshold, 1e-5f));
         nearWeight = sqrt(saturate(nearWeight));
 
         setSharpness *= 1.0f + (nearWeight * DepthSharpness);
