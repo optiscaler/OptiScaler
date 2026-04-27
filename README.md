@@ -69,7 +69,7 @@
 > ***[3]** For **not bundled** items, please check [Installation](#installation).*  
 
 > [!NOTE]
-> ### Upscaler notes
+> ### Upscaler notes!
 > <details>
 >  <summary><b>Click for [1], [2] </b></summary>  
 >  
