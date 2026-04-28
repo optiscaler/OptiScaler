@@ -710,10 +710,10 @@ bool Config::Reload(std::filesystem::path iniPath)
             NvapiDllPath.set_from_config(readWString("Libraries", "NvapiPath"));
 
             FfxDx12Path.set_from_config(readWString("Libraries", "FfxDx12Path"));
-            FfxDx12SRPath.set_from_config(readWString("Libraries", "FfxSRDx12Path"));
-            FfxDx12FGPath.set_from_config(readWString("Libraries", "FfxFGDx12Path"));
-            FfxDx12RRPath.set_from_config(readWString("Libraries", "FfxRRDx12Path"));
-            FfxDx12RCPath.set_from_config(readWString("Libraries", "FfxRCDx12Path"));
+            FfxDx12SRPath.set_from_config(readWString("Libraries", "FfxDx12SRPath"));
+            FfxDx12FGPath.set_from_config(readWString("Libraries", "FfxDx12FGPath"));
+            FfxDx12RRPath.set_from_config(readWString("Libraries", "FfxDx12RRPath"));
+            FfxDx12RCPath.set_from_config(readWString("Libraries", "FfxDx12RCPath"));
             FfxVkPath.set_from_config(readWString("Libraries", "FfxVkPath"));
 
             XeSSLibrary.set_from_config(readWString("Libraries", "XeSSPath"));
