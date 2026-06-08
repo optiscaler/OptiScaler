@@ -29,16 +29,21 @@ jobs:
     runs-on: windows-latest
     environment: Build
 
-    steps:
-    - uses: actions/checkout@v6
-      with:
-        submodules: 'true'
-        
-    - name: Extract Version
-      id: get_version
-      working-directory: ${{ github.workspace }}
-      shell: powershell
-      run: |
+  steps:
+  - name: Checkout repository
+    uses: actions/checkout@v4
+    with:
+      fetch-depth: 0
+      submodules: recursive
+
+  - name: Checkout April 16 master commit
+    run: git checkout 0cb6840
+
+  - name: Extract Version
+    id: get_version
+    working-directory: ${{ github.workspace }}
+    shell: powershell
+    run: |
         # Ensure the file exists before proceeding
         $resourceFile = ".\OptiScaler\resource.h"
         if (-Not (Test-Path $resourceFile)) {
