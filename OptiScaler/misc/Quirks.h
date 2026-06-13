@@ -343,7 +343,7 @@ static const QuirkEntry quirkTable[] = {
     // (2018), Europa Universalis V, Need for Speed Unbound, Nioh 2 – The Complete Edition, Control Ultimate Edition,
     // Deathloop, Where Winds Meet, FINAL FANTASY VII REMAKE INTERGRADE (for Luma mod), Assassin’s Creed Shadows,
     // Farming Simulator 2025, Nioh 3, FATAL FRAME II: Crimson Butterfly REMAKE, OUTRIDERS, MOUSE: P.I. For Hire, Yet
-    // Another Zombie Survivors, Voodoo Fishin', Forza Horizon 6
+    // Another Zombie Survivors, Voodoo Fishin', Forza Horizon 6, Over the Hill (demo), SHROT (demo)
     QUIRK_ENTRY("witcher3.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("alanwake2.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("crysis3remastered.exe", GameQuirk::DisableDxgiSpoofing),
@@ -383,6 +383,8 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("yet another zombie survivors.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("voodoo fishin'.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("forzahorizon6.exe", GameQuirk::DisableDxgiSpoofing),
+    QUIRK_ENTRY("over the hill.exe", GameQuirk::DisableDxgiSpoofing),
+    QUIRK_ENTRY("shrot.exe", GameQuirk::DisableDxgiSpoofing),
 
     // FSR2/3 only, no spoof needed
     //
