@@ -1686,10 +1686,24 @@ static ImVec4 toneMapColor(const ImVec4& color)
         (!Config::Instance()->OverlayMenu.value_or_default() && State::Instance().currentFeature != nullptr &&
          State::Instance().currentFeature->IsHdr()))
     {
-        // Apply tone mapping (e.g., Reinhard tone mapping)
-        float luminance = 0.2126f * color.x + 0.7152f * color.y + 0.0722f * color.z;
-        float mappedLuminance = luminance / (1.0f + luminance);
-        float scale = mappedLuminance / luminance;
+        // Controls how strongly HDR/UI colors are pushed into the tone mapper before compression.
+        // Higher values make colors brighter before mapping; lower values make the result dimmer.
+        constexpr float exposure = 1.0f;
+
+        // Blends between original color and fully tone-mapped color.
+        // 0.0 = no tone mapping, 1.0 = full Reinhard compression.
+        constexpr float strength = 1.0f;
+
+        float peak = std::max(color.x, std::max(color.y, color.z));
+
+        if (peak <= 0.0f)
+            return color;
+
+        float exposedPeak = peak * exposure;
+        float mappedPeak = exposedPeak / (1.0f + exposedPeak);
+
+        float reinhardScale = mappedPeak / peak;
+        float scale = 1.0f + (reinhardScale - 1.0f) * strength;
 
         return ImVec4(color.x * scale, color.y * scale, color.z * scale, color.w);
     }
