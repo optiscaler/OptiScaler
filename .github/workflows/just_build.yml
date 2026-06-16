@@ -46,7 +46,6 @@ jobs:
 
     - name: Extract Version
       id: get_version
-      working-directory: ${{ github.workspace }}
       shell: powershell
       run: |
         # Ensure the file exists before proceeding
@@ -105,18 +104,17 @@ jobs:
       uses: microsoft/setup-msbuild@v2
 
     - name: Build
-      working-directory: ${{env.GITHUB_WORKSPACE}}
       # Add additional options to the MSBuild command line here (like platform or verbosity level).
       # See https://docs.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference
-      run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} ${{env.SOLUTION_FILE_PATH}} /verbosity:minimal
+      run: msbuild /m /p:Configuration=${{ env.BUILD_CONFIGURATION }} ${{ env.SOLUTION_FILE_PATH }} /verbosity:minimal
 
-    - name: upload-unsigned-artifact
+    - name: Upload unsigned artifact
       if: ${{ inputs.sign }}
       id: upload-unsigned-artifact
       uses: actions/upload-artifact@v7
       with:
-        name: '${{ steps.get_version.outputs.filename }}_unsigned_dll'
-        path: '${{ github.workspace }}\x64\Release\a\OptiScaler.dll'
+        name: ${{ steps.get_version.outputs.filename }}_unsigned_dll
+        path: x64\Release\a\OptiScaler.dll
         compression-level: 9
         if-no-files-found: error
 
@@ -134,28 +132,32 @@ jobs:
 
     - name: Copy Back Signed Library
       if: ${{ inputs.sign }}
-      working-directory: ${{ github.workspace }}
       shell: powershell
-      run: |
-        cd .\signed
-        copy .\OptiScaler.dll '${{ github.workspace }}\x64\Release\a\OptiScaler.dll' -Force
+      run:
+        copy signed\OptiScaler.dll x64\Release\a\OptiScaler.dll' -Force
 
     - name: Compress the artifact
-      run: |
-        $zipName = "${{ steps.get_version.outputs.filename }}.7z"
-        $tarName = "${{ steps.get_version.outputs.filename }}.tar.xz"
-
-        7z a -r ${{ github.workspace }}\$zipName ${{ github.workspace }}\x64\Release\a\*.*
-        tar -caf ${{ github.workspace }}\$tarNAme ${{ github.workspace }}\x64\Release\a\*.*
-
+      working-directory: x64\Release\a\
       continue-on-error: false
+      run: |
+        $name = "${{ steps.get_version.outputs.filename }}"
+        7z a -r "${name}.7z" *.*
+        tar -caf "${name}.tar.xz" *.*
 
-    - uses: actions/upload-artifact@v7
+    - name: Upload .7z archive
+      uses: actions/upload-artifact@v7
       with:
-        name: '${{ steps.get_version.outputs.filename }}'
-        path: |
-          '${{ github.workspace }}\${{ steps.get_version.outputs.filename }}.7z'
-          '${{ github.workspace }}\${{ steps.get_version.outputs.filename }}.tar.xz'
+        name: ${{ steps.get_version.outputs.filename }}
+        path: ${{ steps.get_version.outputs.filename }}.7z
+        compression-level: 0
+        archive: false
+        if-no-files-found: error
+
+    - name: Upload .tar.zstd archive
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ steps.get_version.outputs.filename }}-tar
+        path: ${{ steps.get_version.outputs.filename }}.tar.xz
         compression-level: 0
         archive: false
         if-no-files-found: error
