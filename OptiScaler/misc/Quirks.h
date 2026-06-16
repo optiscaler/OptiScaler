@@ -257,7 +257,7 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY_UE(b1, GameQuirk::SpoofRegistry),
 
     // Avowed
-    // NoBarriers needed to avoid post-loading crash with DLSS, AE required to fix FSR4 ghosting
+    // NoColorBarrier needed to avoid post-loading crash with DLSS, AE required to fix FSR4 ghosting
     QUIRK_ENTRY_UE(avowed, GameQuirk::ForceAutoExposure, GameQuirk::DontUseUnrealColorBarriers,
                    GameQuirk::DisableFSR2Inputs, GameQuirk::DisableFSR3Inputs),
 
