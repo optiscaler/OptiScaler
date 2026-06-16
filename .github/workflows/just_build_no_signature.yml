@@ -1,4 +1,5 @@
 name: Build (No Signing)
+run-name: Build ${{ github.ref_name }} (No Signing)
 
 on:
   workflow_dispatch:

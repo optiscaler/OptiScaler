@@ -1,4 +1,5 @@
 name: Build ReleaseDebug
+run-name: Build ${{ github.ref_name }} ReleaseDebug
 
 on:
   workflow_dispatch:
