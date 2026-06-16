@@ -38,6 +38,8 @@ env:
   # You can convert this to a build matrix if you need coverage of multiple configuration types.
   # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
   BUILD_CONFIGURATION: ${{ inputs.debug && 'ReleaseDebug' || 'Release' }}
+  TAR_EXTENSION: ".tar.xz"
+  RELEASE_PATH: 'x64\Release\a'
 
 permissions:
   contents: write
@@ -123,7 +125,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.get_version.outputs.filename }}_unsigned_dll
-          path: x64\Release\a\OptiScaler.dll
+          path: ${{ env.RELEASE_PATH }}/OptiScaler.dll
           compression-level: 9
           if-no-files-found: error
 
@@ -142,21 +144,21 @@ jobs:
       - name: Copy Back Signed Library
         if: ${{ inputs.sign }}
         shell: powershell
-        run: copy signed\OptiScaler.dll x64\Release\a\OptiScaler.dll' -Force
+        run: copy signed\OptiScaler.dll ${{ env.RELEASE_PATH }}\OptiScaler.dll' -Force
 
       - name: Compress the artifact
-        working-directory: x64\Release\a\
+        working-directory: ${{ env.RELEASE_PATH }}
         continue-on-error: false
         run: |
           $name = "${{ steps.get_version.outputs.filename }}"
-          7z a -r "${name}.7z" *.*
-          tar -caf "${name}.tar.xz" *.*
+          7z a -r "${{ github.workspace }}\${name}.7z" *.*
+          tar -caf "${{ github.workspace }}\${name}.${{ env.TAR_EXTENSION }}" *.*
 
       - name: Upload standalone .dll file
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.get_version.outputs.filename }}-dll
-          path: x64\Release\a\OptiScaler.dll
+          path: ${{ env.RELEASE_PATH }}\OptiScaler.dll
           compression-level: 0
           archive: false
           if-no-files-found: error
@@ -174,7 +176,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.get_version.outputs.filename }}-tar
-          path: ${{ steps.get_version.outputs.filename }}.tar.xz
+          path: ${{ steps.get_version.outputs.filename }}${{ env.TAR_EXTENSION }}
           compression-level: 0
           archive: false
           if-no-files-found: error
