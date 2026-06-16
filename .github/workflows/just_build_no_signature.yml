@@ -1,0 +1,14 @@
+name: Build (No Signing)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/just_build.yml
+    with:
+      sign: false
+    secrets: inherit
