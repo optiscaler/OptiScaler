@@ -6,15 +6,15 @@
 name: Scheduled Build
 
 on:
-  schedule:
-#    - cron: '0 4 * * *' 
+  # schedule:
+  #   - cron: '0 4 * * *'
 
   workflow_dispatch:
 #  push:
 #    branches: [ "master" ]
 #  pull_request:
 #    branches: [ "master" ]
-    
+
 env:
   # Path to the solution file relative to the root of the project.
   SOLUTION_FILE_PATH: .
@@ -34,9 +34,9 @@ jobs:
     steps:
     - uses: actions/checkout@v6
       with:
-        fetch-depth: 0            
+        fetch-depth: 0
         submodules: 'true'
-        
+
     - name: Check Existing Release
       id: check_release
       uses: actions/github-script@v8
@@ -77,7 +77,7 @@ jobs:
           });
           core.setOutput("release_id", release.data.id);
           core.setOutput("upload_url", release.data.upload_url);
-       
+
     - name: Extract OptiScaler Version
       id: get_version
       working-directory: ${{ github.workspace }}
@@ -89,7 +89,7 @@ jobs:
             Write-Error "File not found: $resourceFile"
             exit 1
         }
-        
+
         # Helper function to extract the first matching line for a version component
         function Get-Version-Component {
             param (
@@ -105,36 +105,36 @@ jobs:
                 exit 1
             }
         }
-        
+
         # Extract version components (only the first match for each pattern)
         $majorVersion = Get-Version-Component 'VER_MAJOR_VERSION' '#define VER_MAJOR_VERSION\s+'
         $minorVersion = Get-Version-Component 'VER_MINOR_VERSION' '#define VER_MINOR_VERSION\s+'
         $hotfixVersion = Get-Version-Component 'VER_HOTFIX_VERSION' '#define VER_HOTFIX_VERSION\s+'
         $buildVersion = Get-Version-Component 'VER_BUILD_NUMBER' '#define VER_BUILD_NUMBER\s+'
-        
+
         # Merge into a single version string
         $version = "v$majorVersion.$minorVersion.$hotfixVersion-pre$buildVersion"
-        
+
         # Get the current date in a specific format (e.g., YYYYMMDD)
         $date = Get-Date -Format "yyyyMMdd"
-        
+
         # Construct the output filename with version and date
         $outputFileName = "OptiScaler_${version}_${date}"
-        
+
         # Output the generated filename
         Write-Output "Generated Filename: $outputFileName"
-        
+
         # Write outputs to GITHUB_OUTPUT
         "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         "filename=$outputFileName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        
+
       continue-on-error: false
-      
+
     - name: Debug Outputs
       run: |
         echo "Version: ${{ steps.get_version.outputs.version }}"
         echo "Filename: ${{ steps.get_version.outputs.filename }}"
-        
+
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v2
 
@@ -143,14 +143,14 @@ jobs:
       # Add additional options to the MSBuild command line here (like platform or verbosity level).
       # See https://docs.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference
       run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} ${{env.SOLUTION_FILE_PATH}} /verbosity:minimal
-      
-    - name: Compress the artifact 
+
+    - name: Compress the artifact
       run: |
         $zipName = "${{ steps.get_version.outputs.filename }}.7z"
         7z a -r ${{ github.workspace }}\$zipName ${{ github.workspace }}\x64\Release\a\*.*
 
       continue-on-error: false
-        
+
     - uses: actions/upload-artifact@v7.0.0
       with:
         name: ${{ steps.get_version.outputs.filename }}
@@ -158,7 +158,7 @@ jobs:
         compression-level: 0
         archive: false
         if-no-files-found: error
-       
+
     - name: Remove Previous Artifacts
       if: steps.check_release.outputs.release_exists == 'true'
       uses: actions/github-script@v8
@@ -187,7 +187,7 @@ jobs:
         files: ${{ github.workspace }}/${{ steps.get_version.outputs.filename }}.7z
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-            
+
     - name: Get Commit Messages From Last Day and Update the Release
       id: commit_messages
       working-directory: ${{ github.workspace }}
@@ -199,29 +199,29 @@ jobs:
 
         # Get commit messages excluding .yml file commits
         $commits = git log --since="1 day ago" --pretty=format:"%h %s (%an)" --abbrev-commit --no-merges --first-parent
-        
+
         $commits = $commits -split "`n"
 
         # If no commits are found, cancel the workflow
-        if (-not $commits) {          
+        if (-not $commits) {
           Write-Output "No relevant commits in the last 24 hours. Cancelling workflow."
 
           $ReleaseTag = "nightly"
           Write-Output "Updating existing release: $ReleaseTag"
-          gh release edit $ReleaseTag --notes "### Changes in the Last 24 Hours`n`nNo changes..."   
+          gh release edit $ReleaseTag --notes "### Changes in the Last 24 Hours`n`nNo changes..."
         }
         else {
           # Join commits into a newline-separated string
-          $formattedCommits = $commits -join "`n"        
+          $formattedCommits = $commits -join "`n"
           Write-Output "Commits: $formattedCommits`n"
-  
+
           # Generate release notes
           $releaseNotes = "### Changes in the Last 24 Hours`n`n$formattedCommits"
-          
+
           $ReleaseTag = "nightly"
           Write-Output "Updating existing release: $ReleaseTag"
-          gh release edit $ReleaseTag --notes "$ReleaseNotes"   
+          gh release edit $ReleaseTag --notes "$ReleaseNotes"
         }
-        
+
       continue-on-error: false
-        
+
