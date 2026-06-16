@@ -1455,9 +1455,13 @@ static void CheckQuirks()
 
     if (quirks & GameQuirk::DontUseUnrealColorBarriers && !Config::Instance()->ColorResourceBarrier.has_value())
         Config::Instance()->ColorResourceBarrier.set_volatile_value(128);
+    else
+        quirks.reset(GameQuirk::DontUseUnrealColorBarriers);
 
     if (quirks & GameQuirk::DontUseUnrealMVBarriers && !Config::Instance()->MVResourceBarrier.has_value())
         Config::Instance()->MVResourceBarrier.set_volatile_value(128);
+    else
+        quirks.reset(GameQuirk::DontUseUnrealMVBarriers);
 
     if (quirks & GameQuirk::SkipFirst10Frames && !Config::Instance()->SkipFirstFrames.has_value())
         Config::Instance()->SkipFirstFrames.set_volatile_value(10);
