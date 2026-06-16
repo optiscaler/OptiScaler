@@ -41,6 +41,7 @@ env:
   RELEASE_PATH: .\x64\${{ inputs.debug && 'ReleaseDebug' || 'Release\a' }}
   DLL_NAME: OptiScaler.dll
   TAR_EXTENSION: .tar.xz
+  XZ_COMPRESSION: 9
 
 permissions:
   contents: write
@@ -153,7 +154,7 @@ jobs:
         run: |
           $name = "${{ steps.get_version.outputs.filename }}"
           7z a -r "${{ github.workspace }}\${name}.7z" *.*
-          tar -caf "${{ github.workspace }}\$name$Env:TAR_EXTENSION" *.*
+          tar --use-compress-program "xz -T0 -$Env:XZ_COMPRESSION" -cf "${{ github.workspace }}\$name$Env:TAR_EXTENSION" *.*
 
       - name: Upload standalone .dll file
         uses: actions/upload-artifact@v7
