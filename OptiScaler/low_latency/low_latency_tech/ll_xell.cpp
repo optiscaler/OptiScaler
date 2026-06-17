@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "ll_xell.h"
 
 #include <magic_enum.hpp>
@@ -67,9 +67,12 @@ bool XeLL::init_using_ctx(void* context)
 
     if (xell_context)
     {
-        o_xellDestroyContext(xell_context);
-        xell_context = (xell_context_handle_t) context;
+        if (o_xellDestroyContext(xell_context) == XELL_RESULT_SUCCESS)
+            LOG_INFO("destroy o_xell_ctx");
+        else
+            LOG_ERROR("destroy o_xell_ctx error");
     }
+    xell_context = (xell_context_handle_t) context;
 
     // Context is handled and held inside XeLLProxy
     inited_using_context = true;

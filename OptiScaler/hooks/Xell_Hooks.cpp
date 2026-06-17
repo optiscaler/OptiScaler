@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "Xell_Hooks.h"
 #include <detours/detours.h>
 #include <magic_enum.hpp>
@@ -80,12 +80,14 @@ bool XellHooks::update()
 
     gamesContextCanLimitFps = true;
 
-    float fpsLimit = Config::Instance()->FramerateLimit.value_or_default();
-
-    if (fpsLimit < 0.0f)
-        fpsLimit = 0.0f;
-
-    currentParams.minimumIntervalUs = static_cast<uint32_t>(std::round(1'000'000 / fpsLimit));
+    static float lastFpslimit = 0.0f;
+    if (lastFpslimit == Config::Instance()->FramerateLimit.value_or_default())
+        return false;
+    lastFpslimit = Config::Instance()->FramerateLimit.value_or_default();
+    if (lastFpslimit <= 0.0f)
+        currentParams.minimumIntervalUs = 0u;
+    else
+        currentParams.minimumIntervalUs = static_cast<uint32_t>(std::round(1'000'000 / lastFpslimit)
 
     return o_xellSetSleepMode(gamesContext, &currentParams) == XELL_RESULT_SUCCESS;
 }
