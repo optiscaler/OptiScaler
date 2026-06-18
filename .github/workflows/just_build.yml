@@ -16,6 +16,12 @@ on:
         required: true
         default: false
 
+      upload-extra:
+        description: Upload bare .dll and .tar archive as well
+        type: boolean
+        required: false
+        default: true
+
   workflow_call:
     inputs:
       sign:
@@ -29,6 +35,12 @@ on:
         type: boolean
         required: false
         default: false
+
+      upload-extra:
+        description: Upload bare .dll and .tar archive as well
+        type: boolean
+        required: false
+        default: true
 
 env:
   # Path to the solution file relative to the root of the project.
@@ -156,15 +168,6 @@ jobs:
           7z a -r "${{ github.workspace }}\${name}.7z" *.*
           tar --use-compress-program "xz -T0 -$Env:XZ_COMPRESSION" -cf "${{ github.workspace }}\$name$Env:TAR_EXTENSION" *.*
 
-      - name: Upload standalone .dll file
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ steps.get_version.outputs.filename }}-dll
-          path: ${{ env.RELEASE_PATH }}\${{ env.DLL_NAME }}
-          compression-level: 0
-          archive: false
-          if-no-files-found: error
-
       - name: Upload .7z archive
         uses: actions/upload-artifact@v7
         with:
@@ -174,8 +177,19 @@ jobs:
           archive: false
           if-no-files-found: error
 
+      - name: Upload standalone .dll file
+        uses: actions/upload-artifact@v7
+        if: ${{ inputs.upload-extra }}
+        with:
+          name: ${{ steps.get_version.outputs.filename }}-dll
+          path: ${{ env.RELEASE_PATH }}\${{ env.DLL_NAME }}
+          compression-level: 0
+          archive: false
+          if-no-files-found: error
+
       - name: Upload ${{ env.TAR_EXTENSION }} archive
         uses: actions/upload-artifact@v7
+        if: ${{ inputs.upload-extra }}
         with:
           name: ${{ steps.get_version.outputs.filename }}-tar
           path: ${{ steps.get_version.outputs.filename }}${{ env.TAR_EXTENSION }}
