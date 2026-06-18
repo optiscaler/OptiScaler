@@ -120,9 +120,11 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("pathofexile_x64steam.exe", GameQuirk::LoadD3D12Manually, GameQuirk::DisableDxgiSpoofing),
 
     // Where Winds Meet
+    // Required to avoid forced DLSS dilated MVs
     QUIRK_ENTRY("wwm.exe", GameQuirk::DisableXeFGChecks),
 
     // Arknights: Endfield
+    // Reflex hooking crashes the game
     QUIRK_ENTRY("endfield.exe", GameQuirk::ForceCreateD3D12Device, GameQuirk::DisableFakenvapi),
 
     // Neverness to Everness
@@ -130,8 +132,12 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("htgame.exe", GameQuirk::DisableFSR2Inputs, GameQuirk::DisableFSR3Inputs, GameQuirk::DontUseNtDllHooks),
 
     // Wuthering Waves
-    // Kernel hooks required to unlock DLSS inputs, Not preserving FG Swapchain for fixing XeFG
+    // Kernel hooks required to unlock DLSS inputs, DoNotPreserveFGSwapChain for fixing XeFG
     QUIRK_ENTRY_UE(client, GameQuirk::DontUseNtDllHooks, GameQuirk::DoNotPreserveFGSwapChain),
+
+    // Zenless Zone Zero
+    // IgnoreValidUntilEvaluateForFG fixes flipped Unity MVs/Depth
+    QUIRK_ENTRY("zenlesszonezero.exe", GameQuirk::IgnoreValidUntilEvaluateForFG),
 
     // Trails in the Sky 1st Chapter
     QUIRK_ENTRY("sora_1st.exe", GameQuirk::UseFsr2Dx11Inputs, GameQuirk::DisableDxgiSpoofing),
