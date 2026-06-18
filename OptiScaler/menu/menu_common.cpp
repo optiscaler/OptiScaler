@@ -6640,6 +6640,14 @@ bool MenuCommon::RenderMenu()
                         }
                         ImGui::PopItemWidth();
 
+                        ShowHelpMarker("Controls the DXGI Present sync interval, which determines how\n"
+                                       "the swap chain waits for vertical refresh.\n\n"
+                                       "0  = Present immediately, no VSync wait.\n"
+                                       "1  = Sync to every refresh, normal VSync.\n"
+                                       "2+ = Present every N refreshes, reducing effective frame rate.\n\n"
+                                       "Higher values can reduce tearing but may increase latency and cap FPS.\n"
+                                       "For most games, use 0 for lowest latency or 1 for normal VSync.");
+
                         ImGui::EndDisabled();
                         ImGui::SameLine(0.0f, 16.0f);
 
