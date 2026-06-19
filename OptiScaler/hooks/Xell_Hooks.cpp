@@ -80,14 +80,14 @@ bool XellHooks::update()
 
     gamesContextCanLimitFps = true;
 
-    static float lastFpslimit = 0.0f;
-    if (lastFpslimit == Config::Instance()->FramerateLimit.value_or_default())
+    static float lastFpsLimit = 0.0f;
+    if (lastFpsLimit == Config::Instance()->FramerateLimit.value_or_default())
         return false;
-    lastFpslimit = Config::Instance()->FramerateLimit.value_or_default();
-    if (lastFpslimit <= 0.0f)
+    lastFpsLimit = Config::Instance()->FramerateLimit.value_or_default();
+    if (lastFpsLimit <= 0.0f)
         currentParams.minimumIntervalUs = 0u;
     else
-        currentParams.minimumIntervalUs = static_cast<uint32_t>(std::round(1'000'000 / lastFpslimit));
+        currentParams.minimumIntervalUs = static_cast<uint32_t>(std::round(1'000'000 / lastFpsLimit));
 
     return o_xellSetSleepMode(gamesContext, &currentParams) == XELL_RESULT_SUCCESS;
 }

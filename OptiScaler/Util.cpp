@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 
 #include "Util.h"
 #include "Config.h"
@@ -177,7 +177,8 @@ void Util::GetExeInfo()
     GetSystemDirectory(sysFolder, MAX_PATH);
     std::filesystem::path sysPath(sysFolder);
 
-    auto dll = LoadLibraryExW(L"version.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    // func CheckWorkingMode hasn't run.Don't load self.
+    auto dll = NtdllProxy::LoadLibraryExW_Ldr(L"version.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
 
     if (dll == nullptr)
         return;
