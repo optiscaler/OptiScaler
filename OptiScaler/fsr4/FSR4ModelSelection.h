@@ -4,6 +4,7 @@
 
 typedef uint64_t (*PFN_getModelBlob)(uint32_t preset, uint64_t unknown, uint64_t* source, uint64_t* size);
 typedef uint64_t (*PFN_createModel)(void* context, uint32_t preset);
+typedef uint64_t (*PFN_createModel2)(void* context, uint32_t preset, void** model);
 
 enum class FSR4Source
 {
@@ -21,6 +22,8 @@ class FSR4ModelSelection
     static uint64_t hkcreateModelDriver(void* context, uint32_t preset);
     static PFN_createModel o_createModelSDK;
     static PFN_createModel o_createModelDriver;
+    static uint64_t hkcreateModelDriver2(void* context, uint32_t preset, void** model);
+    static PFN_createModel2 o_createModelDriver2;
 
   public:
     static void Hook(HMODULE module, FSR4Source source);

@@ -3381,14 +3381,14 @@ bool MenuCommon::RenderMenu()
                                     ImGui::EndTable();
                                 }
 
-                                std::array<const char*, 7> models = { "Default", "Model 0", "Model 1", "Model 2",
-                                                                      "Model 3", "Model 4", "Model 5" };
+                                std::array<const char*, 7> models = { "Default",  "Preset 0", "Preset 1", "Preset 2",
+                                                                      "Preset 3", "Preset 4", "Preset 5" };
 
                                 // Conversion from 0 -> 6 into nullopt + 0 -> 5 is required
                                 uint32_t configModes = 0;
 
-                                if (config->Fsr4Model.has_value())
-                                    configModes = config->Fsr4Model.value_or(0) + 1;
+                                if (config->Fsr4Preset.has_value())
+                                    configModes = config->Fsr4Preset.value_or(0) + 1;
 
                                 if (configModes < 0 || configModes >= models.size())
                                     configModes = 0;
@@ -3400,21 +3400,21 @@ bool MenuCommon::RenderMenu()
 
                                     ImGui::TableNextColumn();
 
-                                    if (ImGui::BeginCombo("Models", selectedModel))
+                                    if (ImGui::BeginCombo("Presets", selectedModel))
                                     {
                                         for (int n = 0; n < models.size(); n++)
                                         {
                                             uint32_t selection = 0;
 
-                                            if (config->Fsr4Model.has_value())
-                                                selection = config->Fsr4Model.value_or(0) + 1;
+                                            if (config->Fsr4Preset.has_value())
+                                                selection = config->Fsr4Preset.value_or(0) + 1;
 
                                             if (ImGui::Selectable(models[n], selection == n))
                                             {
                                                 if (n < 1)
-                                                    config->Fsr4Model.reset();
+                                                    config->Fsr4Preset.reset();
                                                 else
-                                                    config->Fsr4Model = n - 1;
+                                                    config->Fsr4Preset = n - 1;
 
                                                 state.newBackend = currentBackend;
                                                 MARK_ALL_BACKENDS_CHANGED();
@@ -3423,13 +3423,15 @@ bool MenuCommon::RenderMenu()
 
                                         ImGui::EndCombo();
                                     }
-                                    ShowHelpMarker("Each FSR4 preset uses its own model.\n"
-                                                   "Selecting a model won't change the upscaler preset!\n\n"
-                                                   "Model 0 is meant for FSR Native AA\n"
-                                                   "Model 1 is meant for Quality/Ultra Quality\n"
-                                                   "Model 2 is meant for Balanced\n"
-                                                   "Model 3 is meant for Performance\n"
-                                                   "Model 5 is meant for Ultra Performance");
+                                    ShowHelpMarker(
+                                        "Each FSR4 preset uses a tuned base model.\n"
+                                        "Selecting an FSR4 preset won't change the in-game\nupscaler preset!!!\n\n"
+                                        "Preset 0 is meant for FSR Native AA\n"
+                                        "Preset 1 is meant for Quality/Ultra Quality\n"
+                                        "Preset 2 is meant for Balanced\n"
+                                        "Preset 3 is meant for Performance\n"
+                                        "Preset 4 is meant for DRS\n"
+                                        "Preset 5 is meant for Ultra Performance");
 
                                     // ImGui::PopItemWidth();
 
@@ -3437,8 +3439,8 @@ bool MenuCommon::RenderMenu()
 
                                     ImGui::TableNextColumn();
 
-                                    if (state.currentFsr4Model.has_value())
-                                        ImGui::Text("Current model: %d", state.currentFsr4Model.value());
+                                    if (state.currentFsr4Preset.has_value())
+                                        ImGui::Text("Current preset: %d", state.currentFsr4Preset.value());
                                     else
                                         ImGui::Text("Failed to hook");
 

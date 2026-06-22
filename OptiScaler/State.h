@@ -234,7 +234,7 @@ class State
     std::vector<uint64_t> ffxUpscalerVersionIds {};
     std::vector<const char*> ffxFGVersionNames {};
     std::vector<uint64_t> ffxFGVersionIds {};
-    std::optional<uint32_t> currentFsr4Model {};
+    std::optional<uint32_t> currentFsr4Preset {};
 
     // Linux checks
     bool isRunningOnLinux = false;
