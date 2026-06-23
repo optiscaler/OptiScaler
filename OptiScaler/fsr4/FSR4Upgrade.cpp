@@ -252,12 +252,13 @@ void CheckForGPU()
     factory->Release();
     factory = nullptr;
 
-    // If not set at Config enable/disable Fsr4Update according to GPU detection
+    // If not set at Config, enable/disable Fsr4Update according to GPU detection
     if (!Config::Instance()->Fsr4Update.has_value())
-        Config::Instance()->Fsr4Update.set_volatile_value(State::Instance().isRunningOnRDNA4.value());
+        Config::Instance()->Fsr4Update.set_volatile_value(State::Instance().isRunningOnRDNA4.value() ||
+                                                          State::Instance().isRunningOnRDNA3.value());
 
-    LOG_INFO("RNDA4: {}, Fsr4Update: {}", State::Instance().isRunningOnRDNA4.value(),
-             Config::Instance()->Fsr4Update.value_or_default());
+    LOG_INFO("RDNA4: {}, RDNA3: {}, Fsr4Update: {}", State::Instance().isRunningOnRDNA4.value(),
+             State::Instance().isRunningOnRDNA3.value(), Config::Instance()->Fsr4Update.value_or_default());
 }
 
 struct ffxProviderInterface

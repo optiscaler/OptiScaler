@@ -28,10 +28,10 @@
 
 #define VER_MAJOR_VERSION 0
 #define VER_MINOR_VERSION 9
-#define VER_HOTFIX_VERSION 3
-#define VER_BUILD_NUMBER 0
+#define VER_HOTFIX_VERSION 4
+#define VER_BUILD_NUMBER 2
 
-// #define VER_PRE_RELEASE
+#define VER_PRE_RELEASE
 
 #define VER_FILE_VERSION VER_MAJOR_VERSION, VER_MINOR_VERSION, VER_HOTFIX_VERSION, VER_BUILD_NUMBER
 #define VER_FILE_VERSION_STR                                                                                           \
