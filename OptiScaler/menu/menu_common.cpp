@@ -1,4 +1,4 @@
-﻿#include "pch.h"
+#include "pch.h"
 #include "menu_common.h"
 
 #include "input/input_system.h"
@@ -708,6 +708,45 @@ static uint32_t GetPresetIndex(IFeature* feature, bool dlssd = false)
     }
 
     return 0;
+}
+
+static const char* GetPresetName(uint32_t presetIndex)
+{
+    switch (presetIndex)
+    {
+    case 0: return "Default";
+    case 1: return "Preset A";
+    case 2: return "Preset B";
+    case 3: return "Preset C";
+    case 4: return "Preset D";
+    case 5: return "Preset E";
+    case 6: return "Preset F";
+    case 7: return "Preset G";
+    case 8: return "Preset H";
+    case 9: return "Preset I";
+    case 10: return "Preset J";
+    case 11: return "Preset K";
+    case 12: return "Preset L";
+    case 13: return "Preset M";
+    case 14: return "Preset N";
+    case 15: return "Preset O";
+    case NV_PRESET_LATEST: return "NVIDIA Recommended";
+    default: return "Unknown";
+    }
+}
+
+static const char* GetPresetSource(bool dlssd)
+{
+    bool overridenByOpti = dlssd ? State::Instance().dlssdPresetsOverridenByOpti
+                                  : State::Instance().dlssPresetsOverridenByOpti;
+    bool overriddenExternally = dlssd ? State::Instance().dlssdPresetsOverriddenExternally
+                                       : State::Instance().dlssPresetsOverriddenExternally;
+
+    if (overridenByOpti)
+        return "OptiScaler Override";
+    if (overriddenExternally)
+        return "External Override";
+    return "No Override";
 }
 
 // TODO: disable presets based on the detected DLSS version
@@ -2781,14 +2820,10 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                                "Override to potentially improve image quality\n"
                                "Press apply after enable/disable");
 
-                /*
                 auto currentPresetIndex = GetPresetIndex(currentFeature, true);
-
-                if (currentPresetIndex == 0)
-                    ImGui::Text("Current Preset: Default");
-                else
-                    ImGui::Text("Current Preset: %c", 64 + currentPresetIndex);
-                */
+                ImGui::Text("Current Preset: %s", GetPresetName(currentPresetIndex));
+                ImGui::SameLine();
+                ImGui::TextDisabled("(%s)", GetPresetSource(true));
 
                 ImGui::BeginDisabled(!config->DLSSDRenderPresetOverride.value_or_default() /*|| overridden*/);
                 ImGui::PushItemWidth(135.0f * menuResScale);
@@ -2808,14 +2843,10 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                                "Override to potentially improve image quality\n"
                                "Press apply after enable/disable");
 
-                /*
                 auto currentPresetIndex = GetPresetIndex(currentFeature, false);
-
-                if (currentPresetIndex == 0)
-                    ImGui::Text("Current Preset: Default");
-                else
-                    ImGui::Text("Current Preset: %c", 64 + currentPresetIndex);
-                */
+                ImGui::Text("Current Preset: %s", GetPresetName(currentPresetIndex));
+                ImGui::SameLine();
+                ImGui::TextDisabled("(%s)", GetPresetSource(false));
 
                 ImGui::BeginDisabled(!config->RenderPresetOverride.value_or_default() /*|| overridden*/);
 
