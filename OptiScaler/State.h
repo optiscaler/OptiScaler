@@ -243,6 +243,7 @@ class State
     // Other checks
     bool isRunningOnNvidia = false;
     std::optional<bool> isRunningOnRDNA4;
+    std::optional<bool> isRunningOnRDNA3;
     bool isPascalOrOlder = false;
     WorkingMode workingMode = WorkingMode::Other;
 

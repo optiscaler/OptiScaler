@@ -136,7 +136,7 @@ std::vector<std::filesystem::path> GetDriverStore()
 void CheckForGPU()
 {
     // CheckForGPU already ran before, no need to run it again
-    if (State::Instance().isRunningOnRDNA4.has_value())
+    if (State::Instance().isRunningOnRDNA4.has_value() || State::Instance().isRunningOnRDNA3.has_value())
         return;
 
     // Call init for any case
@@ -170,6 +170,9 @@ void CheckForGPU()
             if (!State::Instance().isRunningOnRDNA4.has_value() || !State::Instance().isRunningOnRDNA4.value())
                 State::Instance().isRunningOnRDNA4 = false;
 
+            if (!State::Instance().isRunningOnRDNA3.has_value() || !State::Instance().isRunningOnRDNA3.value())
+                State::Instance().isRunningOnRDNA3 = false;
+
             std::wstring szName(adapterDesc.Description);
             std::string descStr = std::format("Adapter: {}, VRAM: {} MB", wstring_to_string(szName),
                                               adapterDesc.DedicatedVideoMemory / (1024.0 * 1024.0));
@@ -201,6 +204,35 @@ void CheckForGPU()
                             else
                             {
                                 LOG_WARN("RDNA4 GPU is detected but Agility SDK is not detected!");
+                            }
+                        }
+                    }
+                }
+
+                // Don't look, checks for RDNA 3
+                if (szName.contains(L"7900") || szName.contains(L"7800") || szName.contains(L"7700") ||
+                    szName.contains(L"7600") || szName.find(L" GFX110") != std::wstring::npos)
+                {
+                    LOG_DEBUG("RDNA3 GPU detected");
+                    State::Instance().isRunningOnRDNA3 = true;
+
+                    if (!Config::Instance()->Dx12Upscaler.has_value())
+                    {
+                        if (State::Instance().WindowsVer == WindowsVersion::Windows11)
+                        {
+                            LOG_INFO("Setting Dx12Upscaler to fsr31 because RDNA3 GPU is detected");
+                            Config::Instance()->Dx12Upscaler.set_volatile_value("fsr31");
+                        }
+                        else
+                        {
+                            if (KernelBaseProxy::GetModuleHandleW_()(L"D3D12Core.dll") != nullptr)
+                            {
+                                LOG_INFO("Setting Dx12Upscaler to fsr31 because RDNA3 GPU is detected");
+                                Config::Instance()->Dx12Upscaler.set_volatile_value("fsr31");
+                            }
+                            else
+                            {
+                                LOG_WARN("RDNA3 GPU is detected but Agility SDK is not detected!");
                             }
                         }
                     }
