@@ -8,6 +8,7 @@ PFN_getModelBlob FSR4ModelSelection::o_getModelBlobDriver = nullptr;
 PFN_createModel FSR4ModelSelection::o_createModelSDK = nullptr;
 PFN_createModel FSR4ModelSelection::o_createModelDriver = nullptr;
 PFN_createModel2 FSR4ModelSelection::o_createModelDriver2 = nullptr;
+PFN_createModel2 FSR4ModelSelection::o_createModelSDK2 = nullptr;
 
 uint32_t getCorrectedPreset(uint32_t preset)
 {
@@ -64,6 +65,17 @@ uint64_t FSR4ModelSelection::hkcreateModelSDK(void* context, uint32_t preset)
     preset = getCorrectedPreset(preset);
 
     auto result = o_createModelSDK(context, preset);
+
+    return result;
+}
+
+uint64_t FSR4ModelSelection::hkcreateModelSDK2(void* context, uint32_t preset, void** model)
+{
+    LOG_FUNC();
+
+    preset = getCorrectedPreset(preset);
+
+    auto result = o_createModelSDK2(context, preset, model);
 
     return result;
 }
@@ -219,6 +231,33 @@ void FSR4ModelSelection::Hook(HMODULE module, FSR4Source source)
             }
         }
     }
+
+    if (!o_createModelSDK && !o_createModelSDK2 && source == FSR4Source::SDK)
+    {
+        // From amd_fidelityfx_upscaler_dx12 4.1.1.2740 from FFX 2.3 SDK
+        const char* pattern411 =
+            "48 8B C4 48 89 58 20 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 08 F2 FF FF 48 81 EC C0 0E 00 00 0F 29 70 "
+            "B8 0F 29 78 A8 48 8B ? ? ? ? ? 48 33 C4 48 89 85 90 0D 00 00 4D 8B E8 8B FA 48 8B F1";
+        o_createModelSDK2 = (PFN_createModel2) scanner::GetAddress(module, pattern411);
+
+        if (o_createModelSDK2)
+        {
+            LOG_DEBUG("Hooking model selection, o_createModelSDK2: {:X}", (uintptr_t) o_createModelSDK2);
+
+            DetourTransactionBegin();
+            DetourUpdateThread(GetCurrentThread());
+
+            DetourAttach(&(PVOID&) o_createModelSDK2, hkcreateModelSDK2);
+
+            auto detourResult = DetourTransactionCommit();
+            if (detourResult != NO_ERROR)
+            {
+                LOG_ERROR("Failed to attach detour: {:X}", detourResult);
+                o_createModelSDK2 = nullptr;
+            }
+        }
+    }
+
     else if (!o_createModelDriver && source == FSR4Source::DriverDll)
     {
         o_createModelDriver = (PFN_createModel) scanner::GetAddress(module, pattern403);
@@ -277,6 +316,6 @@ void FSR4ModelSelection::Hook(HMODULE module, FSR4Source source)
 
     if (!o_createModelDriver && !o_getModelBlobDriver && !o_createModelDriver2 && source == FSR4Source::DriverDll)
         LOG_ERROR("Couldn't hook model selection from the driver dll");
-    else if (!o_createModelSDK && !o_getModelBlobSDK && source == FSR4Source::SDK)
+    else if (!o_createModelSDK && !o_getModelBlobSDK && !o_createModelSDK2 && source == FSR4Source::SDK)
         LOG_ERROR("Couldn't hook model selection from the SDK dll");
 }

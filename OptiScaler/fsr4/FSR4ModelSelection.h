@@ -24,6 +24,8 @@ class FSR4ModelSelection
     static PFN_createModel o_createModelDriver;
     static uint64_t hkcreateModelDriver2(void* context, uint32_t preset, void** model);
     static PFN_createModel2 o_createModelDriver2;
+    static uint64_t hkcreateModelSDK2(void* context, uint32_t preset, void** model);
+    static PFN_createModel2 o_createModelSDK2;
 
   public:
     static void Hook(HMODULE module, FSR4Source source);
