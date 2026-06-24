@@ -29,4 +29,5 @@ class FSR4ModelSelection
 
   public:
     static void Hook(HMODULE module, FSR4Source source);
+    static bool Int8CapableHooked() { return o_createModelDriver2 || o_createModelSDK2; };
 };

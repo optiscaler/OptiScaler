@@ -359,6 +359,17 @@ struct AmdExtFfxApi : public IAmdExtFfxApi
             }
         }
 
+        // Prevent RDNA3 from running MLFG when not on Linux
+        if (effectType == FFXStructType::FG && State::Instance().isRunningOnRDNA3 &&
+            State::Instance().isRunningOnRDNA3.value())
+        {
+            const char* envvar = getenv("DXIL_SPIRV_CONFIG");
+            bool rdna3fp8 = envvar && strstr(envvar, "wmma_rdna3_workaround");
+
+            if (!rdna3fp8)
+                return E_NOINTERFACE;
+        }
+
         // Result 0x80004002 (E_NOINTERFACE) basically means that amdxcffx64 doesn't have a provider for that effect
         if ((effectType == FFXStructType::FG || effectType == FFXStructType::Upscaling ||
              effectType == FFXStructType::SwapchainDX12) &&
@@ -459,6 +470,19 @@ struct AmdExtD3DDevice8 : public IAmdExtD3DDevice8
         waveMatrixProperties->resultType = float32;
 
         waveMatrixProperties->saturatingAccumulation = false;
+
+        if (State::Instance().isRunningOnRDNA3 && State::Instance().isRunningOnRDNA3.value())
+        {
+            const char* envvar = getenv("DXIL_SPIRV_CONFIG");
+            bool rdna3fp8 = envvar && strstr(envvar, "wmma_rdna3_workaround");
+
+            // Try to allow for MLFG on Rdna3 on Linux while forcing int8 for the upscaler
+            if (!Util::WhoIsTheCaller(_ReturnAddress()).starts_with("amd_fidelityfx_framegeneration_dx12") || !rdna3fp8)
+            {
+                if (!rdna3fp8 || FSR4ModelSelection::Int8CapableHooked())
+                    waveMatrixProperties->aType = float16; // Anything to fail the check
+            }
+        }
 
         return S_OK;
     }
