@@ -490,7 +490,17 @@ bool FSRFG_Dx12::Dispatch()
 
         ffxDispatchDescFrameGenerationPrepare dfgPrepare {};
         dfgPrepare.header.type = FFX_API_DISPATCH_DESC_TYPE_FRAMEGENERATION_PREPARE;
-        dfgPrepare.header.pNext = &dfgCameraData.header;
+
+        // Hacky way but should do
+        const float* cameraDataRaw = dfgCameraData.cameraPosition;
+        bool cameraDataIsZeroed = std::all_of(cameraDataRaw, cameraDataRaw + 12, [](float v) { return v == 0.0f; });
+
+        // Don't link the camera struct if it's just all zeros
+        // Specifically the driver upgrade dll is looking at this and falling back to FSR 3 FG
+        if (cameraDataIsZeroed)
+            dfgPrepare.header.pNext = &backendDesc.header;
+        else
+            dfgPrepare.header.pNext = &dfgCameraData.header;
 
         // Prepare command list
         auto allocator = _fgCommandAllocator[fIndex];
