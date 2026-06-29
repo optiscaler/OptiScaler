@@ -3517,9 +3517,13 @@ bool MenuCommon::RenderMenu()
 
                                         config->FsrVelocity = 0.5f;
                                         config->FsrReactiveScale = 0.25f;
-                                        config->FsrShadingScale = 0.5f / scaleRatio;
-                                        config->FsrAccAddPerFrame = scaleRatio / 10.0f;
-                                        config->FsrMinDisOccAcc = scaleRatio / 20.0f;
+
+                                        config->FsrShadingScale.reset();
+                                        config->FsrAccAddPerFrame.reset();
+                                        config->FsrMinDisOccAcc.reset();
+                                        config->FsrShadingScale.set_volatile_value(0.5f / scaleRatio);
+                                        config->FsrAccAddPerFrame.set_volatile_value(scaleRatio / 10.0f);
+                                        config->FsrMinDisOccAcc.set_volatile_value(scaleRatio / 20.0f);
                                     }
 
                                     ImGui::SameLine(0.0f, 6.0f);
@@ -3534,9 +3538,13 @@ bool MenuCommon::RenderMenu()
 
                                         config->FsrVelocity = 1.0f;
                                         config->FsrReactiveScale = 0.5f;
-                                        config->FsrShadingScale = 1.0f / scaleRatio;
-                                        config->FsrAccAddPerFrame = scaleRatio / 10.0f;
-                                        config->FsrMinDisOccAcc = scaleRatio / 20.0f;
+
+                                        config->FsrShadingScale.reset();
+                                        config->FsrAccAddPerFrame.reset();
+                                        config->FsrMinDisOccAcc.reset();
+                                        config->FsrShadingScale.set_volatile_value(1.0f / scaleRatio);
+                                        config->FsrAccAddPerFrame.set_volatile_value(scaleRatio / 10.0f);
+                                        config->FsrMinDisOccAcc.set_volatile_value(scaleRatio / 20.0f);
                                     }
 
                                     ImGui::SameLine(0.0f, 6.0f);
@@ -3562,7 +3570,7 @@ bool MenuCommon::RenderMenu()
                                     ImGui::PushItemWidth(220.0f * menuResScale);
 
                                     float velocity = config->FsrVelocity.value_or_default();
-                                    if (ImGui::SliderFloat("Velocity Factor", &velocity, 0.00f, 1.0f, "%.2f"))
+                                    if (ImGui::SliderFloat("Velocity Factor", &velocity, 0.00f, 1.0f, "%.3f"))
                                         config->FsrVelocity = velocity;
 
                                     ShowHelpMarker("Value of 0.0f can improve temporal stability of bright pixels\n"
@@ -3573,7 +3581,7 @@ bool MenuCommon::RenderMenu()
                                     {
                                         // Reactive Scale
                                         float reactiveScale = config->FsrReactiveScale.value_or_default();
-                                        if (ImGui::SliderFloat("Reactive Scale", &reactiveScale, 0.0f, 100.0f, "%.1f"))
+                                        if (ImGui::SliderFloat("Reactive Scale", &reactiveScale, 0.0f, 1.0f, "%.3f"))
                                             config->FsrReactiveScale = reactiveScale;
 
                                         ShowHelpMarker("Meant for development purpose to test if\n"
@@ -3581,7 +3589,7 @@ bool MenuCommon::RenderMenu()
 
                                         // Shading Scale
                                         float shadingScale = config->FsrShadingScale.value_or_default();
-                                        if (ImGui::SliderFloat("Shading Scale", &shadingScale, 0.0f, 100.0f, "%.1f"))
+                                        if (ImGui::SliderFloat("Shading Scale", &shadingScale, 0.0f, 1.0f, "%.3f"))
                                             config->FsrShadingScale = shadingScale;
 
                                         ShowHelpMarker("Increasing this scales fsr3.1 computed shading\n"
@@ -3590,7 +3598,7 @@ bool MenuCommon::RenderMenu()
                                         // Accumulation Added Per Frame
                                         float accAddPerFrame = config->FsrAccAddPerFrame.value_or_default();
                                         if (ImGui::SliderFloat("Acc. Added Per Frame", &accAddPerFrame, 0.00f, 1.0f,
-                                                               "%.2f"))
+                                                               "%.3f"))
                                             config->FsrAccAddPerFrame = accAddPerFrame;
 
                                         ShowHelpMarker(
@@ -3604,7 +3612,7 @@ bool MenuCommon::RenderMenu()
                                         // Min Disocclusion Accumulation
                                         float minDisOccAcc = config->FsrMinDisOccAcc.value_or_default();
                                         if (ImGui::SliderFloat("Min. Disocclusion Acc.", &minDisOccAcc, -1.0f, 1.0f,
-                                                               "%.2f"))
+                                                               "%.3f"))
                                             config->FsrMinDisOccAcc = minDisOccAcc;
 
                                         ShowHelpMarker("Increasing this value may reduce white pixel temporal\n"
