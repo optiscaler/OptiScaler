@@ -479,7 +479,7 @@ struct AmdExtD3DDevice8 : public IAmdExtD3DDevice8
             // Try to allow for MLFG on Rdna3 on Linux while forcing int8 for the upscaler
             if (!Util::WhoIsTheCaller(_ReturnAddress()).starts_with("amd_fidelityfx_framegeneration_dx12") || !rdna3fp8)
             {
-                if (!rdna3fp8 || FSR4ModelSelection::Int8CapableHooked())
+                if (!rdna3fp8 || FSR4ModelSelection::IsInt8FsrHooked())
                     waveMatrixProperties->aType = float16; // Anything to fail the check
             }
         }
