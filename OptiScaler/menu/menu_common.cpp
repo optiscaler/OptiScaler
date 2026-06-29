@@ -3498,7 +3498,62 @@ bool MenuCommon::RenderMenu()
                             if (currentFeature->Version() >= feature_version { 3, 1, 1 } &&
                                 currentFeature->Version() < feature_version { 4, 0, 0 })
                             {
-                                if (auto ch = ScopedCollapsingHeader("FSR 3 Upscaler Fine Tuning"); ch.IsHeaderOpen())
+                                ImGui::Spacing();
+
+                                if (currentFeature != nullptr)
+                                {
+                                    ImGui::Text("FSR 3.1 Presets:");
+
+                                    ImGui::SameLine(0.0f, 6.0f);
+
+                                    // This wiill be applied by default
+                                    if (ImGui::Button("Stability"))
+                                    {
+                                        auto const scaleRatioX = (float) currentFeature->TargetWidth() /
+                                                                 (float) currentFeature->RenderWidth();
+                                        auto const scaleRatioY = (float) currentFeature->TargetHeight() /
+                                                                 (float) currentFeature->RenderHeight();
+                                        auto const scaleRatio = std::max(scaleRatioX, scaleRatioY);
+
+                                        config->FsrVelocity = 0.5f;
+                                        config->FsrReactiveScale = 0.25f;
+                                        config->FsrShadingScale = 0.5f / scaleRatio;
+                                        config->FsrAccAddPerFrame = scaleRatio / 10.0f;
+                                        config->FsrMinDisOccAcc = scaleRatio / 20.0f;
+                                    }
+
+                                    ImGui::SameLine(0.0f, 6.0f);
+
+                                    if (ImGui::Button("Motion"))
+                                    {
+                                        auto const scaleRatioX = (float) currentFeature->TargetWidth() /
+                                                                 (float) currentFeature->RenderWidth();
+                                        auto const scaleRatioY = (float) currentFeature->TargetHeight() /
+                                                                 (float) currentFeature->RenderHeight();
+                                        auto const scaleRatio = std::max(scaleRatioX, scaleRatioY);
+
+                                        config->FsrVelocity = 1.0f;
+                                        config->FsrReactiveScale = 0.5f;
+                                        config->FsrShadingScale = 1.0f / scaleRatio;
+                                        config->FsrAccAddPerFrame = scaleRatio / 10.0f;
+                                        config->FsrMinDisOccAcc = scaleRatio / 20.0f;
+                                    }
+
+                                    ImGui::SameLine(0.0f, 6.0f);
+
+                                    if (ImGui::Button("Default"))
+                                    {
+                                        config->FsrVelocity = 1.0f;
+                                        config->FsrReactiveScale = 1.0f;
+                                        config->FsrShadingScale = 1.0f;
+                                        config->FsrAccAddPerFrame = 0.333f;
+                                        config->FsrMinDisOccAcc = -0.333f;
+                                    }
+                                }
+
+                                ImGui::Spacing();
+
+                                if (auto ch = ScopedCollapsingHeader("FSR 3 Upscaler Manual Tuning"); ch.IsHeaderOpen())
                                 {
                                     ScopedIndent indent {};
                                     ImGui::Spacing();

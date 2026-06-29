@@ -406,6 +406,8 @@ class Config
     CustomOptional<bool> FsrNonLinearSRGB { false };
     CustomOptional<bool> FsrNonLinearPQ { false };
     CustomOptional<bool> FsrAgilitySDKUpgrade { false };
+
+    // These default values will be overwritten at upscaler init time with optimized values
     CustomOptional<float> FsrVelocity { 1.0f };
     CustomOptional<float> FsrReactiveScale { 1.0f };
     CustomOptional<float> FsrShadingScale { 1.0f };
