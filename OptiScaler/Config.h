@@ -416,6 +416,7 @@ class Config
 
     // FSR4
     CustomOptional<bool> Fsr4Update { false };
+    CustomOptional<bool> Fsr4ForceEnableInt8 { false };
     CustomOptional<uint32_t, NoDefault> Fsr4Preset;
     CustomOptional<bool> Fsr4EnableDebugView { false };
     CustomOptional<bool> Fsr4EnableWatermark { false };
