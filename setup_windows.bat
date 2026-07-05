@@ -300,15 +300,15 @@ if "!OPTI_MATCH!"=="YES" (
     if "!downloadOptiPatcher!"=="y" (
         echo.
         echo Preparing plugins folder...
-        if not exist "plugins" mkdir "plugins"
+        if not exist "OptiScaler\plugins" mkdir "OptiScaler\plugins"
         
         echo Downloading OptiPatcher...
         echo Press Ctrl+C if this gets stuck to skip to setup completion.
         echo.
-        powershell -Command "Invoke-WebRequest -Uri 'https://github.com/optiscaler/OptiPatcher/releases/download/rolling/OptiPatcher.asi' -OutFile 'plugins\OptiPatcher.asi'"
+        powershell -Command "Invoke-WebRequest -Uri 'https://github.com/optiscaler/OptiPatcher/releases/download/rolling/OptiPatcher.asi' -OutFile 'OptiScaler\plugins\OptiPatcher.asi'"
         if errorlevel 1 goto completeSetup
         
-        if exist "plugins\OptiPatcher.asi" (
+        if exist "OptiScaler\plugins\OptiPatcher.asi" (
             echo OptiPatcher.asi downloaded successfully.
             echo Enabling ASI loading in OptiScaler.ini...
             if exist "%configFile%" (
@@ -434,8 +434,8 @@ echo     rd Licenses
 echo     for %%%%F in ^(!OPTI_DLL_LIST!^) do ^(del "%%%%F"^)
 echo     echo.
 echo     echo Deleting OptiPatcher if present
-echo     del plugins\OptiPatcher.asi
-echo     rd plugins
+echo     del OptiScaler\plugins\OptiPatcher.asi
+echo     rd OptiScaler\plugins
 echo     echo.
 echo     echo OptiScaler removed^^^^! Ignore the warnings about missing files.
 echo     echo.
