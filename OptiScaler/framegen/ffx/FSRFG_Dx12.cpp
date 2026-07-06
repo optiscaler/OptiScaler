@@ -378,6 +378,11 @@ bool FSRFG_Dx12::Dispatch()
 
         fgConfig.HUDLessColor = ffxApiGetResourceDX12(hudless->GetResource(), GetFfxApiState(hudless->state));
 
+        // Because of HudlessTransfer hudless will be always in SC format
+        // Quick fix for typeless Hudless formats
+        fgConfig.HUDLessColor.description.format =
+            (FfxApiSurfaceFormat) ffxApiGetSurfaceFormatDX12(State::Instance().currentSwapchainDesc.BufferDesc.Format);
+
         // Reset of _paramHudless[fIndex] happens in DispatchCallback
         // as we might use it in Preset to remove hud from swapchain
     }

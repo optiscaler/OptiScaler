@@ -7,6 +7,81 @@
 
 #include <Config.h>
 
+inline static int GetFormatGroup(DXGI_FORMAT format)
+{
+    switch (format)
+    {
+
+    case DXGI_FORMAT_R32G32B32A32_TYPELESS:
+    case DXGI_FORMAT_R32G32B32A32_FLOAT:
+    case DXGI_FORMAT_R32G32B32A32_UINT:
+    case DXGI_FORMAT_R32G32B32A32_SINT:
+        return 1;
+
+    case DXGI_FORMAT_R32G32B32_TYPELESS:
+    case DXGI_FORMAT_R32G32B32_FLOAT:
+    case DXGI_FORMAT_R32G32B32_UINT:
+    case DXGI_FORMAT_R32G32B32_SINT:
+        return 2;
+
+    case DXGI_FORMAT_R16G16B16A16_TYPELESS:
+    case DXGI_FORMAT_R16G16B16A16_FLOAT:
+    case DXGI_FORMAT_R16G16B16A16_UNORM:
+    case DXGI_FORMAT_R16G16B16A16_UINT:
+    case DXGI_FORMAT_R16G16B16A16_SNORM:
+    case DXGI_FORMAT_R16G16B16A16_SINT:
+        return 3;
+
+    case DXGI_FORMAT_R10G10B10A2_TYPELESS:
+    case DXGI_FORMAT_R10G10B10A2_UNORM:
+    case DXGI_FORMAT_R10G10B10A2_UINT:
+        return 4;
+
+    case DXGI_FORMAT_R11G11B10_FLOAT:
+        return 5;
+
+    case DXGI_FORMAT_R8G8B8A8_TYPELESS:
+    case DXGI_FORMAT_R8G8B8A8_UNORM:
+    case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+    case DXGI_FORMAT_R8G8B8A8_UINT:
+    case DXGI_FORMAT_R8G8B8A8_SNORM:
+    case DXGI_FORMAT_R8G8B8A8_SINT:
+        return 6;
+
+    case DXGI_FORMAT_B5G6R5_UNORM:
+        return 7;
+
+    case DXGI_FORMAT_B5G5R5A1_UNORM:
+        return 8;
+
+    case DXGI_FORMAT_B8G8R8A8_UNORM:
+    case DXGI_FORMAT_B8G8R8A8_TYPELESS:
+    case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+        return 9;
+
+    case DXGI_FORMAT_R10G10B10_XR_BIAS_A2_UNORM:
+        return 10;
+
+    case DXGI_FORMAT_B8G8R8X8_UNORM:
+    case DXGI_FORMAT_B8G8R8X8_TYPELESS:
+    case DXGI_FORMAT_B8G8R8X8_UNORM_SRGB:
+        return 11;
+
+    default:
+        return -1;
+    }
+}
+
+inline static bool CompareResourceFormats(DXGI_FORMAT sc, DXGI_FORMAT hudless)
+{
+    if (sc == hudless)
+        return true;
+
+    auto scGroup = GetFormatGroup(sc);
+    auto hudlessGroup = GetFormatGroup(hudless);
+    return scGroup == hudlessGroup;
+}
+
 bool HC_Dx12::CreateBufferResource(UINT index, ID3D12Device* InDevice, ID3D12Resource* InSource,
                                    D3D12_RESOURCE_STATES InState)
 {
@@ -269,7 +344,13 @@ bool HC_Dx12::Dispatch(IDXGISwapChain3* sc, ID3D12GraphicsCommandList* cmdList, 
         srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
         srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         srv.Texture2D.MipLevels = 1;
-        srv.Format = Shader_Dx12::TranslateTypelessFormats(hudlessDesc.Format);
+
+        // Fix for typeless hudless formats
+        if (CompareResourceFormats(scDesc.BufferDesc.Format, hudlessDesc.Format))
+            srv.Format = Shader_Dx12::TranslateTypelessFormats(scDesc.BufferDesc.Format);
+        else
+            srv.Format = Shader_Dx12::TranslateTypelessFormats(hudlessDesc.Format);
+
         _device->CreateShaderResourceView(hudless, &srv, currentHeap.GetSrvCPU(0));
     }
 
