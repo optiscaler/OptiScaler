@@ -2148,7 +2148,7 @@ bool MenuCommon::RenderMenu()
 
                 refreshRate = Util::GetActiveRefreshRate(_handle);
                 config->ReloadFakenvapi();
-                auto dllPath = Util::DllPath().parent_path() / "dlssg_to_fsr3_amd_is_better.dll";
+                auto dllPath = std::filesystem::path(config->MainDllPath.value()) / L"dlssg_to_fsr3_amd_is_better.dll";
                 state.NukemsFilesAvailable = gExists.Get(dllPath);
 
                 if (State::Instance().currentFeature != nullptr)
