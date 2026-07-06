@@ -6,7 +6,7 @@
 name: Scheduled Build
 
 on:
-  schedule:
+# schedule:
 #    - cron: '0 4 * * *' 
 
   workflow_dispatch:
