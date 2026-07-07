@@ -119,8 +119,8 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("pathofexile_x64steam.exe", GameQuirk::LoadD3D12Manually, GameQuirk::DisableDxgiSpoofing),
 
     // Where Winds Meet
-    // Required to avoid forced DLSS dilated MVs
-    QUIRK_ENTRY("wwm.exe", GameQuirk::DisableXeFGChecks),
+    // SL spoof enough to unlock everything DLSS, required to avoid forced DLSS dilated MVs
+    QUIRK_ENTRY("wwm.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::DisableXeFGChecks),
 
     // Arknights: Endfield
     // Reflex hooking crashes the game
@@ -397,9 +397,9 @@ static const QuirkEntry quirkTable[] = {
     // Crysis 3 Remastered, Warhammer 40,000: Darktide, Observer: System Redux, Pumpkin Jack, Rise of the Ronin, DYNASTY
     // WARRIORS: ORIGINS, Crysis Remastered, Crysis 2 Remastered, Mortal Shell, Sekiro: Shadows Die Twice (for SekiroTSR
     // mod), The Medium, God of War (2018), Europa Universalis V, Need for Speed Unbound, Nioh 2 – The Complete Edition,
-    // Control Ultimate Edition, Deathloop, Where Winds Meet, FINAL FANTASY VII REMAKE INTERGRADE (for Luma mod),
-    // Assassin's Creed Shadows, Farming Simulator 2025, Nioh 3, FATAL FRAME II: Crimson Butterfly REMAKE, MOUSE: P.I.
-    // For Hire, Yet Another Zombie Survivors, Voodoo Fishin', Forza Horizon 6, Over the Hill (demo), SHROT (demo)
+    // Control Ultimate Edition, Deathloop, FINAL FANTASY VII REMAKE INTERGRADE (for Luma mod), Assassin's Creed
+    // Shadows, Farming Simulator 2025, Nioh 3, FATAL FRAME II: Crimson Butterfly REMAKE, MOUSE: P.I. For Hire, Yet
+    // Another Zombie Survivors, Voodoo Fishin', Forza Horizon 6, Over the Hill (demo), SHROT (demo)
     QUIRK_ENTRY("crysis3remastered.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("darktide.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("observersystemredux.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceAutoExposure),
@@ -417,7 +417,6 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("nioh2.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceAutoExposure),
     QUIRK_ENTRY("control_dx12.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceAutoExposure),
     QUIRK_ENTRY("deathloop.exe", GameQuirk::DisableDxgiSpoofing),
-    QUIRK_ENTRY("wwm.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("ff7remake_.exe", GameQuirk::DisableDxgiSpoofing), // Luma mod required for upscalers
     QUIRK_ENTRY("acshadows.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("farmingsimulator2025game.exe", GameQuirk::DisableDxgiSpoofing),
