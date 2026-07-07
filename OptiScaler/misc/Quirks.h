@@ -63,6 +63,7 @@ enum class GameQuirk : uint64_t
     ForceDepthD32S8,
     PregmataFixDLSSModes,
     IgnoreValidUntilEvaluateForFG,
+    ForceFGRenderSizeMVs,
     // Don't forget to add the new entry to printQuirks
     _
 };
@@ -121,7 +122,7 @@ static const QuirkEntry quirkTable[] = {
 
     // Where Winds Meet
     // Required to avoid forced DLSS dilated MVs
-    QUIRK_ENTRY("wwm.exe", GameQuirk::DisableXeFGChecks),
+    QUIRK_ENTRY("wwm.exe", GameQuirk::ForceFGRenderSizeMVs),
 
     // Arknights: Endfield
     // Reflex hooking crashes the game
