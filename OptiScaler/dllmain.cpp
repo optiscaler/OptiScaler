@@ -1301,6 +1301,9 @@ static void printQuirks(flag_set<GameQuirk>& quirks)
     if (quirks & GameQuirk::IgnoreValidUntilEvaluateForFG)
         stringQuirks.push_back("Ignore ValidUntilEvaluate resources for FG");
 
+    if (quirks & GameQuirk::ForceFGRenderSizeMVs)
+        stringQuirks.push_back("Force FG render size motion vectors");
+
     if (quirks & GameQuirk::CreateSLOnThe2ndDevice)
         stringQuirks.push_back("Create SL on the 2nd device");
 

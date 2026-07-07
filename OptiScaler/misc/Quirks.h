@@ -61,6 +61,7 @@ enum class GameQuirk : uint64_t
     ForceDepthD32S8,
     PregmataFixDLSSModes,
     IgnoreValidUntilEvaluateForFG,
+    ForceFGRenderSizeMVs,
     CreateSLOnThe2ndDevice,
     // Don't forget to add the new entry to printQuirks
     _
@@ -120,7 +121,7 @@ static const QuirkEntry quirkTable[] = {
 
     // Where Winds Meet
     // SL spoof enough to unlock everything DLSS, required to avoid forced DLSS dilated MVs
-    QUIRK_ENTRY("wwm.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::DisableXeFGChecks),
+    QUIRK_ENTRY("wwm.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceFGRenderSizeMVs),
 
     // Arknights: Endfield
     // Reflex hooking crashes the game

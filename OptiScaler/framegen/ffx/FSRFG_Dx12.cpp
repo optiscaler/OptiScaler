@@ -1117,8 +1117,11 @@ void FSRFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
     if (fgConstants.flags & FG_Flags::JitteredMVs)
         createFg.flags |= FFX_FRAMEGENERATION_ENABLE_MOTION_VECTORS_JITTER_CANCELLATION;
 
-    if (fgConstants.flags & FG_Flags::DisplayResolutionMVs)
+    if ((fgConstants.flags & FG_Flags::DisplayResolutionMVs) &&
+        !(State::Instance().gameQuirks & GameQuirk::ForceFGRenderSizeMVs))
+    {
         createFg.flags |= FFX_FRAMEGENERATION_ENABLE_DISPLAY_RESOLUTION_MOTION_VECTORS;
+    }
 
     if (fgConstants.flags & FG_Flags::Async)
         createFg.flags |= FFX_FRAMEGENERATION_ENABLE_ASYNC_WORKLOAD_SUPPORT;

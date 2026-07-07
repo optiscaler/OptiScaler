@@ -3725,7 +3725,8 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             nativeAA = currentFeature->RenderWidth() == currentFeature->DisplayWidth();
 
         auto fgOutput = reinterpret_cast<IFGFeature_Dx12*>(state.currentFG);
-        const bool correctMVs = fgOutput && fgOutput->IsLowResMV() || nativeAA || ignoreChecks;
+        const bool correctMVs = fgOutput && fgOutput->IsLowResMV() || nativeAA ||
+                                (State::Instance().gameQuirks & GameQuirk::ForceFGRenderSizeMVs) || ignoreChecks;
 
         if (!correctMVs || state.realExclusiveFullscreen)
         {
