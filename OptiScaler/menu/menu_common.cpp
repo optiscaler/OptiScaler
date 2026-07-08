@@ -123,6 +123,7 @@ static std::vector<std::string> splashText = { "Cope smarter, not harder",
                                                "Neural Slop Sampling with DLSS5",
                                                "DLSS 5 - the way it's meant to be slopped",
                                                "Just when I think I'm out, they scale me back in",
+                                               "How to remove those corny messages?!",
                                                "<Your funny text goes here>" };
 
 static ImVec2 updateNoticePosition(-1000.0f, -1000.0f);
