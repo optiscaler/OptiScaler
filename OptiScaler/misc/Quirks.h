@@ -392,14 +392,29 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY_UE(outriders, GameQuirk::DisableDxgiSpoofing, GameQuirk::DontUseUnrealColorBarriers,
                    GameQuirk::DontUseUnrealMVBarriers),
 
+    // Watch Dogs: Legion
+    // AE required to fix FSR4 ghosting
+    QUIRK_ENTRY("watchdogslegion.exe", GameQuirk::ForceAutoExposure),
+    QUIRK_ENTRY("watchdogslegion_plus.exe", GameQuirk::ForceAutoExposure),
+
+    // Assassin’s Creed Shadows
+    // SL spoof enough to unlock everything DLSS
+    QUIRK_ENTRY("acshadows.exe", GameQuirk::DisableDxgiSpoofing),
+    QUIRK_ENTRY("acshadows_plus.exe", GameQuirk::DisableDxgiSpoofing),
+
+    // Assassin's Creed Black Flag Resynced
+    // SL spoof enough to unlock everything DLSS
+    QUIRK_ENTRY("acblackflag.exe", GameQuirk::DisableDxgiSpoofing),
+    QUIRK_ENTRY("acblackflag_plus.exe", GameQuirk::DisableDxgiSpoofing),
+
     // SL spoof enough to unlock everything DLSS/No spoof needed for DLSS inputs
     //
     // Crysis 3 Remastered, Warhammer 40,000: Darktide, Observer: System Redux, Pumpkin Jack, Rise of the Ronin, DYNASTY
     // WARRIORS: ORIGINS, Crysis Remastered, Crysis 2 Remastered, Mortal Shell, Sekiro: Shadows Die Twice (for SekiroTSR
     // mod), The Medium, God of War (2018), Europa Universalis V, Need for Speed Unbound, Nioh 2 – The Complete Edition,
-    // Control Ultimate Edition, Deathloop, FINAL FANTASY VII REMAKE INTERGRADE (for Luma mod), Assassin's Creed
-    // Shadows, Farming Simulator 2025, Nioh 3, FATAL FRAME II: Crimson Butterfly REMAKE, MOUSE: P.I. For Hire, Yet
-    // Another Zombie Survivors, Voodoo Fishin', Forza Horizon 6, Over the Hill (demo), SHROT (demo)
+    // Control Ultimate Edition, Deathloop, FINAL FANTASY VII REMAKE INTERGRADE (for Luma mod), Farming Simulator 2025,
+    // Nioh 3, FATAL FRAME II: Crimson Butterfly REMAKE, MOUSE: P.I. For Hire, Yet Another Zombie Survivors, Voodoo
+    // Fishin', Forza Horizon 6, Over the Hill (demo), SHROT (demo)
     QUIRK_ENTRY("crysis3remastered.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("darktide.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("observersystemredux.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceAutoExposure),
@@ -418,7 +433,6 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("control_dx12.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceAutoExposure),
     QUIRK_ENTRY("deathloop.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("ff7remake_.exe", GameQuirk::DisableDxgiSpoofing), // Luma mod required for upscalers
-    QUIRK_ENTRY("acshadows.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("farmingsimulator2025game.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("nioh3.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("fatalframeii.exe", GameQuirk::DisableDxgiSpoofing),
