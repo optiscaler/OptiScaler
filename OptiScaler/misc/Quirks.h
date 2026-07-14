@@ -148,6 +148,11 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("ninjagaiden4-wingdk.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::DisableResizeSkip,
                 GameQuirk::DoNotPreserveFGSwapChain, GameQuirk::DisableHudfix),
 
+    // DEAD OR ALIVE 6 Last Round
+    // No spoof needed for DLSS inputs
+    QUIRK_ENTRY("doa6lr.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::DisableResizeSkip,
+                GameQuirk::DoNotPreserveFGSwapChain),
+
     // The Last of Us Part I
     // Hudfix incompatible
     QUIRK_ENTRY("tlou-i.exe", GameQuirk::AllowedFrameAhead2, GameQuirk::DisableDxgiSpoofing, GameQuirk::DisableHudfix),
