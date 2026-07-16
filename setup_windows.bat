@@ -10,27 +10,39 @@ echo #+#    #+# #+#            #+#         #+#     #+#    #+# #+#    #+# #+#    
 echo  ########  ###            ###     ###########  ########   ########  ###     ### ########## ########## ###    ### 
 echo.
 echo Coping is strong with this one...
-echo v2.75 - now with OptiPatcher support
+echo v2.8 - now with OptiPatcher support
 echo.
 
 del "!! README_EXTRACT ALL FILES TO GAME FOLDER !!.txt" 2>nul
 
 setlocal enabledelayedexpansion
 
-if not exist OptiScaler.dll (
-    echo OptiScaler "OptiScaler.dll" file is not found^^!
-    echo Either a folder permissions issue or the repo source code was downloaded.
+if exist OptiScaler.sln (
+    echo Detected OptiScaler.sln or .git files^^!
     echo.
-    echo If "OptiScaler.dll" exists, please manually rename to a supported filename ^(e.g. dxgi/winmm.dll^) and you are done^^!
-	echo No need to run the setup BAT again after renaming.
+    echo If .sln or .git files are in the folder, congratz, you have the source code.
+	echo Now please try properly downloading OptiScaler.
 	echo.
-    echo If .sln or .git files are in the folder, congratz, you have the source code. Now try properly downloading Opti please
     echo Hint - use the Releases page on GitHub, or RTFM :^)
+	echo.
     echo.
-    echo.
+	echo P.S. If you somehow have both the OptiScaler.dll and .sln file, then be nice, just delete the .sln file, re-run the BAT setup and hope for the best.
+	echo.
     goto end
 )
 
+if not exist OptiScaler.dll (
+    echo OptiScaler "OptiScaler.dll" file is not found^^!
+    echo Detected a folder permissions issue most likely. Might have more luck running the BAT as admin.
+    echo.
+	echo OR
+	echo.
+    echo If "OptiScaler.dll" exists, please manually rename to a supported filename ^(e.g. dxgi/winmm.dll^) and you are done^^!
+	echo No need to run the setup BAT again after renaming.
+	echo.
+    echo.
+    goto end
+)
 
 REM Check if old pre-0.9 additional files exist, along with an existing Opti installation
 set "OLD_FILES_FOUND=0"
@@ -64,9 +76,14 @@ if "!OLD_FILES_FOUND!"=="1" (
     echo These files may conflict with the current version of OptiScaler.
     echo It is recommended to delete them.
     echo.
-    set /p "USER_CHOICE=Do you want to delete these files? (y/n): "
+    echo Do you want to delete these files?
     echo.
-    if /i "!USER_CHOICE!"=="y" (
+	echo [1] Yes
+    echo [2] No
+    echo.
+	set /p "USER_CHOICE=Waiting - "
+	echo.
+    if /i "!USER_CHOICE!"=="1" (
         if exist nvapi64.dll (
             del nvapi64.dll
             echo Deleted nvapi64.dll
@@ -101,13 +118,20 @@ set setupSuccess=false
 
 REM Check if the Engine folder exists
 if exist "%gamePath%\Engine" (
-    echo Found Engine folder, if this is an Unreal Engine game then please extract Optiscaler to #CODENAME#\Binaries\Win64
+    echo Found Engine folder. If this is an Unreal Engine game, then please extract Optiscaler to #CODENAME#\Binaries\Win64
+	echo Do not extract to the Engine folder^^!
+	echo.
+	echo Example - \Jedi Survivor\SwGame\Binaries\Win64, \Witchfire\Witchfire\Binaries\Win64
     echo.
-    
-    set /p continueChoice="Continue installation to current folder? [y/n]: "
+    echo Continue installation to current folder?
+	echo. 
+    echo [1] Yes
+    echo [2] No
+    echo.
+	set /p continueChoice="Waiting - "
     set continueChoice=!continueChoice: =!
 
-    if "!continueChoice!"=="y" (
+    if "!continueChoice!"=="1" (
         goto selectFilename
     )
 
@@ -159,11 +183,16 @@ if exist %selectedFilename% (
     echo.
     echo WARNING: %selectedFilename% already exists in the current folder.
     echo.
-    set /p overwriteChoice="Do you want to overwrite %selectedFilename%? [y/n]: "
+	echo Do you want to overwrite %selectedFilename%?
+	echo.
+    echo [1] Yes
+    echo [2] No
+    echo.
+	set /p overwriteChoice="Waiting - "
     set overwriteChoice=!overwriteChoice: =!
     
     echo.
-    if "!overwriteChoice!"=="y" (
+    if "!overwriteChoice!"=="1" (
         goto checkWine
     )
 
@@ -193,6 +222,7 @@ if exist %windir%\system32\nvapi64.dll (
 REM Query user for GPU type
 echo.
 echo Are you using an Nvidia GPU or AMD/Intel GPU?
+echo.
 echo [1] AMD/Intel
 echo [2] Nvidia
 echo.
@@ -254,9 +284,14 @@ if defined foundOptiPatcher (
     echo.
     echo OptiPatcher found: !foundOptiPatcher!
     echo If the existing version works properly, might be best to keep it.
-    set /p optiRedownload="Do you want to re-download a possibly newer version [y/n]? "
+	echo Do you want to re-download a possibly newer version?
+	echo.
+    echo [1] Yes
+    echo [2] No
+    echo.
+	set /p optiRedownload="Waiting - "
         
-    if /i "!optiRedownload!"=="y" (
+    if /i "!optiRedownload!"=="1" (
         echo.
         echo Deleting !foundOptiPatcher!...
         del "!foundOptiPatcher!"
@@ -294,10 +329,15 @@ if "!OPTI_MATCH!"=="YES" (
     echo An Opti plugin used for unlocking DLSS/DLSS-FG inputs, avoiding spoofing and performance overhead in supported games.
     echo More info available on OptiPatcher Github
     echo.
-    set /p downloadOptiPatcher="Download OptiPatcher.asi? [y/n]: "
+	echo Download OptiPatcher.asi?
+    echo.
+	echo [1] Yes
+    echo [2] No
+    echo.
+	set /p downloadOptiPatcher="Waiting - "
     set downloadOptiPatcher=!downloadOptiPatcher: =!
     
-    if "!downloadOptiPatcher!"=="y" (
+    if "!downloadOptiPatcher!"=="1" (
         echo.
         echo Preparing plugins folder...
         if not exist "plugins" mkdir "plugins"
@@ -330,7 +370,7 @@ goto completeSetup
 :completeSetup
 REM Rename OptiScaler file
 echo.
-if "!overwriteChoice!"=="y" (
+if "!overwriteChoice!"=="1" (
     echo Removing previous %selectedFilename%...
     del /F %selectedFilename% 
 )
@@ -386,7 +426,7 @@ echo echo #+#    #+# #+#            #+#         #+#     #+#    #+# #+#    #+# #+
 echo echo  ########  ###            ###     ###########  ########   ########  ###     ### ########## ########## ###    ### 
 echo echo.
 echo echo Coping is strong with this one...
-echo echo v2.75 - now with OptiPatcher support
+echo echo v2.8 - now with OptiPatcher support
 echo echo.
 echo REM Check if OptiScaler installation exists
 echo set "OLD_FILES_FOUND=0"
@@ -413,10 +453,15 @@ echo     for %%%%F in ^(!OPTI_DLL_LIST!^) do echo   - %%%%F - original filename:
 echo     echo.
 echo ^)
 
-echo set /p removeChoice="Do you want to remove OptiScaler? [y/n]: "
+echo echo Do you want to remove OptiScaler?
+echo echo.
+echo echo [1] Yes
+echo echo [2] No
+echo echo.
+echo set /p removeChoice="Waiting - "
 echo echo.
 
-echo if "%%removeChoice%%"=="y" ^(
+echo if "%%removeChoice%%"=="1" ^(
 echo     del OptiScaler.log
 echo     del OptiScaler.ini
 echo     del OptiScaler.asi
@@ -447,7 +492,7 @@ echo ^)
 
 echo.
 echo pause
-echo if "%%removeChoice%%"=="y" ^(
+echo if "%%removeChoice%%"=="1" ^(
 echo     del %%0
 echo ^)
 ) > "Remove OptiScaler.bat"
