@@ -51,6 +51,7 @@ if exist nvapi64.dll set "OLD_FILES_FOUND=1"
 if exist nvngx.dll set "OLD_FILES_FOUND=1"
 if exist OptiScaler.asi set "OLD_FILES_FOUND=1"
 if exist "Remove OptiScaler.bat" set "OLD_FILES_FOUND=1"
+if exist "Remove_OptiScaler.bat" set "OLD_FILES_FOUND=1"
 
 for %%F in (dxgi.dll winmm.dll d3d12.dll dbghelp.dll version.dll wininet.dll winhttp.dll) do (
     if exist "%%F" (
@@ -70,7 +71,8 @@ if "!OLD_FILES_FOUND!"=="1" (
     if exist nvapi64.dll echo   - nvapi64.dll
     if exist nvngx.dll echo   - nvngx.dll
     if exist OptiScaler.asi echo   - OptiScaler.asi
-    if exist "Remove OptiScaler.bat" echo   - Remove OptiScaler.bat
+	if exist "Remove OptiScaler.bat" echo   - Remove OptiScaler.bat
+    if exist "Remove_OptiScaler.bat" echo   - Remove_OptiScaler.bat
     for %%F in (!OPTI_DLL_LIST!) do echo   - %%F ^(original filename: OptiScaler.dll^)
     echo.
     echo These files may conflict with the current version of OptiScaler.
@@ -96,9 +98,13 @@ if "!OLD_FILES_FOUND!"=="1" (
             del OptiScaler.asi
             echo Deleted OptiScaler.asi
         )
-        if exist "Remove OptiScaler.bat" (
+		if exist "Remove OptiScaler.bat" (
             del "Remove OptiScaler.bat"
             echo Deleted Remove OptiScaler.bat
+        )
+        if exist "Remove_OptiScaler.bat" (
+            del "Remove_OptiScaler.bat"
+            echo Deleted Remove_OptiScaler.bat
         )
         for %%F in (!OPTI_DLL_LIST!) do (
             del "%%F"
@@ -112,12 +118,12 @@ if "!OLD_FILES_FOUND!"=="1" (
 )
 
 REM Set paths based on current directory
-set "gamePath=%~dp0"
-set "optiScalerFile=%gamePath%\OptiScaler.dll"
+
+set "optiScalerFile=.\OptiScaler.dll"
 set setupSuccess=false
 
 REM Check if the Engine folder exists
-if exist "%gamePath%\Engine" (
+if exist ".\Engine" (
     echo Found Engine folder. If this is an Unreal Engine game, then please extract Optiscaler to #CODENAME#\Binaries\Win64
 	echo Do not extract to the Engine folder^^!
 	echo.
@@ -201,7 +207,7 @@ if exist %selectedFilename% (
 
 REM Wine doesn't support powershell
 :checkWine
-reg query HKEY_CURRENT_USER\Software\Wine >nul 2>&1
+reg query HKEY_CURRENT_USER\Software\Wine\DllOverrides >nul 2>&1
 if %errorlevel%==0 (
     echo.
     echo Using wine, skipping over spoofing checks.
@@ -405,7 +411,7 @@ pause
 
 if "%setupSuccess%"=="true" (
     del "setup_linux.sh"
-    del %0
+    del "%~nx0"
 )
 
 exit /b
@@ -493,9 +499,9 @@ echo ^)
 echo.
 echo pause
 echo if "%%removeChoice%%"=="1" ^(
-echo     del %%0
+echo     del "%%~nx0"
 echo ^)
-) > "Remove OptiScaler.bat"
+) > "Remove_OptiScaler.bat"
 
 endlocal
 echo.
