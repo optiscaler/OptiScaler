@@ -545,6 +545,12 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_CreateFeature(ID3D11DeviceContext
     auto handleId = IFeature::GetNextHandleId();
     LOG_INFO("HandleId: {0}", handleId);
 
+    if (State::Instance().currentFeature != nullptr)
+    {
+        LOG_WARN("Stale feature found on CreateFeature, releasing handle {0} first", State::Instance().currentFeature->Handle()->Id);
+        NVSDK_NGX_D3D11_ReleaseFeature(State::Instance().currentFeature->Handle());
+    }
+    
     if (InFeatureID == NVSDK_NGX_Feature_SuperSampling)
     {
         Upscaler upscalerChoice = Upscaler::FSR22; // Default FSR 2.2.1
