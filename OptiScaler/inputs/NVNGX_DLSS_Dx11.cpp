@@ -181,7 +181,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_Init_Ext(unsigned long long InApp
     if (InFeatureInfo != nullptr && InSDKVersion > 0x0000013)
         State::Instance().NVNGX_Logger = InFeatureInfo->LoggingInfo;
 
-    if (State::Instance().NvngxDx11Inited)
+    if (State::Instance().NvngxDx11Inited && InDevice == D3D11Device)
     {
         LOG_WARN("NVNGX already inited");
         return NVSDK_NGX_Result_Success;
@@ -192,20 +192,6 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_Init_Ext(unsigned long long InApp
     std::wstring string(InApplicationDataPath);
 
     LOG_DEBUG("InApplicationDataPath {0}", wstring_to_string(string));
-
-    State::Instance().NVNGX_FeatureInfo_Paths.clear();
-
-    if (InFeatureInfo != nullptr)
-    {
-        for (size_t i = 0; i < InFeatureInfo->PathListInfo.Length; i++)
-        {
-            const wchar_t* path = InFeatureInfo->PathListInfo.Path[i];
-            std::wstring iniPathW(path);
-
-            State::Instance().NVNGX_FeatureInfo_Paths.push_back(iniPathW);
-            LOG_DEBUG("PathListInfo[{0}]: {1}", i, wstring_to_string(iniPathW));
-        }
-    }
 
     if (InDevice)
         D3D11Device = InDevice;

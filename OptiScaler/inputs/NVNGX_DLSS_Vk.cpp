@@ -181,7 +181,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_Init_Ext2(
     if (InFeatureInfo != nullptr && InSDKVersion > 0x0000013)
         State::Instance().NVNGX_Logger = InFeatureInfo->LoggingInfo;
 
-    if (State::Instance().NvngxVkInited)
+    if (State::Instance().NvngxVkInited && InDevice == vkDevice && InInstance == vkInstance && InPD == vkPD)
     {
         LOG_WARN("NVNGX already inited");
         return NVSDK_NGX_Result_Success;
