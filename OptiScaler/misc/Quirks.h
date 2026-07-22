@@ -383,18 +383,23 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("witcher3.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::CreateSLOnThe2ndDevice),
 
     // Hellblade: Senua's Sacrifice
-    // No UE barriers to fix crash on upscaler init
+    // No spoof needed for DLSS inputs, no UE barriers to fix crash on upscaler init
     QUIRK_ENTRY_UE(hellbladegame, GameQuirk::DisableDxgiSpoofing, GameQuirk::DontUseUnrealColorBarriers,
                    GameQuirk::DontUseUnrealMVBarriers),
 
     // Sackboy: A Big Adventure
-    // No UE barriers to fix crash on upscaler init
+    // SL spoof enough to unlock everything DLSS, no UE barriers to fix crash on upscaler init
     QUIRK_ENTRY_UE(sackboy, GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceAutoExposure,
                    GameQuirk::DontUseUnrealColorBarriers, GameQuirk::DontUseUnrealMVBarriers),
 
     // OUTRIDERS
-    // No UE barriers to fix crash on upscaler init
+    // No spoof needed for DLSS inputs, no UE barriers to fix crash on upscaler init
     QUIRK_ENTRY_UE(outriders, GameQuirk::DisableDxgiSpoofing, GameQuirk::DontUseUnrealColorBarriers,
+                   GameQuirk::DontUseUnrealMVBarriers),
+
+    // The Medium
+    // No spoof needed for DLSS inputs, no UE barriers to fix crash on upscaler init
+    QUIRK_ENTRY_UE(medium, GameQuirk::DisableDxgiSpoofing, GameQuirk::DontUseUnrealColorBarriers,
                    GameQuirk::DontUseUnrealMVBarriers),
 
     // Watch Dogs: Legion
@@ -416,10 +421,10 @@ static const QuirkEntry quirkTable[] = {
     //
     // Crysis 3 Remastered, Warhammer 40,000: Darktide, Observer: System Redux, Pumpkin Jack, Rise of the Ronin, DYNASTY
     // WARRIORS: ORIGINS, Crysis Remastered, Crysis 2 Remastered, Mortal Shell, Sekiro: Shadows Die Twice (for SekiroTSR
-    // mod), The Medium, God of War (2018), Europa Universalis V, Need for Speed Unbound, Nioh 2 – The Complete Edition,
-    // Control Ultimate Edition, Deathloop, FINAL FANTASY VII REMAKE INTERGRADE (for Luma mod), Farming Simulator 2025,
-    // Nioh 3, FATAL FRAME II: Crimson Butterfly REMAKE, MOUSE: P.I. For Hire, Yet Another Zombie Survivors, Voodoo
-    // Fishin', Forza Horizon 6, Over the Hill (demo), SHROT (demo)
+    // mod), God of War (2018), Europa Universalis V, Need for Speed Unbound, Nioh 2 – The Complete Edition, Control
+    // Ultimate Edition, Deathloop, FINAL FANTASY VII REMAKE INTERGRADE (for Luma mod), Farming Simulator 2025, Nioh 3,
+    // FATAL FRAME II: Crimson Butterfly REMAKE, MOUSE: P.I. For Hire, Yet Another Zombie Survivors, Voodoo Fishin',
+    // Forza Horizon 6, Over the Hill (demo), SHROT (demo)
     QUIRK_ENTRY("crysis3remastered.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("darktide.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("observersystemredux.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceAutoExposure),
@@ -430,7 +435,6 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("crysis2remastered.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY_UE(dungeonhaven, GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("sekiro.exe", GameQuirk::DisableDxgiSpoofing), // Sekiro TSR mod required for upscalers
-    QUIRK_ENTRY_UE(medium, GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("gow.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("eu5.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("needforspeedunbound.exe", GameQuirk::DisableDxgiSpoofing),
