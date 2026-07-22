@@ -10,7 +10,7 @@ echo #+#    #+# #+#            #+#         #+#     #+#    #+# #+#    #+# #+#    
 echo  ########  ###            ###     ###########  ########   ########  ###     ### ########## ########## ###    ### 
 echo.
 echo Coping is strong with this one...
-echo v2.8 - now with OptiPatcher support
+echo v3.0-pre1
 echo.
 
 del "!! README_EXTRACT ALL FILES TO GAME FOLDER !!.txt" 2>nul
@@ -282,7 +282,7 @@ if "%gpuChoice%"=="1" (
 
 :checkExistingOptiPatcher
 set "foundOptiPatcher="
-for %%F in (plugins\*OptiPatcher*.asi) do (
+for %%F in (OptiScaler\plugins\*OptiPatcher*.asi) do (
     set "foundOptiPatcher=%%F"
 )
 
@@ -346,15 +346,15 @@ if "!OPTI_MATCH!"=="YES" (
     if "!downloadOptiPatcher!"=="1" (
         echo.
         echo Preparing plugins folder...
-        if not exist "plugins" mkdir "plugins"
+        if not exist "OptiScaler\plugins" mkdir "OptiScaler\plugins"
         
         echo Downloading OptiPatcher...
         echo Press Ctrl+C if this gets stuck to skip to setup completion.
         echo.
-        powershell -Command "Invoke-WebRequest -Uri 'https://github.com/optiscaler/OptiPatcher/releases/download/rolling/OptiPatcher.asi' -OutFile 'plugins\OptiPatcher.asi'"
+        powershell -Command "Invoke-WebRequest -Uri 'https://github.com/optiscaler/OptiPatcher/releases/download/rolling/OptiPatcher.asi' -OutFile 'OptiScaler\plugins\OptiPatcher.asi'"
         if errorlevel 1 goto completeSetup
         
-        if exist "plugins\OptiPatcher.asi" (
+        if exist "OptiScaler\plugins\OptiPatcher.asi" (
             echo OptiPatcher.asi downloaded successfully.
             echo Enabling ASI loading in OptiScaler.ini...
             if exist "%configFile%" (
@@ -471,22 +471,22 @@ echo if "%%removeChoice%%"=="1" ^(
 echo     del OptiScaler.log
 echo     del OptiScaler.ini
 echo     del OptiScaler.asi
-echo     del fakenvapi.dll
-echo     del fakenvapi.ini
-echo     del fakenvapi.log
-echo     del dlssg_to_fsr3_amd_is_better.dll
-echo     del dlssg_to_fsr3.log
-echo     del /Q D3D12_Optiscaler\*
-echo     rd D3D12_Optiscaler
-echo     del /Q DlssOverrides\*
-echo     rd DlssOverrides
+echo     for %%%%F in ^(!OPTI_DLL_LIST!^) do ^(del "%%%%F"^)
 echo     del /Q Licenses\*
 echo     rd Licenses
-echo     for %%%%F in ^(!OPTI_DLL_LIST!^) do ^(del "%%%%F"^)
+echo     del /Q OptiScaler\D3D12_Optiscaler\*
+echo     rd OptiScaler\D3D12_Optiscaler
+echo     del /Q OptiScaler\Streamline\*
+echo     rd OptiScaler\Streamline
+echo     del /Q OptiScaler\streamline\*
+echo     rd OptiScaler\streamline
 echo     echo.
 echo     echo Deleting OptiPatcher if present
-echo     del plugins\OptiPatcher.asi
-echo     rd plugins
+echo     del /Q OptiScaler\plugins\*
+echo     rd OptiScaler\plugins
+echo     echo.
+echo     del /Q OptiScaler\*
+echo     rd OptiScaler
 echo     echo.
 echo     echo OptiScaler removed^^^^! Ignore the warnings about missing files.
 echo     echo.
