@@ -187,7 +187,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_Init_Ext(unsigned long long InApp
     if (InFeatureInfo != nullptr && InSDKVersion > 0x0000013)
         State::Instance().NVNGX_Logger = InFeatureInfo->LoggingInfo;
 
-    if (State::Instance().nvngxDx11Inited)
+    if (State::Instance().nvngxDx11Inited && InDevice == D3D11Device)
     {
         LOG_WARN("NVNGX already inited");
         return NVSDK_NGX_Result_Success;
