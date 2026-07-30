@@ -370,8 +370,6 @@ xess_result_t hk_xessVKGetRequiredInstanceExtensions(uint32_t* instanceExtension
 {
     LOG_FUNC();
 
-    ScopedSkipSpoofing skipSpoofing {};
-
     auto result =
         XeSSProxy::VKGetRequiredInstanceExtensions()(instanceExtensionsCount, instanceExtensions, minVkApiVersion);
 
