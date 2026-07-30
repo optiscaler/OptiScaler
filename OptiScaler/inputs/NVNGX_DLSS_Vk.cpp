@@ -194,37 +194,11 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_Init_Ext2(
                                    InSDKVersion, &localFeatureInfo);
     }
 
-    State::Instance().NVNGX_FeatureInfo_Paths.clear();
-
-    if (InFeatureInfo != nullptr)
-    {
-        if (InSDKVersion > 0x0000013)
-            State::Instance().NVNGX_Logger = localFeatureInfo.LoggingInfo;
-
-        // Doom Ethernal is sending junk data
-        if (localFeatureInfo.PathListInfo.Length < 10)
-        {
-            for (size_t i = 0; i < localFeatureInfo.PathListInfo.Length; i++)
-            {
-                const wchar_t* path = localFeatureInfo.PathListInfo.Path[i];
-                State::Instance().NVNGX_FeatureInfo_Paths.push_back(std::wstring(path));
-            }
-        }
-    }
-
     LOG_INFO("InApplicationId: {0}", InApplicationId);
     LOG_INFO("InSDKVersion: {0:x}", (UINT) InSDKVersion);
     std::wstring string(InApplicationDataPath);
 
     LOG_DEBUG("InApplicationDataPath {0}", wstring_to_string(string));
-
-    if (State::Instance().NVNGX_FeatureInfo_Paths.size() > 0)
-    {
-        for (size_t i = 0; i < State::Instance().NVNGX_FeatureInfo_Paths.size(); ++i)
-        {
-            LOG_DEBUG("PathListInfo[{0}]: {1}", i, wstring_to_string(State::Instance().NVNGX_FeatureInfo_Paths[i]));
-        }
-    }
 
     if (InInstance)
     {
