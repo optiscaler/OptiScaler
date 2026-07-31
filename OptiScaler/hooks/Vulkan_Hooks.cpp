@@ -67,8 +67,11 @@ static void HookDevice(VkDevice InDevice)
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());
 
-        DetourAttach(&(PVOID&) o_QueuePresentKHR, hkvkQueuePresentKHR);
-        DetourAttach(&(PVOID&) o_CreateSwapchainKHR, hkvkCreateSwapchainKHR);
+        if (o_QueuePresentKHR != nullptr)
+            DetourAttach(&(PVOID&) o_QueuePresentKHR, hkvkQueuePresentKHR);
+
+        if (o_CreateSwapchainKHR != nullptr)
+            DetourAttach(&(PVOID&) o_CreateSwapchainKHR, hkvkCreateSwapchainKHR);
 
         auto detourResult = DetourTransactionCommit();
         if (detourResult != NO_ERROR)
