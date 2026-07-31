@@ -695,7 +695,8 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_CreateFeature(ID3D12GraphicsComma
     D3D12Hooks::RestoreRoot(InCmdList);
     D3D12Hooks::SetRootSignatureTracking(true);
 
-    State::Instance().FGchanged = true;
+    if (State::Instance().activeFgInput == FGInput::Upscaler)
+        State::Instance().FGchanged = true;
 
     return NVSDK_NGX_Result_Success;
 }
@@ -709,9 +710,9 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_ReleaseFeature(NVSDK_NGX_Handle* 
 
     auto handleId = InHandle->Id;
 
-    State::Instance().FGchanged = true;
     if (State::Instance().currentFG != nullptr && State::Instance().activeFgInput == FGInput::Upscaler)
     {
+        State::Instance().FGchanged = true;
         State::Instance().currentFG->DestroyFGContext();
         State::Instance().ClearCapturedHudlesses = true;
         UpscalerInputsDx12::Reset();
