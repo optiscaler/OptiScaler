@@ -832,7 +832,7 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForCoreWindow(IDXGIFactory2* realFactor
     HRESULT result = E_FAIL;
     {
         ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
-        auto result =
+        result =
             o_CreateSwapChainForCoreWindow(realFactory, pDevice, pWindow, &localDesc, pRestrictToOutput, ppSwapChain);
     }
 
