@@ -725,7 +725,8 @@ static NVSDK_NGX_Result TryCreateOptiFeature(ID3D12GraphicsCommandList* InCmdLis
 
     D3D12Hooks::SetRootSignatureTracking(true);
 
-    state.fgChanged = true;
+    if (state.activeFgInput == FGInput::Upscaler)
+        state.fgChanged = true;
 
     return NVSDK_NGX_Result_Success;
 }
@@ -818,11 +819,11 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_ReleaseFeature(NVSDK_NGX_Handle* 
         return NVSDK_NGX_Result_Success;
 
     auto handleId = InHandle->Id;
-    State::Instance().fgChanged = true;
 
     // Clean up framegen
     if (State::Instance().currentFG != nullptr && State::Instance().activeFgInput == FGInput::Upscaler)
     {
+        State::Instance().fgChanged = true;
         State::Instance().currentFG->DestroyFGContext();
         State::Instance().clearCapturedHudlesses = true;
         UpscalerInputsDx12::Reset();
