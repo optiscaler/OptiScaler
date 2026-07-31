@@ -1243,6 +1243,7 @@ void FSRFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
         (fgConstants.displayWidth > _maxRenderWidth || fgConstants.displayHeight > _maxRenderHeight))
 
     {
+        LOG_DEBUG("Max render size exceeded: {}x{}", fgConstants.displayWidth, fgConstants.displayHeight);
         State::Instance().FGchanged = true;
         State::Instance().SCchanged = true;
     }
@@ -1262,6 +1263,7 @@ void FSRFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
         // If there is a change deactivate it
         else if (State::Instance().FGchanged)
         {
+            LOG_DEBUG("FG Changed");
             Deactivate();
 
             // Pause for 10 frames
@@ -1277,6 +1279,7 @@ void FSRFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
     }
     else if (IsActive())
     {
+        LOG_DEBUG("!IsActive");
         Deactivate();
 
         State::Instance().ClearCapturedHudlesses = true;
