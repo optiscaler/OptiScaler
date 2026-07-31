@@ -1734,7 +1734,7 @@ static HRESULT hkCreateCommittedResource(ID3D12Device* device, const D3D12_HEAP_
     {
         D3D12_RESOURCE_DESC localDesc = {};
         memcpy(&localDesc, pDesc, sizeof(D3D12_RESOURCE_DESC));
-        auto ueDesc = reinterpret_cast<UE_D3D12_RESOURCE_DESC*>(&localDesc);
+        auto ueDesc = reinterpret_cast<UE_D3D12_RESOURCE_DESC*>(&pDesc);
 
         if (Config::Instance()->UESpoofIntelAtomics64.value_or_default() && ueDesc != nullptr &&
             ueDesc->bRequires64BitAtomicSupport)
@@ -1766,7 +1766,7 @@ static HRESULT hkCreatePlacedResource(ID3D12Device* device, ID3D12Heap* pHeap, U
     {
         D3D12_RESOURCE_DESC localDesc = {};
         memcpy(&localDesc, pDesc, sizeof(D3D12_RESOURCE_DESC));
-        auto ueDesc = reinterpret_cast<UE_D3D12_RESOURCE_DESC*>(&localDesc);
+        auto ueDesc = reinterpret_cast<UE_D3D12_RESOURCE_DESC*>(&pDesc);
 
         if (Config::Instance()->UESpoofIntelAtomics64.value_or_default() && ueDesc != nullptr &&
             ueDesc->bRequires64BitAtomicSupport)
