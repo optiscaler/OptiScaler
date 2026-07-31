@@ -400,16 +400,16 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_GetParameters(NVSDK_NGX_Parameter
 
         if (result == NVSDK_NGX_Result_Success)
         {
-            InitNGXParameters(*OutParameters);
+            InitNGXParameters(*OutParameters, API::DX11);
             SetNGXParamAllocType(*(*OutParameters), NGX_AllocTypes::NVPersistent);
             return result;
         }
     }
 
     // Get custom parameters if using custom backend
-    static NVNGX_Parameters oldParams = NVNGX_Parameters("OptiDx11", true);
+    static NVNGX_Parameters oldParams = NVNGX_Parameters(API::DX11, true);
     *OutParameters = &oldParams;
-    InitNGXParameters(*OutParameters);
+    InitNGXParameters(*OutParameters, API::DX11);
 
     LOG_DEBUG("Returning custom Opti parameters");
 
@@ -439,14 +439,14 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_GetCapabilityParameters(NVSDK_NGX
 
         if (result == NVSDK_NGX_Result_Success)
         {
-            InitNGXParameters(*OutParameters);
+            InitNGXParameters(*OutParameters, API::DX11);
             SetNGXParamAllocType(*(*OutParameters), NGX_AllocTypes::NVDynamic);
             return result;
         }
     }
 
-    *OutParameters = new NVNGX_Parameters("OptiDx11", false);
-    InitNGXParameters(*OutParameters);
+    *OutParameters = new NVNGX_Parameters(API::DX11, false);
+    InitNGXParameters(*OutParameters, API::DX11);
 
     LOG_DEBUG("Returning custom Opti parameters");
 
@@ -477,7 +477,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_AllocateParameters(NVSDK_NGX_Para
         }
     }
 
-    *OutParameters = new NVNGX_Parameters("OptiDx11", false);
+    *OutParameters = new NVNGX_Parameters(API::DX11, false);
 
     return NVSDK_NGX_Result_Success;
 }
@@ -489,7 +489,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_PopulateParameters_Impl(NVSDK_NGX
     if (InParameters == nullptr)
         return NVSDK_NGX_Result_FAIL_InvalidParameter;
 
-    InitNGXParameters(InParameters);
+    InitNGXParameters(InParameters, API::DX11);
 
     return NVSDK_NGX_Result_Success;
 }

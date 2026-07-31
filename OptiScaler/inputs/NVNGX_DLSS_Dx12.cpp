@@ -449,16 +449,6 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Shutdown1(ID3D12Device* InDevice)
 #pragma region DLSS Parameter Calls
 
 /**
- * @brief Allocates and populates a preexisting NGX param map.
- */
-static void GetNGXParameters(std::string InName, NVNGX_Parameters& params)
-{
-    params.Name = InName;
-    InitNGXParameters(&params);
-    params.Set("OptiScaler", 1);
-}
-
-/**
  * @brief [Deprecated NGX API] Superceeded by NVSDK_NGX_AllocateParameters and NVSDK_NGX_GetCapabilityParameters.
  *
  * Retrieves a common NVSDK parameter map for providing params to the SDK. The lifetime of this
@@ -483,16 +473,16 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_GetParameters(NVSDK_NGX_Parameter
         // Copy OptiScaler config to real NGX param table
         if (result == NVSDK_NGX_Result_Success)
         {
-            InitNGXParameters(*OutParameters);
+            InitNGXParameters(*OutParameters, API::DX12);
             SetNGXParamAllocType(*(*OutParameters), NGX_AllocTypes::NVPersistent);
             return NVSDK_NGX_Result_Success;
         }
     }
 
     // Get custom parameters if using custom backend
-    static NVNGX_Parameters oldParams = NVNGX_Parameters("OptiDx12", true);
+    static NVNGX_Parameters oldParams = NVNGX_Parameters(API::DX12, true);
     *OutParameters = &oldParams;
-    InitNGXParameters(*OutParameters);
+    InitNGXParameters(*OutParameters, API::DX12);
 
     LOG_DEBUG("Returning custom Opti parameters");
 
@@ -523,15 +513,15 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_GetCapabilityParameters(NVSDK_NGX
         if (result == NVSDK_NGX_Result_Success)
         {
             // Init external NGX table with current configuration and mark as dynamic+external
-            InitNGXParameters(*OutParameters);
+            InitNGXParameters(*OutParameters, API::DX12);
             SetNGXParamAllocType(*(*OutParameters), NGX_AllocTypes::NVDynamic);
             return NVSDK_NGX_Result_Success;
         }
     }
 
     // Get custom parameters if using custom backend
-    auto& params = *(new NVNGX_Parameters("OptiDx12", false));
-    InitNGXParameters(&params);
+    auto& params = *(new NVNGX_Parameters(API::DX12, false));
+    InitNGXParameters(&params, API::DX12);
     *OutParameters = &params;
 
     LOG_DEBUG("Returning custom Opti parameters");
@@ -562,7 +552,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_AllocateParameters(NVSDK_NGX_Para
         }
     }
 
-    auto* params = new NVNGX_Parameters("OptiDx12", false);
+    auto* params = new NVNGX_Parameters(API::DX12, false);
     *OutParameters = params;
 
     return NVSDK_NGX_Result_Success;
@@ -575,7 +565,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_PopulateParameters_Impl(NVSDK_NGX
     if (InParameters == nullptr)
         return NVSDK_NGX_Result_Fail;
 
-    InitNGXParameters(InParameters);
+    InitNGXParameters(InParameters, API::DX12);
 
     if (State::Instance().activeFgInput == FGInput::NvngxFG ||
         State::Instance().activeFgOutput == FGOutput::DLSSGWithNvngx)

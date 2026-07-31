@@ -14,7 +14,8 @@ typedef void (*PFN_EnableDebugView)(bool enable);
 class Nvngx_FG
 {
   private:
-    inline static HMODULE _dll = nullptr;
+    inline static HMODULE _dllDx12 = nullptr;
+    inline static HMODULE _dllVulkan = nullptr;
 
     inline static PFN_RefreshGlobalConfiguration _refreshGlobalConfiguration = nullptr;
     inline static PFN_EnableDebugView _fsrDebugView = nullptr; // for now keep compatibility with the patched 0.110
@@ -46,7 +47,7 @@ class Nvngx_FG
     inline static bool _dx12_inited = false;
     inline static bool _vulkan_inited = false;
 
-    inline static bool _mfg = false;
+    inline static bool _mfgDx12 = false;
 
     inline static std::unique_ptr<HudCopy_Dx12> _hudCopy;
 
@@ -62,10 +63,26 @@ class Nvngx_FG
 
     static void InitDLSSGMod_Vulkan();
 
-    static inline bool isLoaded() { return _dll != nullptr; }
+    static inline bool isLoaded(API api)
+    {
+        if (api == API::DX12)
+            return _dllDx12 != nullptr;
+        else if (api == API::Vulkan)
+            return _dllVulkan != nullptr;
+
+        return false;
+    }
 
     // Essentially a check to see if we are using Artur's mod for nvngx fg
-    static inline bool isMFG() { return _mfg; }
+    static inline int getMaxFakeFramesCount(API api)
+    {
+        if (api == API::Vulkan || api == API::DX12 && !_mfgDx12)
+            return 1;
+        else if (api == API::DX12 && _mfgDx12)
+            return 5;
+
+        return 0;
+    }
 
     static void setDebugView(bool enabled);
 
@@ -75,7 +92,7 @@ class Nvngx_FG
 
     static inline PFN_EnableDebugView FSRDebugView() { return _fsrDebugView; }
 
-    static inline bool isDx12Available() { return isLoaded() && _dx12_inited; }
+    static inline bool isDx12Available() { return isLoaded(API::DX12) && _dx12_inited; }
 
     static NVSDK_NGX_Result D3D12_Init(unsigned long long InApplicationId, const wchar_t* InApplicationDataPath,
                                        ID3D12Device* InDevice, const NVSDK_NGX_FeatureCommonInfo* InFeatureInfo,
@@ -109,7 +126,7 @@ class Nvngx_FG
     static NVSDK_NGX_Result D3D12_PopulateParameters_Impl(NVSDK_NGX_Parameter* InParameters);
 
     // Vulkan
-    static inline bool isVulkanAvailable() { return isLoaded() && _vulkan_inited; }
+    static inline bool isVulkanAvailable() { return isLoaded(API::Vulkan) && _vulkan_inited; }
 
     static NVSDK_NGX_Result VULKAN_Init(unsigned long long InApplicationId, const wchar_t* InApplicationDataPath,
                                         VkInstance InInstance, VkPhysicalDevice InPD, VkDevice InDevice,

@@ -128,7 +128,7 @@ bool FeatureProvider_Vk::ChangeFeature(Upscaler upscaler, VkInstance instance, V
             // Use given params if using DLSS passthrough
             const bool isPassthrough = state.newBackend == Upscaler::DLSSD || state.newBackend == Upscaler::DLSS;
 
-            contextData->createParams = isPassthrough ? parameters : GetNGXParameters("OptiVk", false);
+            contextData->createParams = isPassthrough ? parameters : GetNGXParameters(API::Vulkan, false);
             contextData->createParams->Set(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags, dc->GetFeatureFlags());
             contextData->createParams->Set(NVSDK_NGX_Parameter_Width, dc->RenderWidth());
             contextData->createParams->Set(NVSDK_NGX_Parameter_Height, dc->RenderHeight());

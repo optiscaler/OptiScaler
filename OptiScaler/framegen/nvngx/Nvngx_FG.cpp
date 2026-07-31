@@ -30,7 +30,7 @@ static BOOL WINAPI hkGetFileAttributesExW(LPCWSTR lpFileName, GET_FILEEX_INFO_LE
 
 void Nvngx_FG::setSetting(const wchar_t* setting, const wchar_t* value)
 {
-    if (is120orNewer() && !_mfg)
+    if (is120orNewer())
     {
         SetEnvironmentVariable(setting, value);
         _refreshGlobalConfiguration();
@@ -40,7 +40,7 @@ void Nvngx_FG::setSetting(const wchar_t* setting, const wchar_t* value)
 HMODULE Nvngx_FG::TryInitMFG()
 {
     // set early so the hooks know
-    _mfg = true;
+    _mfgDx12 = true;
 
     HMODULE dll = nullptr;
     if (o_GetFileAttributesExW)
@@ -69,7 +69,7 @@ HMODULE Nvngx_FG::TryInitMFG()
     }
 
     if (!dll)
-        _mfg = false;
+        _mfgDx12 = false;
 
     return dll;
 }
@@ -84,26 +84,26 @@ void Nvngx_FG::InitDLSSGMod_Dx12()
         return;
     }
 
-    _dll = TryInitMFG();
+    _dllDx12 = TryInitMFG();
 
-    if (_dll != nullptr)
+    if (_dllDx12 != nullptr)
     {
-        _DLSSG_D3D12_Init = (PFN_D3D12_Init) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_D3D12_Init");
-        _DLSSG_D3D12_Init_Ext = (PFN_D3D12_Init_Ext) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_D3D12_Init_Ext");
-        _DLSSG_D3D12_Shutdown = (PFN_D3D12_Shutdown) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_D3D12_Shutdown");
-        _DLSSG_D3D12_Shutdown1 = (PFN_D3D12_Shutdown1) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_D3D12_Shutdown1");
+        _DLSSG_D3D12_Init = (PFN_D3D12_Init) GetProcAddress(_dllDx12, "DLSSG_NVSDK_NGX_D3D12_Init");
+        _DLSSG_D3D12_Init_Ext = (PFN_D3D12_Init_Ext) GetProcAddress(_dllDx12, "DLSSG_NVSDK_NGX_D3D12_Init_Ext");
+        _DLSSG_D3D12_Shutdown = (PFN_D3D12_Shutdown) GetProcAddress(_dllDx12, "DLSSG_NVSDK_NGX_D3D12_Shutdown");
+        _DLSSG_D3D12_Shutdown1 = (PFN_D3D12_Shutdown1) GetProcAddress(_dllDx12, "DLSSG_NVSDK_NGX_D3D12_Shutdown1");
         _DLSSG_D3D12_GetScratchBufferSize =
-            (PFN_D3D12_GetScratchBufferSize) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_D3D12_GetScratchBufferSize");
+            (PFN_D3D12_GetScratchBufferSize) GetProcAddress(_dllDx12, "DLSSG_NVSDK_NGX_D3D12_GetScratchBufferSize");
         _DLSSG_D3D12_CreateFeature =
-            (PFN_D3D12_CreateFeature) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_D3D12_CreateFeature");
+            (PFN_D3D12_CreateFeature) GetProcAddress(_dllDx12, "DLSSG_NVSDK_NGX_D3D12_CreateFeature");
         _DLSSG_D3D12_ReleaseFeature =
-            (PFN_D3D12_ReleaseFeature) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_D3D12_ReleaseFeature");
+            (PFN_D3D12_ReleaseFeature) GetProcAddress(_dllDx12, "DLSSG_NVSDK_NGX_D3D12_ReleaseFeature");
         _DLSSG_D3D12_GetFeatureRequirements =
-            (PFN_D3D12_GetFeatureRequirements) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_D3D12_GetFeatureRequirements");
+            (PFN_D3D12_GetFeatureRequirements) GetProcAddress(_dllDx12, "DLSSG_NVSDK_NGX_D3D12_GetFeatureRequirements");
         _DLSSG_D3D12_EvaluateFeature =
-            (PFN_D3D12_EvaluateFeature) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_D3D12_EvaluateFeature");
-        _DLSSG_D3D12_PopulateParameters_Impl =
-            (PFN_D3D12_PopulateParameters_Impl) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_D3D12_PopulateParameters_Impl");
+            (PFN_D3D12_EvaluateFeature) GetProcAddress(_dllDx12, "DLSSG_NVSDK_NGX_D3D12_EvaluateFeature");
+        _DLSSG_D3D12_PopulateParameters_Impl = (PFN_D3D12_PopulateParameters_Impl) GetProcAddress(
+            _dllDx12, "DLSSG_NVSDK_NGX_D3D12_PopulateParameters_Impl");
 
         _dx12_inited = _DLSSG_D3D12_Init != nullptr;
 
@@ -114,32 +114,34 @@ void Nvngx_FG::InitDLSSGMod_Dx12()
     else
     {
         HMODULE memModule = nullptr;
-        auto optiPath = Config::Instance()->MainDllPath.value();
-        Util::LoadProxyLibrary(L"dlssg_to_fsr3_amd_is_better.dll", L"", optiPath, &memModule, &_dll);
+        auto& optiPath = Config::Instance()->MainDllPath.value();
+        Util::LoadProxyLibrary(L"dlssg_to_fsr3_amd_is_better.dll", L"", optiPath, &memModule, &_dllDx12);
 
-        if (_dll == nullptr && memModule != nullptr)
-            _dll = memModule;
+        if (_dllDx12 == nullptr && memModule != nullptr)
+            _dllDx12 = memModule;
     }
 
-    if (_dll != nullptr)
+    if (_dllDx12 != nullptr)
     {
-        _DLSSG_D3D12_Init = (PFN_D3D12_Init) GetProcAddress(_dll, "NVSDK_NGX_D3D12_Init");
-        _DLSSG_D3D12_Init_Ext = (PFN_D3D12_Init_Ext) GetProcAddress(_dll, "NVSDK_NGX_D3D12_Init_Ext");
-        _DLSSG_D3D12_Shutdown = (PFN_D3D12_Shutdown) GetProcAddress(_dll, "NVSDK_NGX_D3D12_Shutdown");
-        _DLSSG_D3D12_Shutdown1 = (PFN_D3D12_Shutdown1) GetProcAddress(_dll, "NVSDK_NGX_D3D12_Shutdown1");
+        _DLSSG_D3D12_Init = (PFN_D3D12_Init) GetProcAddress(_dllDx12, "NVSDK_NGX_D3D12_Init");
+        _DLSSG_D3D12_Init_Ext = (PFN_D3D12_Init_Ext) GetProcAddress(_dllDx12, "NVSDK_NGX_D3D12_Init_Ext");
+        _DLSSG_D3D12_Shutdown = (PFN_D3D12_Shutdown) GetProcAddress(_dllDx12, "NVSDK_NGX_D3D12_Shutdown");
+        _DLSSG_D3D12_Shutdown1 = (PFN_D3D12_Shutdown1) GetProcAddress(_dllDx12, "NVSDK_NGX_D3D12_Shutdown1");
         _DLSSG_D3D12_GetScratchBufferSize =
-            (PFN_D3D12_GetScratchBufferSize) GetProcAddress(_dll, "NVSDK_NGX_D3D12_GetScratchBufferSize");
-        _DLSSG_D3D12_CreateFeature = (PFN_D3D12_CreateFeature) GetProcAddress(_dll, "NVSDK_NGX_D3D12_CreateFeature");
-        _DLSSG_D3D12_ReleaseFeature = (PFN_D3D12_ReleaseFeature) GetProcAddress(_dll, "NVSDK_NGX_D3D12_ReleaseFeature");
+            (PFN_D3D12_GetScratchBufferSize) GetProcAddress(_dllDx12, "NVSDK_NGX_D3D12_GetScratchBufferSize");
+        _DLSSG_D3D12_CreateFeature =
+            (PFN_D3D12_CreateFeature) GetProcAddress(_dllDx12, "NVSDK_NGX_D3D12_CreateFeature");
+        _DLSSG_D3D12_ReleaseFeature =
+            (PFN_D3D12_ReleaseFeature) GetProcAddress(_dllDx12, "NVSDK_NGX_D3D12_ReleaseFeature");
         _DLSSG_D3D12_GetFeatureRequirements =
-            (PFN_D3D12_GetFeatureRequirements) GetProcAddress(_dll, "NVSDK_NGX_D3D12_GetFeatureRequirements");
+            (PFN_D3D12_GetFeatureRequirements) GetProcAddress(_dllDx12, "NVSDK_NGX_D3D12_GetFeatureRequirements");
         _DLSSG_D3D12_EvaluateFeature =
-            (PFN_D3D12_EvaluateFeature) GetProcAddress(_dll, "NVSDK_NGX_D3D12_EvaluateFeature");
+            (PFN_D3D12_EvaluateFeature) GetProcAddress(_dllDx12, "NVSDK_NGX_D3D12_EvaluateFeature");
         _DLSSG_D3D12_PopulateParameters_Impl =
-            (PFN_D3D12_PopulateParameters_Impl) GetProcAddress(_dll, "NVSDK_NGX_D3D12_PopulateParameters_Impl");
+            (PFN_D3D12_PopulateParameters_Impl) GetProcAddress(_dllDx12, "NVSDK_NGX_D3D12_PopulateParameters_Impl");
         _refreshGlobalConfiguration =
-            (PFN_RefreshGlobalConfiguration) GetProcAddress(_dll, "RefreshGlobalConfiguration");
-        _fsrDebugView = (PFN_EnableDebugView) GetProcAddress(_dll, "FSRDebugView");
+            (PFN_RefreshGlobalConfiguration) GetProcAddress(_dllDx12, "RefreshGlobalConfiguration");
+        _fsrDebugView = (PFN_EnableDebugView) GetProcAddress(_dllDx12, "FSRDebugView");
         _dx12_inited = true;
 
         LOG_INFO("DLSSG Mod initialized for DX12");
@@ -157,70 +159,74 @@ void Nvngx_FG::InitDLSSGMod_Vulkan()
     if (_vulkan_inited || Config::Instance()->FGInput.value_or_default() != FGInput::NvngxFG)
         return;
 
+    // Avoid using Enabler for Vulkan
     // Vulkan support was removed in 4.4; in <=4.3 only the original Nukem's 2x mode is supported
-    _dll = TryInitMFG();
+    //_dllVulkan = TryInitMFG();
 
-    if (_dll != nullptr)
-    {
-        _DLSSG_VULKAN_Init = (PFN_VULKAN_Init) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_VULKAN_Init");
-        _DLSSG_VULKAN_Init_Ext = (PFN_VULKAN_Init_Ext) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_VULKAN_Init_Ext");
-        _DLSSG_VULKAN_Init_Ext2 = (PFN_VULKAN_Init_Ext2) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_VULKAN_Init_Ext2");
-        _DLSSG_VULKAN_Shutdown = (PFN_VULKAN_Shutdown) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_VULKAN_Shutdown");
-        _DLSSG_VULKAN_Shutdown1 = (PFN_VULKAN_Shutdown1) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_VULKAN_Shutdown1");
-        _DLSSG_VULKAN_GetScratchBufferSize =
-            (PFN_VULKAN_GetScratchBufferSize) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_VULKAN_GetScratchBufferSize");
-        _DLSSG_VULKAN_CreateFeature =
-            (PFN_VULKAN_CreateFeature) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_VULKAN_CreateFeature");
-        _DLSSG_VULKAN_CreateFeature1 =
-            (PFN_VULKAN_CreateFeature1) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_VULKAN_CreateFeature1");
-        _DLSSG_VULKAN_ReleaseFeature =
-            (PFN_VULKAN_ReleaseFeature) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_VULKAN_ReleaseFeature");
-        _DLSSG_VULKAN_GetFeatureRequirements =
-            (PFN_VULKAN_GetFeatureRequirements) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_VULKAN_GetFeatureRequirements");
-        _DLSSG_VULKAN_EvaluateFeature =
-            (PFN_VULKAN_EvaluateFeature) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_VULKAN_EvaluateFeature");
-        _DLSSG_VULKAN_PopulateParameters_Impl =
-            (PFN_VULKAN_PopulateParameters_Impl) GetProcAddress(_dll, "DLSSG_NVSDK_NGX_VULKAN_PopulateParameters_Impl");
+    // if (_dllVulkan != nullptr)
+    //{
+    //     _DLSSG_VULKAN_Init = (PFN_VULKAN_Init) GetProcAddress(_dllVulkan, "DLSSG_NVSDK_NGX_VULKAN_Init");
+    //     _DLSSG_VULKAN_Init_Ext = (PFN_VULKAN_Init_Ext) GetProcAddress(_dllVulkan, "DLSSG_NVSDK_NGX_VULKAN_Init_Ext");
+    //     _DLSSG_VULKAN_Init_Ext2 = (PFN_VULKAN_Init_Ext2) GetProcAddress(_dllVulkan,
+    //     "DLSSG_NVSDK_NGX_VULKAN_Init_Ext2"); _DLSSG_VULKAN_Shutdown = (PFN_VULKAN_Shutdown)
+    //     GetProcAddress(_dllVulkan, "DLSSG_NVSDK_NGX_VULKAN_Shutdown"); _DLSSG_VULKAN_Shutdown1 =
+    //     (PFN_VULKAN_Shutdown1) GetProcAddress(_dllVulkan, "DLSSG_NVSDK_NGX_VULKAN_Shutdown1");
+    //     _DLSSG_VULKAN_GetScratchBufferSize =
+    //         (PFN_VULKAN_GetScratchBufferSize) GetProcAddress(_dllVulkan,
+    //         "DLSSG_NVSDK_NGX_VULKAN_GetScratchBufferSize");
+    //     _DLSSG_VULKAN_CreateFeature =
+    //         (PFN_VULKAN_CreateFeature) GetProcAddress(_dllVulkan, "DLSSG_NVSDK_NGX_VULKAN_CreateFeature");
+    //     _DLSSG_VULKAN_CreateFeature1 =
+    //         (PFN_VULKAN_CreateFeature1) GetProcAddress(_dllVulkan, "DLSSG_NVSDK_NGX_VULKAN_CreateFeature1");
+    //     _DLSSG_VULKAN_ReleaseFeature =
+    //         (PFN_VULKAN_ReleaseFeature) GetProcAddress(_dllVulkan, "DLSSG_NVSDK_NGX_VULKAN_ReleaseFeature");
+    //     _DLSSG_VULKAN_GetFeatureRequirements = (PFN_VULKAN_GetFeatureRequirements) GetProcAddress(
+    //         _dllVulkan, "DLSSG_NVSDK_NGX_VULKAN_GetFeatureRequirements");
+    //     _DLSSG_VULKAN_EvaluateFeature =
+    //         (PFN_VULKAN_EvaluateFeature) GetProcAddress(_dllVulkan, "DLSSG_NVSDK_NGX_VULKAN_EvaluateFeature");
+    //     _DLSSG_VULKAN_PopulateParameters_Impl = (PFN_VULKAN_PopulateParameters_Impl) GetProcAddress(
+    //         _dllVulkan, "DLSSG_NVSDK_NGX_VULKAN_PopulateParameters_Impl");
 
-        _vulkan_inited = _DLSSG_VULKAN_Init != nullptr;
+    //    _vulkan_inited = _DLSSG_VULKAN_Init != nullptr;
 
-        LOG_INFO("DLSSG MFG Mod initialized for Vulkan");
+    //    LOG_INFO("DLSSG MFG Mod initialized for Vulkan");
 
-        return;
-    }
-    else
+    //    return;
+    //}
+    // else
     {
         HMODULE memModule = nullptr;
-        auto optiPath = Config::Instance()->MainDllPath.value();
-        Util::LoadProxyLibrary(L"dlssg_to_fsr3_amd_is_better.dll", L"", optiPath, &memModule, &_dll);
+        auto& optiPath = Config::Instance()->MainDllPath.value();
+        Util::LoadProxyLibrary(L"dlssg_to_fsr3_amd_is_better.dll", L"", optiPath, &memModule, &_dllVulkan);
 
-        if (_dll == nullptr && memModule != nullptr)
-            _dll = memModule;
+        if (_dllVulkan == nullptr && memModule != nullptr)
+            _dllVulkan = memModule;
     }
 
-    if (_dll != nullptr)
+    if (_dllVulkan != nullptr)
     {
-        _DLSSG_VULKAN_Init = (PFN_VULKAN_Init) GetProcAddress(_dll, "NVSDK_NGX_VULKAN_Init");
-        _DLSSG_VULKAN_Init_Ext = (PFN_VULKAN_Init_Ext) GetProcAddress(_dll, "NVSDK_NGX_VULKAN_Init_Ext");
-        _DLSSG_VULKAN_Init_Ext2 = (PFN_VULKAN_Init_Ext2) GetProcAddress(_dll, "NVSDK_NGX_VULKAN_Init_Ext2");
-        _DLSSG_VULKAN_Shutdown = (PFN_VULKAN_Shutdown) GetProcAddress(_dll, "NVSDK_NGX_VULKAN_Shutdown");
-        _DLSSG_VULKAN_Shutdown1 = (PFN_VULKAN_Shutdown1) GetProcAddress(_dll, "NVSDK_NGX_VULKAN_Shutdown1");
+        _DLSSG_VULKAN_Init = (PFN_VULKAN_Init) GetProcAddress(_dllVulkan, "NVSDK_NGX_VULKAN_Init");
+        _DLSSG_VULKAN_Init_Ext = (PFN_VULKAN_Init_Ext) GetProcAddress(_dllVulkan, "NVSDK_NGX_VULKAN_Init_Ext");
+        _DLSSG_VULKAN_Init_Ext2 = (PFN_VULKAN_Init_Ext2) GetProcAddress(_dllVulkan, "NVSDK_NGX_VULKAN_Init_Ext2");
+        _DLSSG_VULKAN_Shutdown = (PFN_VULKAN_Shutdown) GetProcAddress(_dllVulkan, "NVSDK_NGX_VULKAN_Shutdown");
+        _DLSSG_VULKAN_Shutdown1 = (PFN_VULKAN_Shutdown1) GetProcAddress(_dllVulkan, "NVSDK_NGX_VULKAN_Shutdown1");
         _DLSSG_VULKAN_GetScratchBufferSize =
-            (PFN_VULKAN_GetScratchBufferSize) GetProcAddress(_dll, "NVSDK_NGX_VULKAN_GetScratchBufferSize");
-        _DLSSG_VULKAN_CreateFeature = (PFN_VULKAN_CreateFeature) GetProcAddress(_dll, "NVSDK_NGX_VULKAN_CreateFeature");
+            (PFN_VULKAN_GetScratchBufferSize) GetProcAddress(_dllVulkan, "NVSDK_NGX_VULKAN_GetScratchBufferSize");
+        _DLSSG_VULKAN_CreateFeature =
+            (PFN_VULKAN_CreateFeature) GetProcAddress(_dllVulkan, "NVSDK_NGX_VULKAN_CreateFeature");
         _DLSSG_VULKAN_CreateFeature1 =
-            (PFN_VULKAN_CreateFeature1) GetProcAddress(_dll, "NVSDK_NGX_VULKAN_CreateFeature1");
+            (PFN_VULKAN_CreateFeature1) GetProcAddress(_dllVulkan, "NVSDK_NGX_VULKAN_CreateFeature1");
         _DLSSG_VULKAN_ReleaseFeature =
-            (PFN_VULKAN_ReleaseFeature) GetProcAddress(_dll, "NVSDK_NGX_VULKAN_ReleaseFeature");
+            (PFN_VULKAN_ReleaseFeature) GetProcAddress(_dllVulkan, "NVSDK_NGX_VULKAN_ReleaseFeature");
         _DLSSG_VULKAN_GetFeatureRequirements =
-            (PFN_VULKAN_GetFeatureRequirements) GetProcAddress(_dll, "NVSDK_NGX_VULKAN_GetFeatureRequirements");
+            (PFN_VULKAN_GetFeatureRequirements) GetProcAddress(_dllVulkan, "NVSDK_NGX_VULKAN_GetFeatureRequirements");
         _DLSSG_VULKAN_EvaluateFeature =
-            (PFN_VULKAN_EvaluateFeature) GetProcAddress(_dll, "NVSDK_NGX_VULKAN_EvaluateFeature");
+            (PFN_VULKAN_EvaluateFeature) GetProcAddress(_dllVulkan, "NVSDK_NGX_VULKAN_EvaluateFeature");
         _DLSSG_VULKAN_PopulateParameters_Impl =
-            (PFN_VULKAN_PopulateParameters_Impl) GetProcAddress(_dll, "NVSDK_NGX_VULKAN_PopulateParameters_Impl");
+            (PFN_VULKAN_PopulateParameters_Impl) GetProcAddress(_dllVulkan, "NVSDK_NGX_VULKAN_PopulateParameters_Impl");
         _refreshGlobalConfiguration =
-            (PFN_RefreshGlobalConfiguration) GetProcAddress(_dll, "RefreshGlobalConfiguration");
-        _fsrDebugView = (PFN_EnableDebugView) GetProcAddress(_dll, "FSRDebugView");
+            (PFN_RefreshGlobalConfiguration) GetProcAddress(_dllVulkan, "RefreshGlobalConfiguration");
+        _fsrDebugView = (PFN_EnableDebugView) GetProcAddress(_dllVulkan, "FSRDebugView");
         _vulkan_inited = true;
 
         LOG_INFO("DLSSG Mod initialized for Vulkan");
@@ -408,7 +414,7 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InCm
         }
 
         bool applyHudCutoff = Config::Instance()->FGHudCutoff.value_or_default() > 0.0f ||
-                              (State::Instance().gameQuirks & GameQuirk::FSRFGHudlessMismatchFixup && !_mfg);
+                              (State::Instance().gameQuirks & GameQuirk::FSRFGHudlessMismatchFixup && !_mfgDx12);
 
         uint32_t frameIndex = 1;
         InParameters->Get("DLSSG.MultiFrameIndex", &frameIndex);

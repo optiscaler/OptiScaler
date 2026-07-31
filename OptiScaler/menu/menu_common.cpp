@@ -1759,7 +1759,7 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
 
             if (state.activeFgOutput == FGOutput::NvngxFG || state.activeFgOutput == FGOutput::DLSSGWithNvngx)
             {
-                if (Nvngx_FG::isMFG())
+                if (Nvngx_FG::getMaxFakeFramesCount(state.swapchainApi) > 1)
                 {
                     if (state.dlssgDetectedInterpolationCount == 0)
                         fgText = " (Enabler off)";
@@ -2980,7 +2980,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     auto constexpr nvngxInputIndex = (uint32_t) FGInput::NvngxFG;
     if (state.activeFgInput == FGInput::NvngxFG)
     {
-        if (Nvngx_FG::isMFG())
+        if (Nvngx_FG::getMaxFakeFramesCount(state.swapchainApi) > 1)
             inputOptions[nvngxInputIndex].label = "Artur's DLSSG";
         else
             inputOptions[nvngxInputIndex].label = "Nukem's DLSSG";
@@ -3052,7 +3052,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     auto constexpr nvngxOutputIndex = (uint32_t) FGOutput::NvngxFG;
     if (state.activeFgOutput == FGOutput::NvngxFG)
     {
-        if (Nvngx_FG::isMFG())
+        if (Nvngx_FG::getMaxFakeFramesCount(state.swapchainApi) > 1)
             outputOptions[nvngxOutputIndex].label = "FSR3-MFG via DLSS Enabler";
         else
             outputOptions[nvngxOutputIndex].label = "FSR3-FG via Nukem's";
@@ -4327,7 +4327,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
     if ((state.activeFgInput == FGInput::NvngxFG && state.activeFgOutput == FGOutput::NvngxFG) ||
         state.activeFgOutput == FGOutput::DLSSGWithNvngx)
     {
-        if (Nvngx_FG::isMFG())
+        if (Nvngx_FG::getMaxFakeFramesCount(state.swapchainApi) > 1)
         {
             SeparatorWithHelpMarker("Frame Generation (FSR3-MFG via DLSS Enabler)",
                                     "DLSS Enabler as dlss-enabler-headless.dll\n"
@@ -4347,7 +4347,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                                "dlss-enabler-headless.dll next to OptiScaler");
         }
 
-        if (Nvngx_FG::isMFG())
+        if (Nvngx_FG::getMaxFakeFramesCount(state.swapchainApi) > 1)
         {
             ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)),
                                "Using a subset of features from DLSS Enabler");
@@ -4407,7 +4407,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             }
         }
 
-        if (Nvngx_FG::isLoaded())
+        if (Nvngx_FG::isLoaded(state.swapchainApi))
         {
             if (bool disableHudless = config->FGDLSSGDisableHudless.value_or_default();
                 ImGui::Checkbox("Disable Hudless", &disableHudless))
@@ -4416,7 +4416,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             }
             ShowHelpMarker("Might be required for some sets of DispatchFlags");
 
-            if (Nvngx_FG::isMFG())
+            if (Nvngx_FG::getMaxFakeFramesCount(state.swapchainApi) > 1)
             {
                 if (bool showDebug = config->FGDLSSGShowDebug.value_or_default();
                     ImGui::Checkbox("Show Debug", &showDebug))
