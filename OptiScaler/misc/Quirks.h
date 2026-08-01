@@ -61,6 +61,7 @@ enum class GameQuirk : uint64_t
     ForceDepthD32S8,
     PregmataFixDLSSModes,
     IgnoreValidUntilEvaluateForFG,
+    IgnoreTagsWithoutHudlessForFG,
     ForceFGRenderSizeMVs,
     CreateSLOnThe2ndDevice,
     // Don't forget to add the new entry to printQuirks
@@ -136,8 +137,8 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY_UE(client, GameQuirk::DontUseNtDllHooks, GameQuirk::DoNotPreserveFGSwapChain),
 
     // Zenless Zone Zero
-    // IgnoreValidUntilEvaluateForFG fixes flipped Unity MVs/Depth
-    QUIRK_ENTRY("zenlesszonezero.exe", GameQuirk::IgnoreValidUntilEvaluateForFG),
+    // IgnoreTagsWithoutHudlessForFG fixes flipped Unity MVs/Depth
+    QUIRK_ENTRY("zenlesszonezero.exe", GameQuirk::IgnoreTagsWithoutHudlessForFG),
 
     // Trails in the Sky 1st Chapter
     QUIRK_ENTRY("sora_1st.exe", GameQuirk::UseFsr2Dx11Inputs, GameQuirk::DisableDxgiSpoofing),
