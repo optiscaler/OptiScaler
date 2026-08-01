@@ -2,9 +2,7 @@
 
 #include <cstdint>
 
-
 #include "sl_struct.h"
-
 
 namespace sl
 {
@@ -18,6 +16,5 @@ enum class RenderAPI : uint32_t
     eVulkan,
     eCount
 };
-
 
 }

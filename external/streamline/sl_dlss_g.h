@@ -36,6 +36,7 @@ enum class DLSSGMode : uint32_t
     eOff,
     eOn,
     eAuto,
+    eDynamic,
     eCount
 };
 
@@ -46,6 +47,9 @@ enum class DLSSGFlags : uint32_t
     eRequestVRAMEstimate = 1 << 2,
     eRetainResourcesWhenOff = 1 << 3,
     eEnableFullscreenMenuDetection = 1 << 4,
+
+    //! All DLSS-FG flags.  This isn't expected to be used directly by integrations, but may be useful for e.g. writing helpers.
+    eAll = eShowOnlyInterpolatedFrame | eDynamicResolutionEnabled | eRequestVRAMEstimate | eRetainResourcesWhenOff | eEnableFullscreenMenuDetection
 };
 
 enum class DLSSGQueueParallelismMode : uint32_t
@@ -65,7 +69,7 @@ enum class DLSSGQueueParallelismMode : uint32_t
 SL_ENUM_OPERATORS_32(DLSSGFlags)
 
 // {FAC5F1CB-2DFD-4F36-A1E6-3A9E865256C5}
-SL_STRUCT_BEGIN(DLSSGOptions, StructType({ 0xfac5f1cb, 0x2dfd, 0x4f36, { 0xa1, 0xe6, 0x3a, 0x9e, 0x86, 0x52, 0x56, 0xc5 } }), kStructVersion3)
+SL_STRUCT_BEGIN(DLSSGOptions, StructType({ 0xfac5f1cb, 0x2dfd, 0x4f36, { 0xa1, 0xe6, 0x3a, 0x9e, 0x86, 0x52, 0x56, 0xc5 } }), kStructVersion5)
     //! Specifies which mode should be used.
     DLSSGMode mode = DLSSGMode::eOff;
     //! Number of frames to generate inbetween fully rendered frames. Cannot exceed DLSSGState::numFramesToGenerateMax.
@@ -106,6 +110,14 @@ SL_STRUCT_BEGIN(DLSSGOptions, StructType({ 0xfac5f1cb, 0x2dfd, 0x4f36, { 0xa1, 0
     // kStructVersion3
     //! Optional - determines the level of client and DLSSG queue parallelism to use for performance gain - must be same for all viewports.
     DLSSGQueueParallelismMode queueParallelismMode{};
+    // kStructVersion4
+    //! Optional - if true, DLSSG will allocate a codepath that supports interpolating 'HUDless' and 'UI Color & Alpha' separately than the Color Backbuffer.
+    //!            this property can be overridden by Nvidia App. See the programming guide for more details.
+    Boolean enableUserInterfaceRecomposition = Boolean::eFalse;
+    // kStructVersion5
+    //! Optional - Target frame rate for dynamic frame generation when enabled.
+    //!            If set to 0.0f (default), auto-detects the display refresh rate.
+    float dynamicTargetFrameRate{};
     //! IMPORTANT: New members go here or if optional can be chained in a new struct, see sl_struct.h for details
 SL_STRUCT_END()
 
@@ -124,14 +136,17 @@ enum class DLSSGStatus : uint32_t
     eFailCommonConstantsInvalid = 1 << 3,
     //! D3D integrations must use SwapChain::GetCurrentBackBufferIndex API
     eFailGetCurrentBackBufferIndexNotCalled = 1 << 4,
-    eReserved5 = 1 << 5
+    //! Reserved for future use, do not use
+    eReserved5 = 1 << 5,
+
+    eAll = eFailResolutionTooLow | eFailReflexNotDetectedAtRuntime | eFailHDRFormatNotSupported | eFailCommonConstantsInvalid | eFailGetCurrentBackBufferIndexNotCalled | eReserved5
 };
 
 // Adds various useful operators for our enum
 SL_ENUM_OPERATORS_32(DLSSGStatus)
 
 // {CC8AC8E1-A179-44F5-97FA-E74112F9BC61}
-SL_STRUCT_BEGIN(DLSSGState, StructType({ 0xcc8ac8e1, 0xa179, 0x44f5, { 0x97, 0xfa, 0xe7, 0x41, 0x12, 0xf9, 0xbc, 0x61 } }), kStructVersion3)
+SL_STRUCT_BEGIN(DLSSGState, StructType({ 0xcc8ac8e1, 0xa179, 0x44f5, { 0x97, 0xfa, 0xe7, 0x41, 0x12, 0xf9, 0xbc, 0x61 } }), kStructVersion4)
     //! Specifies the amount of memory expected to be used
     uint64_t estimatedVRAMUsageInBytes{};
     //! Specifies current status of DLSS-G
@@ -141,10 +156,13 @@ SL_STRUCT_BEGIN(DLSSGState, StructType({ 0xcc8ac8e1, 0xa179, 0x44f5, { 0x97, 0xf
     //! Number of frames presented since the last 'slDLSSGGetState' call
     uint32_t numFramesActuallyPresented{};
     // kStructVersion2
-    //! Maximum number of frames possible to generate on this gpu architecture.
-    //!     For 2x only supporting devices, numFramesToGenerateMax is 1.
-    //!     For 3x and 4x supporting devices, numFramesToGenerateMax is 3.
+    //! The maximum number of interpolated frames the current system can generate per real frame.
+    //! This value represents the upper bound for 'numFramesToGenerate'.
+    //! Examples:
+    //!     - On devices supporting up to a 2x multiplier: numFramesToGenerateMax is 1.
+    //!     - On devices supporting up to a 6x multiplier: numFramesToGenerateMax is 5.
     uint32_t numFramesToGenerateMax{};
+    //! Reserved for future use, do not use
     sl::Boolean bReserved4{};
     //! Hint to the application to display VSync support in the user interface
     sl::Boolean bIsVsyncSupportAvailable{};
@@ -157,6 +175,10 @@ SL_STRUCT_BEGIN(DLSSGState, StructType({ 0xcc8ac8e1, 0xa179, 0x44f5, { 0x97, 0xf
     //! wait in the frame it would modify those inputs.
     void* inputsProcessingCompletionFence{};
     uint64_t lastPresentInputsProcessingCompletionFenceValue{};
+    // kStructVersion4
+    //! Whether or not Dynamic Multi Frame Generation (DLSSGMode::eDynamic) is
+    //! supported
+    sl::Boolean bIsDynamicMFGSupported{};
     //! IMPORTANT: New members go here or if optional can be chained in a new struct, see sl_struct.h for details
 SL_STRUCT_END()
 

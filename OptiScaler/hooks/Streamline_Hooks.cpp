@@ -727,14 +727,33 @@ bool StreamlineHooks::hkcommon_slOnPluginLoad(sl::param::IParameters* params, co
 
 sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewport, const sl::DLSSGOptions& options)
 {
+    // Avoid reading past the game's struct's size
+    sl::DLSSGOptions newOptions {};
+    auto newStructVer = newOptions.structVersion;
+
+    if (options.structVersion == 1)
+        memcpy(&newOptions, &options, 104);
+    else if (options.structVersion == 2 || options.structVersion == 3)
+        memcpy(&newOptions, &options, 112);
+    else if (options.structVersion == 4 || options.structVersion == 5)
+        memcpy(&newOptions, &options, 120);
+    else
+        newOptions = options;
+
+    newOptions.structVersion = newStructVer;
+
     // Make DLSSG auto always mean On
-    sl::DLSSGOptions newOptions = options;
-    newOptions.mode = newOptions.mode == sl::DLSSGMode::eOff ? sl::DLSSGMode::eOff : sl::DLSSGMode::eOn;
+    if (newOptions.mode == sl::DLSSGMode::eAuto)
+        newOptions.mode = sl::DLSSGMode::eOn;
+
+    const auto dlssgPotentiallyActive = newOptions.mode == sl::DLSSGMode::eOn ||
+                                        newOptions.mode == sl::DLSSGMode::eAuto ||
+                                        newOptions.mode == sl::DLSSGMode::eDynamic;
 
     if (State::Instance().swapchainApi == API::Vulkan)
     {
         // Only matters for Vulkan, DX doesn't use this delay
-        if (options.mode != sl::DLSSGMode::eOff && !MenuOverlayBase::IsVisible())
+        if (dlssgPotentiallyActive && !MenuOverlayBase::IsVisible())
             State::Instance().delayMenuRenderBy = 10;
 
         if (MenuOverlayBase::IsVisible())
@@ -753,13 +772,42 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
 sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport, sl::DLSSGState& state,
                                               const sl::DLSSGOptions* options)
 {
-    auto result = o_slDLSSGGetState(viewport, state, options);
+    sl::Result result {};
 
-    auto& s = State::Instance();
-
-    if (s.activeFgInput == FGInput::DLSSG)
+    const auto originalStructVersion = state.structVersion;
+    if (originalStructVersion < 4)
     {
-        auto fg = s.currentFG;
+        sl::DLSSGState newState {};
+
+        // We might be feeding a newer struct to an older SL but that seems to work just fine for this Get function
+        result = o_slDLSSGGetState(viewport, dynamic_cast<sl::DLSSGState&>(newState), options);
+
+        // Copy back data to game's struct
+        memcpy(&state, &newState, 56); // struct ver 1 size
+        state.structVersion = originalStructVersion;
+
+        if (originalStructVersion >= 2)
+        {
+            state.numFramesToGenerateMax = newState.numFramesToGenerateMax;
+            state.bReserved4 = newState.bReserved4;
+            state.bIsVsyncSupportAvailable = newState.bIsVsyncSupportAvailable;
+        }
+
+        if (originalStructVersion >= 3)
+        {
+            state.inputsProcessingCompletionFence = newState.inputsProcessingCompletionFence;
+            state.lastPresentInputsProcessingCompletionFenceValue =
+                newState.lastPresentInputsProcessingCompletionFenceValue;
+        }
+    }
+    else
+    {
+        result = o_slDLSSGGetState(viewport, state, options);
+    }
+
+    if (State::Instance().activeFgInput == FGInput::DLSSG)
+    {
+        auto fg = State::Instance().currentFG;
 
         if (fg != nullptr)
         {

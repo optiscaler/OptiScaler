@@ -71,7 +71,7 @@ enum class Result
     eErrorFeatureMissingDependency,
     eErrorFeatureManagerInvalidState,
     eErrorInvalidState,
-    eWarnOutOfVRAM,
+    eWarnOutOfVRAM
 };
 
 }

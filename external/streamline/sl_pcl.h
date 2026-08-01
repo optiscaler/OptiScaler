@@ -24,6 +24,8 @@
 
 #include <cassert>
 
+#include "sl.h"
+
 namespace sl
 {
 
@@ -77,6 +79,9 @@ enum class PCLMarker: uint32_t
     eCameraConstructed = 17,
     eLateWarpRenderSubmitStart = 18,
     eLateWarpRenderSubmitEnd = 19,
+    eVendorInternalAsyncPresentStart = 20,
+    eVendorInternalAsyncPresentEnd = 21,
+    eNumPresentsInBatch = 22,
 
     eMaximum
 };
