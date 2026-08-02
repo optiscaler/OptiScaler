@@ -112,9 +112,6 @@ class Hudfix_Dx12
 
     static int GetIndex();
 
-    inline static IID streamlineRiid {};
-    static bool CheckForRealObject(std::string functionName, IUnknown* pObject, IUnknown** ppRealObject);
-
   public:
     // Trig for upscaling start
     static void UpscaleStart();
