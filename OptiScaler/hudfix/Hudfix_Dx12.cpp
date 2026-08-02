@@ -164,6 +164,8 @@ bool Hudfix_Dx12::CreateBufferResource(ID3D12Device* InDevice, ResourceInfo* InS
         if (bufDesc.Width != (UINT64) (InSource->width) || bufDesc.Height != (UINT) (InSource->height) ||
             bufDesc.Format != InSource->format)
         {
+            // Maybe need to add a fence here
+            // To be sure it's not used anymore
             (*OutResource)->Release();
             (*OutResource) = nullptr;
             LOG_WARN("Release {}x{}, new one: {}x{}", bufDesc.Width, bufDesc.Height, InSource->width, InSource->height);
@@ -456,30 +458,6 @@ void Hudfix_Dx12::HudlessFound(ID3D12GraphicsCommandList* cmdList)
     _fgCounter = _upscaleCounter;
 
     _skipHudlessChecks = false;
-}
-
-bool Hudfix_Dx12::CheckForRealObject(std::string functionName, IUnknown* pObject, IUnknown** ppRealObject)
-{
-    // return false;
-
-    if (streamlineRiid.Data1 == 0)
-    {
-        auto iidResult = IIDFromString(L"{ADEC44E2-61F0-45C3-AD9F-1B37379284FF}", &streamlineRiid);
-
-        if (iidResult != S_OK)
-            return false;
-    }
-
-    auto qResult = pObject->QueryInterface(streamlineRiid, (void**) ppRealObject);
-
-    if (qResult == S_OK && *ppRealObject != nullptr)
-    {
-        LOG_INFO("{} Streamline proxy found!", functionName);
-        (*ppRealObject)->Release();
-        return true;
-    }
-
-    return false;
 }
 
 void Hudfix_Dx12::UpscaleStart()

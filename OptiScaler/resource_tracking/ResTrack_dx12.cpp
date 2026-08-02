@@ -596,8 +596,7 @@ void ResTrack_Dx12::hkCreateRenderTargetView(ID3D12Device* This, ID3D12Resource*
     if (Config::Instance()->FGHudfixDisableRTV.value_or_default())
         return;
 
-    if (pResource == nullptr || pDesc == nullptr || pDesc->ViewDimension != D3D12_RTV_DIMENSION_TEXTURE2D ||
-        !CheckResource(pResource))
+    if (pResource == nullptr || !CheckResource(pResource))
     {
         auto heap = GetHeapByCpuHandleRTV(DestDescriptor.ptr);
 
@@ -651,8 +650,7 @@ void ResTrack_Dx12::hkCreateShaderResourceView(ID3D12Device* This, ID3D12Resourc
     if (Config::Instance()->FGHudfixDisableSRV.value_or_default())
         return;
 
-    if (pResource == nullptr || pDesc == nullptr || pDesc->ViewDimension != D3D12_SRV_DIMENSION_TEXTURE2D ||
-        !CheckResource(pResource))
+    if (pResource == nullptr || !CheckResource(pResource))
     {
         auto heap = GetHeapByCpuHandleSRV(DestDescriptor.ptr);
 
@@ -706,8 +704,7 @@ void ResTrack_Dx12::hkCreateUnorderedAccessView(ID3D12Device* This, ID3D12Resour
     if (Config::Instance()->FGHudfixDisableUAV.value_or_default())
         return;
 
-    if (pResource == nullptr || pDesc == nullptr || pDesc->ViewDimension != D3D12_UAV_DIMENSION_TEXTURE2D ||
-        !CheckResource(pResource))
+    if (pResource == nullptr || !CheckResource(pResource))
     {
         auto heap = GetHeapByCpuHandleUAV(DestDescriptor.ptr);
 
@@ -1547,13 +1544,6 @@ void ResTrack_Dx12::hkDrawInstanced(ID3D12GraphicsCommandList* This, UINT Vertex
             return;
         }
 
-        // if can't find output skip
-        if (shard.map.size() == 0)
-        {
-            LOG_DEBUG_ONLY("Early exit");
-            return;
-        }
-
         ankerl::unordered_dense::map<ID3D12Resource*, ResourceInfo> val0;
         {
 
@@ -1562,6 +1552,13 @@ void ResTrack_Dx12::hkDrawInstanced(ID3D12GraphicsCommandList* This, UINT Vertex
 #else
             std::lock_guard<std::mutex> lock(shard.mutex);
 #endif
+
+            // if can't find output skip
+            if (shard.map.size() == 0)
+            {
+                LOG_DEBUG_ONLY("Early exit");
+                return;
+            }
 
             if (!shard.map.contains(This))
                 return;
@@ -1667,13 +1664,6 @@ void ResTrack_Dx12::hkDrawIndexedInstanced(ID3D12GraphicsCommandList* This, UINT
             return;
         }
 
-        // if can't find output skip
-        if (shard.map.size() == 0)
-        {
-            LOG_DEBUG_ONLY("Early exit");
-            return;
-        }
-
         ankerl::unordered_dense::map<ID3D12Resource*, ResourceInfo> val0;
         {
 
@@ -1682,6 +1672,13 @@ void ResTrack_Dx12::hkDrawIndexedInstanced(ID3D12GraphicsCommandList* This, UINT
 #else
             std::lock_guard<std::mutex> lock(shard.mutex);
 #endif
+
+            // if can't find output skip
+            if (shard.map.size() == 0)
+            {
+                LOG_DEBUG_ONLY("Early exit");
+                return;
+            }
 
             if (!shard.map.contains(This))
                 return;
@@ -1858,13 +1855,6 @@ void ResTrack_Dx12::hkDispatch(ID3D12GraphicsCommandList* This, UINT ThreadGroup
             return;
         }
 
-        // if can't find output skip
-        if (shard.map.size() == 0)
-        {
-            LOG_DEBUG_ONLY("Early exit");
-            return;
-        }
-
         ankerl::unordered_dense::map<ID3D12Resource*, ResourceInfo> val0;
         {
 
@@ -1873,6 +1863,13 @@ void ResTrack_Dx12::hkDispatch(ID3D12GraphicsCommandList* This, UINT ThreadGroup
 #else
             std::lock_guard<std::mutex> lock(shard.mutex);
 #endif
+
+            // if can't find output skip
+            if (shard.map.size() == 0)
+            {
+                LOG_DEBUG_ONLY("Early exit");
+                return;
+            }
 
             if (!shard.map.contains(This))
                 return;
