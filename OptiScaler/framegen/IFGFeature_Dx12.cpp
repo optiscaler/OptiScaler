@@ -78,6 +78,73 @@ bool IFGFeature_Dx12::WaitForUIAllocator(UINT index)
     return true;
 }
 
+bool IFGFeature_Dx12::DrainOwnedWork(DWORD timeoutMs)
+{
+    for (size_t index = 0; index < BUFFER_COUNT; index++)
+    {
+        if (_uiCommandListResetted[index] || _scCommandListResetted[index])
+        {
+            LOG_ERROR("Lifecycle drain found an unsubmitted OptiScaler command list in slot {}", index);
+            return false;
+        }
+    }
+
+    if (_gameCommandQueue == nullptr || _scFence == nullptr || _scFenceEvent == nullptr)
+    {
+        LOG_ERROR("Lifecycle drain requires a command queue, fence, and fence event");
+        return false;
+    }
+
+    const auto fenceValue = ++_lifecycleFenceValue;
+    const auto signalResult = _gameCommandQueue->Signal(_scFence, fenceValue);
+    if (FAILED(signalResult))
+    {
+        LOG_ERROR("Lifecycle queue fence signal failed. fence {}, result {:X}", fenceValue, (UINT) signalResult);
+        return false;
+    }
+
+    const auto eventResult = _scFence->SetEventOnCompletion(fenceValue, _scFenceEvent);
+    if (FAILED(eventResult))
+    {
+        LOG_ERROR("Lifecycle queue fence SetEventOnCompletion failed. fence {}, result {:X}", fenceValue,
+                  (UINT) eventResult);
+        return false;
+    }
+
+    const auto waitResult = WaitForSingleObject(_scFenceEvent, timeoutMs);
+    if (waitResult != WAIT_OBJECT_0)
+    {
+        LOG_ERROR("Lifecycle queue fence wait failed. fence {}, completed {}, waitResult {:X}", fenceValue,
+                  _scFence->GetCompletedValue(), waitResult);
+        return false;
+    }
+
+    return _scFence->GetCompletedValue() >= fenceValue;
+}
+
+void IFGFeature_Dx12::ResetLifecycleTracking()
+{
+    for (size_t index = 0; index < BUFFER_COUNT; index++)
+    {
+        std::unique_lock<std::shared_mutex> lock(_resourceMutex[index]);
+        _frameResources[index].clear();
+        _resourceReady[index].clear();
+        _waitingExecute[index] = false;
+        _noUi[index] = true;
+        _noDistortionField[index] = true;
+        _noHudless[index] = true;
+    }
+
+    // _resourceCopy contains OptiScaler-owned reusable allocations. Keep those
+    // alive; this stage invalidates tracking only and never releases game-owned
+    // resources.
+    _resourceFrame.clear();
+    _waitingNewFrameData = false;
+    _lastDispatchedFrame = _frameCount;
+    _lastFGFrame = _frameCount;
+    ResetCounters();
+}
+
 ID3D12GraphicsCommandList* IFGFeature_Dx12::GetUICommandList(int index)
 {
     if (index < 0 || index >= BUFFER_COUNT)

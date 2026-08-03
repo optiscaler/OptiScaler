@@ -115,10 +115,25 @@ void UpscalerInputsDx12::UpscaleStart(ID3D12GraphicsCommandList* InCmdList, NVSD
     if (Config::Instance()->FGAsync.value_or_default())
         fgConstants.flags |= FG_Flags::Async;
 
-    fg->EvaluateState(_device, fgConstants);
-
     int reset = 0;
     InParameters->Get(NVSDK_NGX_Parameter_Reset, &reset);
+
+    ID3D12Resource* paramVelocity = nullptr;
+    if (InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, &paramVelocity) != NVSDK_NGX_Result_Success)
+        InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, (void**) &paramVelocity);
+
+    ID3D12Resource* paramDepth = nullptr;
+    if (InParameters->Get(NVSDK_NGX_Parameter_Depth, &paramDepth) != NVSDK_NGX_Result_Success)
+        InParameters->Get(NVSDK_NGX_Parameter_Depth, (void**) &paramDepth);
+
+    const auto validLifecycleInputs = paramVelocity != nullptr && paramDepth != nullptr && feature->RenderWidth() > 0 &&
+                                      feature->RenderHeight() > 0 && feature->DisplayWidth() > 0 &&
+                                      feature->DisplayHeight() > 0;
+
+    // Latch lifecycle signals before EvaluateState consumes fgChanged. Recovery
+    // mode may own a serialized disable, drain, warm-up, and re-enable transition.
+    fg->ProcessUpscalerLifecycle(state.fgChanged, state.scChanged, reset != 0, validLifecycleInputs);
+    fg->EvaluateState(_device, fgConstants);
 
     InParameters->Get(NVSDK_NGX_Parameter_MV_Scale_X, &mvScaleX);
     InParameters->Get(NVSDK_NGX_Parameter_MV_Scale_Y, &mvScaleY);
@@ -158,10 +173,6 @@ void UpscalerInputsDx12::UpscaleStart(ID3D12GraphicsCommandList* InCmdList, NVSD
 
         LOG_DEBUG("(FG) copy buffers for fgUpscaledImage[{}], frame: {}", frameIndex, fg->FrameCount());
 
-        ID3D12Resource* paramVelocity = nullptr;
-        if (InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, &paramVelocity) != NVSDK_NGX_Result_Success)
-            InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, (void**) &paramVelocity);
-
         if (paramVelocity != nullptr)
         {
             Dx12Resource setResource {};
@@ -185,10 +196,6 @@ void UpscalerInputsDx12::UpscaleStart(ID3D12GraphicsCommandList* InCmdList, NVSD
 
             fg->SetResource(&setResource);
         }
-
-        ID3D12Resource* paramDepth = nullptr;
-        if (InParameters->Get(NVSDK_NGX_Parameter_Depth, &paramDepth) != NVSDK_NGX_Result_Success)
-            InParameters->Get(NVSDK_NGX_Parameter_Depth, (void**) &paramDepth);
 
         if (paramDepth != nullptr)
         {

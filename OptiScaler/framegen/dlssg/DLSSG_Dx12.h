@@ -1,8 +1,11 @@
 #pragma once
 
 #include <framegen/IFGFeature_Dx12.h>
+#include "DLSSG_Lifecycle.h"
 
 #include <proxies/Streamline_Proxy.h>
+
+#include <atomic>
 
 class DLSSG_Dx12 : public virtual IFGFeature_Dx12
 {
@@ -16,8 +19,12 @@ class DLSSG_Dx12 : public virtual IFGFeature_Dx12
 
     ID3D12Fence* dlssgFence[BUFFER_COUNT] = {};
     UINT64 lastOptionFrame = 0;
+    optiscaler::dlssg::LifecycleController _lifecycleController;
+    std::atomic<bool> _lifecycleRequestPending { false };
 
     bool Dispatch();
+    bool RequestLifecycleTransition(const char* reason);
+    void ActivateAfterLifecycleWarmup();
 
   protected:
     void ReleaseObjects() override final;
@@ -45,6 +52,8 @@ class DLSSG_Dx12 : public virtual IFGFeature_Dx12
     bool Shutdown() override final;
 
     void EvaluateState(ID3D12Device* device, FG_Constants& fgConstants) override final;
+    void ProcessUpscalerLifecycle(bool fgChanged, bool swapchainChanged, bool reset,
+                                  bool validInputs) override final;
 
     bool Present() override final;
 
