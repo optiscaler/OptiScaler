@@ -109,6 +109,10 @@ static const QuirkEntry quirkTable[] = {
     // Silent Hill f
     QUIRK_ENTRY_UE(shf, GameQuirk::AlwaysCaptureFSRFGSwapchain),
 
+    // Beast of Reincarnation
+    QUIRK_ENTRY_UE(beastofreincarnation, GameQuirk::DisableFSR2Inputs, GameQuirk::DisableFSR3Inputs,
+                   GameQuirk::AlwaysCaptureFSRFGSwapchain),
+
     // Tainted Grail - Fall of Avalon
     QUIRK_ENTRY("fall of avalon.exe", GameQuirk::ForceAutoExposure),
 
