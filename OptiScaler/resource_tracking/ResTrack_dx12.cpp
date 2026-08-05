@@ -787,8 +787,8 @@ HRESULT ResTrack_Dx12::hkCreateDescriptorHeap(ID3D12Device* This, D3D12_DESCRIPT
                 if (fgHeaps[i] != nullptr && !fgHeaps[i]->active.load(std::memory_order_acquire))
                 {
 
-                    fgHeaps[i] = std::make_shared<HeapInfo>(heap, cpuStart, cpuEnd, gpuStart, gpuEnd,
-                                                           numDescriptors, increment, type);
+                    fgHeaps[i] = std::make_shared<HeapInfo>(heap, cpuStart, cpuEnd, gpuStart, gpuEnd, numDescriptors,
+                                                            increment, type);
 
                     gHeapGeneration.fetch_add(1, std::memory_order_release);
                     foundEmpty = true;
@@ -803,8 +803,8 @@ HRESULT ResTrack_Dx12::hkCreateDescriptorHeap(ID3D12Device* This, D3D12_DESCRIPT
                 if (fgHeaps.capacity() == fgHeaps.size())
                     fgHeaps.reserve(fgHeaps.size() + 65536);
 
-                fgHeaps.push_back(std::make_shared<HeapInfo>(heap, cpuStart, cpuEnd, gpuStart, gpuEnd,
-                                                            numDescriptors, increment, type));
+                fgHeaps.push_back(std::make_shared<HeapInfo>(heap, cpuStart, cpuEnd, gpuStart, gpuEnd, numDescriptors,
+                                                             increment, type));
 
                 gHeapGeneration.fetch_add(1, std::memory_order_release);
                 LOG_DEBUG("Adding new heap slot: {}", fgHeaps.size() - 1);
