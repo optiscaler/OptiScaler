@@ -7,15 +7,20 @@
 
 #include <ankerl/unordered_dense.h>
 
-#include <new>
-#include <mutex>
+#include <algorithm>
+#include <array>
 #include <atomic>
+#include <cstdint>
+#include <memory>
+#include <mutex>
+#include <new>
 #include <shared_mutex>
+#include <vector>
 
 // #define DEBUG_TRACKING
 
 #ifdef DEBUG_TRACKING
-static void TestResource(ResourceInfo* info)
+static void TestResource(const ResourceInfo* info)
 {
     if (info == nullptr || info->buffer == nullptr)
         return;
@@ -120,16 +125,29 @@ struct SpinLock
 #endif
 #endif
 
-static ankerl::unordered_dense::map<ID3D12Resource*, std::vector<ResourceInfo*>> _trackedResources;
+struct HeapInfo;
+
+struct TrackedResourceSlot
+{
+    std::weak_ptr<HeapInfo> heap;
+    uint64_t heapVersion = 0;
+    UINT index = 0;
+};
+
+inline ankerl::unordered_dense::map<ID3D12Resource*, std::vector<TrackedResourceSlot>> _trackedResources;
 #ifdef USE_SPINLOCK_MUTEX
-static SpinLock _trackedResourcesMutex;
+inline SpinLock _trackedResourcesMutex;
 #else
-static std::mutex _trackedResourcesMutex;
+inline std::mutex _trackedResourcesMutex;
 #endif
 
-struct HeapInfo
+struct HeapInfo : public std::enable_shared_from_this<HeapInfo>
 {
-    // mutable std::shared_mutex mutex;
+    // Avoiding one lock object per descriptor
+    static constexpr size_t DESCRIPTOR_LOCK_STRIPE_COUNT = 256;
+    static_assert((DESCRIPTOR_LOCK_STRIPE_COUNT & (DESCRIPTOR_LOCK_STRIPE_COUNT - 1)) == 0);
+
+    mutable std::array<std::shared_mutex, DESCRIPTOR_LOCK_STRIPE_COUNT> descriptorLocks;
 
     ID3D12DescriptorHeap* heap = nullptr;
     SIZE_T cpuStart = 0;
@@ -141,7 +159,7 @@ struct HeapInfo
     UINT type = 0;
     std::shared_ptr<ResourceInfo[]> info;
     UINT lastOffset = 0;
-    bool active = true;
+    std::atomic<bool> active { true };
     std::atomic<uint64_t> version { 0 };
 
     HeapInfo(ID3D12DescriptorHeap* heap, SIZE_T cpuStart, SIZE_T cpuEnd, SIZE_T gpuStart, SIZE_T gpuEnd,
@@ -153,94 +171,144 @@ struct HeapInfo
         version.store(globalHeapVersion.fetch_add(1, std::memory_order_relaxed), std::memory_order_relaxed);
 
         for (size_t i = 0; i < numDescriptors; i++)
-        {
             info[i].buffer = nullptr;
-        }
     }
 
-    void DetachFromOldResource(SIZE_T index) const
+    bool GetCpuIndex(SIZE_T cpuHandle, UINT& index) const
     {
-        if (info[index].buffer == nullptr)
+        if (increment == 0 || cpuHandle < cpuStart || cpuHandle >= cpuEnd)
+            return false;
+
+        auto calculated = (cpuHandle - cpuStart) / increment;
+        if (calculated >= numDescriptors)
+            return false;
+
+        index = static_cast<UINT>(calculated);
+        return true;
+    }
+
+    bool GetGpuIndex(SIZE_T gpuHandle, UINT& index) const
+    {
+        if (increment == 0 || gpuHandle < gpuStart || gpuHandle >= gpuEnd)
+            return false;
+
+        auto calculated = (gpuHandle - gpuStart) / increment;
+        if (calculated >= numDescriptors)
+            return false;
+
+        index = static_cast<UINT>(calculated);
+        return true;
+    }
+
+    // Caller must hold the descriptor stripe exclusively.
+    void DetachFromOldResourceLocked(UINT index)
+    {
+        auto* oldResource = info[index].buffer;
+        if (oldResource == nullptr)
             return;
 
         std::scoped_lock lock(_trackedResourcesMutex);
         LOG_TRACK("Heap: {:X}, Index: {}, Resource: {:X}, Res: {}x{}, Format: {}", (size_t) this, index,
-                  (size_t) info[index].buffer, info[index].width, info[index].height, (UINT) info[index].format);
-        auto it = _trackedResources.find(info[index].buffer);
-        if (it != _trackedResources.end())
-        {
-            auto& vec = it->second;
-            vec.erase(std::remove(vec.begin(), vec.end(), &info[index]), vec.end());
-            if (vec.empty())
-                _trackedResources.erase(it);
-        }
-    }
+                  (size_t) oldResource, info[index].width, info[index].height, (UINT) info[index].format);
 
-    void AttachToNewResource(SIZE_T index) const
-    {
-        std::scoped_lock lock(_trackedResourcesMutex);
-        LOG_TRACK("Heap: {:X}, Index: {}, Resource: {:X}, Res: {}x{}, Format: {}", (size_t) this, index,
-                  (size_t) info[index].buffer, info[index].width, info[index].height, (UINT) info[index].format);
-        auto& vec = _trackedResources[info[index].buffer];
-        if (std::find(vec.begin(), vec.end(), &info[index]) == vec.end())
-            vec.push_back(&info[index]);
-    }
-
-    ResourceInfo* GetByCpuHandle(SIZE_T cpuHandle) const
-    {
-        auto index = (cpuHandle - cpuStart) / increment;
-
-        if (index >= numDescriptors)
-            return nullptr;
-
-        // std::shared_lock<std::shared_mutex> lock(mutex);
-
-        if (info[index].buffer == nullptr)
-            return nullptr;
-
-#ifdef DEBUG_TRACKING
-        TestResource(&info[index]);
-#endif
-
-        return &info[index];
-    }
-
-    ResourceInfo* GetByGpuHandle(SIZE_T gpuHandle) const
-    {
-        auto index = (gpuHandle - gpuStart) / increment;
-
-        if (index >= numDescriptors)
-            return nullptr;
-
-        // std::shared_lock<std::shared_mutex> lock(mutex);
-
-        if (info[index].buffer == nullptr)
-            return nullptr;
-
-#ifdef DEBUG_TRACKING
-        TestResource(&info[index]);
-#endif
-
-        return &info[index];
-    }
-
-    void SetByCpuHandle(SIZE_T cpuHandle, ResourceInfo setInfo) const
-    {
-        auto index = (cpuHandle - cpuStart) / increment;
-
-        if (index >= numDescriptors)
+        auto it = _trackedResources.find(oldResource);
+        if (it == _trackedResources.end())
             return;
 
-        // std::unique_lock<std::shared_mutex> lock(mutex);
+        const auto currentVersion = version.load(std::memory_order_relaxed);
+        auto& vec = it->second;
+        vec.erase(std::remove_if(vec.begin(), vec.end(), [currentVersion, index](const TrackedResourceSlot& slot)
+                                 { return slot.heapVersion == currentVersion && slot.index == index; }),
+                  vec.end());
+        if (vec.empty())
+            _trackedResources.erase(it);
+    }
+
+    void AttachToNewResourceLocked(UINT index)
+    {
+        auto* newResource = info[index].buffer;
+        if (newResource == nullptr)
+            return;
+
+        std::scoped_lock lock(_trackedResourcesMutex);
+        LOG_TRACK("Heap: {:X}, Index: {}, Resource: {:X}, Res: {}x{}, Format: {}", (size_t) this, index,
+                  (size_t) newResource, info[index].width, info[index].height, (UINT) info[index].format);
+
+        const auto currentVersion = version.load(std::memory_order_relaxed);
+        auto& vec = _trackedResources[newResource];
+        auto found = std::find_if(vec.begin(), vec.end(), [currentVersion, index](const TrackedResourceSlot& slot)
+                                  { return slot.heapVersion == currentVersion && slot.index == index; });
+
+        if (found == vec.end())
+            vec.push_back({ shared_from_this(), currentVersion, index });
+    }
+
+    bool GetByCpuHandle(SIZE_T cpuHandle, ResourceInfo& outInfo) const
+    {
+        if (!active.load(std::memory_order_acquire))
+            return false;
+
+        UINT index = 0;
+        if (!GetCpuIndex(cpuHandle, index))
+            return false;
+
+        std::shared_lock lock(GetDescriptorLock(index));
+        if (!active.load(std::memory_order_acquire) || info[index].buffer == nullptr)
+            return false;
+
+        outInfo = info[index];
+
+#ifdef DEBUG_TRACKING
+        TestResource(&outInfo);
+#endif
+
+        return true;
+    }
+
+    bool GetByGpuHandle(SIZE_T gpuHandle, ResourceInfo& outInfo) const
+    {
+        if (!active.load(std::memory_order_acquire))
+            return false;
+
+        UINT index = 0;
+        if (!GetGpuIndex(gpuHandle, index))
+            return false;
+
+        std::shared_lock lock(GetDescriptorLock(index));
+        if (!active.load(std::memory_order_acquire) || info[index].buffer == nullptr)
+            return false;
+
+        outInfo = info[index];
+
+#ifdef DEBUG_TRACKING
+        TestResource(&outInfo);
+#endif
+
+        return true;
+    }
+
+    void SetByCpuHandle(SIZE_T cpuHandle, const ResourceInfo& setInfo)
+    {
+        if (!active.load(std::memory_order_acquire))
+            return;
+
+        UINT index = 0;
+        if (!GetCpuIndex(cpuHandle, index))
+            return;
+
+        std::unique_lock lock(GetDescriptorLock(index));
+        if (!active.load(std::memory_order_acquire))
+            return;
 
 #ifdef DEBUG_TRACKING
         TestResource(&setInfo);
 #endif
+
         if (info[index].buffer != setInfo.buffer)
         {
-            DetachFromOldResource(index);
+            DetachFromOldResourceLocked(index);
             info[index] = setInfo;
-            AttachToNewResource(index);
+            AttachToNewResourceLocked(index);
         }
         else
         {
@@ -248,14 +316,18 @@ struct HeapInfo
         }
     }
 
-    void SetByGpuHandle(SIZE_T gpuHandle, ResourceInfo setInfo) const
+    void SetByGpuHandle(SIZE_T gpuHandle, const ResourceInfo& setInfo)
     {
-        auto index = (gpuHandle - gpuStart) / increment;
-
-        if (index >= numDescriptors)
+        if (!active.load(std::memory_order_acquire))
             return;
 
-        // std::unique_lock<std::shared_mutex> lock(mutex);
+        UINT index = 0;
+        if (!GetGpuIndex(gpuHandle, index))
+            return;
+
+        std::unique_lock lock(GetDescriptorLock(index));
+        if (!active.load(std::memory_order_acquire))
+            return;
 
 #ifdef DEBUG_TRACKING
         TestResource(&setInfo);
@@ -263,9 +335,9 @@ struct HeapInfo
 
         if (info[index].buffer != setInfo.buffer)
         {
-            DetachFromOldResource(index);
+            DetachFromOldResourceLocked(index);
             info[index] = setInfo;
-            AttachToNewResource(index);
+            AttachToNewResourceLocked(index);
         }
         else
         {
@@ -273,42 +345,103 @@ struct HeapInfo
         }
     }
 
-    void ClearByCpuHandle(SIZE_T cpuHandle) const
+    void ClearByCpuHandle(SIZE_T cpuHandle)
     {
-        auto index = (cpuHandle - cpuStart) / increment;
-
-        if (index >= numDescriptors)
+        if (!active.load(std::memory_order_acquire))
             return;
 
-        // std::unique_lock<std::shared_mutex> lock(mutex);
+        UINT index = 0;
+        if (!GetCpuIndex(cpuHandle, index))
+            return;
 
-        if (info[index].buffer != nullptr)
-        {
-            LOG_TRACK("Resource: {:X}, Res: {}x{}, Format: {}", (size_t) info[index].buffer, info[index].width,
-                      info[index].height, (UINT) info[index].format);
+        std::unique_lock lock(GetDescriptorLock(index));
+        if (!active.load(std::memory_order_acquire))
+            return;
 
-            DetachFromOldResource(index);
-        }
+        ClearSlotLocked(index, true);
+    }
+
+    void ClearByGpuHandle(SIZE_T gpuHandle)
+    {
+        if (!active.load(std::memory_order_acquire))
+            return;
+
+        UINT index = 0;
+        if (!GetGpuIndex(gpuHandle, index))
+            return;
+
+        std::unique_lock lock(GetDescriptorLock(index));
+        if (!active.load(std::memory_order_acquire))
+            return;
+
+        ClearSlotLocked(index, true);
+    }
+
+    void ClearSlotIfMatches(UINT index, ID3D12Resource* resource)
+    {
+        if (!active.load(std::memory_order_acquire) || index >= numDescriptors)
+            return;
+
+        std::unique_lock lock(GetDescriptorLock(index));
+        if (!active.load(std::memory_order_acquire) || info[index].buffer != resource)
+            return;
 
         info[index].buffer = nullptr;
         info[index].lastUsedFrame = 0;
     }
 
-    void ClearByGpuHandle(SIZE_T gpuHandle) const
+    bool DeactivateAndClear()
     {
-        auto index = (gpuHandle - gpuStart) / increment;
+        if (!active.exchange(false, std::memory_order_acq_rel))
+            return false;
 
-        if (index >= numDescriptors)
-            return;
+        std::array<std::unique_lock<std::shared_mutex>, DESCRIPTOR_LOCK_STRIPE_COUNT> locks;
+        for (size_t i = 0; i < DESCRIPTOR_LOCK_STRIPE_COUNT; ++i)
+            locks[i] = std::unique_lock<std::shared_mutex>(descriptorLocks[i]);
 
-        // std::unique_lock<std::shared_mutex> lock(mutex);
+        std::scoped_lock trackedLock(_trackedResourcesMutex);
+        for (UINT index = 0; index < numDescriptors; ++index)
+        {
+            auto* resource = info[index].buffer;
+            if (resource == nullptr)
+                continue;
 
+            if (auto it = _trackedResources.find(resource); it != _trackedResources.end())
+            {
+                const auto currentVersion = version.load(std::memory_order_relaxed);
+                auto& vec = it->second;
+                vec.erase(std::remove_if(vec.begin(), vec.end(),
+                                         [currentVersion, index](const TrackedResourceSlot& slot)
+                                         { return slot.heapVersion == currentVersion && slot.index == index; }),
+                          vec.end());
+                if (vec.empty())
+                    _trackedResources.erase(it);
+            }
+
+            info[index].buffer = nullptr;
+            info[index].lastUsedFrame = 0;
+        }
+
+        info.reset();
+
+        return true;
+    }
+
+  private:
+    std::shared_mutex& GetDescriptorLock(UINT index) const
+    {
+        return descriptorLocks[index & (DESCRIPTOR_LOCK_STRIPE_COUNT - 1)];
+    }
+
+    void ClearSlotLocked(UINT index, bool detach)
+    {
         if (info[index].buffer != nullptr)
         {
             LOG_TRACK("Resource: {:X}, Res: {}x{}, Format: {}", (size_t) info[index].buffer, info[index].width,
                       info[index].height, (UINT) info[index].format);
 
-            DetachFromOldResource(index);
+            if (detach)
+                DetachFromOldResourceLocked(index);
         }
 
         info[index].buffer = nullptr;
@@ -428,13 +561,13 @@ class ResTrack_Dx12
     static SIZE_T GetGPUHandle(ID3D12Device* This, SIZE_T cpuHandle, D3D12_DESCRIPTOR_HEAP_TYPE type);
     static SIZE_T GetCPUHandle(ID3D12Device* This, SIZE_T gpuHandle, D3D12_DESCRIPTOR_HEAP_TYPE type);
 
-    static HeapInfo* GetHeapByCpuHandleCBV(SIZE_T cpuHandle);
-    static HeapInfo* GetHeapByCpuHandleRTV(SIZE_T cpuHandle);
-    static HeapInfo* GetHeapByCpuHandleSRV(SIZE_T cpuHandle);
-    static HeapInfo* GetHeapByCpuHandleUAV(SIZE_T cpuHandle);
-    static HeapInfo* GetHeapByCpuHandle(SIZE_T cpuHandle);
-    static HeapInfo* GetHeapByGpuHandleGR(SIZE_T gpuHandle);
-    static HeapInfo* GetHeapByGpuHandleCR(SIZE_T gpuHandle);
+    static std::shared_ptr<HeapInfo> GetHeapByCpuHandleCBV(SIZE_T cpuHandle);
+    static std::shared_ptr<HeapInfo> GetHeapByCpuHandleRTV(SIZE_T cpuHandle);
+    static std::shared_ptr<HeapInfo> GetHeapByCpuHandleSRV(SIZE_T cpuHandle);
+    static std::shared_ptr<HeapInfo> GetHeapByCpuHandleUAV(SIZE_T cpuHandle);
+    static std::shared_ptr<HeapInfo> GetHeapByCpuHandle(SIZE_T cpuHandle);
+    static std::shared_ptr<HeapInfo> GetHeapByGpuHandleGR(SIZE_T gpuHandle);
+    static std::shared_ptr<HeapInfo> GetHeapByGpuHandleCR(SIZE_T gpuHandle);
 
     static void FillResourceInfo(ID3D12Resource* resource, ResourceInfo* info);
 
