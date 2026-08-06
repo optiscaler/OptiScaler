@@ -246,7 +246,7 @@ inline static void to_lower_in_place(std::string& string)
 
 inline static void to_lower_in_place(std::wstring& wstring)
 {
-    std::transform(wstring.begin(), wstring.end(), wstring.begin(), ::tolower);
+    std::transform(wstring.begin(), wstring.end(), wstring.begin(), ::towlower);
 }
 
 #include "OptiTypes.h"

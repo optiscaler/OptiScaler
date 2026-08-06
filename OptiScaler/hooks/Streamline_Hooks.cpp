@@ -11,6 +11,7 @@
 #include <menu/menu_overlay_base.h>
 #include <framegen/nvngx/Nvngx_FG.h>
 #include <proxies/KernelBase_Proxy.h>
+#include <imgui/ImGuiNotify.hpp>
 
 #include <json.hpp>
 #include <sl1_reflex.h>
@@ -193,15 +194,111 @@ sl::Result StreamlineHooks::hkslInit(const sl::Preferences& pref, uint64_t sdkVe
     std::vector<const wchar_t*> storage;
 
     // Replace the SL files to allow for MFG
-    // TODO: ensure the path contains all the required plugins
     if (State::Instance().activeFgInput == FGInput::NvngxFG && std::filesystem::exists(localSlPath / L"sl.common.dll"))
     {
         storage.assign(localPref.pathsToPlugins, localPref.pathsToPlugins + localPref.numPathsToPlugins);
 
-        storage.insert(storage.begin(), localSlPathStr.c_str());
+        std::filesystem::path pluginsDir;
 
-        localPref.pathsToPlugins = storage.data();
-        localPref.numPathsToPlugins = (uint32_t) storage.size();
+        // Find the first path that contains sl.common.dll
+        // If storage is empty, look in the exe folder. pathsToPlugins is an optional field
+        if (storage.empty())
+        {
+            std::filesystem::path exeFolder = Util::ExePath().parent_path();
+            if (std::filesystem::exists(exeFolder / L"sl.common.dll"))
+            {
+                pluginsDir = exeFolder;
+            }
+        }
+        else
+        {
+            for (const wchar_t* pathStr : storage)
+            {
+                if (!pathStr)
+                    continue;
+
+                std::filesystem::path p = pathStr;
+                if (std::filesystem::exists(p / L"sl.common.dll"))
+                {
+                    pluginsDir = p;
+                    break;
+                }
+            }
+        }
+
+        std::vector<std::string> missingDlls;
+        bool hasNewerPlugin = false;
+
+        // If we found the plugins folder, scan its contents
+        if (!pluginsDir.empty() && std::filesystem::exists(pluginsDir))
+        {
+            for (const auto& entry : std::filesystem::directory_iterator(pluginsDir))
+            {
+                if (!entry.is_regular_file())
+                    continue;
+
+                std::wstring filename = entry.path().filename().wstring();
+
+                std::wstring lowerName = filename;
+                to_lower_in_place(lowerName);
+
+                // Skip interposer
+                if (lowerName == L"sl.interposer.dll")
+                    continue;
+
+                const bool isSlDll = lowerName.starts_with(L"sl.") && lowerName.ends_with(L".dll");
+                const bool isNvLowLatency = lowerName == L"nvlowlatencyvk.dll";
+
+                if (isSlDll || isNvLowLatency)
+                {
+                    std::filesystem::path localDllPath = localSlPath / filename;
+
+                    // Check if localSlPath also has this DLL
+                    if (!std::filesystem::exists(localDllPath))
+                    {
+                        missingDlls.push_back(entry.path().filename().string());
+                    }
+                    else
+                    {
+                        // Compare versions
+                        Util::version_t pluginVer, pluginProdVer;
+                        Util::version_t localVer, localProdVer;
+
+                        bool gotPluginVer = Util::GetFileVersion(entry.path().wstring(), &pluginVer, &pluginProdVer);
+                        bool gotLocalVer = Util::GetFileVersion(localDllPath.wstring(), &localVer, &localProdVer);
+
+                        if (gotPluginVer && gotLocalVer)
+                        {
+                            if (localVer > pluginVer)
+                            {
+                                hasNewerPlugin = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Insert local path only if a newer plugin was found
+        if (hasNewerPlugin)
+        {
+            LOG_DEBUG("Making the game use local streamline files");
+
+            storage.insert(storage.begin(), localSlPathStr.c_str());
+            localPref.pathsToPlugins = storage.data();
+            localPref.numPathsToPlugins = (uint32_t) storage.size();
+
+            if (!missingDlls.empty())
+            {
+                std::string toastMsg = "You are missing the following dlls from the streamline folder:\n";
+                for (const auto& missingDll : missingDlls)
+                {
+                    toastMsg += "- " + missingDll + "\n";
+                }
+
+                ImGui::InsertNotification({ ImGuiToastType::Warning, 20000, toastMsg.c_str() });
+            }
+        }
     }
 
     // bool hookSetTag =
