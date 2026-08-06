@@ -68,6 +68,7 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     UINT64 _scAllocatorFenceValues[BUFFER_COUNT] {};
     ID3D12Fence* _scFence = nullptr;
     HANDLE _scFenceEvent = nullptr;
+    UINT64 _lifecycleFenceValue = 0;
 
     ID3D12GraphicsCommandList* _uiCommandList[BUFFER_COUNT] {};
     ID3D12CommandAllocator* _uiCommandAllocator[BUFFER_COUNT] {};
@@ -96,6 +97,8 @@ class IFGFeature_Dx12 : public virtual IFGFeature
 
     void NewFrame() override final;
     void FlipResource(Dx12Resource* resource);
+    bool DrainOwnedWork(DWORD timeoutMs);
+    void ResetLifecycleTracking();
 
   protected:
     virtual void ReleaseObjects() = 0;

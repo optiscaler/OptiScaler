@@ -256,9 +256,12 @@ void DLSSG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
     if (_isActive)
     {
         LOG_INFO("FG context recreated while active, pausing");
-        State::Instance().fgChanged = true;
-        UpdateTarget();
-        Deactivate();
+        if (!RequestLifecycleTransition("context-recreated"))
+        {
+            State::Instance().fgChanged = true;
+            UpdateTarget();
+            Deactivate();
+        }
     }
 }
 
@@ -272,6 +275,31 @@ void DLSSG_Dx12::Activate()
         UpdateTarget();
         _isActive = true;
     }
+}
+
+void DLSSG_Dx12::ActivateAfterLifecycleWarmup()
+{
+    if (_isActive)
+        return;
+
+    // The lifecycle controller already observed the configured warm-up. Set
+    // the target to the current frame so StartNewFrame unpauses this frame
+    // without Activate() adding the legacy second ten-frame delay.
+    ResetCounters();
+    _isActive = true;
+}
+
+bool DLSSG_Dx12::RequestLifecycleTransition(const char* reason)
+{
+    if (Config::Instance()->FGDLSSGLifecycleMode.value_or_default() !=
+        static_cast<int>(optiscaler::dlssg::LifecycleMode::Cycle))
+    {
+        return false;
+    }
+
+    _lifecycleRequestPending.store(true, std::memory_order_release);
+    LOG_WARN("DLSSG lifecycle transition requested: {}", reason == nullptr ? "unspecified" : reason);
+    return true;
 }
 
 void DLSSG_Dx12::Deactivate()
@@ -534,9 +562,12 @@ bool DLSSG_Dx12::Dispatch()
     {
         LOG_ERROR("GetNewFrameToken error: {} ({})", magic_enum::enum_name(tokenResult), (UINT) tokenResult);
 
-        state.fgChanged = true;
-        UpdateTarget();
-        Deactivate();
+        if (!RequestLifecycleTransition("get-frame-token-failed"))
+        {
+            state.fgChanged = true;
+            UpdateTarget();
+            Deactivate();
+        }
 
         return false;
     }
@@ -546,9 +577,12 @@ bool DLSSG_Dx12::Dispatch()
     {
         LOG_ERROR("SetConstants error: {} ({})", magic_enum::enum_name(result), (UINT) result);
 
-        state.fgChanged = true;
-        UpdateTarget();
-        Deactivate();
+        if (!RequestLifecycleTransition("set-constants-failed"))
+        {
+            state.fgChanged = true;
+            UpdateTarget();
+            Deactivate();
+        }
 
         return false;
     }
@@ -566,6 +600,101 @@ DLSSG_Dx12::~DLSSG_Dx12() { Shutdown(); }
 
 bool DLSSG_Dx12::SetInterpolatedFrameCount(UINT interpolatedFrameCount) { return true; }
 
+void DLSSG_Dx12::ProcessUpscalerLifecycle(bool fgChanged, bool swapchainChanged, bool reset, bool validInputs)
+{
+    using optiscaler::dlssg::LifecycleMode;
+    using optiscaler::dlssg::LifecycleModeName;
+    using optiscaler::dlssg::LifecyclePhaseName;
+
+    auto& cfg = *Config::Instance();
+    auto& state = State::Instance();
+
+    const auto mode = static_cast<LifecycleMode>(cfg.FGDLSSGLifecycleMode.value_or_default());
+    _lifecycleController.Configure(mode, static_cast<uint32_t>(cfg.FGDLSSGLifecycleWarmupFrames.value_or_default()));
+
+    const auto internalRequest = _lifecycleRequestPending.exchange(false, std::memory_order_acq_rel);
+    if (internalRequest)
+        _lifecycleController.RequestCycle();
+
+    const auto lifecycleOwnsActivation = _lifecycleController.OwnsActivation();
+    const auto decision = _lifecycleController.Step({
+        .fgChanged = fgChanged,
+        .swapchainChanged = swapchainChanged,
+        .reset = reset,
+        .validInputs = validInputs,
+        .runtimeReady = cfg.FGEnabled.value_or_default() && _device != nullptr &&
+                        state.currentFGSwapchain != nullptr && _gameCommandQueue != nullptr &&
+                        (_isActive || lifecycleOwnsActivation),
+    });
+
+    if (mode != LifecycleMode::Off && decision.logSignalChange)
+    {
+        LOG_INFO("DLSSG lifecycle signals changed: mode={}, mask=0x{:X}, phase={}, validInputs={}",
+                 LifecycleModeName(mode), decision.triggerMask, LifecyclePhaseName(decision.phase), validInputs);
+    }
+
+    if (decision.logHeartbeat)
+    {
+        LOG_INFO("DLSSG lifecycle heartbeat: mode={}, phase={}, warmup={}/{}, frame={}", LifecycleModeName(mode),
+                 LifecyclePhaseName(decision.phase), decision.validWarmupFrames, _lifecycleController.WarmupFrames(),
+                 _frameCount);
+    }
+
+    if (mode != LifecycleMode::Cycle)
+        return;
+
+    if (decision.beginCycle)
+    {
+        OwnedLockGuard lock(Mutex, 556);
+
+        // Latch and consume the state flags before EvaluateState can clear them
+        // or run its legacy UpdateTarget path.
+        state.fgChanged = false;
+        state.scChanged = false;
+
+        LOG_WARN("DLSSG lifecycle cycle begin: mask=0x{:X}, reason={}, frame={}", decision.triggerMask,
+                 internalRequest ? "internal-request" : "state-signal", _frameCount);
+
+        // DLSSGSetOptions(eOff) is issued before any tracking reset. No
+        // Streamline shutdown or game-owned resource release occurs here.
+        Deactivate();
+
+        const auto drainTimeout = static_cast<DWORD>(cfg.FGDLSSGLifecycleDrainTimeoutMs.value_or_default());
+        if (!DrainOwnedWork(drainTimeout))
+        {
+            _lifecycleController.FailClosed();
+            LOG_ERROR("DLSSG lifecycle drain failed; frame generation remains disabled (timeout={} ms)", drainTimeout);
+            return;
+        }
+
+        ResetLifecycleTracking();
+        state.clearCapturedHudlesses = true;
+        Hudfix_Dx12::ResetCounters();
+        LOG_INFO("DLSSG lifecycle drain complete; observing {} consecutive valid input frames",
+                 _lifecycleController.WarmupFrames());
+        return;
+    }
+
+    if (_lifecycleController.OwnsActivation() || decision.reenable)
+    {
+        state.fgChanged = false;
+        state.scChanged = false;
+    }
+
+    if (decision.warmupCompleted)
+    {
+        LOG_INFO("DLSSG lifecycle input warm-up complete at frame {}; re-enable deferred to next valid frame",
+                 _frameCount);
+    }
+
+    if (decision.reenable)
+    {
+        OwnedLockGuard lock(Mutex, 557);
+        ActivateAfterLifecycleWarmup();
+        LOG_WARN("DLSSG lifecycle cycle complete; frame generation re-enabled at frame {}", _frameCount);
+    }
+}
+
 void DLSSG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
 {
     LOG_FUNC();
@@ -573,6 +702,7 @@ void DLSSG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
     OwnedLockGuard lock(Mutex, 555);
 
     auto& state = State::Instance();
+    const auto lifecycleOwnsActivation = _lifecycleController.OwnsActivation();
 
     // If needed hooks are missing or XeFG proxy is not inited or FG swapchain is not created
     if (!StreamlineProxy::LoadStreamline() || state.currentFGSwapchain == nullptr)
@@ -593,7 +723,7 @@ void DLSSG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
             // Create it again
             CreateContext(device, fgConstants);
         }
-        else if (state.fgChanged)
+        else if (state.fgChanged && !lifecycleOwnsActivation)
         {
             LOG_DEBUG("FGChanged");
             Deactivate();
@@ -602,7 +732,8 @@ void DLSSG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
             UpdateTarget();
         }
 
-        if (State::Instance().activeFgInput == FGInput::Upscaler && !IsPaused() && !IsActive())
+        if (State::Instance().activeFgInput == FGInput::Upscaler && !lifecycleOwnsActivation && !IsPaused() &&
+            !IsActive())
             Activate();
     }
     else
@@ -614,7 +745,7 @@ void DLSSG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
         Hudfix_Dx12::ResetCounters();
     }
 
-    if (state.fgChanged)
+    if (state.fgChanged && !lifecycleOwnsActivation)
     {
         LOG_DEBUG("FGchanged");
 
@@ -1106,9 +1237,12 @@ bool DLSSG_Dx12::SetResource(Dx12Resource* inputResource)
 
             if (result != sl::Result::eOk)
             {
-                State::Instance().fgChanged = true;
-                UpdateTarget();
-                Deactivate();
+                if (!RequestLifecycleTransition("set-tag-for-frame-failed"))
+                {
+                    State::Instance().fgChanged = true;
+                    UpdateTarget();
+                    Deactivate();
+                }
 
                 return false;
             }

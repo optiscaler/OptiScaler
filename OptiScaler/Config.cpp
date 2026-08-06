@@ -228,6 +228,21 @@ bool Config::Reload(std::filesystem::path iniPath)
             FGDLSSGDispatchFlags.set_from_config(readUInt("DLSSG", "DispatchFlags"));
             FGDLSSGShowDebug.set_from_config(readUInt("DLSSG", "ShowDebug"));
             FGDLSSGDisableHudless.set_from_config(readBool("DLSSG", "DisableHudless"));
+
+            FGDLSSGLifecycleMode.set_from_config(readInt("DLSSG", "LifecycleMode"));
+            if (FGDLSSGLifecycleMode.has_value() &&
+                (FGDLSSGLifecycleMode.value() < 0 || FGDLSSGLifecycleMode.value() > 2))
+                FGDLSSGLifecycleMode.reset();
+
+            FGDLSSGLifecycleWarmupFrames.set_from_config(readInt("DLSSG", "LifecycleWarmupFrames"));
+            if (FGDLSSGLifecycleWarmupFrames.has_value() &&
+                (FGDLSSGLifecycleWarmupFrames.value() < 1 || FGDLSSGLifecycleWarmupFrames.value() > 120))
+                FGDLSSGLifecycleWarmupFrames.reset();
+
+            FGDLSSGLifecycleDrainTimeoutMs.set_from_config(readInt("DLSSG", "LifecycleDrainTimeoutMs"));
+            if (FGDLSSGLifecycleDrainTimeoutMs.has_value() &&
+                (FGDLSSGLifecycleDrainTimeoutMs.value() < 100 || FGDLSSGLifecycleDrainTimeoutMs.value() > 10000))
+                FGDLSSGLifecycleDrainTimeoutMs.reset();
         }
 
         // FSR FG Inputs
@@ -981,6 +996,12 @@ bool Config::SaveIni()
         ini.SetValue("DLSSG", "ShowDebug", GetIntValue(Instance()->FGDLSSGShowDebug.value_for_config()).c_str());
         ini.SetValue("DLSSG", "DisableHudless",
                      GetBoolValue(Instance()->FGDLSSGDisableHudless.value_for_config()).c_str());
+        ini.SetValue("DLSSG", "LifecycleMode",
+                     GetIntValue(Instance()->FGDLSSGLifecycleMode.value_for_config()).c_str());
+        ini.SetValue("DLSSG", "LifecycleWarmupFrames",
+                     GetIntValue(Instance()->FGDLSSGLifecycleWarmupFrames.value_for_config()).c_str());
+        ini.SetValue("DLSSG", "LifecycleDrainTimeoutMs",
+                     GetIntValue(Instance()->FGDLSSGLifecycleDrainTimeoutMs.value_for_config()).c_str());
     }
 
     // OptiFG

@@ -603,6 +603,9 @@ class Config
     CustomOptional<uint32_t> FGDLSSGDispatchFlags { 0 };
     CustomOptional<uint32_t> FGDLSSGShowDebug { 0 };
     CustomOptional<bool> FGDLSSGDisableHudless { false };
+    CustomOptional<int> FGDLSSGLifecycleMode { 0 };
+    CustomOptional<int> FGDLSSGLifecycleWarmupFrames { 10 };
+    CustomOptional<int> FGDLSSGLifecycleDrainTimeoutMs { 5000 };
 
     // fakenvapi
     CustomOptional<bool> UseFakenvapi { true };

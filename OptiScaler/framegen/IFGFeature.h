@@ -105,6 +105,7 @@ class IFGFeature
     virtual bool Shutdown() = 0;
     virtual bool HasResource(FG_ResourceType type, int index = -1) = 0;
     virtual bool SetInterpolatedFrameCount(UINT interpolatedFrameCount) = 0;
+    virtual void ProcessUpscalerLifecycle(bool, bool, bool, bool) {}
 
     int GetIndex();
     int GetIndexWillBeDispatched();
