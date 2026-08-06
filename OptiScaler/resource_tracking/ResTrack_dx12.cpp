@@ -844,7 +844,7 @@ ULONG ResTrack_Dx12::hkRelease(ID3D12Resource* This)
                 _trackedResources.erase(it);
             }
 
-            State::Instance().capturedHudlesses.erase(This);
+            State::Instance().CapturedHudlesses.erase(This);
         }
     }
 
