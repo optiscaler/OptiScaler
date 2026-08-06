@@ -26,12 +26,13 @@
 #define STRINGIZE_(s) #s
 #define STRINGIZE(s) STRINGIZE_(s)
 
-#define VER_MAJOR_VERSION 0
-#define VER_MINOR_VERSION 10
+#define VER_MAJOR_VERSION 10
+#define VER_MINOR_VERSION 0
 #define VER_HOTFIX_VERSION 0
 #define VER_BUILD_NUMBER 1
 
-#define VER_PRE_RELEASE
+#define VER_DEV_RELEASE
+// #define VER_PRE_RELEASE
 
 #define VER_FILE_VERSION VER_MAJOR_VERSION, VER_MINOR_VERSION, VER_HOTFIX_VERSION, VER_BUILD_NUMBER
 #define VER_FILE_VERSION_STR                                                                                           \
@@ -40,7 +41,10 @@
 
 #define VER_PRODUCT_VERSION VER_FILE_VERSION
 
-#ifdef VER_PRE_RELEASE
+#ifdef VER_DEV_RELEASE
+#define VER_PRODUCT_VERSION_STR                                                                                        \
+    STRINGIZE(VER_MAJOR_VERSION) "." STRINGIZE(VER_MINOR_VERSION) "." STRINGIZE(VER_HOTFIX_VERSION) "-dev (" VER_BUILD_COMMIT ") (" VER_BUILD_DATE ")"
+#elif VER_PRE_RELEASE
 #define VER_PRODUCT_VERSION_STR                                                                                        \
     STRINGIZE(VER_MAJOR_VERSION) "." STRINGIZE(VER_MINOR_VERSION) "." STRINGIZE(VER_HOTFIX_VERSION) "-pre" STRINGIZE(VER_BUILD_NUMBER) " (" VER_BUILD_COMMIT ") (" VER_BUILD_DATE ")"
 #else
