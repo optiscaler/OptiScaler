@@ -2961,7 +2961,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     // clang-format off
 
     inputOptions = {
-        { FGInput::NoFG, "No Frame Generation" },
+        { FGInput::NoFG, "None" },
         { FGInput::NvngxFG, "Nukem's/Artur's DLSSG",
             "Limited to FSR3-FG\n\nSupports Hudless out of the box\n\nUses Streamline swapchain for pacing" },
         { FGInput::FSRFG, "FSR 3.1 FG",
@@ -3032,7 +3032,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     // clang-format off
 
     outputOptions = {
-        { FGOutput::NoFG, "No Frame Generation" },
+        { FGOutput::NoFG, "None" },
         { FGOutput::NvngxFG, "FSR3-FG Nukem/Enabler", "Enable DLSS-FG in-game" },
         { FGOutput::FSRFG, "FSR FG", "FSR3/4 FG" },
         { FGOutput::DLSSG, "DLSSG", "For 40xx and above" },
