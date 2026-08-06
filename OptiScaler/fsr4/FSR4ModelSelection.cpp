@@ -9,6 +9,7 @@ PFN_createModel FSR4ModelSelection::o_createModelSDK = nullptr;
 PFN_createModel FSR4ModelSelection::o_createModelDriver = nullptr;
 PFN_createModel2 FSR4ModelSelection::o_createModelDriver2 = nullptr;
 PFN_createModel2 FSR4ModelSelection::o_createModelSDK2 = nullptr;
+FSR4ModelSelection::AmdInt8Check FSR4ModelSelection::o_amdInt8Check = nullptr;
 
 uint32_t getCorrectedPreset(uint32_t preset)
 {
@@ -34,6 +35,12 @@ uint32_t getCorrectedPreset(uint32_t preset)
     State::Instance().currentFsr4Preset = correctedPreset;
 
     return correctedPreset;
+}
+
+uint8_t FSR4ModelSelection::hkAmdInt8Check(void* a1, ID3D12Device* device)
+{
+    LOG_DEBUG("Called with a1: {:X}, device: {:X}", (uintptr_t) a1, (uintptr_t) device);
+    return 1;
 }
 
 uint64_t FSR4ModelSelection::hkgetModelBlobSDK(uint32_t preset, uint64_t unknown, uint64_t* source, uint64_t* size)
@@ -308,13 +315,39 @@ void FSR4ModelSelection::Hook(HMODULE module, FSR4Source source)
             auto detourResult = DetourTransactionCommit();
             if (detourResult != NO_ERROR)
             {
-                LOG_ERROR("Failed to attach detour: {:X}", detourResult);
+                LOG_ERROR("Failed to attach o_createModelDriver2 detour: {:X}", detourResult);
                 o_createModelDriver2 = nullptr;
             }
         }
     }
 
-    if (!o_createModelDriver && !o_getModelBlobDriver && !o_createModelDriver2 && source == FSR4Source::DriverDll)
+    if (Config::Instance()->Fsr4ForceEnableInt8.value_or_default() && !o_amdInt8Check &&
+        source == FSR4Source::DriverDll)
+    {
+        const char* pattern = "8B 54 24 30 8D 4A FF 83 F9 0E 76 ? 8D 4A E0 81 F9 DE 00 00 00 76 ? 8D 4A F0 83 F9 0F";
+
+        o_amdInt8Check = (AmdInt8Check) scanner::GetAddress(module, pattern, -63);
+
+        if (o_amdInt8Check)
+        {
+            LOG_DEBUG("Hooking model selection, o_amdInt8Check: {:X}", (uintptr_t) o_amdInt8Check);
+
+            DetourTransactionBegin();
+            DetourUpdateThread(GetCurrentThread());
+
+            DetourAttach(&(PVOID&) o_amdInt8Check, hkAmdInt8Check);
+
+            auto detourResult = DetourTransactionCommit();
+            if (detourResult != NO_ERROR)
+            {
+                LOG_ERROR("Failed to attach o_amdInt8Check detour: {:X}", detourResult);
+                o_amdInt8Check = nullptr;
+            }
+        }
+    }
+
+    if (!o_createModelDriver && !o_getModelBlobDriver && !o_createModelDriver2 && !o_amdInt8Check &&
+        source == FSR4Source::DriverDll)
         LOG_ERROR("Couldn't hook model selection from the driver dll");
     else if (!o_createModelSDK && !o_getModelBlobSDK && !o_createModelSDK2 && source == FSR4Source::SDK)
         LOG_ERROR("Couldn't hook model selection from the SDK dll");

@@ -27,6 +27,10 @@ class FSR4ModelSelection
     static uint64_t hkcreateModelSDK2(void* context, uint32_t preset, void** model);
     static PFN_createModel2 o_createModelSDK2;
 
+    using AmdInt8Check = uint8_t(__fastcall*)(void* a1, ID3D12Device* device);
+    static AmdInt8Check o_amdInt8Check;
+    static uint8_t hkAmdInt8Check(void* a1, ID3D12Device* device);
+
   public:
     static void Hook(HMODULE module, FSR4Source source);
     static bool IsInt8FsrHooked() { return o_createModelDriver2 || o_createModelSDK2; };
