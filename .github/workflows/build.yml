@@ -159,26 +159,26 @@ jobs:
         archive: false
         if-no-files-found: error
        
-    - name: Remove Previous Artifacts
-      if: steps.check_release.outputs.release_exists == 'true'
-      uses: actions/github-script@v8
-      with:
-        script: |
-          const releaseId = ${{ steps.check_release.outputs.release_id }};
-          const assets = await github.rest.repos.listReleaseAssets({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            release_id: releaseId,
-          });
+   # - name: Remove Previous Artifacts
+   #    if: steps.check_release.outputs.release_exists == 'true'
+   #    uses: actions/github-script@v8
+   #    with:
+   #      script: |
+   #        const releaseId = ${{ steps.check_release.outputs.release_id }};
+   #        const assets = await github.rest.repos.listReleaseAssets({
+   #          owner: context.repo.owner,
+   #          repo: context.repo.repo,
+   #          release_id: releaseId,
+   #        });
 
-          for (const asset of assets.data) {
-            await github.rest.repos.deleteReleaseAsset({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              asset_id: asset.id,
-            });
-            console.log(`Deleted asset: ${asset.name}`);
-          }
+   #        for (const asset of assets.data) {
+   #          await github.rest.repos.deleteReleaseAsset({
+   #            owner: context.repo.owner,
+   #            repo: context.repo.repo,
+   #            asset_id: asset.id,
+   #          });
+   #          console.log(`Deleted asset: ${asset.name}`);
+   #        }
 
     - name: Upload Artifact to Release
       uses: softprops/action-gh-release@v2
