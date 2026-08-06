@@ -3033,11 +3033,11 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
     outputOptions = {
         { FGOutput::NoFG, "None" },
-        { FGOutput::NvngxFG, "FSR3-FG Nukem/Enabler", "Enable DLSS-FG in-game" },
+        { FGOutput::NvngxFG, "FSR3-FG Nukem/Enabler", "Uses Game's DLSSG implementation.\nEnable DLSS-FG in-game" },
         { FGOutput::FSRFG, "FSR FG", "FSR3/4 FG" },
         { FGOutput::DLSSG, "DLSSG", "For 40xx and above" },
         { FGOutput::XeFG, "XeFG", "XeFG" },
-        { FGOutput::DLSSGWithNvngx, "DLSSG with Nvngx FG", "Streamline + NvngxFG" }
+        { FGOutput::DLSSGWithNvngx, "DLSSG with Nvngx FG", "Uses Opti's own DLSSG instance and adds NvngxFG on top\nDo not use if a game already has DLSSG\n\nIf a game has DLSSG then use the FG Input option:\n\"Nukem's/Artur's DLSSG\"" }
     };
 
     // clang-format on
