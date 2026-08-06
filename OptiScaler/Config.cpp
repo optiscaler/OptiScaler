@@ -441,13 +441,15 @@ bool Config::Reload(std::filesystem::path iniPath)
             UseHQFont.set_from_config(readBool("Menu", "UseHQFont"));
             DisableSplash.set_from_config(readBool("Menu", "DisableSplash"));
 
-            if (auto setting = readInt("Menu", "FpsOverlayPos"); setting.has_value())
-                FpsOverlayPos.set_from_config(std::clamp(setting.value(), 0, 3));
+            if (auto setting = readUInt("Menu", "FpsOverlayPos"); setting.has_value())
+            {
+                FpsOverlayPosition.set_from_config(
+                    (FpsOverlayPos) std::clamp(setting.value(), 0U, FpsOverlayPos_COUNT - 1));
+            }
 
             if (auto setting = readUInt("Menu", "FpsOverlayType"); setting.has_value())
             {
-                FpsOverlayType.set_from_config(
-                    (FpsOverlay) std::clamp(setting.value(), (uint32_t) FpsOverlay_JustFPS, FpsOverlay_COUNT - 1));
+                FpsOverlayType.set_from_config((FpsOverlay) std::clamp(setting.value(), 0U, FpsOverlay_COUNT - 1));
             }
 
             FpsShortcutKey.set_from_config(readInt("Menu", "FpsShortcutKey"));
@@ -1230,7 +1232,7 @@ bool Config::SaveIni()
         ini.SetValue("Menu", "FpsCycleShortcutKey",
                      GetIntValue(Instance()->FpsCycleShortcutKey.value_for_config(), setting > 0).c_str());
 
-        ini.SetValue("Menu", "FpsOverlayPos", GetIntValue(Instance()->FpsOverlayPos.value_for_config()).c_str());
+        ini.SetValue("Menu", "FpsOverlayPos", GetIntValue(Instance()->FpsOverlayPosition.value_for_config()).c_str());
         ini.SetValue("Menu", "FpsOverlayType", GetIntValue(Instance()->FpsOverlayType.value_for_config()).c_str());
         ini.SetValue("Menu", "FpsOverlayHorizontal",
                      GetBoolValue(Instance()->FpsOverlayHorizontal.value_for_config()).c_str());

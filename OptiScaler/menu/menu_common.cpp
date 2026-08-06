@@ -2092,13 +2092,19 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             ImGui::PopStyleVar(7);
 
         // Left / Right
-        if (config->FpsOverlayPos.value_or_default() == 0 || config->FpsOverlayPos.value_or_default() == 2)
+        if (config->FpsOverlayPosition.value_or_default() == FpsOverlayPos_TopLeft ||
+            config->FpsOverlayPosition.value_or_default() == FpsOverlayPos_BottomLeft)
+        {
             overlayPosition.x = 0;
+        }
         else
+        {
             overlayPosition.x = io.DisplaySize.x - overlaySize.x;
+        }
 
         // Top / Bottom
-        if (config->FpsOverlayPos.value_or_default() < 2)
+        if (config->FpsOverlayPosition.value_or_default() == FpsOverlayPos_TopLeft ||
+            config->FpsOverlayPosition.value_or_default() == FpsOverlayPos_TopRight)
         {
             overlayPosition.y = 0;
         }
@@ -6270,14 +6276,14 @@ void MenuCommon::RenderFpsOverlaySettings(RenderMenuContext& ctx)
             config->FpsOverlayHorizontal = fpsHorizontal;
 
         const char* fpsPosition[] = { "Top Left", "Top Right", "Bottom Left", "Bottom Right" };
-        const char* selectedPosition = fpsPosition[config->FpsOverlayPos.value_or_default()];
+        const char* selectedPosition = fpsPosition[config->FpsOverlayPosition.value_or_default()];
 
         if (ImGui::BeginCombo("Overlay Position", selectedPosition))
         {
-            for (int n = 0; n < 4; n++)
+            for (int n = 0; n < std::size(fpsPosition); n++)
             {
-                if (ImGui::Selectable(fpsPosition[n], (config->FpsOverlayPos.value_or_default() == n)))
-                    config->FpsOverlayPos = n;
+                if (ImGui::Selectable(fpsPosition[n], (config->FpsOverlayPosition.value_or_default() == n)))
+                    config->FpsOverlayPosition = (FpsOverlayPos) n;
             }
 
             ImGui::EndCombo();

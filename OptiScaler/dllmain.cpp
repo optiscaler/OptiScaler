@@ -2018,8 +2018,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                 _wputenv_s(L"MLSR-WATERMARK", L"1");
                 SetEnvironmentVariableW(L"MLSR-WATERMARK", L"1");
 
-                if (!Config::Instance()->FpsOverlayPos.has_value())
-                    Config::Instance()->FpsOverlayPos.set_volatile_value(1); // Top right
+                if (!Config::Instance()->FpsOverlayPosition.has_value())
+                    Config::Instance()->FpsOverlayPosition.set_volatile_value(FpsOverlayPos_TopRight);
             }
             else
             {
@@ -2035,8 +2035,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                 _wputenv_s(L"MLFI-WATERMARK", L"1");
                 SetEnvironmentVariableW(L"MLFI-WATERMARK", L"1");
 
-                if (!Config::Instance()->FpsOverlayPos.has_value())
-                    Config::Instance()->FpsOverlayPos.set_volatile_value(1); // Top right
+                if (!Config::Instance()->FpsOverlayPosition.has_value())
+                    Config::Instance()->FpsOverlayPosition.set_volatile_value(FpsOverlayPos_TopRight);
             }
             else
             {

@@ -147,6 +147,15 @@ template <class T, HasDefaultValue defaultState = WithDefault> class CustomOptio
 constexpr inline int UnboundKey = -1;
 constexpr uint32_t NV_PRESET_LATEST = 0x00FFFFFF;
 
+enum FpsOverlayPos : uint32_t
+{
+    FpsOverlayPos_TopLeft,
+    FpsOverlayPos_TopRight,
+    FpsOverlayPos_BottomLeft,
+    FpsOverlayPos_BottomRight,
+    FpsOverlayPos_COUNT,
+};
+
 enum FpsOverlay : uint32_t
 {
     FpsOverlay_JustFPS,
@@ -323,7 +332,7 @@ class Config
     CustomOptional<bool> ExtendedLimits { false };
     CustomOptional<bool> ShowFps { false };
     /// 0 Top Left, 1 Top Right, 2 Bottom Left, 3 Bottom Right
-    CustomOptional<int> FpsOverlayPos { 0 };
+    CustomOptional<FpsOverlayPos> FpsOverlayPosition { FpsOverlayPos_TopLeft };
     /// 0 Only FPS, 1 +Avg FPS & Upscaler info 2 +Frame Time,
     /// 3 +Upscaler Time, 4 +Frame Time Graph, 5 +Upscaler Time Graph
     /// 6 +Reflex timings
