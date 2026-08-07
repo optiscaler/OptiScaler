@@ -610,7 +610,7 @@ class Config
     // As per
     // https://github.com/artur-graniszewski/dlss-enabler-main/blob/a92464d468eb0d91ae17befa66c6bf6229f20b9f/Utils/DlssgProxy.cpp#L1033
     CustomOptional<uint32_t> NvngxFGDispatchFlags { 0x10000000 }; // IGNORE_UI_TEXTURE
-    CustomOptional<uint32_t> NvngxFGShowDebug { 0 };
+    CustomOptional<bool> NvngxFGShowDebug { false };
     CustomOptional<bool> NvngxFGDisableHudless { false };
 
     // fakenvapi

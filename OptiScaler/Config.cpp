@@ -371,7 +371,7 @@ bool Config::Reload(std::filesystem::path iniPath)
         {
             NvngxFGMakeDepthCopy.set_from_config(readBool("NvngxFG", "MakeDepthCopy"));
             NvngxFGDispatchFlags.set_from_config(readUInt("NvngxFG", "DispatchFlags"));
-            NvngxFGShowDebug.set_from_config(readUInt("NvngxFG", "ShowDebug"));
+            NvngxFGShowDebug.set_from_config(readBool("NvngxFG", "ShowDebug"));
             NvngxFGDisableHudless.set_from_config(readBool("NvngxFG", "DisableHudless"));
         }
 
@@ -1147,7 +1147,7 @@ bool Config::SaveIni()
                      GetBoolValue(Instance()->NvngxFGMakeDepthCopy.value_for_config()).c_str());
         ini.SetValue("NvngxFG", "DispatchFlags",
                      GetIntValue(Instance()->NvngxFGDispatchFlags.value_for_config(), true).c_str());
-        ini.SetValue("NvngxFG", "ShowDebug", GetIntValue(Instance()->NvngxFGShowDebug.value_for_config()).c_str());
+        ini.SetValue("NvngxFG", "ShowDebug", GetBoolValue(Instance()->NvngxFGShowDebug.value_for_config()).c_str());
         ini.SetValue("NvngxFG", "DisableHudless",
                      GetBoolValue(Instance()->NvngxFGDisableHudless.value_for_config()).c_str());
     }

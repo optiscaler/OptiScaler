@@ -459,7 +459,7 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InCm
             }
         }
 
-        uint32_t showDebug = Config::Instance()->NvngxFGShowDebug.value_or_default();
+        bool showDebug = Config::Instance()->NvngxFGShowDebug.value_or_default();
         uint32_t flags = Config::Instance()->NvngxFGDispatchFlags.value_or_default();
         bool disableHudless = Config::Instance()->NvngxFGDisableHudless.value_or_default();
 
