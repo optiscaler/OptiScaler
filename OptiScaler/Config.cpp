@@ -225,9 +225,6 @@ bool Config::Reload(std::filesystem::path iniPath)
 
             FGDLSSGFramerateTargetDMFG.set_from_config(readFloat("DLSSG", "FramerateTargetDMFG"));
             FGDLSSGOverrideForceDMFG.set_from_config(readBool("DLSSG", "OverrideForceDMFG"));
-            FGDLSSGDispatchFlags.set_from_config(readUInt("DLSSG", "DispatchFlags"));
-            FGDLSSGShowDebug.set_from_config(readUInt("DLSSG", "ShowDebug"));
-            FGDLSSGDisableHudless.set_from_config(readBool("DLSSG", "DisableHudless"));
         }
 
         // FSR FG Inputs
@@ -370,9 +367,12 @@ bool Config::Reload(std::filesystem::path iniPath)
                 DLSSDRenderPresetUltraPerformance.set_from_config(setting);
         }
 
-        // Nvngx_FG
+        // NvngxFG
         {
-            MakeDepthCopy.set_from_config(readBool("Nvngx_FG", "MakeDepthCopy"));
+            NvngxFGMakeDepthCopy.set_from_config(readBool("NvngxFG", "MakeDepthCopy"));
+            NvngxFGDispatchFlags.set_from_config(readUInt("NvngxFG", "DispatchFlags"));
+            NvngxFGShowDebug.set_from_config(readUInt("NvngxFG", "ShowDebug"));
+            NvngxFGDisableHudless.set_from_config(readBool("NvngxFG", "DisableHudless"));
         }
 
         // Logging
@@ -978,11 +978,6 @@ bool Config::SaveIni()
                      GetFloatValue(Instance()->FGDLSSGFramerateTargetDMFG.value_for_config()).c_str());
         ini.SetValue("DLSSG", "OverrideForceDMFG",
                      GetBoolValue(Instance()->FGDLSSGOverrideForceDMFG.value_for_config()).c_str());
-        ini.SetValue("DLSSG", "DispatchFlags",
-                     GetIntValue(Instance()->FGDLSSGDispatchFlags.value_for_config(), true).c_str());
-        ini.SetValue("DLSSG", "ShowDebug", GetIntValue(Instance()->FGDLSSGShowDebug.value_for_config()).c_str());
-        ini.SetValue("DLSSG", "DisableHudless",
-                     GetBoolValue(Instance()->FGDLSSGDisableHudless.value_for_config()).c_str());
     }
 
     // OptiFG
@@ -1148,7 +1143,13 @@ bool Config::SaveIni()
 
     // NvngxFG
     {
-        ini.SetValue("NvngxFG", "MakeDepthCopy", GetBoolValue(Instance()->MakeDepthCopy.value_for_config()).c_str());
+        ini.SetValue("NvngxFG", "MakeDepthCopy",
+                     GetBoolValue(Instance()->NvngxFGMakeDepthCopy.value_for_config()).c_str());
+        ini.SetValue("NvngxFG", "DispatchFlags",
+                     GetIntValue(Instance()->NvngxFGDispatchFlags.value_for_config(), true).c_str());
+        ini.SetValue("NvngxFG", "ShowDebug", GetIntValue(Instance()->NvngxFGShowDebug.value_for_config()).c_str());
+        ini.SetValue("NvngxFG", "DisableHudless",
+                     GetBoolValue(Instance()->NvngxFGDisableHudless.value_for_config()).c_str());
     }
 
     // Sharpness

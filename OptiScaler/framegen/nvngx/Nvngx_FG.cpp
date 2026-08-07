@@ -377,7 +377,7 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InCm
         // Fixes an issue with the depth being corrupted on AMD under Windows
         ID3D12Resource* dlssgDepth = nullptr;
 
-        if (Config::Instance()->MakeDepthCopy.value_or_default())
+        if (Config::Instance()->NvngxFGMakeDepthCopy.value_or_default())
             InParameters->Get("DLSSG.Depth", &dlssgDepth);
 
         if (dlssgDepth)
@@ -459,9 +459,9 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InCm
             }
         }
 
-        uint32_t showDebug = Config::Instance()->FGDLSSGShowDebug.value_or_default();
-        uint32_t flags = Config::Instance()->FGDLSSGDispatchFlags.value_or_default();
-        bool disableHudless = Config::Instance()->FGDLSSGDisableHudless.value_or_default();
+        uint32_t showDebug = Config::Instance()->NvngxFGShowDebug.value_or_default();
+        uint32_t flags = Config::Instance()->NvngxFGDispatchFlags.value_or_default();
+        bool disableHudless = Config::Instance()->NvngxFGDisableHudless.value_or_default();
 
         InParameters->Set("DLSSG.ShowDebug", showDebug);
         InParameters->Set("DLSSG.DispatchFlags", flags);

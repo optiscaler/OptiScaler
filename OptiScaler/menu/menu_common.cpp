@@ -4396,10 +4396,10 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 if (!primaryGpu.dlssCapable && primaryGpu.fsr4Support == FSR4Support::None &&
                     !primaryGpu.usesVkd3dProton && !isUnrealEngine)
                 {
-                    if (bool makeDepthCopy = config->MakeDepthCopy.value_or_default();
+                    if (bool makeDepthCopy = config->NvngxFGMakeDepthCopy.value_or_default();
                         ImGui::Checkbox("Fix broken visuals", &makeDepthCopy))
                     {
-                        config->MakeDepthCopy = makeDepthCopy;
+                        config->NvngxFGMakeDepthCopy = makeDepthCopy;
                     }
                     ShowHelpMarker("Makes a copy of the depth buffer\nCan fix broken visuals in some games on AMD "
                                    "GPUs under Windows\nCan cause stutters, so best to use only when necessary");
@@ -4415,19 +4415,19 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
         if (Nvngx_FG::isLoaded(state.swapchainApi))
         {
-            if (bool disableHudless = config->FGDLSSGDisableHudless.value_or_default();
+            if (bool disableHudless = config->NvngxFGDisableHudless.value_or_default();
                 ImGui::Checkbox("Disable Hudless", &disableHudless))
             {
-                config->FGDLSSGDisableHudless = disableHudless;
+                config->NvngxFGDisableHudless = disableHudless;
             }
             ShowHelpMarker("Might be required for some sets of DispatchFlags");
 
             if (Nvngx_FG::getMaxFakeFramesCount(state.swapchainApi) > 1)
             {
-                if (bool showDebug = config->FGDLSSGShowDebug.value_or_default();
+                if (bool showDebug = config->NvngxFGShowDebug.value_or_default();
                     ImGui::Checkbox("Show Debug", &showDebug))
                 {
-                    config->FGDLSSGShowDebug = showDebug;
+                    config->NvngxFGShowDebug = showDebug;
                 }
                 ShowHelpMarker("Required for Debug flags to work correctly");
 
@@ -4449,7 +4449,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                     { "PIN_BACKBUFFER", 0x40000000, "Pin DLSSG.Backbuffer to subframe-1 snapshot across MFG frame" }
                 };
 
-                uint32_t temp_flags = config->FGDLSSGDispatchFlags.value_or_default();
+                uint32_t temp_flags = config->NvngxFGDispatchFlags.value_or_default();
                 bool changed = false;
 
                 ImGui::Text("Raw DispatchFlags:");
@@ -4474,7 +4474,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
                 if (changed)
                 {
-                    config->FGDLSSGDispatchFlags = temp_flags;
+                    config->NvngxFGDispatchFlags = temp_flags;
                 }
             }
             else

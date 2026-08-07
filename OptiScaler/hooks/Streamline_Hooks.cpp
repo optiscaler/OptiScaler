@@ -396,14 +396,6 @@ sl::Result StreamlineHooks::hkslSetTag(const sl::ViewportHandle& viewport, const
         else if (State::Instance().activeFgInput == FGInput::NvngxFG)
         {
             LOG_TRACE("Tagging resource of type: {}", magic_enum::enum_name(typeEnum));
-
-            // Workaround a bug in the FSR 3 MFG mod where it composits the UI incorrectly
-            auto nvngxFgApi = renderApi == sl::RenderAPI::eD3D12 ? API::DX12 : API::NotSelected;
-            if (tags[i].type == sl::kBufferTypeUIColorAndAlpha && tags[i].resource->native &&
-                Nvngx_FG::getMaxFakeFramesCount(nvngxFgApi) > 1)
-            {
-                tags[i].resource->native = nullptr;
-            }
         }
     }
 
@@ -484,14 +476,6 @@ sl::Result StreamlineHooks::hkslSetTagForFrame(const sl::FrameToken& frame, cons
         else if (State::Instance().activeFgInput == FGInput::NvngxFG)
         {
             LOG_TRACE("Tagging resource of type: {}", magic_enum::enum_name(typeEnum));
-
-            // Workaround a bug in the FSR 3 MFG mod where it composits the UI incorrectly
-            auto nvngxFgApi = renderApi == sl::RenderAPI::eD3D12 ? API::DX12 : API::NotSelected;
-            if (resources[i].type == sl::kBufferTypeUIColorAndAlpha && resources[i].resource->native &&
-                Nvngx_FG::getMaxFakeFramesCount(nvngxFgApi) > 1)
-            {
-                resources[i].resource->native = nullptr;
-            }
         }
     }
 
