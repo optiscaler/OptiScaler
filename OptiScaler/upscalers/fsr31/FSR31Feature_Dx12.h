@@ -9,6 +9,7 @@ class FSR31FeatureDx12 : public FSR31Feature, public IFeature_Dx12
 {
   private:
     NVSDK_NGX_Parameter* SetParameters(NVSDK_NGX_Parameter* InParameters);
+    ID3D12Resource* smallerColor;
 
   protected:
     bool InitFSR3(const NVSDK_NGX_Parameter* InParameters);
@@ -32,5 +33,11 @@ class FSR31FeatureDx12 : public FSR31Feature, public IFeature_Dx12
 
         if (_context != nullptr)
             FfxApiProxy::D3D12_DestroyContext(&_context, NULL);
+
+        if (smallerColor && smallerColor != nullptr)
+        {
+            smallerColor->Release();
+            smallerColor = nullptr;
+        }
     }
 };
