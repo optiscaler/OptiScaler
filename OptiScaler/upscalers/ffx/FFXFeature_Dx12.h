@@ -9,6 +9,7 @@ class FFXFeatureDx12 : public FFXFeature, public IFeature_Dx12
 {
   private:
     NVSDK_NGX_Parameter* SetParameters(NVSDK_NGX_Parameter* InParameters);
+    ID3D12Resource* smallerColor;
 
   protected:
     bool InitFFX(const NVSDK_NGX_Parameter* InParameters);
@@ -32,5 +33,7 @@ class FFXFeatureDx12 : public FFXFeature, public IFeature_Dx12
 
         if (_context != nullptr)
             FfxApiProxy::D3D12_DestroyContext(&_context, NULL);
+
+        SAFE_RELEASE(smallerColor);
     }
 };

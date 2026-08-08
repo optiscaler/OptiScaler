@@ -37,6 +37,57 @@ bool FFXFeatureDx12::InitInternal(ID3D12GraphicsCommandList* InCommandList, NVSD
     return InitFFX(InParameters);
 }
 
+bool CreateBufferResourceWithSize(ID3D12Device* device, ID3D12Resource* source, D3D12_RESOURCE_STATES state,
+                                  ID3D12Resource** target, UINT width, UINT height)
+{
+    if (device == nullptr || source == nullptr)
+        return false;
+
+    auto inDesc = source->GetDesc();
+
+    if (*target != nullptr)
+    {
+        auto bufDesc = (*target)->GetDesc();
+
+        if (bufDesc.Width != width || bufDesc.Height != height || bufDesc.Format != inDesc.Format ||
+            bufDesc.Flags != inDesc.Flags)
+        {
+            (*target)->Release();
+            (*target) = nullptr;
+        }
+        else
+        {
+            return true;
+        }
+    }
+
+    D3D12_HEAP_PROPERTIES heapProperties;
+    D3D12_HEAP_FLAGS heapFlags;
+    HRESULT hr = source->GetHeapProperties(&heapProperties, &heapFlags);
+
+    if (hr != S_OK)
+    {
+        LOG_ERROR("GetHeapProperties result: {:X}", (UINT64) hr);
+        return false;
+    }
+
+    inDesc.Width = width;
+    inDesc.Height = height;
+
+    hr = device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &inDesc, state, nullptr,
+                                         IID_PPV_ARGS(target));
+
+    if (hr != S_OK)
+    {
+        LOG_ERROR("CreateCommittedResource result: {:X}", (UINT64) hr);
+        return false;
+    }
+
+    LOG_DEBUG("Created new one: {}x{}", inDesc.Width, inDesc.Height);
+
+    return true;
+}
+
 bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters)
 {
     LOG_FUNC();
@@ -110,6 +161,65 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
             Config::Instance()->ColorResourceBarrier.set_volatile_value(D3D12_RESOURCE_STATE_RENDER_TARGET);
             ResourceBarrier(InCommandList, paramColor, D3D12_RESOURCE_STATE_RENDER_TARGET,
                             D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        }
+
+        // WAR for FSR 4's autoexposure shader reading entire underlying resource
+        // instead of what's specified by renderSize or color's FfxApiResourceDescription.
+        // Only linear has this issue
+        if (Version().major >= 4 && AutoExposure() && !Config::Instance()->FsrNonLinearPQ.value_or_default() &&
+            !Config::Instance()->FsrNonLinearSRGB.value_or_default() &&
+            !Config::Instance()->FsrNonLinearColorSpace.value_or_default())
+        {
+            D3D12_RESOURCE_DESC desc = paramColor->GetDesc();
+
+            const auto diffW = static_cast<int>(desc.Width) - static_cast<int>(params.renderSize.width);
+            const auto diffH = static_cast<int>(desc.Height) - static_cast<int>(params.renderSize.height);
+
+            // Seemingly it may only be happening when both axes are 1 pixel too big
+            // But let's be conservative here and also trigger when just one axis is too big
+            const bool validW = (diffW >= 0 && diffW <= 2);
+            const bool validH = (diffH >= 0 && diffH <= 2);
+            const bool isPadded = (diffW > 0 || diffH > 0);
+
+            if (validW && validH && isPadded)
+            {
+                CreateBufferResourceWithSize(Device, paramColor, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                                             &smallerColor, params.renderSize.width, params.renderSize.height);
+
+                if (smallerColor)
+                {
+                    ResourceBarrier(InCommandList, paramColor, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                                    D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+                    ResourceBarrier(InCommandList, smallerColor, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                                    D3D12_RESOURCE_STATE_COPY_DEST);
+
+                    D3D12_BOX srcBox {};
+                    srcBox.left = 0;
+                    srcBox.top = 0;
+                    srcBox.right = params.renderSize.width;
+                    srcBox.bottom = params.renderSize.height;
+                    srcBox.front = 0;
+                    srcBox.back = 1;
+
+                    D3D12_TEXTURE_COPY_LOCATION dstLocation {};
+                    dstLocation.pResource = smallerColor;
+                    dstLocation.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+                    dstLocation.SubresourceIndex = 0;
+
+                    D3D12_TEXTURE_COPY_LOCATION srcLocation {};
+                    srcLocation.pResource = paramColor;
+                    srcLocation.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+                    srcLocation.SubresourceIndex = 0;
+
+                    InCommandList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, &srcBox);
+
+                    ResourceBarrier(InCommandList, smallerColor, D3D12_RESOURCE_STATE_COPY_DEST,
+                                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+                    paramColor = smallerColor;
+                }
+            }
         }
 
         params.color = ffxApiGetResourceDX12(paramColor, FFX_API_RESOURCE_STATE_COMPUTE_READ);
