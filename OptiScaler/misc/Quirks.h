@@ -379,6 +379,21 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY_UE(medium, GameQuirk::DisableDxgiSpoofing, GameQuirk::DontUseUnrealColorBarriers,
                    GameQuirk::DontUseUnrealMVBarriers),
 
+    // Observer: System Redux
+    // No spoof needed for DLSS inputs, no UE barriers to fix crash on upscaler init
+    QUIRK_ENTRY("observersystemredux.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceAutoExposure,
+                GameQuirk::DontUseUnrealColorBarriers, GameQuirk::DontUseUnrealMVBarriers),
+
+    // Pumpkin Jack
+    // No spoof needed for DLSS inputs, no UE barriers to fix crash on upscaler init
+    QUIRK_ENTRY_UE(pumpkinjack, GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceAutoExposure,
+                   GameQuirk::DontUseUnrealColorBarriers, GameQuirk::DontUseUnrealMVBarriers),
+
+    // Mortal Shell
+    // No spoof needed for DLSS inputs, no UE barriers to fix crash on upscaler init
+    QUIRK_ENTRY_UE(dungeonhaven, GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceAutoExposure,
+                   GameQuirk::DontUseUnrealColorBarriers, GameQuirk::DontUseUnrealMVBarriers),
+
     // Watch Dogs: Legion
     // AE required to fix FSR4 ghosting
     QUIRK_ENTRY("watchdogslegion.exe", GameQuirk::ForceAutoExposure),
@@ -397,12 +412,11 @@ static const QuirkEntry quirkTable[] = {
     // SL spoof enough to unlock everything DLSS/No spoof needed for DLSS inputs
     //
     // The Witcher 3, Alan Wake 2, Crysis 3 Remastered, Marvel's Guardians of the Galaxy, UNCHARTED: Legacy of Thieves
-    // Collection, Warhammer 40,000: Darktide, Observer: System Redux, Pumpkin Jack, Rise of the Ronin, DYNASTY
-    // WARRIORS: ORIGINS, Crysis Remastered, Crysis 2 Remastered, Mortal Shell, Sekiro: Shadows Die Twice (for SekiroTSR
-    // mod), God of War (2018), Europa Universalis V, Need for Speed Unbound, Nioh 2 – The Complete Edition, Control
-    // Ultimate Edition, Deathloop, FINAL FANTASY VII REMAKE INTERGRADE (for Luma mod), Farming Simulator 2025, Nioh 3,
-    // FATAL FRAME II: Crimson Butterfly REMAKE, MOUSE: P.I. For Hire, Yet Another Zombie Survivors, Voodoo Fishin',
-    // Forza Horizon 6, Over the Hill (demo), SHROT (demo)
+    // Collection, Warhammer 40,000: Darktide, Rise of the Ronin, DYNASTY WARRIORS: ORIGINS, Crysis Remastered, Crysis 2
+    // Remastered, Sekiro: Shadows Die Twice (for SekiroTSR mod), God of War (2018), Europa Universalis V, Need for
+    // Speed Unbound, Nioh 2 – The Complete Edition, Control Ultimate Edition, Deathloop, FINAL FANTASY VII REMAKE
+    // INTERGRADE (for Luma mod), Farming Simulator 2025, Nioh 3, FATAL FRAME II: Crimson Butterfly REMAKE, MOUSE: P.I.
+    // For Hire, Yet Another Zombie Survivors, Voodoo Fishin', Forza Horizon 6, Over the Hill (demo), SHROT (demo)
     QUIRK_ENTRY("witcher3.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("alanwake2.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("crysis3remastered.exe", GameQuirk::DisableDxgiSpoofing),
@@ -412,13 +426,10 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("tll.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("tll-l.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("darktide.exe", GameQuirk::DisableDxgiSpoofing),
-    QUIRK_ENTRY("observersystemredux.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceAutoExposure),
-    QUIRK_ENTRY_UE(pumpkinjack, GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceAutoExposure),
     QUIRK_ENTRY("ronin.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("dworigins.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("crysisremastered.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("crysis2remastered.exe", GameQuirk::DisableDxgiSpoofing),
-    QUIRK_ENTRY_UE(dungeonhaven, GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("sekiro.exe", GameQuirk::DisableDxgiSpoofing), // Sekiro TSR mod required for upscalers
     QUIRK_ENTRY("gow.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("eu5.exe", GameQuirk::DisableDxgiSpoofing),
