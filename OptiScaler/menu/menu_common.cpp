@@ -2518,7 +2518,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                 {
                     for (int n = 0; n < state.ffxUpscalerVersionIds.size(); n++)
                     {
-                        auto name = StrFmt("FSR %s", state.ffxUpscalerVersionNames[n]);
+                        auto name = StrFmt("FSR %s##%d", state.ffxUpscalerVersionNames[n], n);
                         if (ImGui::Selectable(name.c_str(), config->FfxUpscalerIndex.value_or_default() == n))
                             _ffxUpscalerIndex = n;
                     }
