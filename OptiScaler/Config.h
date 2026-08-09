@@ -481,7 +481,7 @@ class Config
     CustomOptional<bool> DisableFlipMetering { false };
 
     // Spoofing
-    CustomOptional<bool> DxgiSpoofing { true };
+    CustomOptional<bool, SoftDefault> DxgiSpoofing { true };
     CustomOptional<bool> DxgiFactoryWrapping { false };
     CustomOptional<bool> StreamlineSpoofing { true };
     CustomOptional<std::string, NoDefault> DxgiBlacklist; // disabled by default
