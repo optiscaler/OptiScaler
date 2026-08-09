@@ -612,20 +612,14 @@ bool StreamlineHooks::hkslEvaluateFeature_sl1(sl1::CommandBuffer* cmdBuffer, sl1
     {
         const auto marker = (sl1::ReflexMarker) id;
 
-        if (State::Instance().activeFgInput == FGInput::DLSSG)
+        if (marker == sl1::ReflexMarker::eReflexMarkerRenderSubmitStart)
         {
-            if (State::Instance().streamlineVersion.major == 1)
-            {
-                if (marker == sl1::ReflexMarker::eReflexMarkerRenderSubmitStart)
-                {
-                    State::Instance().s_sl1FGInputs.evaluateState();
-                }
-                else if (marker == sl1::ReflexMarker::eReflexMarkerPresentStart)
-                {
-                    State::Instance().s_sl1FGInputs.markPresent(frameIndex);
-                    State::Instance().s_sl1FGInputs.evaluateFeature(cmdBuffer, feature, frameIndex, id);
-                }
-            }
+            State::Instance().s_sl1FGInputs.evaluateState();
+            State::Instance().s_sl1FGInputs.evaluateFeature(cmdBuffer, feature, frameIndex, id);
+        }
+        else if (marker == sl1::ReflexMarker::eReflexMarkerPresentStart)
+        {
+            State::Instance().s_sl1FGInputs.markPresent(frameIndex);
         }
     }
 
