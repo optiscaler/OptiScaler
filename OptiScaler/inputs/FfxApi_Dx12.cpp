@@ -207,12 +207,14 @@ ffxReturnCode_t ffxCreateContext_Dx12(ffxContext* context, ffxCreateContextDescH
     // Game is creating FSR-FG swapchain and calling present twice per frame
     // So when using OptiFG I am hijacking FSR-FG swapchain
     // It would crash the games which uses swapchain for FG
-    if ((type == FFXStructType::SwapchainDX12 || type == FFXStructType::FG) &&
-        (state.activeFgInput == FGInput::FSRFG ||
-         (Config::Instance()->FGAlwaysCaptureFSRFGSwapchain.value_or_default() &&
-          state.activeFgOutput != FGOutput::NoFG && state.activeFgOutput != FGOutput::NvngxFG &&
-          (desc->type == FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_NEW_DX12 ||
-           desc->type == FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_FOR_HWND_DX12))))
+    const bool isFgType = type == FFXStructType::SwapchainDX12 || type == FFXStructType::FG;
+    const bool swapchainCreationType =
+        desc->type == FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_NEW_DX12 ||
+        desc->type == FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_FOR_HWND_DX12;
+    const bool unaffectedOutput = state.activeFgOutput == FGOutput::NoFG || state.activeFgInput == FGInput::NvngxFG;
+    const bool shouldCaptureGamesSwapchain = Config::Instance()->FGAlwaysCaptureFSRFGSwapchain.value_or_default() &&
+                                             !unaffectedOutput && swapchainCreationType;
+    if (isFgType && (state.activeFgInput == FGInput::FSRFG || shouldCaptureGamesSwapchain))
     {
         auto result = ffxCreateContext_Dx12FG(context, desc, memCb);
 

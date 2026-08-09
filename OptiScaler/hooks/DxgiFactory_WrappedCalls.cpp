@@ -26,7 +26,7 @@
 static bool ShouldCreateDx11wDx12Swapchain()
 {
     return State::Instance().activeFgInput == FGInput::Upscaler && State::Instance().activeFgOutput != FGOutput::NoFG &&
-           State::Instance().activeFgOutput != FGOutput::NvngxFG;
+           State::Instance().activeFgInput != FGInput::NvngxFG;
 }
 
 static bool PrepareDx12InteropDesc(DXGI_SWAP_CHAIN_DESC& desc)

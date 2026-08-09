@@ -902,15 +902,18 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_GetFeatureRequirements(
 {
     LOG_DEBUG("for ({0})", (int) FeatureDiscoveryInfo->FeatureID);
 
-    if (State::Instance().activeFgInput == FGInput::NvngxFG ||
-        State::Instance().activeFgOutput == FGOutput::DLSSGWithNvngx)
+    const bool isNvngxFGActive = State::Instance().activeFgInput == FGInput::NvngxFG ||
+                                 State::Instance().activeFgOutput == FGOutput::DLSSGWithNvngx;
+
+    if (isNvngxFGActive)
         Nvngx_FG::InitDLSSGMod_Dx12();
 
-    if (FeatureDiscoveryInfo->FeatureID == NVSDK_NGX_Feature_SuperSampling ||
-        (FeatureDiscoveryInfo->FeatureID == NVSDK_NGX_Feature_FrameGeneration &&
-         ((Nvngx_FG::isDx12Available() && (Config::Instance()->FGInput == FGInput::NvngxFG ||
-                                           Config::Instance()->FGOutput == FGOutput::DLSSGWithNvngx)) ||
-          Config::Instance()->FGInput == FGInput::DLSSG)))
+    const bool isUpscaling = FeatureDiscoveryInfo->FeatureID == NVSDK_NGX_Feature_SuperSampling;
+    const bool isFG = FeatureDiscoveryInfo->FeatureID == NVSDK_NGX_Feature_FrameGeneration;
+    const bool canUseNvngxFG = Nvngx_FG::isDx12Available() && isNvngxFGActive;
+    const bool dlssgAdjacent = canUseNvngxFG || State::Instance().activeFgInput == FGInput::DLSSG;
+
+    if (isUpscaling || (isFG && dlssgAdjacent))
     {
         if (OutSupported == nullptr)
         {

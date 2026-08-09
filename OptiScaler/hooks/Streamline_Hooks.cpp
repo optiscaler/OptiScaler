@@ -744,7 +744,7 @@ void StreamlineHooks::spoofArch(uint32_t currentArch, sl::Feature feature, Syste
     // Don't change arch for DLSSG with ada and above
     else if (feature == sl::kFeatureDLSS_G)
     {
-        if (State::Instance().activeFgOutput == FGOutput::NvngxFG ||
+        if (State::Instance().activeFgInput == FGInput::NvngxFG ||
             State::Instance().activeFgOutput == FGOutput::DLSSGWithNvngx)
         {
             Nvngx_FG::InitDLSSGMod_Dx12();
@@ -852,7 +852,7 @@ bool StreamlineHooks::hkdlssg_slOnPluginLoad(sl::param::IParameters* params, con
 
     bool shouldSpoofArch =
         Config::Instance()->StreamlineSpoofing.value_or_default() &&
-        (Config::Instance()->FGInput == FGInput::NvngxFG || Config::Instance()->FGInput == FGInput::DLSSG);
+        (State::Instance().activeFgInput == FGInput::NvngxFG || State::Instance().activeFgInput == FGInput::DLSSG);
 
     uint32_t currentArch = 0;
     if (shouldSpoofArch)
@@ -1415,7 +1415,7 @@ void* StreamlineHooks::hklocal_dlssg_slGetPluginFunction(const char* functionNam
 {
     // LOG_DEBUG("{}", functionName);
 
-    if (strcmp(functionName, "slOnPluginLoad") == 0 && Config::Instance()->FGOutput == FGOutput::DLSSGWithNvngx)
+    if (strcmp(functionName, "slOnPluginLoad") == 0 && State::Instance().activeFgOutput == FGOutput::DLSSGWithNvngx)
     {
         o_local_dlssg_slOnPluginLoad = (PFN_slOnPluginLoad) o_local_dlssg_slGetPluginFunction(functionName);
         return &hklocal_dlssg_slOnPluginLoad;

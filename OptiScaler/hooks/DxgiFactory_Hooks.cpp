@@ -395,7 +395,7 @@ HRESULT DxgiFactoryHooks::CreateSwapChain(IDXGIFactory* realFactory, IUnknown* p
 
             if (!_skipFGSwapChainCreation && State::Instance().activeFgInput == FGInput::Upscaler &&
                 State::Instance().activeFgOutput != FGOutput::NoFG &&
-                State::Instance().activeFgOutput != FGOutput::NvngxFG)
+                State::Instance().activeFgInput != FGInput::NvngxFG)
             {
                 auto hiddenHwnd = CreateHiddenSwapchainWindow();
 
@@ -783,7 +783,7 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
 
             if (!_skipFGSwapChainCreation && State::Instance().activeFgInput == FGInput::Upscaler &&
                 State::Instance().activeFgOutput != FGOutput::NoFG &&
-                State::Instance().activeFgOutput != FGOutput::NvngxFG)
+                State::Instance().activeFgInput != FGInput::NvngxFG)
             {
                 // For dx11 swapchain
                 auto hiddenHwnd = CreateHiddenSwapchainWindow();
