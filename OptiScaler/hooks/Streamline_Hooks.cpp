@@ -90,9 +90,7 @@ static bool IsSL1AndFGActive()
 {
     const auto& state = State::Instance();
 
-    return state.streamlineVersion.major == 1 &&
-           (state.activeFgInput == FGInput::DLSSG || state.activeFgOutput == FGOutput::FSRFG ||
-            state.activeFgOutput == FGOutput::XeFG);
+    return state.streamlineVersion.major == 1 && state.activeFgInput == FGInput::DLSSG;
 }
 
 static void PatchSL1PluginJson(nlohmann::json& configJson)
@@ -610,10 +608,25 @@ bool StreamlineHooks::hkslEvaluateFeature_sl1(sl1::CommandBuffer* cmdBuffer, sl1
     LOG_TRACE("SL1 slEvaluateFeature feature: {}, frameIndex: {}, id: {}", magic_enum::enum_name(feature), frameIndex,
               id);
 
-    if (IsSL1AndFGActive() && feature == sl1::Feature::eFeatureReflex &&
-        ((sl1::ReflexMarker) id) == sl1::ReflexMarker::eReflexMarkerRenderSubmitEnd)
+    if (IsSL1AndFGActive() && feature == sl1::Feature::eFeatureReflex)
     {
-        State::Instance().s_sl1FGInputs.evaluateFeature(cmdBuffer, feature, frameIndex, id);
+        const auto marker = (sl1::ReflexMarker) id;
+
+        if (State::Instance().activeFgInput == FGInput::DLSSG)
+        {
+            if (State::Instance().streamlineVersion.major == 1)
+            {
+                if (marker == sl1::ReflexMarker::eReflexMarkerRenderSubmitStart)
+                {
+                    State::Instance().s_sl1FGInputs.evaluateState();
+                }
+                else if (marker == sl1::ReflexMarker::eReflexMarkerPresentStart)
+                {
+                    State::Instance().s_sl1FGInputs.markPresent(frameIndex);
+                    State::Instance().s_sl1FGInputs.evaluateFeature(cmdBuffer, feature, frameIndex, id);
+                }
+            }
+        }
     }
 
     return o_slEvaluateFeature_sl1(cmdBuffer, feature, frameIndex, id);
