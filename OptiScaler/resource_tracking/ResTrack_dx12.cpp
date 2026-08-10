@@ -18,6 +18,12 @@
 #include <Unknwn.h> // or <objbase.h> to get STDMETHODCALLTYPE
 #endif
 
+#ifdef USE_SPINLOCK_MUTEX
+#define LOCK_GUARD(mutex) std::lock_guard<SpinLock> name(mutex)
+#else
+#define LOCK_GUARD(mutex) std::lock_guard<std::mutex> name(mutex)
+#endif
+
 // Device hooks for FG
 typedef void(STDMETHODCALLTYPE* PFN_CreateRenderTargetView)(ID3D12Device* This, ID3D12Resource* pResource,
                                                             D3D12_RENDER_TARGET_VIEW_DESC* pDesc,
@@ -1083,11 +1089,7 @@ void ResTrack_Dx12::hkSetGraphicsRootDescriptorTable(ID3D12GraphicsCommandList* 
             size_t shardIdx = GetShardIndex(This);
             auto& shard = _hudlessShards[fIndex][shardIdx];
 
-#ifdef USE_SPINLOCK_MUTEX
-            std::lock_guard<SpinLock> lock(shard.mutex);
-#else
-            std::lock_guard<std::mutex> lock(shard.mutex);
-#endif
+            LOCK_GUARD(shard.mutex);
 
             if (!shard.map.contains(This))
             {
@@ -1202,11 +1204,7 @@ void ResTrack_Dx12::hkOMSetRenderTargets(ID3D12GraphicsCommandList* This, UINT N
                 size_t shardIdx = GetShardIndex(This);
                 auto& shard = _hudlessShards[fIndex][shardIdx];
 
-#ifdef USE_SPINLOCK_MUTEX
-                std::lock_guard<SpinLock> lock(shard.mutex);
-#else
-                std::lock_guard<std::mutex> lock(shard.mutex);
-#endif
+                LOCK_GUARD(shard.mutex);
 
                 if (!shard.map.contains(This))
                 {
@@ -1302,11 +1300,7 @@ void ResTrack_Dx12::hkSetComputeRootDescriptorTable(ID3D12GraphicsCommandList* T
             size_t shardIdx = GetShardIndex(This);
             auto& shard = _hudlessShards[fIndex][shardIdx];
 
-#ifdef USE_SPINLOCK_MUTEX
-            std::lock_guard<SpinLock> lock(shard.mutex);
-#else
-            std::lock_guard<std::mutex> lock(shard.mutex);
-#endif
+            LOCK_GUARD(shard.mutex);
 
             if (!shard.map.contains(This))
             {
@@ -1392,11 +1386,7 @@ void ResTrack_Dx12::hkDrawInstanced(ID3D12GraphicsCommandList* This, UINT Vertex
 
         if (This == MenuOverlayDx::MenuCommandList() && shard.map.contains(This))
         {
-#ifdef USE_SPINLOCK_MUTEX
-            std::lock_guard<SpinLock> lock(shard.mutex);
-#else
-            std::lock_guard<std::mutex> lock(shard.mutex);
-#endif
+            LOCK_GUARD(shard.mutex);
 
             shard.map.erase(This);
             return;
@@ -1405,11 +1395,7 @@ void ResTrack_Dx12::hkDrawInstanced(ID3D12GraphicsCommandList* This, UINT Vertex
         ankerl::unordered_dense::map<ID3D12Resource*, ResourceInfo> val0;
         {
 
-#ifdef USE_SPINLOCK_MUTEX
-            std::lock_guard<SpinLock> lock(shard.mutex);
-#else
-            std::lock_guard<std::mutex> lock(shard.mutex);
-#endif
+            LOCK_GUARD(shard.mutex);
 
             // if can't find output skip
             if (shard.map.size() == 0)
@@ -1512,11 +1498,7 @@ void ResTrack_Dx12::hkDrawIndexedInstanced(ID3D12GraphicsCommandList* This, UINT
 
         if (This == MenuOverlayDx::MenuCommandList() && shard.map.contains(This))
         {
-#ifdef USE_SPINLOCK_MUTEX
-            std::lock_guard<SpinLock> lock(shard.mutex);
-#else
-            std::lock_guard<std::mutex> lock(shard.mutex);
-#endif
+            LOCK_GUARD(shard.mutex);
 
             shard.map.erase(This);
             return;
@@ -1524,12 +1506,7 @@ void ResTrack_Dx12::hkDrawIndexedInstanced(ID3D12GraphicsCommandList* This, UINT
 
         ankerl::unordered_dense::map<ID3D12Resource*, ResourceInfo> val0;
         {
-
-#ifdef USE_SPINLOCK_MUTEX
-            std::lock_guard<SpinLock> lock(shard.mutex);
-#else
-            std::lock_guard<std::mutex> lock(shard.mutex);
-#endif
+            LOCK_GUARD(shard.mutex);
 
             // if can't find output skip
             if (shard.map.size() == 0)
@@ -1703,11 +1680,7 @@ void ResTrack_Dx12::hkDispatch(ID3D12GraphicsCommandList* This, UINT ThreadGroup
 
         if (This == MenuOverlayDx::MenuCommandList() && shard.map.contains(This))
         {
-#ifdef USE_SPINLOCK_MUTEX
-            std::lock_guard<SpinLock> lock(shard.mutex);
-#else
-            std::lock_guard<std::mutex> lock(shard.mutex);
-#endif
+            LOCK_GUARD(shard.mutex);
 
             shard.map.erase(This);
             return;
@@ -1716,11 +1689,7 @@ void ResTrack_Dx12::hkDispatch(ID3D12GraphicsCommandList* This, UINT ThreadGroup
         ankerl::unordered_dense::map<ID3D12Resource*, ResourceInfo> val0;
         {
 
-#ifdef USE_SPINLOCK_MUTEX
-            std::lock_guard<SpinLock> lock(shard.mutex);
-#else
-            std::lock_guard<std::mutex> lock(shard.mutex);
-#endif
+            LOCK_GUARD(shard.mutex);
 
             // if can't find output skip
             if (shard.map.size() == 0)
@@ -2219,11 +2188,7 @@ void ResTrack_Dx12::ClearPossibleHudless()
         {
             auto& shard = _hudlessShards[hfIndex][i];
 
-#ifdef USE_SPINLOCK_MUTEX
-            std::lock_guard<SpinLock> lock(shard.mutex);
-#else
-            std::lock_guard<std::mutex> lock(shard.mutex);
-#endif
+            LOCK_GUARD(shard.mutex);
 
             shard.map.clear();
         }
