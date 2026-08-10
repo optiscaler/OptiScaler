@@ -3428,7 +3428,7 @@ bool MenuCommon::RenderMenu()
                                         config->Fsr4EnableWatermark = fsr4wm;
                                     }
 
-                                    ShowHelpMarker("After changing this option, please Save Settings\n"
+                                    ShowHelpMarker("After changing this option, please Save Settings.\n"
                                                    "It will be applied on next launch.");
                                 }
                             }
@@ -3444,7 +3444,7 @@ bool MenuCommon::RenderMenu()
 
                                     ImGui::SameLine(0.0f, 6.0f);
 
-                                    // This wiill be applied by default
+                                    // This will be applied by default
                                     if (ImGui::Button("Stability"))
                                     {
                                         auto const scaleRatioX = (float) currentFeature->TargetWidth() /
@@ -3513,7 +3513,7 @@ bool MenuCommon::RenderMenu()
 
                                     ShowHelpMarker("Value of 0.0f can improve temporal stability of bright pixels\n"
                                                    "Lower values are more stable with ghosting\n"
-                                                   "Higher values are more pixelly but less ghosting.");
+                                                   "Higher values are more pixelly, but less ghosting");
 
                                     if (currentFeature->Version() >= feature_version { 3, 1, 4 })
                                     {
@@ -3630,7 +3630,7 @@ bool MenuCommon::RenderMenu()
 
                             ShowHelpMarker("Each render preset has it strengths and weaknesses\n"
                                            "Override to potentially improve image quality\n"
-                                           "Press apply after enable/disable");
+                                           "Press Apply after enable/disable");
 
                             /*
                             auto currentPresetIndex = GetPresetIndex(currentFeature, false);
@@ -3687,7 +3687,7 @@ bool MenuCommon::RenderMenu()
 
                             ShowHelpMarker("Use generic appid with NGX\n"
                                            "Fixes OptiScaler preset override not working with certain games\n"
-                                           "Requires a game restart.");
+                                           "Requires a game restart");
 
                             ImGui::BeginDisabled(!config->RenderPresetOverride.value_or_default() || overridden);
                             ImGui::Spacing();
@@ -3728,25 +3728,25 @@ bool MenuCommon::RenderMenu()
                 // clang-format off
 
                 inputOptions = {
-                    { FGInput::NoFG, "No Frame Generation" },
+                    { FGInput::NoFG, "None" },
                     { FGInput::Nukems, "Nukem's DLSSG",
-                        "Limited to FSR3-FG\n\nSupports Hudless out of the box\n\nUses Streamline swapchain for pacing" },
+                        "Limited to FSR3-FG\n\nRequires enabling DLSS-FG in game settings\nSupports HUDless out of the box\nUses Streamline swapchain for pacing" },
                     { FGInput::FSRFG, "FSR 3.1 FG",
-                        "Can be used with any FG Output\n\nSupports Hudless out of the box" },
+                        "Can be used with any FG Output\n\nRequires enabling FSR-FG in game settings\nSupports HUDless out of the box" },
                     { FGInput::DLSSG, "DLSSG via Streamline",
-                        "Can be used with any FG Output\n\nSupports Hudless out of the box\n\nLimited to games that use Streamline v2" },
+                        "Can be used with any FG Output\n\nRequires enabling DLSS-FG in game settings\nSupports HUDless out of the box\n\nLimited to games that use Streamline v2" },
                     { FGInput::XeFG, "XeFG" },
                     { FGInput::Upscaler, "OptiFG (Upscaler)",
-                        "Upscaler must be enabled\n\nCan be used with any FG Output, but might be imperfect with some\n\nTo prevent UI glitching, HUDfix required" },
+                        "Upscaler must be enabled\n\nCan be used with any FG Output, but might be imperfect with some\nTo prevent UI glitching, HUDfix required" },
                     { FGInput::FSRFG30, "FSR 3.0 FG",
-                        "Can be used with any FG Output\n\nSupports Hudless out of the box" }
+                        "Can be used with any FG Output\n\nRequires enabling FSR-FG in game settings\nSupports HUDless out of the box" }
                 };
 
                 // clang-format on
 
                 // XeFG requirements
                 auto constexpr xefgInputIndex = (uint32_t) FGInput::XeFG;
-                inputOptions[xefgInputIndex].set_disabled(true, "Support not implemented");
+                inputOptions[xefgInputIndex].set_disabled(true, "Support not implemented, they meant FG Output");
 
                 // OptiFG requirements
                 auto constexpr optiFgIndex = (uint32_t) FGInput::Upscaler;
@@ -3801,11 +3801,11 @@ bool MenuCommon::RenderMenu()
                 // clang-format off
 
                 outputOptions = {
-                    { FGOutput::NoFG, "No Frame Generation" },
-                    { FGOutput::Nukems, "FSR3-FG via Nukem's", "Enable DLSS-FG in-game" },
-                    { FGOutput::FSRFG, "FSR FG", "FSR3/4 FG" },
+                    { FGOutput::NoFG, "None" },
+                    { FGOutput::Nukems, "FSR3-FG via Nukem's", "Enable DLSS-FG in game settings\n\nLightest, but most artifacts (esp. in fast motion)" },
+                    { FGOutput::FSRFG, "FSR FG", "FSR3/4-FG, RDNA4 autoupgrades to FSR4-FG\n\nFSR4-FG sometimes better/worse than XeFG" },
                     { FGOutput::DLSSG, "DLSSG", "Support not implemented" },
-                    { FGOutput::XeFG, "XeFG", "XeFG" }
+                    { FGOutput::XeFG, "XeFG", "XeFG - heaviest, but best universal FG\n\nXeFG 3 overall deals best with HUD\n\nEnable UI Composition if HUD ghosting" }
                 };
 
                 // clang-format on
@@ -4193,7 +4193,7 @@ bool MenuCommon::RenderMenu()
 
                         ImGui::Spacing();
                         ImGui::Spacing();
-                        if (auto ch = ScopedCollapsingHeader("Advanced FSR FG Settings"); ch.IsHeaderOpen())
+                        if (auto ch = ScopedCollapsingHeader("Extended FSR FG Settings"); ch.IsHeaderOpen())
                         {
                             ScopedIndent indent {};
                             ImGui::Spacing();
@@ -4504,7 +4504,7 @@ bool MenuCommon::RenderMenu()
                         // ShowHelpMarker("Display only XeFG generated frames");
 
                         ImGui::Spacing();
-                        if (auto ch = ScopedCollapsingHeader("Advanced XeFG Settings"); ch.IsHeaderOpen())
+                        if (auto ch = ScopedCollapsingHeader("Extended XeFG Settings"); ch.IsHeaderOpen())
                         {
                             ImGui::Spacing();
                             if (ImGui::TreeNode("Rectangle Settings"))
@@ -4609,7 +4609,7 @@ bool MenuCommon::RenderMenu()
                                 config->FGHUDFixExtended = hudExtended;
                             }
                             ShowHelpMarker(
-                                "Extended format checks for possible Hudless\nMight cause crashes and slowdowns!");
+                                "Extended format checks for possible HUDless\nMight cause crashes and slowdowns!");
                             ImGui::SameLine(0.0f, 16.0f);
 
                             ImGui::BeginDisabled(!config->FGHUDFix.value_or_default());
@@ -4620,7 +4620,7 @@ bool MenuCommon::RenderMenu()
                                 LOG_DEBUG("Enabled set FGImmediateCapture: {}", immediate);
                                 config->FGImmediateCapture = immediate;
                             }
-                            ShowHelpMarker("Enables capturing of resources before shader execution.\nIncrease Hudless "
+                            ShowHelpMarker("Enables capturing of resources before shader execution.\nIncrease HUDless "
                                            "capture chances, but might cause capturing of unnecessary resources.");
 
                             ImGui::PopItemWidth();
@@ -4660,7 +4660,7 @@ bool MenuCommon::RenderMenu()
                                     config->FGResourceBlocking = rb;
                                     LOG_DEBUG("Enabled set FGResourceBlocking: {}", rb);
                                 }
-                                ShowHelpMarker("Block rarely used resources from using as Hudless \n"
+                                ShowHelpMarker("Block rarely used resources from using as HUDless \n"
                                                "to prevent flickers and other issues\n\n"
                                                "HUDfix enable/disable will reset the block list!");
 
@@ -4672,7 +4672,7 @@ bool MenuCommon::RenderMenu()
                                     config->FGRelaxedResolutionCheck = rrc;
                                     LOG_DEBUG("Enabled set FGRelaxedResolutionCheck: {}", rrc);
                                 }
-                                ShowHelpMarker("Relax resolution checks for Hudless by 32 pixels \n"
+                                ShowHelpMarker("Relax resolution checks for HUDless by 32 pixels \n"
                                                "Helps games which use black borders for some \n"
                                                "resolutions and screen ratios (e.g. Witcher 3)");
 
@@ -4731,7 +4731,7 @@ bool MenuCommon::RenderMenu()
                                     if (ImGui::Checkbox("Disable RTV Tracking", &disableRTV))
                                         config->FGHudfixDisableRTV = disableRTV;
                                     ShowHelpMarker("Disable tracking of CreateRenderTargetView\n"
-                                                   "This might help filtering of wrong hudless resources");
+                                                   "This might help filtering of wrong HUDless resources");
 
                                     ImGui::SameLine(0.0f, 16.0f);
 
@@ -4739,13 +4739,13 @@ bool MenuCommon::RenderMenu()
                                     if (ImGui::Checkbox("Disable SRV Tracking", &disableSRV))
                                         config->FGHudfixDisableSRV = disableSRV;
                                     ShowHelpMarker("Disable tracking of CreateShaderResourceView\n"
-                                                   "This might help filtering of wrong Hudless resources");
+                                                   "This might help filtering of wrong HUDless resources");
 
                                     auto disableUAV = config->FGHudfixDisableUAV.value_or_default();
                                     if (ImGui::Checkbox("Disable UAV Tracking", &disableUAV))
                                         config->FGHudfixDisableUAV = disableUAV;
                                     ShowHelpMarker("Disable tracking of CreateUnorderedAccessView\n"
-                                                   "This might help filtering of wrong Hudless resources");
+                                                   "This might help filtering of wrong HUDless resources");
 
                                     ImGui::SameLine(0.0f, 16.0f);
 
@@ -4753,13 +4753,13 @@ bool MenuCommon::RenderMenu()
                                     if (ImGui::Checkbox("Disable OM Tracking", &disableOM))
                                         config->FGHudfixDisableOM = disableOM;
                                     ShowHelpMarker("Disable tracking of OMSetRenderTargets\n"
-                                                   "This might help filtering of wrong Hudless resources");
+                                                   "This might help filtering of wrong HUDless resources");
 
                                     auto disableSCR = config->FGHudfixDisableSCR.value_or_default();
                                     if (ImGui::Checkbox("Disable SCR Tracking", &disableSCR))
                                         config->FGHudfixDisableSCR = disableSCR;
                                     ShowHelpMarker("Disable tracking of SetComputeRootDescriptorTable\n"
-                                                   "This might help filtering of wrong Hudless resources");
+                                                   "This might help filtering of wrong HUDless resources");
 
                                     ImGui::SameLine(0.0f, 16.0f);
 
@@ -4767,7 +4767,7 @@ bool MenuCommon::RenderMenu()
                                     if (ImGui::Checkbox("Disable SGR Tracking", &disableSGR))
                                         config->FGHudfixDisableSGR = disableSGR;
                                     ShowHelpMarker("Disable tracking of SetGraphicsRootDescriptorTable\n"
-                                                   "This might help filtering of wrong Hudless resources");
+                                                   "This might help filtering of wrong HUDless resources");
 
                                     ImGui::Spacing();
 
@@ -4775,7 +4775,7 @@ bool MenuCommon::RenderMenu()
                                     if (ImGui::Checkbox("Disable DI Tracking", &disableDI))
                                         config->FGHudfixDisableDI = disableDI;
                                     ShowHelpMarker("Disable tracking of DrawInstanced\n"
-                                                   "This might help filtering of wrong Hudless resources");
+                                                   "This might help filtering of wrong HUDless resources");
 
                                     ImGui::SameLine(0.0f, 16.0f);
 
@@ -4783,13 +4783,13 @@ bool MenuCommon::RenderMenu()
                                     if (ImGui::Checkbox("Disable DII Tracking", &disableDII))
                                         config->FGHudfixDisableDII = disableDII;
                                     ShowHelpMarker("Disable tracking of DrawIndexedInstanced\n"
-                                                   "This might help filtering of wrong Hudless resources");
+                                                   "This might help filtering of wrong HUDless resources");
 
                                     auto disableDispatch = config->FGHudfixDisableDispatch.value_or_default();
                                     if (ImGui::Checkbox("Disable Dispatch Tracking", &disableDispatch))
                                         config->FGHudfixDisableDispatch = disableDispatch;
                                     ShowHelpMarker("Disable tracking of Dispatch\n"
-                                                   "This might help filtering of wrong Hudless resources");
+                                                   "This might help filtering of wrong HUDless resources");
 
                                     ImGui::TreePop();
                                 }
@@ -4946,18 +4946,18 @@ bool MenuCommon::RenderMenu()
                     }
 
                     bool skipConfig = config->FSRFGSkipConfigForHudless.value_or_default();
-                    if (ImGui::Checkbox("Skip Config for Hudless", &skipConfig))
+                    if (ImGui::Checkbox("Skip Config for HUDless", &skipConfig))
                         config->FSRFGSkipConfigForHudless = skipConfig;
 
-                    ShowHelpMarker("Do not use Hudless set at ffxConfig");
+                    ShowHelpMarker("Do not use HUDless set at ffxConfig");
 
                     ImGui::SameLine(0.0f, 6.0f);
 
                     bool skipDispatch = config->FSRFGSkipDispatchForHudless.value_or_default();
-                    if (ImGui::Checkbox("Skip Dispatch for Hudless", &skipDispatch))
+                    if (ImGui::Checkbox("Skip Dispatch for HUDless", &skipDispatch))
                         config->FSRFGSkipDispatchForHudless = skipDispatch;
 
-                    ShowHelpMarker("Do not use Hudless set at ffxDispatch");
+                    ShowHelpMarker("Do not use HUDless set at ffxDispatch");
                 }
 
                 // Streamline FG Inputs
@@ -5634,13 +5634,13 @@ bool MenuCommon::RenderMenu()
                                     { Scaler::Lanczos2, "Lanczos2",
                                         "Lighter and faster than Lanczos3.\nLess prone to ringing artefacts, but slightly blurrier." },
                                     { Scaler::Lanczos3, "Lanczos3",
-                                        "Heavier version of Lanczos2.\nOffers the sharpest image, but is the most prone to ringing." },
+                                        "Heavier version of Lanczos2.\nOffers the sharpest image, but is the most prone to ringing.\nConsidered the best along with Kaiser3." },
                                     { Scaler::Kaiser2, "Kaiser2",
                                         "Similar to Lanczos2.\nSmoother and less prone to artefacts than Lanczos, but slightly blurrier." },
                                     { Scaler::Kaiser3, "Kaiser3",
-                                        "Similar to Lanczos3.\nFar less prone to artefacting than Lanczos3, but much heavier on the GPU." },
+                                        "Similar to Lanczos3.\nFar less prone to artefacting than Lanczos3, but much heavier on the GPU.\nConsidered the best along with Lanczos3." },
                                     { Scaler::Magic, "MAGIC",
-                                        "Specialised to prevent artifacts.\nEliminates harsh halos for a natural look, but can appear slightly soft." }
+                                        "Specialised to prevent artifacts.\nEliminates harsh halos for a natural look, but can appear extremely soft." }
                                 };
                                 // clang-format on
 
@@ -7217,14 +7217,14 @@ bool MenuCommon::RenderMenu()
                 ImGui::SetNextWindowPos(ImVec2 { posX, posY }, ImGuiCond_FirstUseEver);
                 ImGui::SetNextWindowSize(ImVec2 { 400.0f, 300.0f });
 
-                if (ImGui::Begin("Hudless Resources", nullptr, flags))
+                if (ImGui::Begin("HUDless Resources", nullptr, flags))
                 {
                     if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow))
                         ImGui::SetWindowFocus();
 
                     int btnCount = 100;
 
-                    if (ImGui::BeginTable("HudlessTable", 2, ImGuiTableFlags_SizingFixedFit))
+                    if (ImGui::BeginTable("HUDlessTable", 2, ImGuiTableFlags_SizingFixedFit))
                     {
                         ImGui::TableSetupColumn("##1", ImGuiTableColumnFlags_WidthStretch);
                         ImGui::TableSetupColumn("##2", ImGuiTableColumnFlags_WidthFixed);
@@ -7254,7 +7254,7 @@ bool MenuCommon::RenderMenu()
 
                             if (ImGui::Button(text.c_str()))
                             {
-                                LOG_DEBUG("Hudless {:X}: {}", (size_t) it->first,
+                                LOG_DEBUG("HUDless {:X}: {}", (size_t) it->first,
                                           it->second.enabled ? "Disabling" : "Enabling");
                                 it->second.enabled = !it->second.enabled;
                             }
@@ -7265,7 +7265,7 @@ bool MenuCommon::RenderMenu()
 
                     if (ImGui::Button("Clear##4"))
                     {
-                        LOG_DEBUG("Clearing captured hudless resources");
+                        LOG_DEBUG("Clearing captured HUDless resources");
                         state.ClearCapturedHudlesses = true;
                     }
 
