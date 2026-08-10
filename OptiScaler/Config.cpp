@@ -1285,13 +1285,8 @@ bool Config::SaveIni()
 
     // Spoofing
     {
-        // Save Dxgi spoofing value only if it differs from the current GPU vendor
-        bool forceSaveDxgi = Instance()->DxgiSpoofing.has_value() &&
-                             ((State::Instance().isRunningOnNvidia && Instance()->DxgiSpoofing.value()) ||
-                              (!State::Instance().isRunningOnNvidia && !Instance()->DxgiSpoofing.value()));
 
-        ini.SetValue("Spoofing", "Dxgi",
-                     GetBoolValue(Instance()->DxgiSpoofing.value_for_config(forceSaveDxgi)).c_str());
+        ini.SetValue("Spoofing", "Dxgi", GetBoolValue(Instance()->DxgiSpoofing.value_for_config()).c_str());
         ini.SetValue("Spoofing", "DxgiFactoryWrapping",
                      GetBoolValue(Instance()->DxgiFactoryWrapping.value_for_config()).c_str());
         ini.SetValue("Spoofing", "DxgiBlacklist", Instance()->DxgiBlacklist.value_for_config_or("auto").c_str());
