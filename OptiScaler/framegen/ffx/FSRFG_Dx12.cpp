@@ -1160,7 +1160,11 @@ void FSRFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
         ffxOverrideVersion override = { 0 };
         override.header.type = FFX_API_DESC_TYPE_OVERRIDE_VERSION;
         override.versionId = State::Instance().ffxFGVersionIds[Config::Instance()->FfxFGIndex.value_or_default()];
-        backendDesc.header.pNext = &override.header;
+
+        if (_linkedHudlesDesc)
+            hudlessDesc.header.pNext = &override.header;
+        else
+            backendDesc.header.pNext = &override.header;
 
         ParseVersion(State::Instance().ffxFGVersionNames[Config::Instance()->FfxFGIndex.value_or_default()], &_version);
 
