@@ -3,8 +3,6 @@
 
 class Nvngx_Arturs : public Nvngx_DllProxy
 {
-    HMODULE TryInitMFG();
-
   protected:
     void LoadLibraries() override final;
 

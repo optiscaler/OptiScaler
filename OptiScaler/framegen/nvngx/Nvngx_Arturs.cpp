@@ -1,58 +1,14 @@
 #include "pch.h"
 #include "Nvngx_Arturs.h"
 
-static decltype(&GetFileAttributesExW) o_GetFileAttributesExW = GetFileAttributesExW;
-
-// TODO: Check if still needed
-static BOOL WINAPI hkGetFileAttributesExW(LPCWSTR lpFileName, GET_FILEEX_INFO_LEVELS fInfoLevelId,
-                                          LPVOID lpFileInformation)
-{
-    if (lpFileName)
-    {
-        std::wstring string(lpFileName);
-
-        // Prevent a copy by saying it wasn't found
-        if (string.contains(L"nvngx"))
-            return false;
-    }
-
-    return o_GetFileAttributesExW(lpFileName, fInfoLevelId, lpFileInformation);
-}
-
-HMODULE Nvngx_Arturs::TryInitMFG()
-{
-    HMODULE dll = nullptr;
-    if (o_GetFileAttributesExW)
-    {
-
-        DetourTransactionBegin();
-        DetourUpdateThread(GetCurrentThread());
-
-        DetourAttach(&(PVOID&) o_GetFileAttributesExW, hkGetFileAttributesExW);
-
-        DetourTransactionCommit();
-
-        HMODULE memModule = nullptr;
-        auto optiPath = Config::Instance()->MainDllPath.value();
-        Util::LoadProxyLibrary(L"dlss-enabler-headless.dll", L"", optiPath, &memModule, &dll);
-
-        if (dll == nullptr && memModule != nullptr)
-            dll = memModule;
-
-        DetourTransactionBegin();
-        DetourUpdateThread(GetCurrentThread());
-
-        DetourDetach(&(PVOID&) o_GetFileAttributesExW, hkGetFileAttributesExW);
-
-        DetourTransactionCommit();
-    }
-
-    return dll;
-}
-
 void Nvngx_Arturs::LoadLibraries()
 {
-    dll = TryInitMFG();
+    HMODULE memModule = nullptr;
+    auto optiPath = Config::Instance()->MainDllPath.value();
+    Util::LoadProxyLibrary(L"dlss-enabler-headless.dll", L"", optiPath, &memModule, &dll);
+
+    if (dll == nullptr && memModule != nullptr)
+        dll = memModule;
 
     if (dll != nullptr)
     {
