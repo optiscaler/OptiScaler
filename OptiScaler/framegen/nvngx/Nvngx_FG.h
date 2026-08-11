@@ -19,6 +19,7 @@ class Nvngx_FG
     static int getMaxFakeFramesCount(API api);
     static bool isDx12Available();
     static bool isVulkanAvailable();
+    static feature_version version();
 
     // TODO: nukem-specific, unify
     static void setDebugView(bool enabled);

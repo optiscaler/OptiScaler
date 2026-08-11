@@ -331,8 +331,36 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
     backendDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_DX12;
     backendDesc.device = InOurHandle->device;
 
+    if (State::Instance().fgChanged && InOurHandle->fgContext)
+    {
+        auto retCode = FfxApiProxy::D3D12_DestroyContext(&InOurHandle->fgContext, nullptr);
+
+        if (retCode == FFX_API_RETURN_OK)
+            InOurHandle->fgContext = nullptr;
+        else
+            LOG_WARN("Could destroy FFX context");
+    }
+
+    State::Instance().fgChanged = false;
+
     if (InOurHandle->fgContext == nullptr)
     {
+        ffxQueryDescGetVersions versionQuery {};
+        versionQuery.header.type = FFX_API_QUERY_DESC_TYPE_GET_VERSIONS;
+        versionQuery.createDescType = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION;
+        versionQuery.device = InOurHandle->device;
+        uint64_t versionCount = 0;
+        versionQuery.outputCount = &versionCount;
+        // get number of versions for allocation
+        FfxApiProxy::D3D12_Query(nullptr, &versionQuery.header);
+
+        State::Instance().ffxFGVersionIds.resize(versionCount);
+        State::Instance().ffxFGVersionNames.resize(versionCount);
+        versionQuery.versionIds = State::Instance().ffxFGVersionIds.data();
+        versionQuery.versionNames = State::Instance().ffxFGVersionNames.data();
+        // fill version ids and names arrays.
+        FfxApiProxy::D3D12_Query(nullptr, &versionQuery.header);
+
         ffxCreateContextDescFrameGeneration createFg {};
         createFg.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION;
 
@@ -369,8 +397,8 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
             createFg.flags |= FFX_FRAMEGENERATION_ENABLE_DISPLAY_RESOLUTION_MOTION_VECTORS;
         }
 
-        // if (fgConstants.flags & FG_Flags::Async)
-        createFg.flags |= FFX_FRAMEGENERATION_ENABLE_ASYNC_WORKLOAD_SUPPORT;
+        if (Config::Instance()->FGAsync.value_or_default())
+            createFg.flags |= FFX_FRAMEGENERATION_ENABLE_ASYNC_WORKLOAD_SUPPORT;
 
         if (depthPlaneInfinite)
             createFg.flags |= FFX_FRAMEGENERATION_ENABLE_DEPTH_INFINITE;
@@ -383,12 +411,32 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
 
         // TODO: add code for hudless with different formats
 
-        ffxReturnCode_t retCode = FfxApiProxy::D3D12_CreateContext(&InOurHandle->fgContext, &createFg.header, nullptr);
-
-        if (retCode != FFX_API_RETURN_OK)
         {
-            LOG_ERROR("Failed to create FFX context");
-            return NVSDK_NGX_Result_Fail;
+            ScopedSkipSpoofing skipSpoofing {};
+            ScopedSkipHeapCapture skipHeapCapture {};
+
+            // Currently 0 is non-ML FG and 1 is ML FG
+            if (Config::Instance()->FfxFGIndex.value_or_default() < 0 ||
+                Config::Instance()->FfxFGIndex.value_or_default() >= State::Instance().ffxFGVersionIds.size())
+                Config::Instance()->FfxFGIndex.set_volatile_value(0);
+
+            ffxOverrideVersion override = { 0 };
+            override.header.type = FFX_API_DESC_TYPE_OVERRIDE_VERSION;
+            override.versionId = State::Instance().ffxFGVersionIds[Config::Instance()->FfxFGIndex.value_or_default()];
+
+            backendDesc.header.pNext = &override.header;
+
+            _version.parse_version(
+                State::Instance().ffxFGVersionNames[Config::Instance()->FfxFGIndex.value_or_default()]);
+
+            ffxReturnCode_t retCode =
+                FfxApiProxy::D3D12_CreateContext(&InOurHandle->fgContext, &createFg.header, nullptr);
+
+            if (retCode != FFX_API_RETURN_OK)
+            {
+                LOG_ERROR("Failed to create FFX context");
+                return NVSDK_NGX_Result_Fail;
+            }
         }
     }
 
@@ -405,8 +453,12 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
     ffxConfigureDescFrameGeneration configureDesc {};
     configureDesc.header.type = FFX_API_CONFIGURE_DESC_TYPE_FRAMEGENERATION;
     configureDesc.frameGenerationEnabled = true;
-    // configureDesc.allowAsyncWorkloads = true; // TODO: can crash
+    configureDesc.allowAsyncWorkloads = Config::Instance()->FGAsync.value_or_default();
     configureDesc.flags = FFX_FRAMEGENERATION_FLAG_NO_SWAPCHAIN_CONTEXT_NOTIFY;
+
+    if (Config::Instance()->FGDebugView.value_or_default())
+        configureDesc.flags |= FFX_FRAMEGENERATION_FLAG_DRAW_DEBUG_VIEW;
+
     configureDesc.frameID = InOurHandle->lastFrameId;
     configureDesc.generationRect = { 0, 0, (int) InOurHandle->swapchainWidth, (int) InOurHandle->swapchainHeight };
 

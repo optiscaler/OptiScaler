@@ -3571,7 +3571,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
             ImGui::SameLine(0.0f, 16.0f);
 
-            if (state.currentFG->Version().major > 3)
+            if (state.currentFG && state.currentFG->Version().major > 3)
             {
                 if (bool fgwm = config->FSRFGEnableWatermark.value_or_default();
                     ImGui::Checkbox("Enable Watermark", &fgwm))
@@ -4438,13 +4438,6 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
         if (isLoaded)
         {
-            if (bool disableHudless = config->NvngxFGDisableHudless.value_or_default();
-                ImGui::Checkbox("Disable HUDless", &disableHudless))
-            {
-                config->NvngxFGDisableHudless = disableHudless;
-            }
-            ShowHelpMarker("Might be required for some sets of DispatchFlags");
-
             if (activeNvngxFg == FGNvngxReplacement::Arturs)
             {
                 if (bool showDebug = config->NvngxFGShowDebug.value_or_default();
@@ -4513,8 +4506,93 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             }
             else if (activeNvngxFg == FGNvngxReplacement::FFX)
             {
-                // TODO: FSR version selection
+                if (_ffxFGIndex < 0)
+                    _ffxFGIndex = config->FfxFGIndex.value_or_default();
+
+                if (state.ffxFGVersionNames.size() > 0)
+                {
+                    ImGui::PushItemWidth(135.0f * menuResScale);
+
+                    auto currentName = StrFmt("FSR %s", state.ffxFGVersionNames[_ffxFGIndex]);
+                    if (ImGui::BeginCombo("FFX FG", currentName.c_str()))
+                    {
+                        for (int n = 0; n < state.ffxFGVersionIds.size(); n++)
+                        {
+                            auto name = StrFmt("FSR %s", state.ffxFGVersionNames[n]);
+                            if (ImGui::Selectable(name.c_str(), config->FfxFGIndex.value_or_default() == n))
+                                _ffxFGIndex = n;
+                        }
+
+                        ImGui::EndCombo();
+                    }
+                    ImGui::PopItemWidth();
+
+                    ShowHelpMarker("List of FGs reported by FFX SDK");
+
+                    ImGui::SameLine(0.0f, 6.0f);
+
+                    if (ImGui::Button("Change FG") && _ffxFGIndex != config->FfxFGIndex.value_or_default())
+                    {
+                        config->FfxFGIndex = _ffxFGIndex;
+                        state.fgChanged = true;
+                    }
+                }
+
+                bool fgAsync = config->FGAsync.value_or_default();
+                if (ImGui::Checkbox("Allow Async##2", &fgAsync))
+                {
+                    config->FGAsync = fgAsync;
+
+                    if (config->FGEnabled.value_or_default())
+                    {
+                        state.fgChanged = true;
+                        LOG_DEBUG("Async set FGChanged");
+                    }
+                }
+                ShowHelpMarker("Enable Async for better FG performance\nMight cause crashes, especially with HUD Fix!");
+
+                ImGui::SameLine(0.0f, 20.0f * menuResScale);
+                bool fgDV = config->FGDebugView.value_or_default();
+                if (ImGui::Checkbox("Debug View##3", &fgDV))
+                {
+                    config->FGDebugView = fgDV;
+
+                    if (config->FGEnabled.value_or_default())
+                    {
+                        state.fgChanged = true;
+                        LOG_DEBUG("DebugView set FGChanged");
+                    }
+                }
+                ShowHelpMarker("Enable FSR3.1-FG Debug view\n\n"
+                               "Top left: Game Motion Vectors\n"
+                               "Top middle: GMV Depth\n"
+                               "Top right: Optical Flow MV\n"
+                               "Middle: Interpolated frame only\n"
+                               "Bottom left: Disocclusion mask\n"
+                               "Bottom middle: Interpolation source (w/o UI)\n"
+                               "Bottom right: HUDless resource");
+
+                if (Nvngx_FG::version().major > 3)
+                {
+                    ImGui::SameLine(0.0f, 20.0f * menuResScale);
+                    if (bool fgwm = config->FSRFGEnableWatermark.value_or_default();
+                        ImGui::Checkbox("Enable Watermark", &fgwm))
+                    {
+                        LOG_DEBUG("FSRFGEnableWatermark set FGWatermark: {}", fgwm);
+                        config->FSRFGEnableWatermark = fgwm;
+                    }
+
+                    ShowHelpMarker("After changing this option, please Save Settings\n"
+                                   "It will be applied on next launch.");
+                }
             }
+
+            if (bool disableHudless = config->NvngxFGDisableHudless.value_or_default();
+                ImGui::Checkbox("Disable HUDless", &disableHudless))
+            {
+                config->NvngxFGDisableHudless = disableHudless;
+            }
+            ShowHelpMarker("Might be required for some sets of DispatchFlags");
         }
     }
 

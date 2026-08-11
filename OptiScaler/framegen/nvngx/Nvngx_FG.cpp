@@ -130,6 +130,16 @@ bool Nvngx_FG::isVulkanAvailable()
     return provider->isVulkanAvailable();
 }
 
+feature_version Nvngx_FG::version()
+{
+    auto* provider = getProvider();
+
+    if (!provider)
+        return {};
+
+    return provider->version();
+}
+
 void Nvngx_FG::setDebugView(bool enabled)
 {
     auto* provider = getProvider();

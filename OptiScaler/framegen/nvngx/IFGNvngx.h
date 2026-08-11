@@ -10,7 +10,12 @@ constexpr unsigned int NVNGX_PROVIDER_ID_OFFSET = 2000000;
 
 class IFGNvngx
 {
+  protected:
+    feature_version _version { 0, 0, 0 };
+
   public:
+    feature_version version() const { return _version; };
+
     virtual ~IFGNvngx() = default;
 
     virtual int getMaxFakeFramesCount(API api) = 0;
