@@ -1166,7 +1166,7 @@ void FSRFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
         else
             backendDesc.header.pNext = &override.header;
 
-        ParseVersion(State::Instance().ffxFGVersionNames[Config::Instance()->FfxFGIndex.value_or_default()], &_version);
+        _version.parse_version(State::Instance().ffxFGVersionNames[Config::Instance()->FfxFGIndex.value_or_default()]);
 
         ffxReturnCode_t retCode = FfxApiProxy::D3D12_CreateContext(&_fgContext, &createFg.header, nullptr);
 

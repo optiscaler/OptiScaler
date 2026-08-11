@@ -69,25 +69,6 @@ class FSRFG_Dx12 : public virtual IFGFeature_Dx12
     bool UIFormatTransfer(int index, ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, DXGI_FORMAT targetFormat,
                           Dx12Resource* resource);
 
-    void ParseVersion(const char* version_str, feature_version* _version)
-    {
-        const char* p = version_str;
-
-        // Skip non-digits at front
-        while (*p)
-        {
-            if (isdigit((unsigned char) p[0]))
-            {
-                if (sscanf(p, "%u.%u.%u", &_version->major, &_version->minor, &_version->patch) == 3)
-                    return;
-            }
-
-            ++p;
-        }
-
-        LOG_WARN("can't parse {0}", version_str);
-    }
-
   protected:
     void ReleaseObjects() override final;
     void CreateObjects(ID3D12Device* InDevice) override final;
