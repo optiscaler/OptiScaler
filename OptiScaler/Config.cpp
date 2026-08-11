@@ -79,7 +79,6 @@ bool Config::Reload(std::filesystem::path iniPath)
                          lstrcmpiA(FGInputString.value().c_str(), "nukems") == 0)
                 {
                     FGInput.set_from_config(FGInput::NvngxFG);
-                    FGOutput.set_from_config(FGOutput::NvngxFG);
                 }
                 else if (lstrcmpiA(FGInputString.value().c_str(), "dlssg") == 0)
                     FGInput.set_from_config(FGInput::DLSSG);
@@ -96,15 +95,26 @@ bool Config::Reload(std::filesystem::path iniPath)
                     FGOutput.set_from_config(FGOutput::NoFG);
                 else if (lstrcmpiA(FGOutputString.value().c_str(), "fsrfg") == 0)
                     FGOutput.set_from_config(FGOutput::FSRFG);
-                else if (lstrcmpiA(FGOutputString.value().c_str(), "nvngxfg") == 0 ||
-                         lstrcmpiA(FGOutputString.value().c_str(), "nukems") == 0)
-                    FGOutput.set_from_config(FGOutput::NvngxFG);
-                else if (lstrcmpiA(FGOutputString.value().c_str(), "DLSSGWithNvngx") == 0)
-                    FGOutput.set_from_config(FGOutput::DLSSGWithNvngx);
                 else if (lstrcmpiA(FGOutputString.value().c_str(), "xefg") == 0)
                     FGOutput.set_from_config(FGOutput::XeFG);
                 else if (lstrcmpiA(FGOutputString.value().c_str(), "dlssg") == 0)
                     FGOutput.set_from_config(FGOutput::DLSSG);
+            }
+
+            const bool canUseNvngxReplacement =
+                FGInput.value_or_default() == FGInput::NvngxFG || FGOutput.value_or_default() == FGOutput::DLSSG;
+
+            if (auto FGNvngxReplacementString = readString("FrameGen", "FGNvngxReplacement");
+                canUseNvngxReplacement && FGNvngxReplacementString.has_value())
+            {
+                if (lstrcmpiA(FGNvngxReplacementString.value().c_str(), "none") == 0)
+                    FGNvngxReplacement.set_from_config(FGNvngxReplacement::None);
+                else if (lstrcmpiA(FGNvngxReplacementString.value().c_str(), "nukems") == 0)
+                    FGNvngxReplacement.set_from_config(FGNvngxReplacement::Nukems);
+                else if (lstrcmpiA(FGNvngxReplacementString.value().c_str(), "arturs") == 0)
+                    FGNvngxReplacement.set_from_config(FGNvngxReplacement::Arturs);
+                else if (lstrcmpiA(FGNvngxReplacementString.value().c_str(), "ffx") == 0)
+                    FGNvngxReplacement.set_from_config(FGNvngxReplacement::FFX);
             }
 
             if (auto forceXell = readBool("fakenvapi", "ForceXeLL"); forceXell.has_value() && forceXell.value())
@@ -681,7 +691,6 @@ bool Config::Reload(std::filesystem::path iniPath)
             if (!SpoofHAGS.has_value())
             {
                 SpoofHAGS.set_volatile_value(FGInput.value_or_default() == FGInput::NvngxFG ||
-                                             FGOutput.value_or_default() == FGOutput::DLSSGWithNvngx ||
                                              FGInput.value_or_default() == FGInput::DLSSG);
             }
         }
@@ -880,16 +889,27 @@ bool Config::SaveIni()
                 FGOutputString = "NoFG";
             else if (FGOutputHeld.value() == FGOutput::FSRFG)
                 FGOutputString = "FSRFG";
-            else if (FGOutputHeld.value() == FGOutput::NvngxFG)
-                FGOutputString = "NvngxFG";
-            else if (FGOutputHeld.value() == FGOutput::DLSSGWithNvngx)
-                FGOutputString = "DLSSGWithNvngx";
             else if (FGOutputHeld.value() == FGOutput::XeFG)
                 FGOutputString = "XeFG";
             else if (FGOutputHeld.value() == FGOutput::DLSSG)
                 FGOutputString = "DLSSG";
         }
         ini.SetValue("FrameGen", "FGOutput", FGOutputString.c_str());
+
+        std::string FGNvngxReplacementString = "auto";
+        if (auto FGNvngxReplacementHeld = Instance()->FGNvngxReplacement.value_for_config();
+            FGNvngxReplacementHeld.has_value())
+        {
+            if (FGNvngxReplacementHeld.value() == FGNvngxReplacement::None)
+                FGNvngxReplacementString = "None";
+            else if (FGNvngxReplacementHeld.value() == FGNvngxReplacement::Nukems)
+                FGNvngxReplacementString = "Nukems";
+            else if (FGNvngxReplacementHeld.value() == FGNvngxReplacement::Arturs)
+                FGNvngxReplacementString = "Arturs";
+            else if (FGNvngxReplacementHeld.value() == FGNvngxReplacement::FFX)
+                FGNvngxReplacementString = "FFX";
+        }
+        ini.SetValue("FrameGen", "FGNvngxReplacement", FGNvngxReplacementString.c_str());
 
         std::optional<int> ftInput;
         if (Instance()->FTInput.has_value())

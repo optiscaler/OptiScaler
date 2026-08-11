@@ -186,9 +186,7 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
         if (dlssgModule != nullptr)
         {
-            const bool localDlssg =
-                pathInsideLocalSlPath && (State::Instance().activeFgOutput == FGOutput::DLSSG ||
-                                          State::Instance().activeFgOutput == FGOutput::DLSSGWithNvngx);
+            const bool localDlssg = pathInsideLocalSlPath && State::Instance().activeFgOutput == FGOutput::DLSSG;
 
             if (!localDlssg && dlssgModule != State::Instance().optiSlDLSSG)
                 StreamlineHooks::hookDlssg(dlssgModule);
@@ -987,9 +985,7 @@ void LibraryLoadHooks::CheckModulesInMemory()
 
             const bool pathInsideLocalSlPath = Util::IsSubpath(path, normalizedLocalSlPath);
 
-            const bool localDlssg =
-                pathInsideLocalSlPath && (State::Instance().activeFgOutput == FGOutput::DLSSG ||
-                                          State::Instance().activeFgOutput == FGOutput::DLSSGWithNvngx);
+            const bool localDlssg = pathInsideLocalSlPath && State::Instance().activeFgOutput == FGOutput::DLSSG;
 
             if (localDlssg)
             {

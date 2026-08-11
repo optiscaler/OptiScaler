@@ -806,6 +806,9 @@ void MenuCommon::PopulateCombo(const std::string& name, TStorage& currentValue,
     {
         for (const auto& opt : options)
         {
+            if (opt.hidden)
+                continue;
+
             if (opt.disabled)
                 ImGui::BeginDisabled();
 
@@ -1329,14 +1332,8 @@ void MenuCommon::HandleMenuShortcuts(RenderMenuContext& ctx)
                 refreshRate = Util::GetActiveRefreshRate(_handle);
 
                 auto optiPath = std::filesystem::path(Config::Instance()->MainDllPath.value());
-                auto dllPath = optiPath / L"dlss-enabler-headless.dll";
-                state.nvngxFgFilesAvailable = enablerExists.Get(dllPath);
-
-                if (!state.nvngxFgFilesAvailable)
-                {
-                    dllPath = optiPath / L"dlssg_to_fsr3_amd_is_better.dll";
-                    state.nvngxFgFilesAvailable = nukemsExists.Get(dllPath);
-                }
+                state.artursFgFileAvailable = enablerExists.Get(optiPath / L"dlss-enabler-headless.dll");
+                state.nukemsFgFileAvailable = nukemsExists.Get(optiPath / L"dlssg_to_fsr3_amd_is_better.dll");
 
                 if (State::Instance().currentFeature != nullptr)
                 {
@@ -1757,7 +1754,7 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             auto fgText = (fg != nullptr && fg->IsActive() && !fg->IsPaused()) ? (" (" + std::string(fg->Name()) + ")")
                                                                                : std::string();
 
-            if (state.activeFgOutput == FGOutput::NvngxFG || state.activeFgOutput == FGOutput::DLSSGWithNvngx)
+            if (state.activeFgNvngx != FGNvngxReplacement::None)
             {
                 if (Nvngx_FG::getMaxFakeFramesCount(state.swapchainApi) > 1)
                 {
@@ -2968,29 +2965,22 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
     inputOptions = {
         { FGInput::NoFG, "None" },
-        { FGInput::NvngxFG, "Nukem's/Artur's DLSSG",
-            "Limited to FSR3-FG\n\nRequires enabling DLSS-FG in game settings\nSupports HUDless out of the box\nUses Streamline swapchain for pacing" },
-        { FGInput::FSRFG, "FSR 3.1 FG",
-            "Can be used with any FG Output\n\nRequires enabling FSR-FG in game settings\nSupports HUDless out of the box" },
-        { FGInput::DLSSG, "DLSSG via Streamline",
-            "Can be used with any FG Output\n\nRequires enabling DLSS-FG in game settings\nSupports HUDless out of the box\n\nLimited to games that use Streamline v2" },
-        { FGInput::XeFG, "XeFG" },
         { FGInput::Upscaler, "OptiFG (Upscaler)",
             "Upscaler must be enabled\n\nCan be used with any FG Output, but might be imperfect with some\nTo prevent UI glitching, HUDfix required" },
+        { FGInput::DLSSG, "DLSSG via Streamline",
+            "Can be used with any FG Output\n\nRequires enabling DLSS-FG in game settings\nSupports HUDless out of the box\n\nLimited to games that use Streamline" },
+        { FGInput::NvngxFG, "DLSSG via Nvngx",
+            "Limited to variants of FSR FG\n\nRequires enabling DLSS-FG in game settings\nSupports HUDless out of the box\nUses Streamline swapchain for pacing" },
+        { FGInput::FSRFG, "FSR 3.1 FG",
+            "Can be used with any FG Output\n\nRequires enabling FSR-FG in game settings\nSupports HUDless out of the box" },
         { FGInput::FSRFG30, "FSR 3.0 FG",
-            "Can be used with any FG Output\n\nRequires enabling FSR-FG in game settings\nSupports HUDless out of the box" }
+            "Can be used with any FG Output\n\nRequires enabling FSR-FG in game settings\nSupports HUDless out of the box" },
+        { FGInput::XeFG, "XeFG" }
     };
 
     // clang-format on
 
     auto constexpr nvngxInputIndex = (uint32_t) FGInput::NvngxFG;
-    if (state.activeFgInput == FGInput::NvngxFG)
-    {
-        if (Nvngx_FG::getMaxFakeFramesCount(state.swapchainApi) > 1)
-            inputOptions[nvngxInputIndex].label = "Artur's DLSSG";
-        else
-            inputOptions[nvngxInputIndex].label = "Nukem's DLSSG";
-    }
 
     // XeFG input requirements
     auto constexpr xefgInputIndex = (uint32_t) FGInput::XeFG;
@@ -3039,11 +3029,9 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
     outputOptions = {
         { FGOutput::NoFG, "None" },
-        { FGOutput::NvngxFG, "FSR3-FG Nukem/Enabler", "Uses Game's DLSSG implementation.\nEnable DLSS-FG in-game\n\nNukems - lightest, but most artifacts (esp. in fast motion)" },
         { FGOutput::FSRFG, "FSR FG", "FSR3/4-FG, RDNA4 autoupgrades to FSR4-FG\n\nFSR4-FG sometimes better/worse than XeFG" },
-        { FGOutput::DLSSG, "DLSSG", "For 40xx and above" },
+        { FGOutput::DLSSG, "DLSSG", "DLSSG output\ncan be used in conjuction with Nukem's for example" },
         { FGOutput::XeFG, "XeFG", "XeFG - heaviest, but best universal FG\n\nXeFG 3 overall deals best with HUD\n\nEnable UI Composition if HUD ghosting" },
-        { FGOutput::DLSSGWithNvngx, "DLSSG with Nvngx FG", "Uses Opti's own DLSSG instance and adds NvngxFG on top\nDo not use if a game already has DLSSG\n\nIf a game has DLSSG then use the FG Input option:\n\"Nukem's/Artur's DLSSG\"" }
     };
 
     // clang-format on
@@ -3051,25 +3039,25 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     // DLSSG output requirements
     auto constexpr dlssgOutputIndex = (uint32_t) FGOutput::DLSSG;
     outputOptions[dlssgOutputIndex].set_disabled(state.swapchainApi == API::Vulkan, "Unsupported API");
-    outputOptions[dlssgOutputIndex].set_disabled(primaryGpu.nvidiaArchInfo.architecture_id < NV_GPU_ARCHITECTURE_AD100,
-                                                 "Unsupported hardware");
+    // outputOptions[dlssgOutputIndex].set_disabled(primaryGpu.nvidiaArchInfo.architecture_id <
+    // NV_GPU_ARCHITECTURE_AD100, "Unsupported hardware");
 
     // Nukem's FG mod requirements
-    auto constexpr nvngxOutputIndex = (uint32_t) FGOutput::NvngxFG;
-    if (state.activeFgOutput == FGOutput::NvngxFG)
-    {
-        if (Nvngx_FG::getMaxFakeFramesCount(state.swapchainApi) > 1)
-            outputOptions[nvngxOutputIndex].label = "FSR3-MFG via DLSS Enabler";
-        else
-            outputOptions[nvngxOutputIndex].label = "FSR3-FG via Nukem's";
-    }
-    if (!state.nvngxFgFilesAvailable)
-    {
-        inputOptions[nvngxInputIndex].set_disabled(
-            true, "Missing dlssg_to_fsr3_amd_is_better.dll\nor dlss-enabler-headless.dll");
-        outputOptions[nvngxOutputIndex].set_disabled(
-            true, "Missing dlssg_to_fsr3_amd_is_better.dll\nor dlss-enabler-headless.dll");
-    }
+    // auto constexpr nvngxOutputIndex = (uint32_t) FGOutput::NvngxFG;
+    // if (state.activeFgOutput == FGOutput::NvngxFG)
+    //{
+    //    if (Nvngx_FG::getMaxFakeFramesCount(state.swapchainApi) > 1)
+    //        outputOptions[nvngxOutputIndex].label = "FSR3-MFG via DLSS Enabler";
+    //    else
+    //        outputOptions[nvngxOutputIndex].label = "FSR3-FG via Nukem's";
+    //}
+    // if (!state.nvngxFgFilesAvailable)
+    //{
+    //    inputOptions[nvngxInputIndex].set_disabled(
+    //        true, "Missing dlssg_to_fsr3_amd_is_better.dll\nor dlss-enabler-headless.dll");
+    //    outputOptions[nvngxOutputIndex].set_disabled(
+    //        true, "Missing dlssg_to_fsr3_amd_is_better.dll\nor dlss-enabler-headless.dll");
+    //}
 
     // For that one case of DX11 DLSSG
     const auto streamlineVersion = state.streamlineVersion;
@@ -3077,14 +3065,6 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
         state.swapchainApi == API::DX11 &&
         (streamlineVersion == feature_version { 0, 0, 0 } || streamlineVersion > feature_version { 2, 0, 1 });
     inputOptions[nvngxInputIndex].set_disabled(nukemsUnsupportedApi, "Unsupported API");
-    outputOptions[nvngxOutputIndex].set_disabled(nukemsUnsupportedApi, "Unsupported API");
-
-    auto constexpr DLSSGWithNvngxOutputIndex = (uint32_t) FGOutput::DLSSGWithNvngx;
-    if (!state.nvngxFgFilesAvailable)
-    {
-        outputOptions[DLSSGWithNvngxOutputIndex].set_disabled(true, "Missing the dlssg_to_fsr3_amd_is_better.dll file");
-    }
-    outputOptions[DLSSGWithNvngxOutputIndex].set_disabled(state.swapchainApi == API::Vulkan, "Unsupported API");
 
     // FSR FG output requirements
     auto constexpr fsrfgOutputIndex = (uint32_t) FGOutput::FSRFG;
@@ -3119,6 +3099,46 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     if (!config->FGOutput.has_value())
         config->FGOutput = config->FGOutput.value_or_default(); // need to have a value before combo
 
+    /// FG NVNGX REPLACEMENT
+
+    static std::vector<MenuOption<FGNvngxReplacement>> nvngxOptions;
+    nvngxOptions.clear();
+
+    // clang-format off
+
+    nvngxOptions = {
+        { FGNvngxReplacement::None, "None/Real DLSSG", "Real DLSSG, For RTX 40xx and above"},
+        { FGNvngxReplacement::Nukems, "Nukem's", "FSR 3 FG" },
+        { FGNvngxReplacement::Arturs, "Enabler", "FSR 3 MFG" },
+        { FGNvngxReplacement::FFX, "FSR 3/4 FG", "FSR 3/4 FG using the FFX" },
+    };
+
+    // clang-format on
+
+    bool replaceFgOutputWithNvngx = false;
+    bool showNvngxFgDowndown = false;
+
+    if (config->FGInput == FGInput::NvngxFG)
+    {
+        config->FGOutput = FGOutput::NoFG;
+        replaceFgOutputWithNvngx = true;
+    }
+    else if (config->FGOutput == FGOutput::DLSSG)
+    {
+        showNvngxFgDowndown = true;
+    }
+
+    auto constexpr fgNvngxNoneIndex = (uint32_t) FGNvngxReplacement::None;
+    const bool supportsDlssg = primaryGpu.nvidiaArchInfo.architecture_id >= NV_GPU_ARCHITECTURE_AD100;
+    nvngxOptions[fgNvngxNoneIndex].set_disabled(!supportsDlssg, "Unsupported hardware");
+
+    nvngxOptions[fgNvngxNoneIndex].set_hidden(replaceFgOutputWithNvngx);
+
+    // TODO: Automatically switch to any other option
+
+    if (!config->FGNvngxReplacement.has_value())
+        config->FGNvngxReplacement = config->FGNvngxReplacement.value_or_default(); // need to have a value before combo
+
     if (state.activeFgInput != FGInput::ForceXeLL)
     {
         ImGui::SeparatorText("Frame Generation");
@@ -3133,35 +3153,32 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
             ImGui::TableNextColumn();
 
-            const bool disableOutputs = config->FGInput.value_or_default() == FGInput::NvngxFG;
-
-            ImGui::BeginDisabled(disableOutputs);
-            PopulateCombo("FG Output", config->FGOutput, outputOptions);
-            ImGui::EndDisabled();
-
-            if (disableOutputs)
-                ShowTooltip("Doesn't matter with the selected FG Source");
+            if (replaceFgOutputWithNvngx)
+            {
+                // Disable None?
+                PopulateCombo("FG Nvngx", config->FGNvngxReplacement, nvngxOptions);
+                ShowTooltip("What backend to use instead of the real DLSSG");
+            }
             else
+            {
+                PopulateCombo("FG Output", config->FGOutput, outputOptions);
                 ShowTooltip("The FG that you will actually be using");
+            }
 
             ImGui::EndTable();
         }
 
-        auto static fgInputOverridden = false;
-
-        if (config->FGOutput == FGOutput::NvngxFG && !fgInputOverridden)
+        // Should be on a new line
+        if (showNvngxFgDowndown)
         {
-            config->FGInput = FGInput::NvngxFG;
-            fgInputOverridden = true;
-        }
-        else if (config->FGInput != FGInput::NvngxFG && fgInputOverridden)
-        {
-            config->FGOutput = FGOutput::NoFG;
-            fgInputOverridden = false;
+            PopulateCombo("FG Nvngx Replacement", config->FGNvngxReplacement, nvngxOptions);
+            ShowTooltip("What backend to use instead of the real DLSSG");
         }
 
+        const bool nvngxFgChanged = (replaceFgOutputWithNvngx || showNvngxFgDowndown) &&
+                                    state.activeFgNvngx != config->FGNvngxReplacement.value_or_default();
         state.fgSettingsChanged = state.activeFgOutput != config->FGOutput.value_or_default() ||
-                                  state.activeFgInput != config->FGInput.value_or_default();
+                                  state.activeFgInput != config->FGInput.value_or_default() || nvngxFgChanged;
 
         if (state.fgSettingsChanged)
         {
@@ -3171,9 +3188,8 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
             ImGui::Spacing();
         }
 
-        const bool dlssgInputOrOutput = state.activeFgOutput == FGOutput::DLSSG ||
-                                        state.activeFgOutput == FGOutput::DLSSGWithNvngx ||
-                                        state.activeFgInput == FGInput::DLSSG;
+        const bool dlssgInputOrOutput =
+            state.activeFgOutput == FGOutput::DLSSG || state.activeFgInput == FGInput::DLSSG;
 
         ImGui::BeginDisabled(state.dlssgGameDMFGSupported && config->FGDLSSGOverrideForceDMFG.value_or_default());
         if (state.dlssgMfgMax.has_value() && state.dlssgMfgMax.value() >= 1 && !dlssgInputOrOutput)
@@ -3195,7 +3211,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
                 ImGui::PushItemWidth(95.0f * menuResScale);
 
-                if (ImGui::BeginCombo("Override DLSSG", currentIntCount))
+                if (ImGui::BeginCombo("Override DLSSG Ratio", currentIntCount))
                 {
                     for (int i = 0; i <= maxInterpolationCount + 1; i++)
                     {
@@ -3264,7 +3280,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
         auto fgOutput = reinterpret_cast<IFGFeature_Dx12*>(state.currentFG);
         if (((state.activeFgOutput == FGOutput::FSRFG || state.activeFgOutput == FGOutput::XeFG ||
-              state.activeFgOutput == FGOutput::DLSSG || state.activeFgOutput == FGOutput::DLSSGWithNvngx) &&
+              state.activeFgOutput == FGOutput::DLSSG) &&
              state.activeFgInput != FGInput::NoFG && state.activeFgInput != FGInput::NvngxFG) &&
             fgOutput)
         {
@@ -3304,9 +3320,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
                                                   state.activeFgInput == FGInput::FSRFG ||
                                                   state.activeFgInput == FGInput::FSRFG30;
 
-        const bool showHudCutoff = state.activeFgInput == FGInput::NvngxFG ||
-                                   state.activeFgOutput == FGOutput::DLSSGWithNvngx ||
-                                   state.activeFgOutput == FGOutput::FSRFG;
+        const bool showHudCutoff = state.activeFgInput == FGInput::NvngxFG || state.activeFgOutput == FGOutput::FSRFG;
 
         if (showOutputSpecificFGSettings || showHudCutoff)
         {
@@ -3923,9 +3937,8 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
     }
 
     // DLSSG controls
-    if ((state.activeFgOutput == FGOutput::DLSSG || state.activeFgOutput == FGOutput::DLSSGWithNvngx) &&
-        state.activeFgInput != FGInput::NoFG && state.currentFGSwapchain != nullptr &&
-        StreamlineProxy::LoadStreamline())
+    if (state.activeFgOutput == FGOutput::DLSSG && state.activeFgInput != FGInput::NoFG &&
+        state.currentFGSwapchain != nullptr && StreamlineProxy::LoadStreamline())
     {
 
         ImGui::SeparatorText("Frame Generation (DLSSG)");
@@ -4038,8 +4051,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         if (currentFeature != nullptr && !currentFeature->IsFrozen() &&
             ((state.activeFgOutput == FGOutput::FSRFG && FfxApiProxy::IsFGReady()) ||
              (state.activeFgOutput == FGOutput::XeFG && XeFGProxy::Module() != nullptr) ||
-             ((state.activeFgOutput == FGOutput::DLSSG || state.activeFgOutput == FGOutput::DLSSGWithNvngx) &&
-              StreamlineProxy::Module() != nullptr)))
+             (state.activeFgOutput == FGOutput::DLSSG && StreamlineProxy::Module() != nullptr)))
         {
             if (!Config::Instance()->FGDisableHUDFix.value_or_default() &&
                 state.swapchainInteropApi == SwapchainInteropApi::None)
@@ -4329,37 +4341,40 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         }
     }
 
-    // Nvngx FG Mods
-    if ((state.activeFgInput == FGInput::NvngxFG && state.activeFgOutput == FGOutput::NvngxFG) ||
-        state.activeFgOutput == FGOutput::DLSSGWithNvngx)
+    const FGNvngxReplacement activeNvngxFg = state.activeFgNvngx;
+    if (activeNvngxFg != FGNvngxReplacement::None)
     {
-        if (Nvngx_FG::getMaxFakeFramesCount(state.swapchainApi) > 1)
-        {
-            SeparatorWithHelpMarker("Frame Generation (FSR3-MFG via DLSS Enabler)",
-                                    "DLSS Enabler as dlss-enabler-headless.dll\n"
-                                    "Select DLSS-FG in-game");
-        }
-        else
+        if (activeNvngxFg == FGNvngxReplacement::Nukems)
         {
             SeparatorWithHelpMarker("Frame Generation (FSR3-FG via Nukem's DLSSG)",
-                                    "Requires Nukem's dlssg_to_fsr3 dll\n"
-                                    "Select DLSS-FG in-game");
-        }
+                                    "Requires Nukem's dlssg_to_fsr3 dll");
 
-        if (!state.nvngxFgFilesAvailable)
-        {
-            ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)),
-                               "Please put dlssg_to_fsr3_amd_is_better.dll or "
-                               "dlss-enabler-headless.dll next to OptiScaler");
+            if (!state.nukemsFgFileAvailable)
+            {
+                ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)),
+                                   "Please put dlssg_to_fsr3_amd_is_better.dll into OptiScaler folder");
+            }
         }
-
-        if (Nvngx_FG::getMaxFakeFramesCount(state.swapchainApi) > 1)
+        else if (activeNvngxFg == FGNvngxReplacement::Arturs)
         {
+            SeparatorWithHelpMarker("Frame Generation (FSR3-MFG via DLSS Enabler)",
+                                    "DLSS Enabler as dlss-enabler-headless.dll");
+
+            if (!state.artursFgFileAvailable)
+            {
+                ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)),
+                                   "Please put dlss-enabler-headless.dll into OptiScaler folder");
+            }
+
             ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)),
                                "Using a subset of features from DLSS Enabler");
         }
+        else if (activeNvngxFg == FGNvngxReplacement::FFX)
+        {
+            SeparatorWithHelpMarker("Frame Generation (FSRFG via FFX)", "FFX using the DLSSG swapchain");
+        }
 
-        if (state.activeFgOutput != FGOutput::DLSSGWithNvngx)
+        if (state.activeFgInput == FGInput::NvngxFG)
         {
 
             bool dmfgActive = state.dlssgGameDMFGSupported && config->FGDLSSGOverrideForceDMFG.value_or_default();
@@ -4391,9 +4406,11 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
                 // Issue mostly shows up on AMD on Windows on pre-RDNA3 in some non-UE games
                 // Hide to reduce confusion, config is still read
-                bool isUnrealEngine = State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
-                                      State::Instance().gameQuirks & GameQuirk::ForceUnrealEngine;
-                if (!primaryGpu.dlssCapable && primaryGpu.fsr4Support == FSR4Support::None &&
+                const bool isUnrealEngine = State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
+                                            State::Instance().gameQuirks & GameQuirk::ForceUnrealEngine;
+                const bool isDllProxyNvngxType =
+                    activeNvngxFg == FGNvngxReplacement::Nukems || activeNvngxFg == FGNvngxReplacement::Arturs;
+                if (isDllProxyNvngxType && !primaryGpu.dlssCapable && primaryGpu.fsr4Support == FSR4Support::None &&
                     !primaryGpu.usesVkd3dProton && !isUnrealEngine)
                 {
                     if (bool makeDepthCopy = config->NvngxFGMakeDepthCopy.value_or_default();
@@ -4413,7 +4430,13 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             }
         }
 
-        if (Nvngx_FG::isLoaded(state.swapchainApi))
+        bool isLoaded = false;
+        if (state.swapchainApi == Vulkan)
+            isLoaded = Nvngx_FG::isVulkanAvailable();
+        if (state.swapchainApi == DX12)
+            isLoaded = Nvngx_FG::isDx12Available();
+
+        if (isLoaded)
         {
             if (bool disableHudless = config->NvngxFGDisableHudless.value_or_default();
                 ImGui::Checkbox("Disable HUDless", &disableHudless))
@@ -4422,7 +4445,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             }
             ShowHelpMarker("Might be required for some sets of DispatchFlags");
 
-            if (Nvngx_FG::getMaxFakeFramesCount(state.swapchainApi) > 1)
+            if (activeNvngxFg == FGNvngxReplacement::Arturs)
             {
                 if (bool showDebug = config->NvngxFGShowDebug.value_or_default();
                     ImGui::Checkbox("Show Debug", &showDebug))
@@ -4477,27 +4500,20 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                     config->NvngxFGDispatchFlags = temp_flags;
                 }
             }
-            else
+            else if (activeNvngxFg == FGNvngxReplacement::Nukems)
             {
-
-                if (Nvngx_FG::is120orNewer())
+                if (ImGui::Checkbox("Enable Debug View", &state.dlssgDebugView))
                 {
-                    if (ImGui::Checkbox("Enable Debug View", &state.dlssgDebugView))
-                    {
-                        Nvngx_FG::setDebugView(state.dlssgDebugView);
-                    }
-                    if (ImGui::Checkbox("Interpolated frames only", &state.dlssgInterpolatedOnly))
-                    {
-                        Nvngx_FG::setInterpolatedOnly(state.dlssgInterpolatedOnly);
-                    }
+                    Nvngx_FG::setDebugView(state.dlssgDebugView);
                 }
-                else if (Nvngx_FG::FSRDebugView() != nullptr)
+                if (ImGui::Checkbox("Interpolated frames only", &state.dlssgInterpolatedOnly))
                 {
-                    if (ImGui::Checkbox("Enable Debug View", &state.dlssgDebugView))
-                    {
-                        Nvngx_FG::FSRDebugView()(state.dlssgDebugView);
-                    }
+                    Nvngx_FG::setInterpolatedOnly(state.dlssgInterpolatedOnly);
                 }
+            }
+            else if (activeNvngxFg == FGNvngxReplacement::FFX)
+            {
+                // TODO: FSR version selection
             }
         }
     }

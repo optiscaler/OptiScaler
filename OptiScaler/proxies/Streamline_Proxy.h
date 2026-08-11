@@ -70,10 +70,15 @@ class StreamlineProxy
             return true;
 
         auto owner = State::GetOwner();
-        if (State::Instance().activeFgOutput != FGOutput::DLSSGWithNvngx)
-            State::DisableChecks(owner);
-        else
+        if (State::Instance().activeFgOutput == FGOutput::DLSSG &&
+            State::Instance().activeFgNvngx != FGNvngxReplacement::None)
+        {
             State::DisableChecks(owner, "sl.");
+        }
+        else
+        {
+            State::DisableChecks(owner);
+        }
 
         std::filesystem::path localSlPath(Config::Instance()->MainDllPath.value());
         localSlPath = localSlPath / L"streamline"; // Hardcoded streamline folder
@@ -343,11 +348,15 @@ class StreamlineProxy
         pref.numPathsToPlugins = (uint32_t) paths.size();
 
         auto owner = State::GetOwner();
-
-        if (State::Instance().activeFgOutput != FGOutput::DLSSGWithNvngx)
-            State::DisableChecks(owner);
-        else
+        if (State::Instance().activeFgOutput == FGOutput::DLSSG &&
+            State::Instance().activeFgNvngx != FGNvngxReplacement::None)
+        {
             State::DisableChecks(owner, "sl.");
+        }
+        else
+        {
+            State::DisableChecks(owner);
+        }
 
         auto initResult = StreamlineProxy::Init()(pref, sl::kSDKVersion);
 

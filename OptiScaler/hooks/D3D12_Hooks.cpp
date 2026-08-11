@@ -2217,9 +2217,7 @@ static void HookToDevice(ID3D12Device* InDevice)
         ResTrack_Dx12::HookDevice(InDevice);
     }
 
-    if ((State::Instance().activeFgOutput == FGOutput::DLSSG ||
-         State::Instance().activeFgOutput == FGOutput::DLSSGWithNvngx) &&
-        StreamlineProxy::LoadStreamline())
+    if (State::Instance().activeFgOutput == FGOutput::DLSSG && StreamlineProxy::LoadStreamline())
     {
         StreamlineProxy::InitWithD3D12(InDevice);
     }

@@ -63,20 +63,19 @@ static bool CheckForFGStatus()
         Config::Instance()->FGOutput.set_volatile_value(FGOutput::NoFG);
         State::Instance().activeFgOutput = Config::Instance()->FGOutput.value_or_default();
     }
-    else if ((State::Instance().activeFgOutput == FGOutput::DLSSG ||
-              State::Instance().activeFgOutput == FGOutput::DLSSGWithNvngx) &&
-             !StreamlineProxy::LoadStreamline())
+    else if (State::Instance().activeFgOutput == FGOutput::DLSSG && !StreamlineProxy::LoadStreamline())
     {
         LOG_DEBUG("Can't init StreamlineProxy, disabling FGOutput");
         Config::Instance()->FGOutput.set_volatile_value(FGOutput::NoFG);
         State::Instance().activeFgOutput = Config::Instance()->FGOutput.value_or_default();
+
+        Config::Instance()->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::None);
+        State::Instance().activeFgNvngx = Config::Instance()->FGNvngxReplacement.value_or_default();
     }
 
-    if (State::Instance().activeFgOutput != FGOutput::FSRFG && State::Instance().activeFgOutput != FGOutput::XeFG &&
-        State::Instance().activeFgOutput != FGOutput::DLSSG &&
-        State::Instance().activeFgOutput != FGOutput::DLSSGWithNvngx)
+    if (State::Instance().activeFgOutput == FGOutput::NoFG)
     {
-        LOG_WARN("FGOutput is not set to FSR-FG or XeFG");
+        LOG_WARN("FGOutput doesn't have any FG active");
         return false;
     }
 
@@ -111,8 +110,7 @@ HRESULT FGHooks::CreateSwapChain(IDXGIFactory* pFactory, IUnknown* pDevice, DXGI
         {
             State::Instance().currentFG = new XeFG_Dx12();
         }
-        else if (State::Instance().activeFgOutput == FGOutput::DLSSG ||
-                 State::Instance().activeFgOutput == FGOutput::DLSSGWithNvngx)
+        else if (State::Instance().activeFgOutput == FGOutput::DLSSG)
         {
             State::Instance().currentFG = new DLSSG_Dx12();
         }
@@ -223,8 +221,7 @@ HRESULT FGHooks::CreateSwapChainForHwnd(IDXGIFactory* pFactory, IUnknown* pDevic
         {
             State::Instance().currentFG = new XeFG_Dx12();
         }
-        else if (State::Instance().activeFgOutput == FGOutput::DLSSG ||
-                 State::Instance().activeFgOutput == FGOutput::DLSSGWithNvngx)
+        else if (State::Instance().activeFgOutput == FGOutput::DLSSG)
         {
             State::Instance().currentFG = new DLSSG_Dx12();
         }
@@ -233,6 +230,7 @@ HRESULT FGHooks::CreateSwapChainForHwnd(IDXGIFactory* pFactory, IUnknown* pDevic
     // Create FG swapchain
     auto fg = State::Instance().currentFG;
     bool scResult = false;
+
     {
         ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
 
@@ -1166,8 +1164,7 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
     if (willPresent && fg != nullptr && !fgFeatureActive)
         state.dlssgDetectedInterpolationCount = 0;
 
-    if (willPresent && fgFeatureActive &&
-        (state.activeFgOutput == FGOutput::DLSSG || state.activeFgOutput == FGOutput::DLSSGWithNvngx))
+    if (willPresent && fgFeatureActive && state.activeFgOutput == FGOutput::DLSSG)
     {
         if ((!ReflexHooks::gameIsSendingMarkers() || !config->FGDLSSGUseGamesReflexMarkers.value_or_default()))
         {
@@ -1255,7 +1252,7 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
 
     if (tokenResult == sl::Result::eOk && localToken != nullptr && fgFeatureActive &&
         (!ReflexHooks::gameIsSendingMarkers() || !config->FGDLSSGUseGamesReflexMarkers.value_or_default()) &&
-        willPresent && (state.activeFgOutput == FGOutput::DLSSG || state.activeFgOutput == FGOutput::DLSSGWithNvngx))
+        willPresent && state.activeFgOutput == FGOutput::DLSSG)
     {
         if (StreamlineProxy::PCLSetMarker() != nullptr)
             StreamlineProxy::PCLSetMarker()(sl::PCLMarker::ePresentEnd, *localToken);

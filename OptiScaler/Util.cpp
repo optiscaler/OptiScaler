@@ -497,8 +497,7 @@ std::optional<std::filesystem::path> Util::FindFilePath(const std::filesystem::p
     optiPath /= L"streamline";
     auto normalizedStreamlinePath = optiPath.lexically_normal();
 
-    const bool isDlssgOutput = State::Instance().activeFgOutput == FGOutput::DLSSG ||
-                               State::Instance().activeFgOutput == FGOutput::DLSSGWithNvngx;
+    const bool isDlssgOutput = State::Instance().activeFgOutput == FGOutput::DLSSG;
 
     // 1) Direct check in startDir
     std::filesystem::path candidate = startDir / fileName;

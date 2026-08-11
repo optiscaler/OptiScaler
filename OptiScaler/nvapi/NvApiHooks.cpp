@@ -136,8 +136,7 @@ NvAPI_Status __stdcall NvApiHooks::hkNvAPI_DRS_GetSetting(NvDRSSessionHandle hSe
         // Making sure DLSSG is not set to force off
         if (settingId == NGX_DLSSG_MODE_ID)
         {
-            if (State::Instance().activeFgOutput == FGOutput::DLSSG ||
-                State::Instance().activeFgOutput == FGOutput::DLSSGWithNvngx)
+            if (State::Instance().activeFgOutput == FGOutput::DLSSG)
             {
                 pSetting->u32CurrentValue = NGX_DLSSG_MODE_DISABLED;
             }

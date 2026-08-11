@@ -30,12 +30,12 @@ enum class FrameTimeSource : uint32_t
 enum class FGInput : uint32_t
 {
     NoFG,
+    Upscaler, // OptiFG
+    DLSSG,    // technically Streamline inputs
     NvngxFG,
     FSRFG,
-    DLSSG, // technically Streamline inputs
-    XeFG,
-    Upscaler, // OptiFG
     FSRFG30,
+    XeFG,
 
     ForceXeLL, // Do not expose this option
 };
@@ -43,11 +43,17 @@ enum class FGInput : uint32_t
 enum class FGOutput : uint32_t
 {
     NoFG,
-    NvngxFG,
     FSRFG,
     DLSSG,
     XeFG,
-    DLSSGWithNvngx,
+};
+
+enum class FGNvngxReplacement : uint32_t
+{
+    None,
+    Nukems,
+    Arturs,
+    FFX,
 };
 
 enum class WorkingMode : uint32_t
@@ -113,7 +119,8 @@ class State
     uint64_t fgLastFrame = 0;
 
     // Nvngx FG, uses streamline swapchain
-    bool nvngxFgFilesAvailable = false;
+    bool nukemsFgFileAvailable = false;
+    bool artursFgFileAvailable = false;
     bool dlssgDebugView = false;
     bool dlssgInterpolatedOnly = false;
     uint64_t dlssgLastFrame = 0;
@@ -126,6 +133,8 @@ class State
     // Frame Generation
     FGInput activeFgInput = FGInput::NoFG;
     FGOutput activeFgOutput = FGOutput::NoFG;
+    // This should be set to a non-None value only if all other requirements are met and nvngx can be used
+    FGNvngxReplacement activeFgNvngx = FGNvngxReplacement::None;
 
     // Streamline FG inputs
     Sl_Inputs_Dx12 slFGInputs = {};

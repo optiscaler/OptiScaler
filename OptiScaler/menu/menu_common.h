@@ -52,6 +52,7 @@ template <typename T> struct MenuOption
     std::string label;
     std::string tooltip;
     bool disabled = false;
+    bool hidden = false;
 
     MenuOption& set_disabled(bool condition, const std::string& reason = "")
     {
@@ -60,6 +61,15 @@ template <typename T> struct MenuOption
             disabled = true;
             if (!reason.empty())
                 tooltip = reason;
+        }
+        return *this;
+    }
+
+    MenuOption& set_hidden(bool condition)
+    {
+        if (condition)
+        {
+            hidden = true;
         }
         return *this;
     }

@@ -799,9 +799,8 @@ void InitNGXParameters(NVSDK_NGX_Parameter* InParams, API api)
         InParams->Set("SuperSamplingDenoising.FeatureInitResult", 0);
     }
 
-    if ((api == API::DX12 || api == API::Vulkan) &&
-        (State::Instance().activeFgInput == FGInput::NvngxFG || State::Instance().activeFgInput == FGInput::DLSSG ||
-         State::Instance().activeFgOutput == FGOutput::DLSSGWithNvngx))
+    if ((api == API::DX12 || api == API::Vulkan) && (State::Instance().activeFgInput == FGInput::DLSSG ||
+                                                     State::Instance().activeFgNvngx != FGNvngxReplacement::None))
     {
         InParams->Set("FrameGeneration.Available", 1);
         InParams->Set("FrameGeneration.NeedsUpdatedDriver", 0);
@@ -811,7 +810,9 @@ void InitNGXParameters(NVSDK_NGX_Parameter* InParams, API api)
         InParams->Set(NVSDK_NGX_Parameter_FrameInterpolation_FeatureInitResult, 1);
 
         // Streamline handle the max interpolated frame count
-        InParams->Set("DLSSG.MultiFrameCountMax", Nvngx_FG::getMaxFakeFramesCount(api));
+        int countMax =
+            State::Instance().activeFgNvngx != FGNvngxReplacement::None ? Nvngx_FG::getMaxFakeFramesCount(api) : 1;
+        InParams->Set("DLSSG.MultiFrameCountMax", countMax);
 
         if (State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
             State::Instance().gameEngine == GameEngineType::Unreal ||

@@ -196,7 +196,6 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_Init_Ext2(
 
     if (State::Instance().activeFgInput == FGInput::NvngxFG)
     {
-        Nvngx_FG::InitDLSSGMod_Vulkan();
         Nvngx_FG::VULKAN_Init_Ext2(InApplicationId, InApplicationDataPath, InInstance, InPD, InDevice, InGIPA, InGDPA,
                                    InSDKVersion, &localFeatureInfo);
     }
@@ -290,7 +289,6 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_Init_Ext(unsigned long long InAp
         }
     }
 
-    Nvngx_FG::InitDLSSGMod_Vulkan();
     Nvngx_FG::VULKAN_Init_Ext(InApplicationId, InApplicationDataPath, InInstance, InPD, InDevice, InSDKVersion,
                               &localFeatureInfo);
 
@@ -385,7 +383,6 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_Init(unsigned long long InApplic
         }
     }
 
-    Nvngx_FG::InitDLSSGMod_Vulkan();
     Nvngx_FG::VULKAN_Init(InApplicationId, InApplicationDataPath, InInstance, InPD, InDevice, InGIPA, InGDPA,
                           &localFeatureInfo, InSDKVersion);
 
@@ -694,8 +691,6 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_GetFeatureRequirements(
 {
     LOG_DEBUG("for FeatureID: {0}", (int) FeatureDiscoveryInfo->FeatureID);
 
-    Nvngx_FG::InitDLSSGMod_Vulkan();
-
     if (FeatureDiscoveryInfo->FeatureID == NVSDK_NGX_Feature_SuperSampling ||
         (State::Instance().activeFgInput == FGInput::NvngxFG && Nvngx_FG::isVulkanAvailable() &&
          FeatureDiscoveryInfo->FeatureID == NVSDK_NGX_Feature_FrameGeneration))
@@ -960,7 +955,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_ReleaseFeature(NVSDK_NGX_Handle*
             return NVSDK_NGX_Result_FAIL_FeatureNotFound;
         }
     }
-    else if (handleId >= DLSSG_MOD_ID_OFFSET)
+    else if (handleId >= NVNGX_PROVIDER_ID_OFFSET)
     {
         LOG_INFO("VULKAN_ReleaseFeature modded DLSSG with HandleId: {0}", handleId);
         return Nvngx_FG::VULKAN_ReleaseFeature(InHandle);
@@ -1037,7 +1032,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_EvaluateFeature(VkCommandBuffer 
             return NVSDK_NGX_Result_FAIL_FeatureNotFound;
         }
     }
-    else if (handleId >= DLSSG_MOD_ID_OFFSET)
+    else if (handleId >= NVNGX_PROVIDER_ID_OFFSET)
     {
         return Nvngx_FG::VULKAN_EvaluateFeature(InCmdList, InFeatureHandle, InParameters, InCallback);
     }

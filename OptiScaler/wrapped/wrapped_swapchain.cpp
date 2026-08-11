@@ -654,9 +654,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::SetFullscreenState(BOOL Fullsc
 #ifdef USE_LOCAL_MUTEX
         // dlssg calls this from present it seems
         // don't try to get a mutex when present owns it while dlssg mod is enabled
-        if (!(_localMutex.getOwner() == 4 &&
-              (Config::Instance()->FGInput.value_or_default() == FGInput::NvngxFG ||
-               Config::Instance()->FGOutput.value_or_default() == FGOutput::DLSSGWithNvngx)))
+        if (!(_localMutex.getOwner() == 4 && State::Instance().activeFgNvngx != FGNvngxReplacement::None))
         {
             OwnedLockGuard lock(_localMutex, 3);
         }
@@ -712,8 +710,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
 #ifdef USE_LOCAL_MUTEX
     // dlssg calls this from present it seems
     // don't try to get a mutex when present owns it while dlssg mod is enabled
-    if (!(_localMutex.getOwner() == 4 && (Config::Instance()->FGInput.value_or_default() == FGInput::NvngxFG ||
-                                          Config::Instance()->FGOutput.value_or_default() == FGOutput::DLSSGWithNvngx)))
+    if (!(_localMutex.getOwner() == 4 && State::Instance().activeFgNvngx != FGNvngxReplacement::None))
     {
         OwnedLockGuard lock(_localMutex, 1);
     }
@@ -1093,8 +1090,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
 #ifdef USE_LOCAL_MUTEX
     // dlssg calls this from present it seems
     // don't try to get a mutex when present owns it while dlssg mod is enabled
-    if (!(_localMutex.getOwner() == 4 && (Config::Instance()->FGInput.value_or_default() == FGInput::NvngxFG ||
-                                          Config::Instance()->FGOutput.value_or_default() == FGOutput::DLSSGWithNvngx)))
+    if (!(_localMutex.getOwner() == 4 && State::Instance().activeFgNvngx != FGNvngxReplacement::None))
     {
         OwnedLockGuard lock(_localMutex, 2);
     }

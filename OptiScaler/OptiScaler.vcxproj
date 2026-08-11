@@ -329,6 +329,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="hooks\Hook_Utils.h" />
     <ClInclude Include="hooks\LibraryLoad_Hooks.h" />
     <ClInclude Include="hooks\CommandBuffer_StateTracker.h" />
+    <ClInclude Include="framegen\nvngx\IFGNvngx.h" />
     <ClInclude Include="inputs\FG\Streamline_Inputs_Sl1_Dx12.h" />
     <ClInclude Include="include\device_info\device_info.hpp" />
     <ClInclude Include="inputs\FG\Upscaler_Inputs_Dx11wDx12.h" />
@@ -338,6 +339,10 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="low_latency\input\input_antilag2.h" />
     <ClInclude Include="menu\input\input_system.h" />
     <ClInclude Include="menu\input\input_system_internal.h" />
+    <ClInclude Include="framegen\nvngx\Nvngx_FFX.h" />
+    <ClInclude Include="framegen\nvngx\Nvngx_Nukems.h" />
+    <ClInclude Include="framegen\nvngx\Nvngx_DllProxy.h" />
+    <ClInclude Include="framegen\nvngx\Nvngx_Arturs.h" />
     <ClInclude Include="shaders\hudless_compare_compute\HCC_Common.h" />
     <ClInclude Include="shaders\hudless_compare_compute\HCC_Dx12.h" />
     <ClInclude Include="hooks\Xell_Hooks.h" />
@@ -637,7 +642,11 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="low_latency\low_latency_tech\ll_xell.cpp" />
     <ClCompile Include="nvapi\fakenvapi\low_latency_vk.cpp" />
     <ClCompile Include="nvapi\fakenvapi\nvapi_calls.cpp" />
+    <ClCompile Include="framegen\nvngx\Nvngx_FFX.cpp" />
+    <ClCompile Include="framegen\nvngx\Nvngx_Nukems.cpp" />
+    <ClCompile Include="framegen\nvngx\Nvngx_Arturs.cpp" />
     <ClCompile Include="NVNGX_Parameter.cpp" />
+    <ClCompile Include="framegen\nvngx\Nvngx_DllProxy.cpp" />
     <ClCompile Include="OptiTypes.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>

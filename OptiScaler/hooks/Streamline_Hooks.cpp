@@ -744,11 +744,8 @@ void StreamlineHooks::spoofArch(uint32_t currentArch, sl::Feature feature, Syste
     // Don't change arch for DLSSG with ada and above
     else if (feature == sl::kFeatureDLSS_G)
     {
-        if (State::Instance().activeFgInput == FGInput::NvngxFG ||
-            State::Instance().activeFgOutput == FGOutput::DLSSGWithNvngx)
+        if (State::Instance().activeFgNvngx != FGNvngxReplacement::None)
         {
-            Nvngx_FG::InitDLSSGMod_Dx12();
-            Nvngx_FG::InitDLSSGMod_Vulkan();
             if (!Nvngx_FG::isDx12Available() && !Nvngx_FG::isVulkanAvailable())
                 return setArch(0);
         }
@@ -870,9 +867,7 @@ bool StreamlineHooks::hkdlssg_slOnPluginLoad(sl::param::IParameters* params, con
     nlohmann::json configJson = nlohmann::json::parse(*pluginJSON);
 
     // Kill the DLSSG streamline swapchain hooks
-    if (State::Instance().activeFgInput == FGInput::DLSSG ||
-        (State::Instance().activeFgOutput == FGOutput::DLSSG ||
-         State::Instance().activeFgOutput == FGOutput::DLSSGWithNvngx))
+    if (State::Instance().activeFgInput == FGInput::DLSSG || State::Instance().activeFgOutput == FGOutput::DLSSG)
     {
         if (configJson.contains("/hooks"_json_pointer))
             configJson["hooks"].clear();
@@ -1074,8 +1069,8 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
 
     auto& state = State::Instance();
 
-    if (state.activeFgInput != FGInput::DLSSG &&
-        (state.activeFgOutput == FGOutput::DLSSG || state.activeFgOutput == FGOutput::DLSSGWithNvngx))
+    // Disable game's DLSSG when we are trying to create our own instance of DLSSG
+    if (state.activeFgInput != FGInput::DLSSG && state.activeFgOutput == FGOutput::DLSSG)
     {
         newOptions.mode = sl::DLSSGMode::eOff;
         return o_slDLSSGSetOptions(viewport, newOptions);
@@ -1415,7 +1410,7 @@ void* StreamlineHooks::hklocal_dlssg_slGetPluginFunction(const char* functionNam
 {
     // LOG_DEBUG("{}", functionName);
 
-    if (strcmp(functionName, "slOnPluginLoad") == 0 && State::Instance().activeFgOutput == FGOutput::DLSSGWithNvngx)
+    if (strcmp(functionName, "slOnPluginLoad") == 0 && State::Instance().activeFgNvngx != FGNvngxReplacement::None)
     {
         o_local_dlssg_slOnPluginLoad = (PFN_slOnPluginLoad) o_local_dlssg_slGetPluginFunction(functionName);
         return &hklocal_dlssg_slOnPluginLoad;
