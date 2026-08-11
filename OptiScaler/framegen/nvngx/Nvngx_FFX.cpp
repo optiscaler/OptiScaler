@@ -100,10 +100,14 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
     if (!InOurHandle || InOurHandle->Id < NVNGX_PROVIDER_ID_OFFSET)
         return NVSDK_NGX_Result_FAIL_InvalidParameter;
 
-    // TODO: destroy FFX context
     if (inited && InOurHandle->fgContext)
     {
-        LOG_WARN("TODO: destroy FFX context");
+        auto retCode = FfxApiProxy::D3D12_DestroyContext(&InOurHandle->fgContext, nullptr);
+
+        if (retCode == FFX_API_RETURN_OK)
+            InOurHandle->fgContext = nullptr;
+        else
+            LOG_WARN("Could destroy FFX context");
     }
 
     InOurHandle->device->Release();
