@@ -1207,8 +1207,7 @@ bool Config::SaveIni()
         ini.SetValue("Hotfix", "CheckForUpdate", GetBoolValue(Instance()->CheckForUpdate.value_for_config()).c_str());
         ini.SetValue("Hotfix", "SimulateWaitableObject",
                      GetBoolValue(Instance()->SimulateWaitableObject.value_for_config()).c_str());
-        ini.SetValue("Hotfix", "DisableOverlays",
-                     GetBoolValue(Instance()->DisableOverlays.value_for_config(true)).c_str());
+        ini.SetValue("Hotfix", "DisableOverlays", GetBoolValue(Instance()->DisableOverlays.value_for_config()).c_str());
         ini.SetValue("Hotfix", "ManualInputPolling",
                      GetBoolValue(Instance()->ManualInputPolling.value_for_config()).c_str());
 
