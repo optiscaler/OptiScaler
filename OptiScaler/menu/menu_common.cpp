@@ -3041,26 +3041,19 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
     // DLSSG output requirements
     auto constexpr dlssgOutputIndex = (uint32_t) FGOutput::DLSSG;
-    outputOptions[dlssgOutputIndex].set_disabled(state.swapchainApi == API::Vulkan, "Unsupported API");
-    // outputOptions[dlssgOutputIndex].set_disabled(primaryGpu.nvidiaArchInfo.architecture_id <
-    // NV_GPU_ARCHITECTURE_AD100, "Unsupported hardware");
+    const bool supportsDlssg = primaryGpu.nvidiaArchInfo.architecture_id >= NV_GPU_ARCHITECTURE_AD100;
+    const bool hasDlssgReplacement =
+        state.nukemsFgFileAvailable || state.artursFgFileAvailable || FfxApiProxy::IsFGReady(false);
 
-    // Nukem's FG mod requirements
-    // auto constexpr nvngxOutputIndex = (uint32_t) FGOutput::NvngxFG;
-    // if (state.activeFgOutput == FGOutput::NvngxFG)
-    //{
-    //    if (Nvngx_FG::getMaxFakeFramesCount(state.swapchainApi) > 1)
-    //        outputOptions[nvngxOutputIndex].label = "FSR3-MFG via DLSS Enabler";
-    //    else
-    //        outputOptions[nvngxOutputIndex].label = "FSR3-FG via Nukem's";
-    //}
-    // if (!state.nvngxFgFilesAvailable)
-    //{
-    //    inputOptions[nvngxInputIndex].set_disabled(
-    //        true, "Missing dlssg_to_fsr3_amd_is_better.dll\nor dlss-enabler-headless.dll");
-    //    outputOptions[nvngxOutputIndex].set_disabled(
-    //        true, "Missing dlssg_to_fsr3_amd_is_better.dll\nor dlss-enabler-headless.dll");
-    //}
+    if (!supportsDlssg && hasDlssgReplacement)
+    {
+        outputOptions[dlssgOutputIndex].tooltip =
+            "No real DLSSG, unsupported hardware\nOnly Nvngx FG replacements available";
+    }
+
+    outputOptions[dlssgOutputIndex].set_disabled(state.swapchainApi == API::Vulkan, "Unsupported API");
+    outputOptions[dlssgOutputIndex].set_disabled(!supportsDlssg && !hasDlssgReplacement,
+                                                 "Unsupported hardware and no replacements");
 
     // For that one case of DX11 DLSSG
     const auto streamlineVersion = state.streamlineVersion;
@@ -3110,7 +3103,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     // clang-format off
 
     nvngxOptions = {
-        { FGNvngxReplacement::None, "None/Real DLSSG", "Real DLSSG, For RTX 40xx and above"},
+        { FGNvngxReplacement::None, "None (Real DLSSG)", "Real DLSSG, For RTX 40xx and above"},
         { FGNvngxReplacement::Nukems, "Nukem's", "FSR 3 FG" },
         { FGNvngxReplacement::Arturs, "Enabler", "FSR 3 MFG" },
         { FGNvngxReplacement::FFX, "FSR 3/4 FG", "FSR 3/4 FG using the FFX" },
@@ -3132,10 +3125,24 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     }
 
     auto constexpr fgNvngxNoneIndex = (uint32_t) FGNvngxReplacement::None;
-    const bool supportsDlssg = primaryGpu.nvidiaArchInfo.architecture_id >= NV_GPU_ARCHITECTURE_AD100;
     nvngxOptions[fgNvngxNoneIndex].set_disabled(!supportsDlssg, "Unsupported hardware");
 
-    nvngxOptions[fgNvngxNoneIndex].set_hidden(replaceFgOutputWithNvngx);
+    if (replaceFgOutputWithNvngx)
+    {
+        nvngxOptions[fgNvngxNoneIndex].label = "None";
+        nvngxOptions[fgNvngxNoneIndex].set_hidden(true);
+    }
+
+    auto constexpr fgNvngxNukemsIndex = (uint32_t) FGNvngxReplacement::Nukems;
+    nvngxOptions[fgNvngxNukemsIndex].set_disabled(!state.nukemsFgFileAvailable,
+                                                  "Missing dlssg_to_fsr3_amd_is_better.dll");
+
+    auto constexpr fgNvngxArtursIndex = (uint32_t) FGNvngxReplacement::Arturs;
+    nvngxOptions[fgNvngxArtursIndex].set_disabled(!state.artursFgFileAvailable, "Missing dlss-enabler-headless.dll");
+
+    auto constexpr fgNvngxFfxIndex = (uint32_t) FGNvngxReplacement::FFX;
+    nvngxOptions[fgNvngxFfxIndex].set_disabled(!FfxApiProxy::IsFGReady(false),
+                                               "Missing amd_fidelityfx_framegeneration_dx12.dll");
 
     // TODO: Automatically switch to any other option
 
