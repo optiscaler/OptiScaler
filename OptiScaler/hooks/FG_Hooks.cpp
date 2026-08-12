@@ -52,6 +52,9 @@ static bool CheckForFGStatus()
         FfxApiProxy::InitFfxDx12();
         if (!FfxApiProxy::IsFGReady())
         {
+            ImGui::InsertNotification(
+                { ImGuiToastType::Error, 20000, "Can't init FSR FG\nAre you missing the required DLLs?" });
+
             LOG_DEBUG("Can't init FfxApiProxy, disabling FGOutput");
             Config::Instance()->FGOutput.set_volatile_value(FGOutput::NoFG);
             State::Instance().activeFgOutput = Config::Instance()->FGOutput.value_or_default();
@@ -59,12 +62,18 @@ static bool CheckForFGStatus()
     }
     else if (State::Instance().activeFgOutput == FGOutput::XeFG && !XeFGProxy::InitXeFG())
     {
+        ImGui::InsertNotification(
+            { ImGuiToastType::Error, 20000, "Can't init XeFG\nAre you missing the required DLLs?" });
+
         LOG_DEBUG("Can't init XeFGProxy, disabling FGOutput");
         Config::Instance()->FGOutput.set_volatile_value(FGOutput::NoFG);
         State::Instance().activeFgOutput = Config::Instance()->FGOutput.value_or_default();
     }
     else if (State::Instance().activeFgOutput == FGOutput::DLSSG && !StreamlineProxy::LoadStreamline())
     {
+        ImGui::InsertNotification(
+            { ImGuiToastType::Error, 20000, "Can't init DLSSG Output\nAre you missing the streamline folder?" });
+
         LOG_DEBUG("Can't init StreamlineProxy, disabling FGOutput");
         Config::Instance()->FGOutput.set_volatile_value(FGOutput::NoFG);
         State::Instance().activeFgOutput = Config::Instance()->FGOutput.value_or_default();
