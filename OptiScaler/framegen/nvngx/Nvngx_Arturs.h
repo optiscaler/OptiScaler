@@ -9,6 +9,6 @@ class Nvngx_Arturs : public Nvngx_DllProxy
   public:
     Nvngx_Arturs() { LoadLibraries(); }
 
-    int getMaxFakeFramesCount(API api) override { return 5; }
+    int getMaxFakeFramesCount() override { return 5; }
     FGNvngxReplacement getType() override { return FGNvngxReplacement::Arturs; }
 };

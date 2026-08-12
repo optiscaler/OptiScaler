@@ -18,7 +18,7 @@ class IFGNvngx
 
     virtual ~IFGNvngx() = default;
 
-    virtual int getMaxFakeFramesCount(API api) = 0;
+    virtual int getMaxFakeFramesCount() = 0;
     virtual FGNvngxReplacement getType() = 0;
     virtual bool isDx12Available() = 0;
     virtual bool isVulkanAvailable() = 0;

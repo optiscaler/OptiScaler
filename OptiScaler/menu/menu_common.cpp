@@ -1754,31 +1754,34 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             auto fgText = (fg != nullptr && fg->IsActive() && !fg->IsPaused()) ? (" (" + std::string(fg->Name()) + ")")
                                                                                : std::string();
 
-            if (state.activeFgNvngx != FGNvngxReplacement::None)
+            const int fakeFramesCount = state.dlssgDetectedInterpolationCount;
+            auto formatFg = [&](std::string_view name, int maxFakeFrames)
             {
-                if (Nvngx_FG::getMaxFakeFramesCount(state.swapchainApi) > 1)
-                {
-                    if (state.dlssgDetectedInterpolationCount == 0)
-                        fgText = " (Enabler off)";
-                    else
-                        fgText = std::format(" (Enabler x{})", state.dlssgDetectedInterpolationCount + 1);
-                }
-                else
-                {
-                    if (state.dlssgDetectedInterpolationCount == 0)
-                        fgText = " (Nukems off)";
-                    else if (state.dlssgDetectedInterpolationCount == 1)
-                        fgText = std::format(" (Nukems x2)");
-                    else
-                        fgText = std::format(" (Nukems Doesn't support more than 2x)");
-                }
+                if (fakeFramesCount > maxFakeFrames)
+                    return std::format(" ({} Doesn't support more than {}x)", name, maxFakeFrames);
+
+                else if (fakeFramesCount == 0)
+                    return std::format(" ({} off)", name);
+
+                return std::format(" ({} x{})", name, fakeFramesCount + 1);
+            };
+
+            const FGNvngxReplacement activeNvngxFg = state.activeFgNvngx;
+            if (state.activeFgOutput == FGOutput::DLSSG)
+            {
+                fgText = formatFg("DLSSG", state.dlssgMaxInterpolationCount);
             }
-            else if (state.activeFgOutput == FGOutput::DLSSG)
+            else if (activeNvngxFg == FGNvngxReplacement::Arturs)
             {
-                if (state.dlssgDetectedInterpolationCount == 0)
-                    fgText = " (DLSSG off)";
-                else
-                    fgText = std::format(" (DLSSG x{})", state.dlssgDetectedInterpolationCount + 1);
+                fgText = formatFg("Enabler", Nvngx_FG::getMaxFakeFramesCount());
+            }
+            else if (activeNvngxFg == FGNvngxReplacement::Nukems)
+            {
+                fgText = formatFg("Nukems", Nvngx_FG::getMaxFakeFramesCount());
+            }
+            else if (activeNvngxFg == FGNvngxReplacement::FFX)
+            {
+                fgText = formatFg("FFX", Nvngx_FG::getMaxFakeFramesCount());
             }
 
             const auto overlayType = config->FpsOverlayType.value_or_default();

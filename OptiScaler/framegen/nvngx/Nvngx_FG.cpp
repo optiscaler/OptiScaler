@@ -100,14 +100,14 @@ IFGNvngx* Nvngx_FG::getProvider()
     return _provider.get();
 }
 
-int Nvngx_FG::getMaxFakeFramesCount(API api)
+int Nvngx_FG::getMaxFakeFramesCount()
 {
     auto* provider = getProvider();
 
     if (!provider)
         return false;
 
-    return provider->getMaxFakeFramesCount(api);
+    return provider->getMaxFakeFramesCount();
 }
 
 bool Nvngx_FG::isDx12Available()

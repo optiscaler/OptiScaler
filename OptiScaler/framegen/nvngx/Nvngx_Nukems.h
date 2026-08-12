@@ -18,6 +18,6 @@ class Nvngx_Nukems : public Nvngx_DllProxy
 
     void setDebugView(bool enabled);
     void setInterpolatedOnly(bool enabled);
-    int getMaxFakeFramesCount(API api) override { return 1; }
+    int getMaxFakeFramesCount() override { return 1; }
     FGNvngxReplacement getType() override { return FGNvngxReplacement::Nukems; }
 };

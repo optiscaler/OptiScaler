@@ -59,6 +59,6 @@ class Nvngx_FFX : public IFGNvngx
 
     NVSDK_NGX_Result D3D12_PopulateParameters_Impl(NVSDK_NGX_Parameter* InParameters) override;
 
-    int getMaxFakeFramesCount(API api) override { return 1; }
+    int getMaxFakeFramesCount() override { return 1; }
     FGNvngxReplacement getType() override { return FGNvngxReplacement::FFX; }
 };
