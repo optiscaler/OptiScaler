@@ -18,7 +18,8 @@ bool Nvngx_FFX::Init()
     if (inited)
         return true;
 
-    if (!FfxApiProxy::IsFGReady())
+    constexpr bool sendNotification = false;
+    if (!FfxApiProxy::IsFGReady(sendNotification))
         FfxApiProxy::InitFfxDx12();
 
     if (!FfxApiProxy::IsFGReady())

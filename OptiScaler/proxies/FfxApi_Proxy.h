@@ -113,44 +113,44 @@ class FfxApiProxy
     static std::wstring Dx12Module_Denoiser_Path() { return denoiser_dx12.filePath; }
     static std::wstring Dx12Module_Radiance_Path() { return radiance_dx12.filePath; }
 
-    static bool IsFGReady()
+    static bool IsFGReady(bool sendNotification = true)
     {
         bool result = (main_dx12.dll && !main_dx12.isLoader) || fg_dx12.dll != nullptr;
 
-        if (!result)
+        if (!result && sendNotification)
             ImGui::InsertNotification({ ImGuiToastType::Error, 10000,
                                         "Can't load amd_fidelityfx_dx12\nDid you forget to extract that dll?" });
 
         return result;
     }
 
-    static bool IsSRReady()
+    static bool IsSRReady(bool sendNotification = true)
     {
         bool result = (main_dx12.dll && !main_dx12.isLoader) || upscaling_dx12.dll != nullptr;
 
-        if (!result)
+        if (!result && sendNotification)
             ImGui::InsertNotification({ ImGuiToastType::Error, 10000,
                                         "Can't load amd_fidelityfx_dx12\nDid you forget to extract that dll?" });
 
         return result;
     }
 
-    static bool IsDenoiserReady()
+    static bool IsDenoiserReady(bool sendNotification = true)
     {
         bool result = (main_dx12.dll && !main_dx12.isLoader) || denoiser_dx12.dll != nullptr;
 
-        if (!result)
+        if (!result && sendNotification)
             ImGui::InsertNotification({ ImGuiToastType::Error, 10000,
                                         "Can't load amd_fidelityfx_dx12\nDid you forget to extract that dll?" });
 
         return result;
     }
 
-    static bool IsRadianceReady()
+    static bool IsRadianceReady(bool sendNotification = true)
     {
         bool result = (main_dx12.dll && !main_dx12.isLoader) || radiance_dx12.dll != nullptr;
 
-        if (!result)
+        if (!result && sendNotification)
             ImGui::InsertNotification({ ImGuiToastType::Error, 10000,
                                         "Can't load amd_fidelityfx_dx12\nDid you forget to extract that dll?" });
 
