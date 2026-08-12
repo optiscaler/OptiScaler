@@ -609,7 +609,13 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
 
     // Copy backbuffer to output real
     if (outputReal)
-        CopyTexture(InCmdList, &outputRealFfx, &dispatchDesc.presentColor);
+    {
+        // Only fake frames gets the debug view, copy the fake frame to output to prevent flickering
+        if (configureDesc.flags & FFX_FRAMEGENERATION_FLAG_DRAW_DEBUG_VIEW)
+            CopyTexture(InCmdList, &outputRealFfx, &dispatchDesc.outputs[0]);
+        else
+            CopyTexture(InCmdList, &outputRealFfx, &dispatchDesc.presentColor);
+    }
 
     return NVSDK_NGX_Result_Success;
 }
