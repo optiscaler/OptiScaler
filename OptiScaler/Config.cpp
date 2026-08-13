@@ -237,6 +237,7 @@ bool Config::Reload(std::filesystem::path iniPath)
 
             FGDLSSGFramerateTargetDMFG.set_from_config(readFloat("DLSSG", "FramerateTargetDMFG"));
             FGDLSSGOverrideForceDMFG.set_from_config(readBool("DLSSG", "OverrideForceDMFG"));
+            FGDLSSGForceDMFG.set_from_config(readBool("DLSSG", "ForceDMFG"));
         }
 
         // FSR FG Inputs
@@ -1002,6 +1003,7 @@ bool Config::SaveIni()
                      GetFloatValue(Instance()->FGDLSSGFramerateTargetDMFG.value_for_config()).c_str());
         ini.SetValue("DLSSG", "OverrideForceDMFG",
                      GetBoolValue(Instance()->FGDLSSGOverrideForceDMFG.value_for_config()).c_str());
+        ini.SetValue("DLSSG", "ForceDMFG", GetBoolValue(Instance()->FGDLSSGForceDMFG.value_for_config()).c_str());
     }
 
     // OptiFG
