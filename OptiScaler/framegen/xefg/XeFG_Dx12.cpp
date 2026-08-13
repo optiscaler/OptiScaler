@@ -71,6 +71,19 @@ bool XeFG_Dx12::CreateSwapchainContext(ID3D12Device* device)
         // Force fakenvapi to create XeLL for us
         if (fakenvapi::forceMode(device, LowLatencyMode::XeLL))
         {
+            xell_sleep_params_t sleepParams = {};
+            sleepParams.bLowLatencyMode = true;
+            sleepParams.bLowLatencyBoost = false;
+            sleepParams.minimumIntervalUs = 0;
+
+            auto xellResult =
+                XeLLProxy::SetSleepMode()((xell_context_handle_t) fakenvapi::getCurrentContext(), &sleepParams);
+            if (xellResult != XELL_RESULT_SUCCESS)
+            {
+                LOG_ERROR("SetSleepMode error: {} ({})", magic_enum::enum_name(xellResult), (UINT) xellResult);
+                return false;
+            }
+
             result = XeFGProxy::SetLatencyReduction()(_swapChainContext, fakenvapi::getCurrentContext());
 
             if (result != XEFG_SWAPCHAIN_RESULT_SUCCESS)
