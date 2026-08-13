@@ -99,6 +99,133 @@ enum class FSR4Support : uint8_t
     Count
 };
 
+typedef struct _version_t
+{
+    uint16_t major;
+    uint16_t minor;
+    uint16_t patch;
+    uint16_t reserved;
+
+    _version_t() : major(0), minor(0), patch(0), reserved(0) {}
+
+    constexpr _version_t(uint16_t maj, uint16_t min, uint16_t pat, uint16_t res)
+        : major(maj), minor(min), patch(pat), reserved(res)
+    {
+    }
+
+    bool operator==(const _version_t& other) const
+    {
+        return major == other.major && minor == other.minor && patch == other.patch && reserved == other.reserved;
+    }
+
+    bool operator!=(const _version_t& other) const { return !(*this == other); }
+
+    bool operator<(const _version_t& other) const
+    {
+        if (major != other.major)
+            return major < other.major;
+        if (minor != other.minor)
+            return minor < other.minor;
+        if (patch != other.patch)
+            return patch < other.patch;
+        return reserved < other.reserved;
+    }
+
+    bool operator>(const _version_t& other) const { return other < *this; }
+
+    bool operator<=(const _version_t& other) const { return !(other < *this); }
+
+    bool operator>=(const _version_t& other) const { return !(*this < other); }
+} version_t;
+
+struct feature_version
+{
+    unsigned int major;
+    unsigned int minor;
+    unsigned int patch;
+    unsigned int reserved;
+
+    feature_version() : major(0), minor(0), patch(0), reserved(0) {}
+
+    explicit feature_version(const char* version_str) : major(0), minor(0), patch(0), reserved(0)
+    {
+        parse_version(version_str);
+    }
+
+    constexpr feature_version(unsigned int maj, unsigned int min, unsigned int pat, unsigned int res)
+        : major(maj), minor(min), patch(pat), reserved(res)
+    {
+    }
+
+    constexpr feature_version(unsigned int maj, unsigned int min, unsigned int pat)
+        : major(maj), minor(min), patch(pat), reserved(0)
+    {
+    }
+
+    feature_version& operator=(const version_t& other)
+    {
+        this->major = other.major;
+        this->minor = other.minor;
+        this->patch = other.patch;
+        this->reserved = other.reserved;
+        return *this;
+    }
+
+    bool operator==(const feature_version& other) const
+    {
+        return major == other.major && minor == other.minor && patch == other.patch && reserved == other.reserved;
+    }
+
+    bool operator!=(const feature_version& other) const { return !(*this == other); }
+
+    bool operator<(const feature_version& other) const
+    {
+        if (major != other.major)
+            return major < other.major;
+        if (minor != other.minor)
+            return minor < other.minor;
+        if (patch != other.patch)
+            return patch < other.patch;
+        return reserved < other.reserved;
+    }
+
+    bool operator>(const feature_version& other) const { return other < *this; }
+
+    bool operator<=(const feature_version& other) const { return !(other < *this); }
+
+    bool operator>=(const feature_version& other) const { return !(*this < other); }
+
+    void parse_version(const char* version_str)
+    {
+        const char* p = version_str;
+
+        // Skip non-digits at front
+        while (*p)
+        {
+            if (isdigit((unsigned char) p[0]))
+            {
+                if (sscanf_s(p, "%u.%u.%u", &major, &minor, &patch) == 3)
+                    return;
+            }
+            ++p;
+        }
+
+        LOG_WARN("can't parse {0}", version_str);
+    }
+};
+
+namespace VendorId
+{
+enum Value : uint32_t
+{
+    Invalid = 0,
+    Microsoft = 0x1414, // Software Render Adapter
+    Nvidia = 0x10DE,
+    AMD = 0x1002,
+    Intel = 0x8086,
+};
+};
+
 std::string ApiUpscalerInputName(ApiUpscalerInput upscaler);
 
 std::string UpscalerDisplayName(Upscaler upscaler, API api = API::NotSelected);

@@ -164,7 +164,7 @@ class XeSSProxy
     inline static xess_version_t GetDLLVersion(std::wstring dllPath)
     {
         xess_version_t xessVersion {};
-        Util::version_t tempVersion {};
+        version_t tempVersion {};
         auto result = Util::GetFileVersion(dllPath, &tempVersion);
 
         // Don't assume that the structs are identical

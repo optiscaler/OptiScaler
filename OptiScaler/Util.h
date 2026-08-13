@@ -9,45 +9,6 @@
 
 namespace Util
 {
-typedef struct _version_t
-{
-    uint16_t major;
-    uint16_t minor;
-    uint16_t patch;
-    uint16_t reserved;
-
-    _version_t() : major(0), minor(0), patch(0), reserved(0) {}
-
-    constexpr _version_t(uint16_t maj, uint16_t min, uint16_t pat, uint16_t res)
-        : major(maj), minor(min), patch(pat), reserved(res)
-    {
-    }
-
-    bool operator==(const _version_t& other) const
-    {
-        return major == other.major && minor == other.minor && patch == other.patch && reserved == other.reserved;
-    }
-
-    bool operator!=(const _version_t& other) const { return !(*this == other); }
-
-    bool operator<(const _version_t& other) const
-    {
-        if (major != other.major)
-            return major < other.major;
-        if (minor != other.minor)
-            return minor < other.minor;
-        if (patch != other.patch)
-            return patch < other.patch;
-        return reserved < other.reserved;
-    }
-
-    bool operator>(const _version_t& other) const { return other < *this; }
-
-    bool operator<=(const _version_t& other) const { return !(other < *this); }
-
-    bool operator>=(const _version_t& other) const { return !(*this < other); }
-} version_t;
-
 struct MonitorInfo
 {
     HMONITOR handle;

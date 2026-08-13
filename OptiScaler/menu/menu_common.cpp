@@ -4467,12 +4467,10 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         {
             if (activeNvngxFg == FGNvngxReplacement::Arturs || activeNvngxFg == FGNvngxReplacement::Combo)
             {
-                if (bool showDebug = config->NvngxFGShowDebug.value_or_default();
-                    ImGui::Checkbox("Show Debug", &showDebug))
-                {
-                    config->NvngxFGShowDebug = showDebug;
-                }
-                ShowHelpMarker("Required for Debug flags to work correctly");
+                auto featureVer = Nvngx_FG::version();
+                auto antighostingVer = Nvngx_FG::extraVersion();
+                ImGui::Text("DE Ver: %d.%d.%d.%d   GB Ver: %d.%d", featureVer.major, featureVer.minor, featureVer.patch,
+                            featureVer.reserved, antighostingVer.major, antighostingVer.minor);
 
                 static std::vector<FlagDefinition> known_flags = {
                     { "FRAME_INDEX_LINE", 0x00010000, "" },
@@ -4498,6 +4496,14 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 ImGui::Text("Raw DispatchFlags:");
                 changed |= ImGui::InputScalar("##RawFlags", ImGuiDataType_U32, &temp_flags, NULL, NULL, "%08X",
                                               ImGuiInputTextFlags_CharsHexadecimal);
+
+                ImGui::SameLine(0.0f, 20.0f * menuResScale);
+                if (bool showDebug = config->NvngxFGShowDebug.value_or_default();
+                    ImGui::Checkbox("Show Debug", &showDebug))
+                {
+                    config->NvngxFGShowDebug = showDebug;
+                }
+                ShowHelpMarker("Required for Debug flags to work correctly");
 
                 ImGui::Spacing();
 

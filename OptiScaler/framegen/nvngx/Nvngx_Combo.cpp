@@ -286,3 +286,6 @@ NVSDK_NGX_Result Nvngx_Combo::D3D12_PopulateParameters_Impl(NVSDK_NGX_Parameter*
 
     return NVSDK_NGX_Result_Success;
 }
+
+feature_version Nvngx_Combo::version() { return artursProvider->version(); }
+feature_version Nvngx_Combo::extraVersion() { return artursProvider->extraVersion(); }

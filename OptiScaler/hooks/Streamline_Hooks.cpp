@@ -259,8 +259,8 @@ sl::Result StreamlineHooks::hkslInit(const sl::Preferences& pref, uint64_t sdkVe
                     else
                     {
                         // Compare versions
-                        Util::version_t pluginVer, pluginProdVer;
-                        Util::version_t localVer, localProdVer;
+                        version_t pluginVer, pluginProdVer;
+                        version_t localVer, localProdVer;
 
                         bool gotPluginVer = Util::GetFileVersion(entry.path().wstring(), &pluginVer, &pluginProdVer);
                         bool gotLocalVer = Util::GetFileVersion(localDllPath.wstring(), &localVer, &localProdVer);
@@ -1786,7 +1786,7 @@ void StreamlineHooks::hookInterposer(HMODULE slInterposer)
 
         LOG_TRACE("slInterposer path: {}", dllPath);
 
-        Util::version_t sl_version;
+        version_t sl_version;
         Util::GetFileVersion(string_to_wstring(dllPath), &sl_version);
 
         State::Instance().streamlineVersion.major = sl_version.major;

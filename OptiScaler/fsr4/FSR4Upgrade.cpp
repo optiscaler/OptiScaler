@@ -48,12 +48,12 @@ HRESULT STDMETHODCALLTYPE AmdExtFfxApi::UpdateFfxApiProvider(void* pData, uint32
         wchar_t sdkDllPath[MAX_PATH] = { 0 };
         GetModuleFileNameW(callerModule, sdkDllPath, MAX_PATH);
 
-        Util::version_t sdkVersion;
+        version_t sdkVersion;
         Util::GetFileVersion(sdkDllPath, &sdkVersion, nullptr);
 
         LOG_TRACE("sdkVersion: {}.{}.{}.{}", sdkVersion.major, sdkVersion.minor, sdkVersion.patch, sdkVersion.reserved);
 
-        sdkSupportsInt8 = sdkVersion >= Util::version_t(4, 1, 1, 0);
+        sdkSupportsInt8 = sdkVersion >= version_t(4, 1, 1, 0);
         IdentifyGpu::updateInt8Support(sdkSupportsInt8, amdxcffx64SupportsInt8);
     }
 
@@ -101,13 +101,13 @@ HRESULT STDMETHODCALLTYPE AmdExtFfxApi::UpdateFfxApiProvider(void* pData, uint32
             wchar_t driverDllPath[MAX_PATH] = { 0 };
             GetModuleFileNameW(FSR4Upgrade::moduleAmdxcffx64, driverDllPath, MAX_PATH);
 
-            Util::version_t amdxcffx64Version;
+            version_t amdxcffx64Version;
             Util::GetFileVersion(driverDllPath, &amdxcffx64Version);
 
             LOG_TRACE("amdxcffx64Version: {}.{}.{}.{}", amdxcffx64Version.major, amdxcffx64Version.minor,
                       amdxcffx64Version.patch, amdxcffx64Version.reserved);
 
-            amdxcffx64SupportsInt8 = amdxcffx64Version >= Util::version_t(2, 3, 0, 0);
+            amdxcffx64SupportsInt8 = amdxcffx64Version >= version_t(2, 3, 0, 0);
 
             // Seems to happen with older Proton builds
             if (!amdxcffx64SupportsInt8.value() && !wasInt8ModelSelectionHooked &&

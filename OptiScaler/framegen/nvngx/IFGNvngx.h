@@ -14,7 +14,7 @@ class IFGNvngx
     feature_version _version { 0, 0, 0 };
 
   public:
-    feature_version version() const { return _version; };
+    virtual feature_version version() { return _version; };
 
     virtual ~IFGNvngx() = default;
 
@@ -22,6 +22,7 @@ class IFGNvngx
     virtual FGNvngxReplacement getType() = 0;
     virtual bool isDx12Available() = 0;
     virtual bool isVulkanAvailable() = 0;
+    virtual feature_version extraVersion() { return {}; }; // extra version the provider may want to report
 
     // D3D12
     virtual NVSDK_NGX_Result D3D12_Init(unsigned long long InApplicationId, const wchar_t* InApplicationDataPath,

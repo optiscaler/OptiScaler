@@ -66,4 +66,6 @@ class Nvngx_Combo : public IFGNvngx
 
     int getMaxFakeFramesCount() override { return 5; }
     FGNvngxReplacement getType() override { return FGNvngxReplacement::Combo; }
+    feature_version version() override;
+    feature_version extraVersion() override;
 };

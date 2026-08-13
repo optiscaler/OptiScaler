@@ -3,8 +3,6 @@
 
 class Nvngx_Arturs : public Nvngx_DllProxy
 {
-    PFN_D3D12_GetCapabilityParameters _DLSSG_D3D12_GetCapabilityParameters = nullptr;
-    Util::version_t enablerVersion {};
     feature_version ghostbusterVersion {};
 
     void QueryVersions();
@@ -17,4 +15,5 @@ class Nvngx_Arturs : public Nvngx_DllProxy
 
     int getMaxFakeFramesCount() override { return 5; }
     FGNvngxReplacement getType() override { return FGNvngxReplacement::Arturs; }
+    feature_version extraVersion() override;
 };

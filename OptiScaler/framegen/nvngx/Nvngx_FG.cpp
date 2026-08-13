@@ -171,6 +171,16 @@ feature_version Nvngx_FG::version()
     return provider->version();
 }
 
+feature_version Nvngx_FG::extraVersion()
+{
+    auto* provider = getProvider();
+
+    if (!provider)
+        return {};
+
+    return provider->extraVersion();
+}
+
 void Nvngx_FG::setDebugView(bool enabled)
 {
     auto* provider = getProvider();

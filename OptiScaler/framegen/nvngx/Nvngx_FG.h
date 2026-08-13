@@ -20,6 +20,7 @@ class Nvngx_FG
     static bool isDx12Available();
     static bool isVulkanAvailable();
     static feature_version version();
+    static feature_version extraVersion();
 
     // TODO: nukem-specific, unify
     static void setDebugView(bool enabled);

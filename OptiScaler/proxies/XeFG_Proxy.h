@@ -87,7 +87,7 @@ class XeFGProxy
     inline static xefg_swapchain_version_t GetDLLVersion(std::wstring dllPath)
     {
         xefg_swapchain_version_t xefgVersion {};
-        Util::version_t tempVersion {};
+        version_t tempVersion {};
         auto result = Util::GetFileVersion(dllPath, &tempVersion);
 
         // Don't assume that the structs are identical
