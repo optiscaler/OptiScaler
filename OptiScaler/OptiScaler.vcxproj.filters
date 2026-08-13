@@ -932,6 +932,9 @@
     <ClInclude Include="framegen\nvngx\Nvngx_Arturs.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="framegen\nvngx\Nvngx_Combo.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Config.cpp">
@@ -1494,6 +1497,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="framegen\nvngx\Nvngx_Arturs.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="framegen\nvngx\Nvngx_Combo.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

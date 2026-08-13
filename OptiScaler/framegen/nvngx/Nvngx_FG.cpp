@@ -10,6 +10,7 @@
 #include "Nvngx_Nukems.h"
 #include "Nvngx_Arturs.h"
 #include "Nvngx_FFX.h"
+#include "Nvngx_Combo.h"
 #include <imgui/ImGuiNotify.hpp>
 
 IFGNvngx* Nvngx_FG::getProvider()
@@ -33,6 +34,10 @@ IFGNvngx* Nvngx_FG::getProvider()
         _provider = std::make_unique<Nvngx_Arturs>();
         break;
 
+    case FGNvngxReplacement::Combo:
+        _provider = std::make_unique<Nvngx_Combo>();
+        break;
+
     case FGNvngxReplacement::None:
     default:
         return nullptr;
@@ -41,6 +46,7 @@ IFGNvngx* Nvngx_FG::getProvider()
     if (!_provider->isDx12Available() && !_provider->isVulkanAvailable())
     {
         // The selected provider cannot be used, try the remaining providers as fallback, try in order
+        // FGNvngxReplacement::Combo doesn't make sense to try as it's Arturs + FFX
         const FGNvngxReplacement fallbacks[] = {
             FGNvngxReplacement::Arturs,
             FGNvngxReplacement::FFX,
@@ -57,6 +63,8 @@ IFGNvngx* Nvngx_FG::getProvider()
                 return "Nvngx FFX";
             case FGNvngxReplacement::Nukems:
                 return "Nukems";
+            case FGNvngxReplacement::Combo:
+                return "Combo";
             case FGNvngxReplacement::None:
             default:
                 return "???";

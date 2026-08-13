@@ -115,6 +115,8 @@ bool Config::Reload(std::filesystem::path iniPath)
                     FGNvngxReplacement.set_from_config(FGNvngxReplacement::Arturs);
                 else if (lstrcmpiA(FGNvngxReplacementString.value().c_str(), "ffx") == 0)
                     FGNvngxReplacement.set_from_config(FGNvngxReplacement::FFX);
+                else if (lstrcmpiA(FGNvngxReplacementString.value().c_str(), "combo") == 0)
+                    FGNvngxReplacement.set_from_config(FGNvngxReplacement::Combo);
             }
 
             if (auto forceXell = readBool("fakenvapi", "ForceXeLL"); forceXell.has_value() && forceXell.value())
@@ -908,6 +910,8 @@ bool Config::SaveIni()
                 FGNvngxReplacementString = "Arturs";
             else if (FGNvngxReplacementHeld.value() == FGNvngxReplacement::FFX)
                 FGNvngxReplacementString = "FFX";
+            else if (FGNvngxReplacementHeld.value() == FGNvngxReplacement::Combo)
+                FGNvngxReplacementString = "Combo";
         }
         ini.SetValue("FrameGen", "FGNvngxReplacement", FGNvngxReplacementString.c_str());
 

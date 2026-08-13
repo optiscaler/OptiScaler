@@ -54,6 +54,7 @@ enum class FGNvngxReplacement : uint32_t
     Nukems,
     Arturs,
     FFX,
+    Combo,
 };
 
 enum class WorkingMode : uint32_t

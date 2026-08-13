@@ -1783,6 +1783,10 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             {
                 fgText = formatFg("FFX", Nvngx_FG::getMaxFakeFramesCount());
             }
+            else if (activeNvngxFg == FGNvngxReplacement::Combo)
+            {
+                fgText = formatFg("Combo", Nvngx_FG::getMaxFakeFramesCount());
+            }
 
             const auto overlayType = config->FpsOverlayType.value_or_default();
             const bool hasFeature = currentFeature && !currentFeature->IsFrozen();
@@ -3107,6 +3111,8 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
         { FGNvngxReplacement::Nukems, "Nukem's", "FSR 3 FG" },
         { FGNvngxReplacement::Arturs, "Enabler", "FSR 3 MFG" },
         { FGNvngxReplacement::FFX, "FSR 3/4 FG", "FSR 3/4 FG using the FFX" },
+        { FGNvngxReplacement::Combo, "FFX + Enabler", "FFX for the middle fake frame, Enabler for the rest\n\n"
+                                                      "2x - FFX\n3x - Enabler\n4x - FFX + Enabler\n5x - Enabler\n6x - FFX + Enabler" },
     };
 
     // clang-format on
@@ -3143,6 +3149,11 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     auto constexpr fgNvngxFfxIndex = (uint32_t) FGNvngxReplacement::FFX;
     nvngxOptions[fgNvngxFfxIndex].set_disabled(!FfxApiProxy::IsFGReady(false),
                                                "Missing amd_fidelityfx_framegeneration_dx12.dll");
+
+    auto constexpr fgNvngxComboIndex = (uint32_t) FGNvngxReplacement::Combo;
+    nvngxOptions[fgNvngxComboIndex].set_disabled(
+        !FfxApiProxy::IsFGReady(false) || !state.artursFgFileAvailable,
+        "Missing amd_fidelityfx_framegeneration_dx12.dll\nor missing dlss-enabler-headless.dll");
 
     // TODO: Automatically switch to any other option
 
@@ -4383,6 +4394,12 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         {
             SeparatorWithHelpMarker("Frame Generation (FSRFG via FFX)", "FFX using the DLSSG swapchain");
         }
+        else if (activeNvngxFg == FGNvngxReplacement::Combo)
+        {
+            SeparatorWithHelpMarker("Frame Generation (Enabler + FFX)",
+                                    "FFX for middle fake frames, and Enabler for the rest\n\n2x - FFX\n"
+                                    "3x - Enabler\n4x - FFX + Enabler\n5x - Enabler\n6x - FFX + Enabler");
+        }
 
         if (state.activeFgInput == FGInput::NvngxFG)
         {
@@ -4448,7 +4465,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
         if (isLoaded)
         {
-            if (activeNvngxFg == FGNvngxReplacement::Arturs)
+            if (activeNvngxFg == FGNvngxReplacement::Arturs || activeNvngxFg == FGNvngxReplacement::Combo)
             {
                 if (bool showDebug = config->NvngxFGShowDebug.value_or_default();
                     ImGui::Checkbox("Show Debug", &showDebug))
@@ -4503,7 +4520,8 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                     config->NvngxFGDispatchFlags = temp_flags;
                 }
             }
-            else if (activeNvngxFg == FGNvngxReplacement::Nukems)
+
+            if (activeNvngxFg == FGNvngxReplacement::Nukems)
             {
                 if (ImGui::Checkbox("Enable Debug View", &state.dlssgDebugView))
                 {
@@ -4514,7 +4532,8 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                     Nvngx_FG::setInterpolatedOnly(state.dlssgInterpolatedOnly);
                 }
             }
-            else if (activeNvngxFg == FGNvngxReplacement::FFX)
+
+            if (activeNvngxFg == FGNvngxReplacement::FFX || activeNvngxFg == FGNvngxReplacement::Combo)
             {
                 if (_ffxFGIndex < 0)
                     _ffxFGIndex = config->FfxFGIndex.value_or_default();
