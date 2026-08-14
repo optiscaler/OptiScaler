@@ -1767,11 +1767,7 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             };
 
             const FGNvngxReplacement activeNvngxFg = state.activeFgNvngx;
-            if (state.activeFgOutput == FGOutput::DLSSG)
-            {
-                fgText = formatFg("DLSSG", state.dlssgMaxInterpolationCount);
-            }
-            else if (activeNvngxFg == FGNvngxReplacement::Arturs)
+            if (activeNvngxFg == FGNvngxReplacement::Arturs)
             {
                 fgText = formatFg("Enabler", Nvngx_FG::getMaxFakeFramesCount());
             }
@@ -1786,6 +1782,10 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             else if (activeNvngxFg == FGNvngxReplacement::Combo)
             {
                 fgText = formatFg("Combo", Nvngx_FG::getMaxFakeFramesCount());
+            }
+            else if (state.activeFgOutput == FGOutput::DLSSG)
+            {
+                fgText = formatFg("DLSSG", state.dlssgMaxInterpolationCount);
             }
 
             const auto overlayType = config->FpsOverlayType.value_or_default();
