@@ -162,11 +162,24 @@ Upscaler CodeToUpscaler(const std::string& code)
         { "fsr22", Upscaler::FSR22 }, { "fsr22_12", Upscaler::FSR22_on12 },
         { "ffx", Upscaler::FFX },     { "ffx_12", Upscaler::FFX_on12 },
         { "dlss", Upscaler::DLSS },   { "dlssd", Upscaler::DLSSD },
-        { "fsr31", Upscaler::FSR31 },
+        { "fsr31", Upscaler::FSR31 }, { "fsr31_12", Upscaler::FFX_on12 }, // for compat reasons
     };
 
     auto it = mapping.find(code);
     return (it != mapping.end()) ? it->second : Upscaler::Reset;
+}
+
+// Upscalers that use FFX got renamed from fsr31 to ffx
+// Needs this function for compatibility for now
+// DX11: fsr31 -> fsr31, fsr31_12 -> ffx_12
+// DX12: fsr31 -> ffx
+// VK:   fsr31 -> ffx, fsr31_12 -> ffx_12
+Upscaler CodeToUpscalerFfx(const std::string& code)
+{
+    if (code == "fsr31")
+        return Upscaler::FFX;
+
+    return CodeToUpscaler(code);
 }
 
 // Converts enum to the string codes for config

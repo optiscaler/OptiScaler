@@ -238,6 +238,10 @@ std::string UpscalerToCode(Upscaler upscaler);
 // Converts string codes into enum for config
 Upscaler CodeToUpscaler(const std::string& code);
 
+// Upscalers that use FFX got renamed from fsr31 to ffx
+// Needs this function for compatibility for now
+Upscaler CodeToUpscalerFfx(const std::string& code);
+
 // Converts enum to the string codes for config
 std::string SharpnessShaderToCode(SharpenShader sharpenShader);
 

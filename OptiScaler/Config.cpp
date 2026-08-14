@@ -58,10 +58,11 @@ bool Config::Reload(std::filesystem::path iniPath)
 
         // Upscalers
         {
-            // transform converts only when optional has a  value
+            // transform converts only when optional has a value
             Dx11Upscaler.set_from_config(readString("Upscalers", "Dx11Upscaler", true).transform(CodeToUpscaler));
-            Dx12Upscaler.set_from_config(readString("Upscalers", "Dx12Upscaler", true).transform(CodeToUpscaler));
-            VulkanUpscaler.set_from_config(readString("Upscalers", "VulkanUpscaler", true).transform(CodeToUpscaler));
+            Dx12Upscaler.set_from_config(readString("Upscalers", "Dx12Upscaler", true).transform(CodeToUpscalerFfx));
+            VulkanUpscaler.set_from_config(
+                readString("Upscalers", "VulkanUpscaler", true).transform(CodeToUpscalerFfx));
         }
 
         // Frame Generation
@@ -75,17 +76,20 @@ bool Config::Reload(std::filesystem::path iniPath)
                     FGInput.set_from_config(FGInput::NoFG);
                 else if (lstrcmpiA(FGInputString.value().c_str(), "upscaler") == 0)
                     FGInput.set_from_config(FGInput::Upscaler);
-                else if (lstrcmpiA(FGInputString.value().c_str(), "nvngxfg") == 0 ||
-                         lstrcmpiA(FGInputString.value().c_str(), "nukems") == 0)
-                {
+                else if (lstrcmpiA(FGInputString.value().c_str(), "nvngxfg") == 0)
                     FGInput.set_from_config(FGInput::NvngxFG);
-                }
                 else if (lstrcmpiA(FGInputString.value().c_str(), "dlssg") == 0)
                     FGInput.set_from_config(FGInput::DLSSG);
                 else if (lstrcmpiA(FGInputString.value().c_str(), "fsrfg") == 0)
                     FGInput.set_from_config(FGInput::FSRFG);
                 else if (lstrcmpiA(FGInputString.value().c_str(), "fsrfg30") == 0)
                     FGInput.set_from_config(FGInput::FSRFG30);
+
+                if (lstrcmpiA(FGInputString.value().c_str(), "nukems") == 0)
+                {
+                    FGInput.set_from_config(FGInput::NvngxFG);
+                    ini.SetValue("FrameGen", "FGNvngxReplacement", "nukems");
+                }
             }
 
             if (auto FGOutputString = readString("FrameGen", "FGOutput");
@@ -382,7 +386,11 @@ bool Config::Reload(std::filesystem::path iniPath)
 
         // NvngxFG
         {
-            NvngxFGMakeDepthCopy.set_from_config(readBool("NvngxFG", "MakeDepthCopy"));
+            if (auto setting = readBool("Nukems", "MakeDepthCopy"); setting.has_value() && setting.value())
+                NvngxFGMakeDepthCopy.set_from_config(setting); // For compat with older config
+            else
+                NvngxFGMakeDepthCopy.set_from_config(readBool("NvngxFG", "MakeDepthCopy"));
+
             NvngxFGDispatchFlags.set_from_config(readUInt("NvngxFG", "DispatchFlags"));
             NvngxFGShowDebug.set_from_config(readBool("NvngxFG", "ShowDebug"));
             NvngxFGDisableHudless.set_from_config(readBool("NvngxFG", "DisableHudless"));
@@ -1576,6 +1584,7 @@ bool Config::SaveIni()
     // Old configs, just delete them
     {
         ini.Delete("FSR", "Fsr4ForceEnableInt8");
+        ini.Delete("Nukems", "MakeDepthCopy", true);
     }
 
     auto pathWStr = absoluteFileName.wstring();
