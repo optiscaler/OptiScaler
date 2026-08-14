@@ -129,7 +129,7 @@ bool Config::Reload(std::filesystem::path iniPath)
                 FGOutput.set_volatile_value(FGOutput::XeFG);
             }
 
-            auto ftInput = readInt("FrameGen", "FTSource");
+            auto ftInput = readInt("FrameGen", "FTInput");
             if (ftInput.has_value() && ftInput.value() >= 0 &&
                 ftInput.value() <= (FGOutput.value_or_default() == FGOutput::XeFG ? 2 : 1))
             {
