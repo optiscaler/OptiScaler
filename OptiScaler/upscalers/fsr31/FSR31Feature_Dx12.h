@@ -35,10 +35,13 @@ class FSR31FeatureDx12 : public FSR31Feature, public IFeature_Dx12
         if (_context != nullptr)
             FfxApiProxy::D3D12_DestroyContext(&_context, NULL);
 
-        if (smallerColor && smallerColor != nullptr)
+        if (smallerColor[0])
         {
             smallerColor[0]->Release();
             smallerColor[0] = nullptr;
+        }
+        if (smallerColor[1])
+        {
             smallerColor[1]->Release();
             smallerColor[1] = nullptr;
         }
