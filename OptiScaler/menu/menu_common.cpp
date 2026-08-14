@@ -2530,12 +2530,12 @@ bool MenuCommon::RenderMenu()
             {
                 if (fg != nullptr && fg->IsActive() && !fg->IsPaused())
                 {
-                    firstLine = StrFmt("%s | FPS: %6.1f/%5.1f %s", api.c_str(), frameRate,
+                    firstLine = StrFmt("%s | %6.1f/%5.1f %s", api.c_str(), frameRate,
                                        frameRate / (float) (fg->GetInterpolatedFrameCount() + 1), fgText.c_str());
                 }
                 else
                 {
-                    firstLine = StrFmt("%s | FPS: %6.1f %s", api.c_str(), frameRate, fgText.c_str());
+                    firstLine = StrFmt("%s | %6.1f %s", api.c_str(), frameRate, fgText.c_str());
                 }
             }
             else if (config->FpsOverlayType.value_or_default() == FpsOverlay_Simple)
