@@ -651,6 +651,9 @@ class Config
     CustomOptional<bool, NoDefault> ForceVsync;
     CustomOptional<UINT> VsyncInterval { 0 };
 
+    // Old configs for compat reasons
+    CustomOptional<bool, NoDefault> _DONTUSE_Fsr4ForceEnableInt8;
+
     bool LoadFromPath(const wchar_t* InPath);
     bool SaveIni();
     bool SaveXeFG();

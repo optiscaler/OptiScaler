@@ -785,6 +785,11 @@ bool Config::Reload(std::filesystem::path iniPath)
             XeSSDx11Library.set_from_config(readWString("Libraries", "XeSSDx11Path"));
         }
 
+        // Reading old configs for compatibility reasons
+        {
+            _DONTUSE_Fsr4ForceEnableInt8.set_from_config(readBool("FSR", "Fsr4ForceEnableInt8"));
+        }
+
         return true;
     }
 
@@ -1566,6 +1571,11 @@ bool Config::SaveIni()
                      wstring_to_string(Instance()->XeLLLibrary.value_for_config_or(L"auto")).c_str());
         ini.SetValue("Libraries", "XeSSDx11Path",
                      wstring_to_string(Instance()->XeSSDx11Library.value_for_config_or(L"auto")).c_str());
+    }
+
+    // Old configs, just delete them
+    {
+        ini.Delete("FSR", "Fsr4ForceEnableInt8");
     }
 
     auto pathWStr = absoluteFileName.wstring();

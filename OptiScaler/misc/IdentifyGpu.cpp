@@ -573,6 +573,22 @@ void IdentifyGpu::updateD3d12Capabilities(D3d12Proxy::PFN_D3D12CreateDevice o_D3
                 }
             }
         }
+
+        // Convert old config
+        // Apply force int8 if current GPU doesn't support int8 but old config was set
+        if (!cache.empty() && Config::Instance()->_DONTUSE_Fsr4ForceEnableInt8.has_value() &&
+            Config::Instance()->_DONTUSE_Fsr4ForceEnableInt8.value())
+        {
+            auto& primaryGpu = cache.front();
+
+            if (primaryGpu.fsr4Support == FSR4Support::None)
+            {
+                primaryGpu.fsr4Support = FSR4Support::INT8;
+                primaryGpu.fsr4ForcedSupport = true;
+
+                Config::Instance()->Fsr4ForceModel = FSR4Support::INT8;
+            }
+        }
     }
 
     auto detectedGpus = IdentifyGpu::getAllGpus();
