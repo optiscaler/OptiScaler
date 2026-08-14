@@ -3800,8 +3800,8 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
             if (!ignoreChecks && state.isHdrActive)
             {
-                if (state.currentSwapchainDesc.BufferDesc.Format > 0 &&
-                    state.currentSwapchainDesc.BufferDesc.Format < 15)
+                if (state.currentSwapchainDesc.BufferDesc.Format >= DXGI_FORMAT_R32G32B32A32_TYPELESS &&
+                    state.currentSwapchainDesc.BufferDesc.Format <= DXGI_FORMAT_R16G16B16A16_SINT)
                 {
                     cantActivate = true;
                     ImGui::TextColored(toneMapColor(ImVec4(1.0f, 0.0f, 0.0f, 1.f)), "XeFG only supports HDR10");
@@ -3961,8 +3961,16 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
     if (state.activeFgOutput == FGOutput::DLSSG && state.activeFgInput != FGInput::NoFG &&
         state.currentFGSwapchain != nullptr && StreamlineProxy::LoadStreamline())
     {
-
         ImGui::SeparatorText("Frame Generation (DLSSG)");
+
+        if (state.activeFgNvngx == FGNvngxReplacement::None && state.isHdrActive)
+        {
+            if (state.currentSwapchainDesc.BufferDesc.Format >= DXGI_FORMAT_R32G32B32A32_TYPELESS &&
+                state.currentSwapchainDesc.BufferDesc.Format <= DXGI_FORMAT_R16G16B16A16_SINT)
+            {
+                ImGui::TextColored(toneMapColor(ImVec4(1.0f, 0.0f, 0.0f, 1.f)), "DLSSG only supports HDR10");
+            }
+        }
 
         ImGui::Text("Current DLSSG state:");
         ImGui::SameLine();
