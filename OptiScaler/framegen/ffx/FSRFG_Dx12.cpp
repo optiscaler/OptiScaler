@@ -171,6 +171,12 @@ bool FSRFG_Dx12::HudlessFormatTransfer(int index, ID3D12Device* device, DXGI_FOR
     {
         auto cmdList = GetUICommandList(index);
 
+        if (cmdList == nullptr)
+        {
+            LOG_ERROR("GetUICommandList({}) failed", index);
+            return false;
+        }
+
         if (resource->cmdList != nullptr && _hudlessCopyResource[index] != nullptr)
         {
             ResourceBarrier(resource->cmdList, resource->GetResource(), resource->state,

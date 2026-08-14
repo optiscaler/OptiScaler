@@ -78,6 +78,42 @@ bool IFGFeature_Dx12::WaitForUIAllocator(UINT index)
     return true;
 }
 
+bool IFGFeature_Dx12::SubmitUICommandList(UINT index)
+{
+    if (index >= BUFFER_COUNT || !_uiCommandListResetted[index])
+        return true;
+
+    if (_gameCommandQueue == nullptr || _uiFence == nullptr)
+    {
+        LOG_ERROR("Can't submit UI command list. slot {}, queue {:X}, fence {:X}", index, (size_t) _gameCommandQueue,
+                  (size_t) _uiFence);
+        return false;
+    }
+
+    LOG_DEBUG("Executing _uiCommandList[{}]: {:X}, fence {}", index, (size_t) _uiCommandList[index],
+              _uiAllocatorFenceValues[index]);
+
+    auto closeResult = _uiCommandList[index]->Close();
+    if (FAILED(closeResult))
+    {
+        LOG_ERROR("_uiCommandList[{}]->Close() error: {:X}", index, (UINT) closeResult);
+        return false;
+    }
+
+    _gameCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList**) &_uiCommandList[index]);
+    _uiCommandListResetted[index] = false;
+
+    auto signalResult = _gameCommandQueue->Signal(_uiFence, _uiAllocatorFenceValues[index]);
+    if (FAILED(signalResult))
+    {
+        LOG_ERROR("UI allocator fence signal failed. slot {}, fence {}, result {:X}", index,
+                  _uiAllocatorFenceValues[index], (UINT) signalResult);
+        return false;
+    }
+
+    return true;
+}
+
 ID3D12GraphicsCommandList* IFGFeature_Dx12::GetUICommandList(int index)
 {
     if (index < 0 || index >= BUFFER_COUNT)
@@ -101,22 +137,15 @@ ID3D12GraphicsCommandList* IFGFeature_Dx12::GetUICommandList(int index)
 
         if (i != index && _uiCommandListResetted[i])
         {
-            LOG_DEBUG("Executing _uiCommandList[{}]: {:X}", i, (size_t) _uiCommandList[i]);
-            auto closeResult = _uiCommandList[i]->Close();
-
-            _gameCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList**) &_uiCommandList[i]);
-            _gameCommandQueue->Signal(_uiFence, _uiAllocatorFenceValues[i]);
-
-            if (closeResult != S_OK)
-                LOG_ERROR("_uiCommandList[{}]->Close() error: {:X}", i, (UINT) closeResult);
-
-            _uiCommandListResetted[i] = false;
+            if (!SubmitUICommandList((UINT) i))
+                return nullptr;
         }
     }
 
     if (!_uiCommandListResetted[index])
     {
-        WaitForUIAllocator(index);
+        if (!WaitForUIAllocator((UINT) index))
+            return nullptr;
 
         auto result = _uiCommandAllocator[index]->Reset();
 
@@ -125,17 +154,22 @@ ID3D12GraphicsCommandList* IFGFeature_Dx12::GetUICommandList(int index)
             result = _uiCommandList[index]->Reset(_uiCommandAllocator[index], nullptr);
 
             if (result == S_OK)
+            {
                 _uiCommandListResetted[index] = true;
+                _uiAllocatorFenceValues[index] = ++_uiFenceValue;
+            }
             else
+            {
                 LOG_ERROR("_uiCommandList[{}]->Reset() error: {:X}", index, (UINT) result);
+                return nullptr;
+            }
         }
         else
         {
             LOG_ERROR("_uiCommandAllocator[{}]->Reset() error: {:X}", index, (UINT) result);
+            return nullptr;
         }
     }
-
-    _uiAllocatorFenceValues[index]++;
 
     return _uiCommandList[index];
 }
@@ -223,12 +257,15 @@ void IFGFeature_Dx12::NewFrame()
 
     auto fIndex = GetIndex();
 
+    // Submit fence value before the slot can be reused
+    if (_uiCommandListResetted[fIndex] && !SubmitUICommandList((UINT) fIndex))
+        LOG_ERROR("Failed to submit pending UI command list for recycled slot {}", fIndex);
+
     std::unique_lock<std::shared_mutex> lock(_resourceMutex[fIndex]);
 
     LOG_DEBUG("_frameCount: {}, fIndex: {}", _frameCount, fIndex);
 
     _frameResources[fIndex].clear();
-    _uiCommandListResetted[fIndex] = false;
     _lastFGFramePresentId = _fgFramePresentId;
 }
 
@@ -278,6 +315,12 @@ void IFGFeature_Dx12::FlipResource(Dx12Resource* resource)
     if (flip->get()->IsInit())
     {
         auto cmdList = (resource->cmdList != nullptr) ? resource->cmdList : GetUICommandList(fIndex);
+        if (cmdList == nullptr)
+        {
+            LOG_ERROR("Can't flip {}: GetUICommandList({}) failed", magic_enum::enum_name(type), fIndex);
+            return;
+        }
+
         auto result = flip->get()->Dispatch((ID3D12GraphicsCommandList*) cmdList, resource->resource, flipOutput,
                                             resource->width, resource->height, true);
 

@@ -879,11 +879,22 @@ ffxReturnCode_t ffxQuery_Dx12FG(ffxContext* context, ffxQueryDescHeader* desc)
 
         if (fg != nullptr)
         {
-            *cDesc->pOutCommandList = fg->GetUICommandList(fg->GetIndexWillBeDispatched());
-            LOG_DEBUG("Returning cmdList: {:X}", (size_t) *cDesc->pOutCommandList);
+            auto cmdList = fg->GetUICommandList(fg->GetIndexWillBeDispatched());
+            if (cmdList == nullptr)
+            {
+                *cDesc->pOutCommandList = nullptr;
+                LOG_ERROR("GetUICommandList failed");
+                return FFX_API_RETURN_ERROR_RUNTIME_ERROR;
+            }
+
+            *cDesc->pOutCommandList = cmdList;
+            LOG_DEBUG("Returning cmdList: {:X}", (size_t) cmdList);
+            return FFX_API_RETURN_OK;
         }
 
-        return FFX_API_RETURN_OK;
+        *cDesc->pOutCommandList = nullptr;
+        LOG_ERROR("No active frame-generation feature");
+        return FFX_API_RETURN_ERROR_RUNTIME_ERROR;
     }
     else if (desc->type == FFX_API_QUERY_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_INTERPOLATIONTEXTURE_DX12)
     {

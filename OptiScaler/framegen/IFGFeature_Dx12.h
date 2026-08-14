@@ -51,6 +51,7 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     bool InitCopyCmdList();
     void DestroyCopyCmdList();
     bool WaitForUIAllocator(UINT index);
+    bool SubmitUICommandList(UINT index);
 
   protected:
     ID3D12Device* _device = nullptr;
@@ -73,6 +74,7 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     ID3D12CommandAllocator* _uiCommandAllocator[BUFFER_COUNT] {};
     bool _uiCommandListResetted[BUFFER_COUNT] { false, false, false, false };
     UINT64 _uiAllocatorFenceValues[BUFFER_COUNT] {};
+    UINT64 _uiFenceValue = 0;
     ID3D12Fence* _uiFence = nullptr;
     HANDLE _uiFenceEvent = nullptr;
 
