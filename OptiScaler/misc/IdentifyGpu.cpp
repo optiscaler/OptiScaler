@@ -161,6 +161,12 @@ std::vector<GpuInformation> IdentifyGpu::checkGpuInfo()
                 gpuInfo.driverStore = storePaths[luid];
 
             localCachedInfo.push_back(std::move(gpuInfo));
+
+            // HACK for 007, only keep the first reported device
+            // Avoids AMD iGPUs from being queried when the first one is a different vendor
+            // This in turn avoids amdxc64 being loaded for that iGPU which is known to causes issues in 007
+            if (Config::Instance()->Fsr4DoNotLoadAmdxc64.value_or_default())
+                break;
         }
         else
         {

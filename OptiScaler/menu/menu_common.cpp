@@ -1812,7 +1812,7 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                 switch (overlayType)
                 {
                 case FpsOverlay_JustFPS:
-                    fpsPart = StrFmt("FPS: %6.1f/%5.1f", frameRate, baseFps);
+                    fpsPart = StrFmt("%6.1f/%5.1f ", frameRate, baseFps);
                     break;
 
                 case FpsOverlay_Simple:
@@ -1829,7 +1829,7 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                 switch (overlayType)
                 {
                 case FpsOverlay_JustFPS:
-                    fpsPart = StrFmt("FPS: %6.1f", frameRate);
+                    fpsPart = StrFmt("%6.1f ", frameRate);
                     break;
 
                 case FpsOverlay_Simple:
