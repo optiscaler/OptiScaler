@@ -22,8 +22,7 @@ uint32_t getCorrectedPreset(uint32_t preset)
 
         auto ratio = (float) target / (float) render;
 
-        // Include Ultra Quality in the fix as well
-        if (preset == 0 && ratio >= 1.29f)
+        if (preset == 0 && ratio >= 1.49f)
             correctedPreset = 1;
     }
 
