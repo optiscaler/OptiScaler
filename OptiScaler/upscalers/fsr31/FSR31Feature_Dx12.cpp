@@ -224,15 +224,18 @@ bool FSR31FeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_
 
             if (validW && validH && isPadded)
             {
-                CreateBufferResourceWithSize(Device, paramColor, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-                                             &smallerColor, params.renderSize.width, params.renderSize.height);
+                static size_t count = 0;
+                const size_t index = count % 2;
 
-                if (smallerColor)
+                CreateBufferResourceWithSize(Device, paramColor, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                                             &smallerColor[index], params.renderSize.width, params.renderSize.height);
+
+                if (smallerColor[index])
                 {
                     ResourceBarrier(InCommandList, paramColor, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
                                     D3D12_RESOURCE_STATE_COPY_SOURCE);
 
-                    ResourceBarrier(InCommandList, smallerColor, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                    ResourceBarrier(InCommandList, smallerColor[index], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
                                     D3D12_RESOURCE_STATE_COPY_DEST);
 
                     D3D12_BOX srcBox {};
@@ -244,7 +247,7 @@ bool FSR31FeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_
                     srcBox.back = 1;
 
                     D3D12_TEXTURE_COPY_LOCATION dstLocation {};
-                    dstLocation.pResource = smallerColor;
+                    dstLocation.pResource = smallerColor[index];
                     dstLocation.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
                     dstLocation.SubresourceIndex = 0;
 
@@ -255,11 +258,13 @@ bool FSR31FeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_
 
                     InCommandList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, &srcBox);
 
-                    ResourceBarrier(InCommandList, smallerColor, D3D12_RESOURCE_STATE_COPY_DEST,
+                    ResourceBarrier(InCommandList, smallerColor[index], D3D12_RESOURCE_STATE_COPY_DEST,
                                     D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
-                    paramColor = smallerColor;
+                    paramColor = smallerColor[index];
                 }
+
+                count++;
             }
         }
 
