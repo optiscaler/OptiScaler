@@ -316,7 +316,7 @@ class Config
     CustomOptional<float> MotionScaleLimit { 10.0f };
 
     // Magnifier
-    CustomOptional<bool> MagnifierEnabled { true };
+    CustomOptional<bool> MagnifierEnabled { false };
     CustomOptional<float> MagnifierSize { 15.f }; // % of screen Height
     CustomOptional<int> MagnifierZoomFactor { 4 };
     CustomOptional<float> MagnifierBorderSize { 0.3f };   // % of screen Height
