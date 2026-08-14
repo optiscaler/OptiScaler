@@ -2133,6 +2133,31 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 
         CreateThread(nullptr, 0, getGpuInfo, GetDllNameWModule(&dx12NamesW), 0, nullptr);
 
+#ifndef _DEBUG
+        if (Config::Instance()->LogLevel.value_or_default() == 0 && Config::Instance()->LogToFile.value_or_default())
+        {
+            std::thread(
+                []()
+                {
+                    std::this_thread::sleep_for(std::chrono::minutes(10));
+
+                    // If still logging after 10 minutes, send notification
+                    if (Config::Instance()->LogLevel.value_or_default() == 0 &&
+                        Config::Instance()->LogToFile.value_or_default())
+                    {
+                        ImGuiToast notification({ ImGuiToastType::Warning, 30000,
+                                                  "That's likely unintended and will lead to big OptiScaler.log\n"
+                                                  "Please disable logging to file and delete OptiScaler.log" });
+
+                        notification.setTitle("Trace logging still active");
+
+                        ImGui::InsertNotification(notification);
+                    }
+                })
+                .detach();
+        }
+#endif
+
         break;
     }
 
