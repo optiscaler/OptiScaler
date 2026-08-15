@@ -49,20 +49,16 @@ NVSDK_NGX_Result Nvngx_DllProxy::D3D12_CreateFeature(ID3D12GraphicsCommandList* 
 {
     if (isDx12Available())
     {
-        auto result = _DLSSG_D3D12_CreateFeature(InCmdList, InFeatureID, InParameters, OutHandle);
-        (*OutHandle)->Id += NVNGX_PROVIDER_ID_OFFSET;
-        return result;
+        return _DLSSG_D3D12_CreateFeature(InCmdList, InFeatureID, InParameters, OutHandle);
     }
     return NVSDK_NGX_Result_Fail;
 }
 
 NVSDK_NGX_Result Nvngx_DllProxy::D3D12_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
 {
-    if (isDx12Available() && InHandle->Id >= NVNGX_PROVIDER_ID_OFFSET)
+    if (isDx12Available())
     {
-        NVSDK_NGX_Handle TempHandle = { .Id = InHandle->Id - NVNGX_PROVIDER_ID_OFFSET };
-
-        return _DLSSG_D3D12_ReleaseFeature(&TempHandle);
+        return _DLSSG_D3D12_ReleaseFeature(InHandle);
     }
     return NVSDK_NGX_Result_Fail;
 }
@@ -82,7 +78,7 @@ NVSDK_NGX_Result Nvngx_DllProxy::D3D12_EvaluateFeature(ID3D12GraphicsCommandList
                                                        NVSDK_NGX_Parameter* InParameters,
                                                        PFN_NVSDK_NGX_ProgressCallback InCallback)
 {
-    if (isDx12Available() && InFeatureHandle->Id >= NVNGX_PROVIDER_ID_OFFSET)
+    if (isDx12Available())
     {
         // Make a copy of the depth going to the frame generator
         // Fixes an issue with the depth being corrupted on AMD under Windows
@@ -130,8 +126,7 @@ NVSDK_NGX_Result Nvngx_DllProxy::D3D12_EvaluateFeature(ID3D12GraphicsCommandList
         InParameters->Set("DLSSG.ShowDebug", showDebug);
         InParameters->Set("DLSSG.DispatchFlags", flags);
 
-        NVSDK_NGX_Handle TempHandle = { .Id = InFeatureHandle->Id - NVNGX_PROVIDER_ID_OFFSET };
-        return _DLSSG_D3D12_EvaluateFeature(InCmdList, &TempHandle, InParameters, InCallback);
+        return _DLSSG_D3D12_EvaluateFeature(InCmdList, InFeatureHandle, InParameters, InCallback);
     }
 
     return NVSDK_NGX_Result_Fail;
@@ -209,9 +204,7 @@ NVSDK_NGX_Result Nvngx_DllProxy::VULKAN_CreateFeature(VkCommandBuffer InCmdBuffe
 {
     if (isVulkanAvailable())
     {
-        auto result = _DLSSG_VULKAN_CreateFeature(InCmdBuffer, InFeatureID, InParameters, OutHandle);
-        (*OutHandle)->Id += NVNGX_PROVIDER_ID_OFFSET;
-        return result;
+        return _DLSSG_VULKAN_CreateFeature(InCmdBuffer, InFeatureID, InParameters, OutHandle);
     }
     return NVSDK_NGX_Result_Fail;
 }
@@ -222,19 +215,16 @@ NVSDK_NGX_Result Nvngx_DllProxy::VULKAN_CreateFeature1(VkDevice InDevice, VkComm
 {
     if (isVulkanAvailable())
     {
-        auto result = _DLSSG_VULKAN_CreateFeature1(InDevice, InCmdList, InFeatureID, InParameters, OutHandle);
-        (*OutHandle)->Id += NVNGX_PROVIDER_ID_OFFSET;
-        return result;
+        return _DLSSG_VULKAN_CreateFeature1(InDevice, InCmdList, InFeatureID, InParameters, OutHandle);
     }
     return NVSDK_NGX_Result_Fail;
 }
 
 NVSDK_NGX_Result Nvngx_DllProxy::VULKAN_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
 {
-    if (isVulkanAvailable() && InHandle->Id >= NVNGX_PROVIDER_ID_OFFSET)
+    if (isVulkanAvailable())
     {
-        NVSDK_NGX_Handle TempHandle = { .Id = InHandle->Id - NVNGX_PROVIDER_ID_OFFSET };
-        return _DLSSG_VULKAN_ReleaseFeature(&TempHandle);
+        return _DLSSG_VULKAN_ReleaseFeature(InHandle);
     }
     return NVSDK_NGX_Result_Fail;
 }
@@ -254,10 +244,9 @@ NVSDK_NGX_Result Nvngx_DllProxy::VULKAN_EvaluateFeature(VkCommandBuffer InCmdLis
                                                         NVSDK_NGX_Parameter* InParameters,
                                                         PFN_NVSDK_NGX_ProgressCallback InCallback)
 {
-    if (isVulkanAvailable() && InFeatureHandle->Id >= NVNGX_PROVIDER_ID_OFFSET)
+    if (isVulkanAvailable())
     {
-        NVSDK_NGX_Handle TempHandle = { .Id = InFeatureHandle->Id - NVNGX_PROVIDER_ID_OFFSET };
-        return _DLSSG_VULKAN_EvaluateFeature(InCmdList, &TempHandle, InParameters, InCallback);
+        return _DLSSG_VULKAN_EvaluateFeature(InCmdList, InFeatureHandle, InParameters, InCallback);
     }
 
     return NVSDK_NGX_Result_Fail;

@@ -272,7 +272,17 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_CreateFeature(ID3D12GraphicsCommandList* InCmdL
     if (!provider)
         return NVSDK_NGX_Result_Fail;
 
-    return provider->D3D12_CreateFeature(InCmdList, InFeatureID, InParameters, OutHandle);
+    if (!OutHandle)
+        return NVSDK_NGX_Result_FAIL_InvalidParameter;
+
+    auto proxyHandle = new Nvngx_FG_Handle(lastIdCreated++ + NVNGX_PROVIDER_ID_OFFSET);
+    auto result = provider->D3D12_CreateFeature(InCmdList, InFeatureID, InParameters, &proxyHandle->nativeHandle);
+
+    *OutHandle = (NVSDK_NGX_Handle*) proxyHandle;
+
+    // LOG_TRACE("Handle given to the game: {:X}", (uint64_t) *OutHandle);
+
+    return result;
 }
 
 NVSDK_NGX_Result Nvngx_FG::D3D12_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
@@ -282,7 +292,20 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
     if (!provider)
         return NVSDK_NGX_Result_Fail;
 
-    return provider->D3D12_ReleaseFeature(InHandle);
+    if (!InHandle)
+        return NVSDK_NGX_Result_FAIL_InvalidParameter;
+
+    if (InHandle->Id < NVNGX_PROVIDER_ID_OFFSET)
+        return NVSDK_NGX_Result_FAIL_FeatureNotFound;
+
+    // LOG_TRACE("Handle received from the game: {:X}", (uint64_t) InHandle);
+
+    auto result = provider->D3D12_ReleaseFeature(((Nvngx_FG_Handle*) InHandle)->nativeHandle);
+
+    if (result == NVSDK_NGX_Result_Success)
+        delete InHandle;
+
+    return result;
 }
 
 NVSDK_NGX_Result Nvngx_FG::D3D12_GetFeatureRequirements(IDXGIAdapter* Adapter,
@@ -306,6 +329,12 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InCm
 
     if (!provider)
         return NVSDK_NGX_Result_Fail;
+
+    if (!InFeatureHandle)
+        return NVSDK_NGX_Result_FAIL_InvalidParameter;
+
+    if (InFeatureHandle->Id < NVNGX_PROVIDER_ID_OFFSET)
+        return NVSDK_NGX_Result_FAIL_FeatureNotFound;
 
     bool applyHudCutoff = Config::Instance()->FGHudCutoff.value_or_default() > 0.0f ||
                           State::Instance().gameQuirks & GameQuirk::FSRFGHudlessMismatchFixup;
@@ -356,7 +385,10 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InCm
     if (Config::Instance()->NvngxFGDisableHudless.value_or_default())
         InParameters->Set("DLSSG.HUDLess", (void*) nullptr);
 
-    return provider->D3D12_EvaluateFeature(InCmdList, InFeatureHandle, InParameters, InCallback);
+    // LOG_TRACE("Handle received from the game: {:X}", (uint64_t) InFeatureHandle);
+
+    return provider->D3D12_EvaluateFeature(InCmdList, ((Nvngx_FG_Handle*) InFeatureHandle)->nativeHandle, InParameters,
+                                           InCallback);
 }
 
 NVSDK_NGX_Result Nvngx_FG::D3D12_PopulateParameters_Impl(NVSDK_NGX_Parameter* InParameters)
@@ -451,7 +483,17 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_CreateFeature(VkCommandBuffer InCmdBuffer, NVS
     if (!provider)
         return NVSDK_NGX_Result_Fail;
 
-    return provider->VULKAN_CreateFeature(InCmdBuffer, InFeatureID, InParameters, OutHandle);
+    if (!OutHandle)
+        return NVSDK_NGX_Result_FAIL_InvalidParameter;
+
+    auto proxyHandle = new Nvngx_FG_Handle(lastIdCreated++ + NVNGX_PROVIDER_ID_OFFSET);
+    auto result = provider->VULKAN_CreateFeature(InCmdBuffer, InFeatureID, InParameters, &proxyHandle->nativeHandle);
+
+    *OutHandle = (NVSDK_NGX_Handle*) proxyHandle;
+
+    // LOG_TRACE("Handle given to the game: {:X}", (uint64_t) *OutHandle);
+
+    return result;
 }
 
 NVSDK_NGX_Result Nvngx_FG::VULKAN_CreateFeature1(VkDevice InDevice, VkCommandBuffer InCmdList,
@@ -463,7 +505,18 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_CreateFeature1(VkDevice InDevice, VkCommandBuf
     if (!provider)
         return NVSDK_NGX_Result_Fail;
 
-    return provider->VULKAN_CreateFeature1(InDevice, InCmdList, InFeatureID, InParameters, OutHandle);
+    if (!OutHandle)
+        return NVSDK_NGX_Result_FAIL_InvalidParameter;
+
+    auto proxyHandle = new Nvngx_FG_Handle(lastIdCreated++ + NVNGX_PROVIDER_ID_OFFSET);
+    auto result =
+        provider->VULKAN_CreateFeature1(InDevice, InCmdList, InFeatureID, InParameters, &proxyHandle->nativeHandle);
+
+    *OutHandle = (NVSDK_NGX_Handle*) proxyHandle;
+
+    // LOG_TRACE("Handle given to the game: {:X}", (uint64_t) *OutHandle);
+
+    return result;
 }
 
 NVSDK_NGX_Result Nvngx_FG::VULKAN_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
@@ -473,7 +526,20 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
     if (!provider)
         return NVSDK_NGX_Result_Fail;
 
-    return provider->VULKAN_ReleaseFeature(InHandle);
+    if (!InHandle)
+        return NVSDK_NGX_Result_FAIL_InvalidParameter;
+
+    if (InHandle->Id < NVNGX_PROVIDER_ID_OFFSET)
+        return NVSDK_NGX_Result_FAIL_FeatureNotFound;
+
+    // LOG_TRACE("Handle received from the game: {:X}", (uint64_t) InHandle);
+
+    auto result = provider->VULKAN_ReleaseFeature(((Nvngx_FG_Handle*) InHandle)->nativeHandle);
+
+    if (result == NVSDK_NGX_Result_Success)
+        delete InHandle;
+
+    return result;
 }
 
 NVSDK_NGX_Result Nvngx_FG::VULKAN_GetFeatureRequirements(const VkInstance Instance,
@@ -497,6 +563,11 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_EvaluateFeature(VkCommandBuffer InCmdList, con
 
     if (!provider)
         return NVSDK_NGX_Result_Fail;
+
+    if (InFeatureHandle->Id < NVNGX_PROVIDER_ID_OFFSET)
+        return NVSDK_NGX_Result_FAIL_FeatureNotFound;
+
+    // LOG_TRACE("Handle received from the game: {:X}", (uint64_t) InFeatureHandle);
 
     return provider->VULKAN_EvaluateFeature(InCmdList, InFeatureHandle, InParameters, InCallback);
 }

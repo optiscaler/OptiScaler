@@ -84,7 +84,7 @@ NVSDK_NGX_Result Nvngx_Combo::D3D12_CreateFeature(ID3D12GraphicsCommandList* InC
     if (InFeatureID != NVSDK_NGX_Feature_FrameGeneration)
         return NVSDK_NGX_Result_FAIL_FeatureNotSupported;
 
-    *OutOurHandle = new Nvngx_Combo_Handle(lastIdCreated++ + NVNGX_PROVIDER_ID_OFFSET, nullptr);
+    *OutOurHandle = new Nvngx_Combo_Handle(lastIdCreated++, nullptr);
 
     auto resultArturs =
         artursProvider->D3D12_CreateFeature(InCmdList, InFeatureID, InParameters, &(*OutOurHandle)->artursHandle);
@@ -112,7 +112,7 @@ NVSDK_NGX_Result Nvngx_Combo::D3D12_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
 {
     Nvngx_Combo_Handle* InOurHandle = (Nvngx_Combo_Handle*) InHandle;
 
-    if (!InOurHandle || InOurHandle->Id < NVNGX_PROVIDER_ID_OFFSET)
+    if (!InOurHandle)
         return NVSDK_NGX_Result_FAIL_InvalidParameter;
 
     auto resultArturs = artursProvider->D3D12_ReleaseFeature(InOurHandle->artursHandle);
@@ -204,7 +204,7 @@ NVSDK_NGX_Result Nvngx_Combo::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* I
     // This is our handle so can cast away const
     Nvngx_Combo_Handle* InOurHandle = (Nvngx_Combo_Handle*) InFeatureHandle;
 
-    if (!InParameters || !InOurHandle || InOurHandle->Id < NVNGX_PROVIDER_ID_OFFSET)
+    if (!InParameters || !InOurHandle)
         return NVSDK_NGX_Result_FAIL_InvalidParameter;
 
     // Assuming ffx can only do one fake frame

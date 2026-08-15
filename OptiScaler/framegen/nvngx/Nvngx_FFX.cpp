@@ -89,7 +89,7 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_CreateFeature(ID3D12GraphicsCommandList* InCmd
         return NVSDK_NGX_Result_FAIL_PlatformError;
 
     // Can't create FFX context yet, missing data
-    *OutOurHandle = new Nvngx_FFX_Handle(lastIdCreated++ + NVNGX_PROVIDER_ID_OFFSET, nullptr, pDevice);
+    *OutOurHandle = new Nvngx_FFX_Handle(lastIdCreated++, nullptr, pDevice);
 
     InParameters->Get("Width", &(*OutOurHandle)->swapchainWidth);
     InParameters->Get("Height", &(*OutOurHandle)->swapchainHeight);
@@ -101,7 +101,7 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
 {
     Nvngx_FFX_Handle* InOurHandle = (Nvngx_FFX_Handle*) InHandle;
 
-    if (!InOurHandle || InOurHandle->Id < NVNGX_PROVIDER_ID_OFFSET)
+    if (!InOurHandle)
         return NVSDK_NGX_Result_FAIL_InvalidParameter;
 
     if (inited && InOurHandle->fgContext)
@@ -250,7 +250,7 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
     // This is our handle so can cast away const
     Nvngx_FFX_Handle* InOurHandle = (Nvngx_FFX_Handle*) InFeatureHandle;
 
-    if (!InParameters || !InOurHandle || InOurHandle->Id < NVNGX_PROVIDER_ID_OFFSET)
+    if (!InParameters || !InOurHandle)
         return NVSDK_NGX_Result_FAIL_InvalidParameter;
 
     if (!Init())
