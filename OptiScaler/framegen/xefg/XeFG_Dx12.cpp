@@ -1124,6 +1124,13 @@ void XeFG_Dx12::ReleaseObjects()
         SAFE_RELEASE(_uiCommandList[i]);
         SAFE_RELEASE(_scCommandAllocator[i]);
         SAFE_RELEASE(_scCommandList[i]);
+
+        // Reset command list state
+        _scCommandListResetted[i] = false;
+        _scAllocatorFenceValues[i] = 0;
+
+        _uiCommandListResetted[i] = false;
+        _uiAllocatorFenceValues[i] = 0;
     }
 
     _renderUI.reset();
@@ -1152,6 +1159,13 @@ void XeFG_Dx12::CreateObjects(ID3D12Device* InDevice)
         // FG
         for (size_t i = 0; i < BUFFER_COUNT; i++)
         {
+            // Reset command list state
+            _scCommandListResetted[i] = false;
+            _scAllocatorFenceValues[i] = 0;
+
+            _uiCommandListResetted[i] = false;
+            _uiAllocatorFenceValues[i] = 0;
+
             result =
                 InDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&_uiCommandAllocator[i]));
             if (result != S_OK)
