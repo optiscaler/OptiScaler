@@ -73,6 +73,70 @@ Nvngx_DllProxy::D3D12_GetFeatureRequirements(IDXGIAdapter* Adapter,
     return NVSDK_NGX_Result_Fail;
 }
 
+static bool CreateBufferResource(ID3D12Device* device, ID3D12Resource* source, D3D12_RESOURCE_STATES initialState,
+                                 ID3D12Resource** target)
+{
+    if (device == nullptr || source == nullptr)
+        return false;
+
+    auto inDesc = source->GetDesc();
+
+    if (*target != nullptr)
+    {
+        auto bufDesc = (*target)->GetDesc();
+
+        if (bufDesc.Width != inDesc.Width || bufDesc.Height != inDesc.Height || bufDesc.Format != inDesc.Format ||
+            bufDesc.Flags != inDesc.Flags)
+        {
+            (*target)->Release();
+            (*target) = nullptr;
+        }
+        else
+        {
+            return true;
+        }
+    }
+
+    D3D12_HEAP_PROPERTIES heapProperties;
+    D3D12_HEAP_FLAGS heapFlags;
+
+    HRESULT hr = source->GetHeapProperties(&heapProperties, &heapFlags);
+
+    if (hr != S_OK)
+    {
+        LOG_ERROR("GetHeapProperties result: {:X}", (UINT64) hr);
+        return false;
+    }
+
+    hr = device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &inDesc, initialState, nullptr,
+                                         IID_PPV_ARGS(target));
+
+    if (hr != S_OK)
+    {
+        LOG_ERROR("CreateCommittedResource result: {:X}", (UINT64) hr);
+        return false;
+    }
+
+    LOG_DEBUG("Created new one: {}x{}", inDesc.Width, inDesc.Height);
+
+    return true;
+}
+
+static void ResourceBarrier(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* resource,
+                            D3D12_RESOURCE_STATES beforeState, D3D12_RESOURCE_STATES afterState)
+{
+    if (beforeState == afterState)
+        return;
+
+    D3D12_RESOURCE_BARRIER barrier = {};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Transition.pResource = resource;
+    barrier.Transition.StateBefore = beforeState;
+    barrier.Transition.StateAfter = afterState;
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    cmdList->ResourceBarrier(1, &barrier);
+}
+
 NVSDK_NGX_Result Nvngx_DllProxy::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InCmdList,
                                                        const NVSDK_NGX_Handle* InFeatureHandle,
                                                        NVSDK_NGX_Parameter* InParameters,
@@ -89,35 +153,28 @@ NVSDK_NGX_Result Nvngx_DllProxy::D3D12_EvaluateFeature(ID3D12GraphicsCommandList
 
         if (dlssgDepth)
         {
-            D3D12_RESOURCE_DESC desc = dlssgDepth->GetDesc();
+            static size_t count = 0;
+            const size_t index = count % 2;
 
-            D3D12_HEAP_PROPERTIES heapProperties;
-            D3D12_HEAP_FLAGS heapFlags;
+            // Nukem's is expecting D3D12_RESOURCE_STATE_COPY_DEST
+            CreateBufferResource(State::Instance().currentD3D12Device, dlssgDepth, D3D12_RESOURCE_STATE_COPY_DEST,
+                                 &depthCopy[index]);
 
-            static ID3D12Resource* copiedDlssgDepth = nullptr;
-            SAFE_RELEASE(copiedDlssgDepth);
-
-            if (dlssgDepth->GetHeapProperties(&heapProperties, &heapFlags) == S_OK)
+            if (depthCopy[index])
             {
-                auto result = State::Instance().currentD3D12Device->CreateCommittedResource(
-                    &heapProperties, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                    IID_PPV_ARGS(&copiedDlssgDepth));
+                ResourceBarrier(InCmdList, dlssgDepth, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                                D3D12_RESOURCE_STATE_COPY_SOURCE);
 
-                if (result == S_OK)
-                {
-                    InCmdList->CopyResource(copiedDlssgDepth, dlssgDepth);
-                    InParameters->Set("DLSSG.Depth",
-                                      (void*) copiedDlssgDepth); // cast to make sure it's void*, otherwise dlssg cries
-                }
-                else
-                {
-                    LOG_ERROR("Making a new resource for DLSSG Depth has failed");
-                }
+                InCmdList->CopyResource(depthCopy[index], dlssgDepth);
+
+                ResourceBarrier(InCmdList, dlssgDepth, D3D12_RESOURCE_STATE_COPY_SOURCE,
+                                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+                // cast to make sure it's void*, otherwise dlssg cries
+                InParameters->Set("DLSSG.Depth", (void*) depthCopy[index]);
             }
-            else
-            {
-                LOG_ERROR("Getting heap properties has failed");
-            }
+
+            count++;
         }
 
         bool showDebug = Config::Instance()->NvngxFGShowDebug.value_or_default();

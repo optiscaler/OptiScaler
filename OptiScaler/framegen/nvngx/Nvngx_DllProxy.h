@@ -4,6 +4,9 @@
 
 class Nvngx_DllProxy : public IFGNvngx
 {
+  private:
+    ID3D12Resource* depthCopy[2];
+
   protected:
     HMODULE dll = nullptr;
 
@@ -39,6 +42,9 @@ class Nvngx_DllProxy : public IFGNvngx
     {
         if (dll)
             FreeLibrary(dll);
+
+        SAFE_RELEASE(depthCopy[0]);
+        SAFE_RELEASE(depthCopy[1]);
     };
 
     bool isDx12Available() override final { return _DLSSG_D3D12_Init != nullptr; };
