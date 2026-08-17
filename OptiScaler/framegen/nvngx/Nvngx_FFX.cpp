@@ -600,7 +600,7 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
 
     if (retCode != FFX_API_RETURN_OK)
     {
-        LOG_ERROR("Failed to create FFX context");
+        LOG_ERROR("Failed to dispatch FFX");
         return NVSDK_NGX_Result_Fail;
     }
 
