@@ -966,28 +966,31 @@ void LibraryLoadHooks::CheckModulesInMemory()
         }
     }
 
+    const auto isLocalStreamlineModule = [](HMODULE module) -> bool
+    {
+        if (module == nullptr)
+            return false;
+
+        char modulePath[MAX_PATH] = {};
+        if (GetModuleFileNameA(module, modulePath, sizeof(modulePath)) == 0)
+            return false;
+
+        const auto path = std::filesystem::path(modulePath).lexically_normal();
+        const std::filesystem::path localSlPath =
+            std::filesystem::path(Config::Instance()->MainDllPath.value()) / L"streamline";
+        return Util::IsSubpath(path, localSlPath.lexically_normal());
+    };
+
+    // DLSS-G
     if (!StreamlineHooks::isDlssgHooked() || !StreamlineHooks::isLocalDlssgHooked())
     {
-        HMODULE slDlssg = nullptr;
-        slDlssg = GetDllNameWModule(&slDlssgNamesW);
+        HMODULE slDlssg = GetDllNameWModule(&slDlssgNamesW);
 
         if (slDlssg != nullptr && slDlssg != State::Instance().optiSlDLSSG)
         {
-            // Make sure this is not a local/opti's sl.dlss_g
+            const bool localDlssg = isLocalStreamlineModule(slDlssg);
 
-            char callerPath[MAX_PATH] = { 0 };
-            GetModuleFileNameA(slDlssg, callerPath, sizeof(callerPath));
-
-            auto path = std::filesystem::path(callerPath).lexically_normal();
-            std::filesystem::path localSlPath(Config::Instance()->MainDllPath.value());
-            localSlPath = localSlPath / L"streamline";
-            auto normalizedLocalSlPath = localSlPath.lexically_normal();
-
-            const bool pathInsideLocalSlPath = Util::IsSubpath(path, normalizedLocalSlPath);
-
-            const bool localDlssg = pathInsideLocalSlPath && State::Instance().activeFgOutput == FGOutput::DLSSG;
-
-            if (localDlssg)
+            if (localDlssg && State::Instance().activeFgOutput == FGOutput::DLSSG)
             {
                 if (!StreamlineHooks::isLocalDlssgHooked())
                 {
@@ -995,7 +998,7 @@ void LibraryLoadHooks::CheckModulesInMemory()
                     StreamlineHooks::hookLocalDlssg(slDlssg);
                 }
             }
-            else if (!StreamlineHooks::isDlssgHooked())
+            else if (!localDlssg && !StreamlineHooks::isDlssgHooked())
             {
                 LOG_DEBUG("sl.dlss_g.dll already in memory");
                 StreamlineHooks::hookDlssg(slDlssg);
@@ -1003,25 +1006,45 @@ void LibraryLoadHooks::CheckModulesInMemory()
         }
     }
 
+    // Reflex
     if (!StreamlineHooks::isReflexHooked())
     {
-        HMODULE slReflex = nullptr;
-        slReflex = GetDllNameWModule(&slReflexNamesW);
+        HMODULE slReflex = GetDllNameWModule(&slReflexNamesW);
+
         if (slReflex != nullptr && slReflex != State::Instance().optiSlReflex)
         {
-            LOG_DEBUG("sl.reflex.dll already in memory");
-            StreamlineHooks::hookReflex(slReflex);
+            const bool localReflex = isLocalStreamlineModule(slReflex);
+
+            if (!localReflex || State::Instance().activeFgOutput != FGOutput::DLSSG)
+            {
+                if (localReflex)
+                    LOG_DEBUG("local sl.reflex.dll already in memory");
+                else
+                    LOG_DEBUG("sl.reflex.dll already in memory");
+
+                StreamlineHooks::hookReflex(slReflex);
+            }
         }
     }
 
+    // PCL
     if (!StreamlineHooks::isPclHooked())
     {
-        HMODULE slPcl = nullptr;
-        slPcl = GetDllNameWModule(&slPclNamesW);
+        HMODULE slPcl = GetDllNameWModule(&slPclNamesW);
+
         if (slPcl != nullptr && slPcl != State::Instance().optiSlPCL)
         {
-            LOG_DEBUG("sl.pcl.dll already in memory");
-            StreamlineHooks::hookPcl(slPcl);
+            const bool localPcl = isLocalStreamlineModule(slPcl);
+
+            if (!localPcl || State::Instance().activeFgOutput != FGOutput::DLSSG)
+            {
+                if (localPcl)
+                    LOG_DEBUG("local sl.pcl.dll already in memory");
+                else
+                    LOG_DEBUG("sl.pcl.dll already in memory");
+
+                StreamlineHooks::hookPcl(slPcl);
+            }
         }
     }
 

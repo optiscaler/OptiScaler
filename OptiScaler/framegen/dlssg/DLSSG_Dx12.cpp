@@ -434,17 +434,13 @@ bool DLSSG_Dx12::Dispatch()
         constData.cameraRight.x = _cameraRight[fIndex][0];
         constData.cameraRight.y = _cameraRight[fIndex][1];
         constData.cameraRight.z = _cameraRight[fIndex][2];
-
-        constData.cameraRight.x = _cameraRight[fIndex][0];
-        constData.cameraRight.y = _cameraRight[fIndex][1];
-        constData.cameraRight.z = _cameraRight[fIndex][2];
     }
     else
     {
         constData.cameraPos = { 0.0f, 0.0f, 0.0f };
-        constData.cameraRight = { 1.0f, 0.0f, 0.0f };
-        constData.cameraUp = { 0.0f, 1.0f, 0.0f };
-        constData.cameraFwd = { 0.0f, 0.0f, 1.0f };
+        constData.cameraUp = { 0.0f, 0.0f, 1.0f };
+        constData.cameraRight = { 0.0f, 1.0f, 0.0f };
+        constData.cameraFwd = { 1.0f, 0.0f, 0.0f };
         constData.cameraPinholeOffset = { 0.0f, 0.0f };
 
         XMMATRIX cameraViewToClip {};
@@ -477,6 +473,7 @@ bool DLSSG_Dx12::Dispatch()
         memcpy(&constData.clipToCameraView, &temp, sizeof(sl::float4x4));
 
         XMStoreFloat4x4(&temp, prev);
+        memcpy(&constData.clipToLensClip, &temp, sizeof(sl::float4x4));
         memcpy(&constData.clipToPrevClip, &temp, sizeof(sl::float4x4));
         memcpy(&constData.prevClipToClip, &temp, sizeof(sl::float4x4));
     }
@@ -524,7 +521,7 @@ bool DLSSG_Dx12::Dispatch()
     constData.depthInverted = IsInvertedDepth() ? sl::Boolean::eTrue : sl::Boolean::eFalse;
     constData.cameraMotionIncluded = sl::Boolean::eTrue;
     constData.motionVectors3D = sl::Boolean::eFalse;
-    constData.motionVectorsInvalidValue = 0.0f;
+    // constData.motionVectorsInvalidValue = 0.0f;
     constData.orthographicProjection = sl::Boolean::eFalse;
     constData.motionVectorsDilated = IsLowResMV() ? sl::Boolean::eFalse : sl::Boolean::eTrue;
     constData.motionVectorsJittered = IsJitteredMVs() ? sl::Boolean::eTrue : sl::Boolean::eFalse;
