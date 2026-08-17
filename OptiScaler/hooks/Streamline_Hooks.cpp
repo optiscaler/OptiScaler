@@ -18,68 +18,6 @@
 #include <magic_enum.hpp>
 #include "detours/detours.h"
 
-sl::RenderAPI StreamlineHooks::renderApi = sl::RenderAPI::eCount;
-std::mutex StreamlineHooks::setConstantsMutex {};
-SystemCaps* StreamlineHooks::systemCaps = nullptr;
-SystemCapsSl15* StreamlineHooks::systemCapsSl15 = nullptr;
-
-// interposer
-decltype(&slInit) StreamlineHooks::o_slInit = nullptr;
-decltype(&slSetTag) StreamlineHooks::o_slSetTag = nullptr;
-decltype(&slSetTagForFrame) StreamlineHooks::o_slSetTagForFrame = nullptr;
-decltype(&slEvaluateFeature) StreamlineHooks::o_slEvaluateFeature = nullptr;
-decltype(&slAllocateResources) StreamlineHooks::o_slAllocateResources = nullptr;
-decltype(&slSetConstants) StreamlineHooks::o_slSetConstants = nullptr;
-decltype(&slGetNativeInterface) StreamlineHooks::o_slGetNativeInterface = nullptr;
-decltype(&slSetD3DDevice) StreamlineHooks::o_slSetD3DDevice = nullptr;
-decltype(&slGetNewFrameToken) StreamlineHooks::o_slGetNewFrameToken = nullptr;
-
-decltype(&sl1::slInit) StreamlineHooks::o_slInit_sl1 = nullptr;
-decltype(&sl1::slSetTag) StreamlineHooks::o_slSetTag_sl1 = nullptr;
-decltype(&sl1::slSetConstants) StreamlineHooks::o_slSetConstants_interposer_sl1 = nullptr;
-decltype(&sl1::slEvaluateFeature) StreamlineHooks::o_slEvaluateFeature_sl1 = nullptr;
-using PFN_slGetPluginJSONConfig_sl1 = const char* (*) ();
-
-sl::PFun_LogMessageCallback* StreamlineHooks::o_logCallback = nullptr;
-sl1::pfunLogMessageCallback* StreamlineHooks::o_logCallback_sl1 = nullptr;
-
-// DLSS
-StreamlineHooks::PFN_slGetPluginFunction StreamlineHooks::o_dlss_slGetPluginFunction = nullptr;
-StreamlineHooks::PFN_slOnPluginLoad StreamlineHooks::o_dlss_slOnPluginLoad = nullptr;
-decltype(&slDLSSGetOptimalSettings) StreamlineHooks::o_slDLSSGetOptimalSettings = nullptr;
-
-// DLSSG
-StreamlineHooks::PFN_slGetPluginFunction StreamlineHooks::o_dlssg_slGetPluginFunction = nullptr;
-StreamlineHooks::PFN_slOnPluginLoad StreamlineHooks::o_dlssg_slOnPluginLoad = nullptr;
-decltype(&slDLSSGSetOptions) StreamlineHooks::o_slDLSSGSetOptions = nullptr;
-decltype(&slDLSSGGetState) StreamlineHooks::o_slDLSSGGetState = nullptr;
-static PFN_slGetPluginJSONConfig_sl1 o_dlssg_slGetPluginJSONConfig_sl1;
-
-// Local DLSSG
-StreamlineHooks::PFN_slGetPluginFunction StreamlineHooks::o_local_dlssg_slGetPluginFunction = nullptr;
-StreamlineHooks::PFN_slOnPluginLoad StreamlineHooks::o_local_dlssg_slOnPluginLoad = nullptr;
-
-// Reflex
-StreamlineHooks::PFN_slGetPluginFunction StreamlineHooks::o_reflex_slGetPluginFunction = nullptr;
-StreamlineHooks::PFN_slSetConstants_sl1 StreamlineHooks::o_reflex_slSetConstants_sl1 = nullptr;
-StreamlineHooks::PFN_slOnPluginLoad StreamlineHooks::o_reflex_slOnPluginLoad = nullptr;
-decltype(&slReflexSetOptions) StreamlineHooks::o_slReflexSetOptions = nullptr;
-decltype(&slReflexSleep) StreamlineHooks::o_slReflexSleep = nullptr;
-sl::ReflexMode StreamlineHooks::reflexGamesLastMode = sl::ReflexMode::eOff;
-
-// PCL
-StreamlineHooks::PFN_slGetPluginFunction StreamlineHooks::o_pcl_slGetPluginFunction = nullptr;
-StreamlineHooks::PFN_slOnPluginLoad StreamlineHooks::o_pcl_slOnPluginLoad = nullptr;
-decltype(&slPCLSetMarker) StreamlineHooks::o_slPCLSetMarker = nullptr;
-
-// Common
-StreamlineHooks::PFN_slGetPluginFunction StreamlineHooks::o_common_slGetPluginFunction = nullptr;
-StreamlineHooks::PFN_slOnPluginLoad StreamlineHooks::o_common_slOnPluginLoad = nullptr;
-StreamlineHooks::PFN_slSetParameters_sl1 StreamlineHooks::o_common_slSetParameters_sl1 = nullptr;
-StreamlineHooks::PFN_setVoid StreamlineHooks::o_setVoid = nullptr;
-
-static const char* hkdlssg_slGetPluginJSONConfig_sl1();
-
 static bool IsSL1AndDLSSGActive()
 {
     return State::Instance().streamlineVersion.major == 1 && State::Instance().activeFgInput == FGInput::DLSSG &&
@@ -299,6 +237,18 @@ sl::Result StreamlineHooks::hkslInit(const sl::Preferences& pref, uint64_t sdkVe
         }
     }
 
+    if (State::Instance().activeFgInput == FGInput::DLSSG)
+    {
+        std::vector<sl::Feature> localFeaturesToLoad(pref.featuresToLoad, pref.featuresToLoad + pref.numFeaturesToLoad);
+        std::erase(localFeaturesToLoad, sl::kFeatureDLSS_G);
+
+        localPref.featuresToLoad = localFeaturesToLoad.data();
+        localPref.numFeaturesToLoad = localFeaturesToLoad.size();
+
+        // return so that localFeaturesToLoad is valid
+        return o_slInit(localPref, sdkVersion);
+    }
+
     // bool hookSetTag =
     //     (State::Instance().activeFgInput == FGInput::NvngxFG || State::Instance().activeFgInput == FGInput::DLSSG);
 
@@ -313,6 +263,85 @@ sl::Result StreamlineHooks::hkslInit(const sl::Preferences& pref, uint64_t sdkVe
     //}
 
     return o_slInit(localPref, sdkVersion);
+}
+
+sl::Result StreamlineHooks::hkslIsFeatureSupported(sl::Feature feature, const sl::AdapterInfo& adapterInfo)
+{
+    if (feature == sl::kFeatureDLSS_G)
+        return sl::Result::eOk;
+
+    return o_slIsFeatureSupported(feature, adapterInfo);
+}
+
+sl::Result StreamlineHooks::hkslIsFeatureLoaded(sl::Feature feature, bool& loaded)
+{
+    if (feature == sl::kFeatureDLSS_G)
+    {
+        loaded = true;
+        return sl::Result::eOk;
+    }
+
+    return o_slIsFeatureLoaded(feature, loaded);
+}
+
+sl::Result StreamlineHooks::hkslGetFeatureRequirements(sl::Feature feature, sl::FeatureRequirements& requirements)
+{
+    if (feature == sl::kFeatureDLSS_G)
+        return sl::Result::eOk;
+
+    return o_slGetFeatureRequirements(feature, requirements);
+}
+
+sl::Result StreamlineHooks::hkslGetFeatureVersion(sl::Feature feature, sl::FeatureVersion& version)
+{
+    if (feature == sl::kFeatureDLSS_G)
+    {
+        version.versionSL = { State::Instance().streamlineVersion.major, State::Instance().streamlineVersion.minor,
+                              State::Instance().streamlineVersion.patch };
+        version.versionNGX = { 4, 2, 0 };
+
+        return sl::Result::eOk;
+    }
+
+    return o_slGetFeatureVersion(feature, version);
+}
+
+static sl::Result dummy_slDLSSGGetState(const sl::ViewportHandle& viewport, sl::DLSSGState& state,
+                                        const sl::DLSSGOptions* options)
+{
+    state.numFramesActuallyPresented = 1; // TODO: can do better
+    state.numFramesToGenerateMax = 1;
+    state.bIsVsyncSupportAvailable = sl::Boolean::eTrue;
+    state.estimatedVRAMUsageInBytes = 300 * 1024 * 1024;
+
+    return sl::Result::eOk;
+}
+
+static sl::Result dummy_slDLSSGSetOptions(const sl::ViewportHandle& viewport, const sl::DLSSGOptions& options)
+{
+    return sl::Result::eOk;
+}
+
+sl::Result StreamlineHooks::hkslGetFeatureFunction(sl::Feature feature, const char* functionName, void*& function)
+{
+    if (feature == sl::kFeatureDLSS_G)
+    {
+        if (strcmp(functionName, "slDLSSGSetOptions") == 0)
+        {
+            function = &dummy_slDLSSGSetOptions;
+
+            return sl::Result::eOk;
+        }
+
+        if (strcmp(functionName, "slDLSSGGetState") == 0)
+        {
+            function = &dummy_slDLSSGGetState;
+
+            return sl::Result::eOk;
+        }
+    }
+
+    return o_slGetFeatureFunction(feature, functionName, function);
 }
 
 sl::Result StreamlineHooks::hkslSetTag(const sl::ViewportHandle& viewport, const sl::ResourceTag* tags,
@@ -921,7 +950,7 @@ bool StreamlineHooks::hkdlssg_slOnPluginLoad(sl::param::IParameters* params, con
     return result;
 }
 
-static const char* hkdlssg_slGetPluginJSONConfig_sl1()
+const char* StreamlineHooks::hkdlssg_slGetPluginJSONConfig_sl1()
 {
     static std::string patchedConfig;
 
@@ -1815,6 +1844,19 @@ void StreamlineHooks::hookInterposer(HMODULE slInterposer)
             o_slGetNewFrameToken = reinterpret_cast<decltype(&slGetNewFrameToken)>(
                 KernelBaseProxy::GetProcAddress_()(slInterposer, "slGetNewFrameToken")); // Not hooked
 
+            // For making the game think DLSSG is loaded and supported
+            // but making SL not actually load the plugin
+            o_slIsFeatureSupported = reinterpret_cast<decltype(&slIsFeatureSupported)>(
+                KernelBaseProxy::GetProcAddress_()(slInterposer, "slIsFeatureSupported"));
+            o_slIsFeatureLoaded = reinterpret_cast<decltype(&slIsFeatureLoaded)>(
+                KernelBaseProxy::GetProcAddress_()(slInterposer, "slIsFeatureLoaded"));
+            o_slGetFeatureRequirements = reinterpret_cast<decltype(&slGetFeatureRequirements)>(
+                KernelBaseProxy::GetProcAddress_()(slInterposer, "slGetFeatureRequirements"));
+            o_slGetFeatureVersion = reinterpret_cast<decltype(&slGetFeatureVersion)>(
+                KernelBaseProxy::GetProcAddress_()(slInterposer, "slGetFeatureVersion"));
+            o_slGetFeatureFunction = reinterpret_cast<decltype(&slGetFeatureFunction)>(
+                KernelBaseProxy::GetProcAddress_()(slInterposer, "slGetFeatureFunction"));
+
             if (o_slInit != nullptr)
             {
                 LOG_TRACE("Hooking v2");
@@ -1823,20 +1865,39 @@ void StreamlineHooks::hookInterposer(HMODULE slInterposer)
 
                 DetourAttach(&(PVOID&) o_slInit, hkslInit);
 
-                bool hookSetTag = (State::Instance().activeFgInput == FGInput::NvngxFG ||
-                                   State::Instance().activeFgInput == FGInput::DLSSG);
-
-                if (o_slSetTag != nullptr && hookSetTag)
-                    DetourAttach(&(PVOID&) o_slSetTag, hkslSetTag);
-
-                if (o_slSetTagForFrame != nullptr && hookSetTag)
-                    DetourAttach(&(PVOID&) o_slSetTagForFrame, hkslSetTagForFrame);
-
-                if (o_slSetConstants != nullptr && hookSetTag)
-                    DetourAttach(&(PVOID&) o_slSetConstants, hkslSetConstants);
-
                 if (o_slEvaluateFeature != nullptr)
                     DetourAttach(&(PVOID&) o_slEvaluateFeature, hkslEvaluateFeature);
+
+                if (State::Instance().activeFgInput == FGInput::NvngxFG ||
+                    State::Instance().activeFgInput == FGInput::DLSSG)
+                {
+                    if (o_slSetTag != nullptr)
+                        DetourAttach(&(PVOID&) o_slSetTag, hkslSetTag);
+
+                    if (o_slSetTagForFrame != nullptr)
+                        DetourAttach(&(PVOID&) o_slSetTagForFrame, hkslSetTagForFrame);
+
+                    if (o_slSetConstants != nullptr)
+                        DetourAttach(&(PVOID&) o_slSetConstants, hkslSetConstants);
+                }
+
+                if (State::Instance().activeFgInput == FGInput::DLSSG)
+                {
+                    if (o_slIsFeatureSupported != nullptr)
+                        DetourAttach(&(PVOID&) o_slIsFeatureSupported, hkslIsFeatureSupported);
+
+                    if (o_slIsFeatureLoaded != nullptr)
+                        DetourAttach(&(PVOID&) o_slIsFeatureLoaded, hkslIsFeatureLoaded);
+
+                    if (o_slGetFeatureRequirements != nullptr)
+                        DetourAttach(&(PVOID&) o_slGetFeatureRequirements, hkslGetFeatureRequirements);
+
+                    if (o_slGetFeatureVersion != nullptr)
+                        DetourAttach(&(PVOID&) o_slGetFeatureVersion, hkslGetFeatureVersion);
+
+                    if (o_slGetFeatureFunction != nullptr)
+                        DetourAttach(&(PVOID&) o_slGetFeatureFunction, hkslGetFeatureFunction);
+                }
 
                 // if (o_slAllocateResources != nullptr)
                 //     DetourAttach(&(PVOID&) o_slAllocateResources, hkslAllocateResources);
@@ -1859,6 +1920,11 @@ void StreamlineHooks::hookInterposer(HMODULE slInterposer)
                     o_slSetConstants = nullptr;
                     o_slGetNativeInterface = nullptr;
                     o_slSetD3DDevice = nullptr;
+                    o_slIsFeatureSupported = nullptr;
+                    o_slIsFeatureLoaded = nullptr;
+                    o_slGetFeatureRequirements = nullptr;
+                    o_slGetFeatureVersion = nullptr;
+                    o_slGetFeatureFunction = nullptr;
                 }
             }
         }
