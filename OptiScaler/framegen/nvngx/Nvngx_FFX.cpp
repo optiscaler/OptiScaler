@@ -563,8 +563,8 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
     dispatchPrepareDesc.cameraFar = cameraFar;
     dispatchPrepareDesc.cameraFovAngleVertical = cameraFovAngleVertical;
 
-    dispatchPrepareDesc.motionVectors = ffxApiGetResourceDX12(motionVectors, FFX_API_RESOURCE_STATE_COPY_DEST);
-    dispatchPrepareDesc.depth = ffxApiGetResourceDX12(depth, FFX_API_RESOURCE_STATE_COPY_DEST);
+    dispatchPrepareDesc.motionVectors = ffxApiGetResourceDX12(motionVectors, FFX_API_RESOURCE_STATE_UNORDERED_ACCESS);
+    dispatchPrepareDesc.depth = ffxApiGetResourceDX12(depth, FFX_API_RESOURCE_STATE_COMPUTE_READ);
 
     retCode = FfxApiProxy::D3D12_Dispatch(&InOurHandle->fgContext, &dispatchPrepareDesc.header);
 
