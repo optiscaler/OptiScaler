@@ -237,7 +237,7 @@ sl::Result StreamlineHooks::hkslInit(const sl::Preferences& pref, uint64_t sdkVe
         }
     }
 
-    if (State::Instance().activeFgInput == FGInput::DLSSG)
+    if (State::Instance().activeFgInput == FGInput::DLSSG || State::Instance().activeFgOutput == FGOutput::DLSSG)
     {
         std::vector<sl::Feature> localFeaturesToLoad(pref.featuresToLoad, pref.featuresToLoad + pref.numFeaturesToLoad);
         std::erase(localFeaturesToLoad, sl::kFeatureDLSS_G);
