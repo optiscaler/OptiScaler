@@ -8,6 +8,7 @@
 
 #include <shlobj.h>
 #include <cwctype>
+#include <queue>
 
 #include <hooks/Gdi32_Hooks.h>
 
@@ -507,19 +508,48 @@ std::optional<std::filesystem::path> Util::FindFilePath(const std::filesystem::p
         return candidate;
     }
 
-    // 2) Recursive search under startDir
-    for (auto& entry : std::filesystem::recursive_directory_iterator(
-             startDir, std::filesystem::directory_options::skip_permission_denied))
+    // Helper lambda to perform a Breadth-First Search (shallowest files first)
+    auto SearchDirectoryBFS = [&](const std::filesystem::path& root) -> std::optional<std::filesystem::path>
     {
-        if (!entry.is_directory() && entry.path().filename() == fileName)
+        std::queue<std::filesystem::path> directoriesToSearch;
+        directoriesToSearch.push(root);
+
+        while (!directoriesToSearch.empty())
         {
-            auto normalizedPath = entry.path().lexically_normal();
-            if (isDlssgOutput || !IsSubpath(normalizedPath, normalizedStreamlinePath))
+            std::filesystem::path currentDir = directoriesToSearch.front();
+            directoriesToSearch.pop();
+
+            std::error_code ec;
+            auto dirIterator = std::filesystem::directory_iterator(
+                currentDir, std::filesystem::directory_options::skip_permission_denied, ec);
+
+            if (ec)
+                continue;
+
+            for (const auto& entry : dirIterator)
             {
-                LOG_INFO(L"{} found at {}", fileName.wstring(), entry.path().parent_path().wstring());
-                return entry.path();
+                if (entry.is_directory())
+                {
+                    directoriesToSearch.push(entry.path());
+                }
+                else if (entry.path().filename() == fileName)
+                {
+                    auto normalizedPath = entry.path().lexically_normal();
+                    if (isDlssgOutput || !IsSubpath(normalizedPath, normalizedStreamlinePath))
+                    {
+                        return entry.path();
+                    }
+                }
             }
         }
+        return std::nullopt;
+    };
+
+    // 2) Breadth-First search under startDir
+    if (auto foundPath = SearchDirectoryBFS(startDir))
+    {
+        LOG_INFO(L"{} found at {}", fileName.wstring(), foundPath.value().wstring());
+        return foundPath;
     }
 
     // 3) Unreal-Engine/WinGDK fallback: check for Win64 or WinGDK in parent
@@ -536,18 +566,11 @@ std::optional<std::filesystem::path> Util::FindFilePath(const std::filesystem::p
             else
                 gameRoot = parent.parent_path();
 
-            for (auto& entry : std::filesystem::recursive_directory_iterator(
-                     gameRoot, std::filesystem::directory_options::skip_permission_denied))
+            // Run Breadth-First Search on the gameRoot fallback
+            if (auto foundPath = SearchDirectoryBFS(gameRoot))
             {
-                if (!entry.is_directory() && entry.path().filename() == fileName)
-                {
-                    auto normalizedPath = entry.path().lexically_normal();
-                    if (isDlssgOutput || !IsSubpath(normalizedPath, normalizedStreamlinePath))
-                    {
-                        LOG_INFO(L"{} found at {}", fileName.wstring(), entry.path().parent_path().wstring());
-                        return entry.path();
-                    }
-                }
+                LOG_INFO(L"{} found at {}", fileName.wstring(), foundPath.value().wstring());
+                return foundPath;
             }
 
             // If not found under this folder, break to avoid double-search
