@@ -13,8 +13,6 @@ using Microsoft::WRL::ComPtr;
 
 bool Nvngx_FFX::Init()
 {
-    LOG_FUNC();
-
     if (inited)
         return true;
 
