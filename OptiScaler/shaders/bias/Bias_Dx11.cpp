@@ -43,6 +43,7 @@ bool Bias_Dx11::CreateBufferResource(ID3D11Device* InDevice, ID3D11Resource* InR
         return false;
 
     D3D11_TEXTURE2D_DESC texDesc;
+    originalTexture->Release();
     originalTexture->GetDesc(&texDesc);
 
     if (_buffer != nullptr)

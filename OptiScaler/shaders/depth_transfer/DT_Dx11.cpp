@@ -18,6 +18,7 @@ bool DepthTransfer_Dx11::CreateBufferResource(ID3D11Device* InDevice, ID3D11Reso
         return false;
 
     D3D11_TEXTURE2D_DESC texDesc;
+    originalTexture->Release();
     originalTexture->GetDesc(&texDesc);
 
     texDesc.Format = DXGI_FORMAT_R32_FLOAT;

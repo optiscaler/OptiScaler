@@ -330,8 +330,15 @@ void Dx11WithDx12::Init(ID3D11Device* dx11Device, ID3D11DeviceContext* dx11Conte
         return;
     }
 
+    newDx11Context->Release();
+
     if (dx11Device == nullptr)
+    {
         newDx11Context->GetDevice(&dx11Device);
+
+        if (dx11Device != nullptr)
+            dx11Device->Release();
+    }
 
     auto dx11DeviceResult = dx11Device->QueryInterface(IID_PPV_ARGS(&newDx11Device));
     if (dx11DeviceResult != S_OK || newDx11Device == nullptr)
@@ -340,6 +347,8 @@ void Dx11WithDx12::Init(ID3D11Device* dx11Device, ID3D11DeviceContext* dx11Conte
         newDx11Context->Release();
         return;
     }
+
+    newDx11Device->Release();
 
     const bool dx11Changed = newDx11Device != Dx11Device || newDx11Context != Dx11DeviceContext;
     const bool dx12Changed = dx12Device != Dx12Device || dx12CommandQueue != Dx12CommandQueue;
@@ -356,12 +365,6 @@ void Dx11WithDx12::Init(ID3D11Device* dx11Device, ID3D11DeviceContext* dx11Conte
 
         DT = std::make_unique<DepthTransfer_Dx11>("DT", newDx11Device);
     }
-
-    if (Dx11DeviceContext != nullptr)
-        Dx11DeviceContext->Release();
-
-    if (Dx11Device != nullptr)
-        Dx11Device->Release();
 
     Dx11DeviceContext = newDx11Context;
     Dx11Device = newDx11Device;
