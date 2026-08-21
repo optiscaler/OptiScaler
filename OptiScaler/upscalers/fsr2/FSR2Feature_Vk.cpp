@@ -20,7 +20,7 @@ bool FSR2FeatureVk::InitFSR2(const NVSDK_NGX_Parameter* InParameters)
     }
 
     {
-        ScopedSkipSpoofing skipSpoofing {};
+        ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 
         auto scratchBufferSize = ffxFsr2GetScratchMemorySizeVK(PhysicalDevice);
         void* scratchBuffer = calloc(scratchBufferSize, 1);

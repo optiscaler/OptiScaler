@@ -44,7 +44,7 @@ std::vector<GpuInformation> IdentifyGpu::checkGpuInfo()
 {
     auto localCachedInfo = std::vector<GpuInformation> {};
 
-    ScopedSkipSpoofing skipSpoofing {};
+    ScopedSkipSpoofingThread skipSpoofingThread {};
 
     DxgiProxy::Init();
 
@@ -395,7 +395,7 @@ void IdentifyGpu::updateD3d12Capabilities(D3d12Proxy::PFN_D3D12CreateDevice o_D3
             continue;
         }
 
-        ScopedSkipSpoofing skipSpoofing {};
+        ScopedSkipSpoofingThread skipSpoofingThread {};
 
         ComPtr<IDXGIFactory4> factory;
         if (FAILED(DxgiProxy::CreateDxgiFactory_()(__uuidof(factory), (IDXGIFactory**) factory.GetAddressOf())))

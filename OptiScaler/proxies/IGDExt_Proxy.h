@@ -325,7 +325,7 @@ class IGDExtProxy
         if (_atomicSupportEnabled)
             return;
 
-        ScopedSkipSpoofing skipSpoofing {};
+        ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 
         if (CreateContext(device))
         {

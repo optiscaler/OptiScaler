@@ -102,8 +102,12 @@ bool DLSSG_Dx12::CreateSwapchain(IDXGIFactory* factory, ID3D12CommandQueue* cmdQ
 
     desc->Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
 
-    ScopedSkipSpoofing skipSpoofing {};
-    auto result = factory->CreateSwapChain(cmdQueue, desc, swapChain);
+    auto result = S_FALSE;
+
+    {
+        ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
+        result = factory->CreateSwapChain(cmdQueue, desc, swapChain);
+    }
 
     if (result != S_OK)
     {
@@ -192,35 +196,37 @@ bool DLSSG_Dx12::CreateSwapchain1(IDXGIFactory* factory, ID3D12CommandQueue* cmd
     _width = desc->Width;
     _height = desc->Height;
 
-    ScopedSkipSpoofing skipSpoofing {};
-
-    IDXGIFactory* slFactory = nullptr;
-    if (!Util::CheckForRealObject(__FUNCTION__, factory, (IUnknown**) &slFactory))
     {
-        StreamlineProxy::UpgradeInterface()((void**) &factory);
-        DxgiFactoryHooks::HookToDLSSGFactory(factory);
-    }
-    else
-    {
-        slFactory->Release();
-    }
+        ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 
-    IDXGIFactory2* factory2 = nullptr;
-    if (factory->QueryInterface(IID_PPV_ARGS(&factory2)) != S_OK)
-        return false;
+        IDXGIFactory* slFactory = nullptr;
+        if (!Util::CheckForRealObject(__FUNCTION__, factory, (IUnknown**) &slFactory))
+        {
+            StreamlineProxy::UpgradeInterface()((void**) &factory);
+            DxgiFactoryHooks::HookToDLSSGFactory(factory);
+        }
+        else
+        {
+            slFactory->Release();
+        }
 
-    StreamlineProxy::SetFeatureLoaded()(sl::kFeatureDLSS_G, true);
+        IDXGIFactory2* factory2 = nullptr;
+        if (factory->QueryInterface(IID_PPV_ARGS(&factory2)) != S_OK)
+            return false;
 
-    desc->Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
-    auto result = factory2->CreateSwapChainForHwnd(cmdQueue, hwnd, desc, pFullscreenDesc, nullptr, swapChain);
+        StreamlineProxy::SetFeatureLoaded()(sl::kFeatureDLSS_G, true);
 
-    factory2->Release();
-    factory2 = nullptr;
+        desc->Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+        auto result = factory2->CreateSwapChainForHwnd(cmdQueue, hwnd, desc, pFullscreenDesc, nullptr, swapChain);
 
-    if (result != S_OK)
-    {
-        LOG_ERROR("CreateSwapChain error: {:X}", (UINT) result);
-        return false;
+        factory2->Release();
+        factory2 = nullptr;
+
+        if (result != S_OK)
+        {
+            LOG_ERROR("CreateSwapChain error: {:X}", (UINT) result);
+            return false;
+        }
     }
 
     sl::DLSSGState dlssgState {};

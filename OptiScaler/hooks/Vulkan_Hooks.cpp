@@ -123,7 +123,7 @@ static VkResult hkvkCreateInstance(const VkInstanceCreateInfo* pCreateInfo, cons
 
     VkResult result;
     {
-        ScopedSkipSpoofing skipSpoofing {};
+        ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
         result = o_vkCreateInstance(&localCreateInfo, pAllocator, pInstance);
     }
 
@@ -194,7 +194,7 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
             HookDevice(_device);
         }
 
-        ScopedSkipSpoofing skipSpoofing {};
+        ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 
         VkPhysicalDeviceIDProperties idProps {};
         idProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES;
@@ -288,7 +288,7 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
     ScopedVulkanCreatingSC scopedVulkanCreatingSC {};
     VkResult result = VK_SUCCESS;
     {
-        ScopedSkipSpoofing skipSpoofing {};
+        ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
         result = o_CreateSwapchainKHR(device, pCreateInfo, pAllocator, pSwapchain);
     }
 

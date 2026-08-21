@@ -382,7 +382,7 @@ xess_result_t hk_xessVKGetRequiredDeviceExtensions(VkInstance instance, VkPhysic
 {
     LOG_FUNC();
 
-    ScopedSkipSpoofing skipSpoofing {};
+    ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 
     auto result =
         XeSSProxy::VKGetRequiredDeviceExtensions()(instance, physicalDevice, deviceExtensionsCount, deviceExtensions);
@@ -394,7 +394,7 @@ xess_result_t hk_xessVKGetRequiredDeviceFeatures(VkInstance instance, VkPhysical
 {
     LOG_FUNC();
 
-    ScopedSkipSpoofing skipSpoofing {};
+    ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 
     auto result = XeSSProxy::VKGetRequiredDeviceFeatures()(instance, physicalDevice, features);
 

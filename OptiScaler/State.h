@@ -2,6 +2,7 @@
 #include "upscalers/IFeature.h"
 
 #include "misc/Quirks.h"
+#include "misc/SkipSpoof.h"
 #include "framegen/IFGFeature_Dx12.h"
 #include <inputs/FG/Streamline_Inputs_Dx12.h>
 #include <inputs/FG/Streamline_Inputs_Sl1_Dx12.h>
@@ -246,7 +247,6 @@ class State
     uint32_t dlssdRenderPresetUltraPerformance = 0;
 
     // Spoofing
-    bool skipSpoofing = false;
     // For DXVK, it calls DXGI which cause softlock
     bool skipDxgiLoadChecks = false;
     bool skipParentWrapping = false;
@@ -415,19 +415,27 @@ class State
     State() = default;
 };
 
-class ScopedSkipSpoofing
+class ScopedSkipSpoofingBase
 {
   private:
-    bool previousState;
+    uint64_t entryId;
 
   public:
-    ScopedSkipSpoofing()
-    {
-        previousState = State::Instance().skipSpoofing;
-        State::Instance().skipSpoofing = true;
-    }
+    explicit ScopedSkipSpoofingBase(SkipSpoofType type) { entryId = SkipSpoof::AddEntry(type); }
 
-    ~ScopedSkipSpoofing() { State::Instance().skipSpoofing = previousState; }
+    ~ScopedSkipSpoofingBase() { SkipSpoof::RemoveEntry(entryId); }
+};
+
+class ScopedSkipSpoofingGlobal : public ScopedSkipSpoofingBase
+{
+  public:
+    explicit ScopedSkipSpoofingGlobal() : ScopedSkipSpoofingBase(SkipSpoofType::Global) {}
+};
+
+class ScopedSkipSpoofingThread : public ScopedSkipSpoofingBase
+{
+  public:
+    explicit ScopedSkipSpoofingThread() : ScopedSkipSpoofingBase(SkipSpoofType::Thread) {}
 };
 
 class ScopedSkipDxgiLoadChecks

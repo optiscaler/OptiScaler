@@ -1355,7 +1355,7 @@ static HRESULT hkD3D12CreateDevice(IUnknown* pAdapter, D3D_FEATURE_LEVEL Minimum
     bool nonPrimaryGpu = false;
     if (pAdapter != nullptr && MinimumFeatureLevel != D3D_FEATURE_LEVEL_1_0_CORE)
     {
-        ScopedSkipSpoofing skipSpoofing {};
+        ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 
         if (((IDXGIAdapter*) pAdapter)->GetDesc(&desc) == S_OK)
         {
@@ -1394,7 +1394,7 @@ static HRESULT hkD3D12CreateDevice(IUnknown* pAdapter, D3D_FEATURE_LEVEL Minimum
     _creatingD3D12Device = true;
     if (desc.VendorId == VendorId::Intel)
     {
-        ScopedSkipSpoofing skipSpoofing {};
+        ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
         result = o_D3D12CreateDevice(pAdapter, minLevel, riid, ppDevice);
     }
     else
@@ -1514,7 +1514,7 @@ static HRESULT hkCreateDevice(ID3D12DeviceFactory* pFactory, IUnknown* pAdapter,
     std::wstring szName;
     if (pAdapter != nullptr && MinimumFeatureLevel != D3D_FEATURE_LEVEL_1_0_CORE)
     {
-        ScopedSkipSpoofing skipSpoofing {};
+        ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 
         if (((IDXGIAdapter*) pAdapter)->GetDesc(&desc) == S_OK)
         {
@@ -1544,7 +1544,7 @@ static HRESULT hkCreateDevice(ID3D12DeviceFactory* pFactory, IUnknown* pAdapter,
     HRESULT result;
     if (desc.VendorId == VendorId::Intel)
     {
-        ScopedSkipSpoofing skipSpoofing {};
+        ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
         ScopedCreatingD3DDevice skipCreatingD3DDevice {};
         result = o_CreateDevice(pFactory, pAdapter, minLevel, riid, ppDevice);
     }

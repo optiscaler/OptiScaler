@@ -37,7 +37,7 @@ bool XeSSFeature::InitXeSS(ID3D12Device* device, const NVSDK_NGX_Parameter* InPa
 
     {
 #ifndef DONT_USE_XMX
-        ScopedSkipSpoofing skipSpoofing {};
+        ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 #endif // !DONT_USE_XMX
 
         auto ret = XeSSProxy::D3D12CreateContext()(device, &_xessContext);

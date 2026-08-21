@@ -112,7 +112,7 @@ bool XeSSFeature_Vk::Init(VkInstance InInstance, VkPhysicalDevice InPD, VkDevice
 
     {
 #ifndef DONT_USE_XMX
-        ScopedSkipSpoofing skipSpoofing {};
+        ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 #endif // !DONT_USE_XMX
 
         auto ret = XeSSProxy::VKCreateContext()(InInstance, InPD, InDevice, &_xessContext);

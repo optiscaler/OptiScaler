@@ -458,9 +458,6 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
         // TODO: add code for hudless with different formats
 
         {
-            ScopedSkipSpoofing skipSpoofing {};
-            ScopedSkipHeapCapture skipHeapCapture {};
-
             // Currently 0 is non-ML FG and 1 is ML FG
             if (Config::Instance()->FfxFGIndex.value_or_default() < 0 ||
                 Config::Instance()->FfxFGIndex.value_or_default() >= State::Instance().ffxFGVersionIds.size())
@@ -475,6 +472,8 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
             _version.parse_version(
                 State::Instance().ffxFGVersionNames[Config::Instance()->FfxFGIndex.value_or_default()]);
 
+            ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
+            ScopedSkipHeapCapture skipHeapCapture {};
             ffxReturnCode_t retCode =
                 FfxApiProxy::D3D12_CreateContext(&InOurHandle->fgContext, &createFg.header, nullptr);
 

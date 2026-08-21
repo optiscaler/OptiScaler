@@ -45,7 +45,7 @@ bool XeFG_Dx12::CreateSwapchainContext(ID3D12Device* device)
     auto createResult = false;
 
 #ifndef DONT_USE_XMX
-    ScopedSkipSpoofing skipSpoofing {};
+    ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 #endif // !DONT_USE_XMX
 
     do
@@ -413,7 +413,7 @@ bool XeFG_Dx12::CreateSwapchain(IDXGIFactory* factory, ID3D12CommandQueue* cmdQu
         _constants.flags |= FG_Flags::DisplayResolutionMVs;
 
 #ifndef DONT_USE_XMX
-    ScopedSkipSpoofing skipSpoofing {};
+    ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 #endif // !DONT_USE_XMX
 
     xefg_swapchain_result_t result;
@@ -584,7 +584,7 @@ bool XeFG_Dx12::CreateSwapchain1(IDXGIFactory* factory, ID3D12CommandQueue* cmdQ
 
     {
 #ifndef DONT_USE_XMX
-        ScopedSkipSpoofing skipSpoofing {};
+        ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 #endif // !DONT_USE_XMX
         result = XeFGProxy::D3D12InitFromSwapChainDesc()(_swapChainContext, hwnd, desc, pFullscreenDesc, realQueue,
                                                          factory12, &params);
@@ -769,7 +769,7 @@ bool XeFG_Dx12::Dispatch()
             _uiComposition ? XEFG_SWAPCHAIN_UI_COMPOSITION_STATE_ENABLED : XEFG_SWAPCHAIN_UI_COMPOSITION_STATE_DISABLED;
 
 #ifndef DONT_USE_XMX
-        ScopedSkipSpoofing skipSpoofing {};
+        ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 #endif // !DONT_USE_XMX
 
         auto uiResult = XeFGProxy::SetUiCompositionState()(_swapChainContext, uiState);
@@ -796,7 +796,7 @@ bool XeFG_Dx12::Dispatch()
             state.WAR_xefgRequestFGToggle = true;
 
 #ifndef DONT_USE_XMX
-            ScopedSkipSpoofing skipSpoofing {};
+            ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 #endif // !DONT_USE_XMX
 
             auto intResult = XeFGProxy::SetNumInterpolatedFrames()(

@@ -60,7 +60,7 @@ static void CheckLumaAndReShade(IDXGIFactory* factory)
     {
         ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
 
-        ScopedSkipSpoofing skipSpoofing {};
+        ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
         creatingD3D12DeviceForLuma = true;
 
         LOG_INFO("Applying Luma DX12 workaround - creating D3D12 device early");

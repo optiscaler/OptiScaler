@@ -559,7 +559,7 @@ bool FFXFeatureVkOn12::InitFFX(const NVSDK_NGX_Parameter* InParameters)
     }
 
     {
-        ScopedSkipSpoofing skipSpoofing {};
+        ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 
         QueryVersionsDx12(_dx11on12Device);
 

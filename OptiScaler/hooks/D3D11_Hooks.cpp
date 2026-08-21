@@ -201,7 +201,7 @@ static HRESULT hkD3D11CreateDevice(IDXGIAdapter* pAdapter, D3D_DRIVER_TYPE Drive
     if (pAdapter != nullptr)
     {
         {
-            ScopedSkipSpoofing skipSpoofing {};
+            ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 
             if (pAdapter->GetDesc(&desc) == S_OK)
             {
@@ -306,7 +306,7 @@ static HRESULT hkD3D11CreateDeviceAndSwapChain(IDXGIAdapter* pAdapter, D3D_DRIVE
     if (pAdapter != nullptr)
     {
         {
-            ScopedSkipSpoofing skipSpoofing {};
+            ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 
             if (pAdapter->GetDesc(&desc) == S_OK)
             {

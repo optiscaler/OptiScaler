@@ -1838,7 +1838,7 @@ HRESULT IFeature_VkwDx12::CreateDx12Device()
 {
     LOG_FUNC();
 
-    ScopedSkipSpoofing skipSpoofing {};
+    ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
     ScopedSkipVulkanHooks skipVulkanHooks {};
 
     HRESULT result;

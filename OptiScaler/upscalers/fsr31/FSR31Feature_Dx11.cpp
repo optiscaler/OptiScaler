@@ -661,7 +661,7 @@ bool FSR31FeatureDx11::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
     }
 
     {
-        ScopedSkipSpoofing skipSpoofing {};
+        ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 
         uint64_t versionCount = 0;
         State::Instance().ffxUpscalerVersionIds.resize(versionCount);

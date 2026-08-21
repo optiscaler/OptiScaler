@@ -30,19 +30,6 @@ inline static bool iequals(const std::string& a, const std::string& b) { return 
 
 #pragma region DXGI Adapter methods
 
-inline static bool SkipSpoofing()
-{
-    auto skip = !Config::Instance()->DxgiSpoofing.value_or_default() || State::Instance().skipSpoofing;
-
-    if (skip)
-    {
-        LOG_TRACE("DxgiSpoofing: {}, skipSpoofing: {}, skipping spoofing",
-                  Config::Instance()->DxgiSpoofing.value_or_default(), State::Instance().skipSpoofing);
-    }
-
-    return skip;
-}
-
 HRESULT DxgiSpoofing::hkGetDesc3(IDXGIAdapter4* This, DXGI_ADAPTER_DESC3* pDesc)
 {
     auto result = o_GetDesc3(This, pDesc);

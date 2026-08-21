@@ -1155,9 +1155,6 @@ void FSRFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
     }
 
     {
-        ScopedSkipSpoofing skipSpoofing {};
-        ScopedSkipHeapCapture skipHeapCapture {};
-
         // Currently 0 is non-ML FG and 1 is ML FG
         if (Config::Instance()->FfxFGIndex.value_or_default() < 0 ||
             Config::Instance()->FfxFGIndex.value_or_default() >= State::Instance().ffxFGVersionIds.size())
@@ -1174,6 +1171,8 @@ void FSRFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
 
         _version.parse_version(State::Instance().ffxFGVersionNames[Config::Instance()->FfxFGIndex.value_or_default()]);
 
+        ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
+        ScopedSkipHeapCapture skipHeapCapture {};
         ffxReturnCode_t retCode = FfxApiProxy::D3D12_CreateContext(&_fgContext, &createFg.header, nullptr);
 
         LOG_INFO("D3D12_CreateContext result: {:X}", retCode);
