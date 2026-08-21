@@ -353,7 +353,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             // Don't enable again if set false because of no nvngx found
             DLSSDRenderPresetOverride.set_from_config(readBool("DLSSD", "RenderPresetOverride"));
 
-            constexpr size_t presetCount = 6;
+            constexpr size_t presetCount = 7;
 
             if (auto setting = readInt("DLSSD", "RenderPresetForAll");
                 setting.has_value() && setting >= 0 && (setting < presetCount || setting == NV_PRESET_LATEST))
