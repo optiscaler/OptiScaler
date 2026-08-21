@@ -5262,6 +5262,14 @@ bool MenuCommon::RenderMenu()
                     ShowHelpMarker("Ignores the value sent by the game\n"
                                    "and uses the value set below");
 
+                    ImGui::SameLine(0.0f, 16.0f * menuResScale);
+
+                    float featuresCurrentSharpness = currentFeature->Sharpness();
+                    if (featuresCurrentSharpness > 0.0f)
+                        ImGui::TextDisabled("(Current: %.3f)", featuresCurrentSharpness);
+                    else
+                        ImGui::TextDisabled("(Current: disabled)");
+
                     ImGui::BeginDisabled(!config->OverrideSharpness.value_or_default());
 
                     float sharpness = config->Sharpness.value_or_default();
