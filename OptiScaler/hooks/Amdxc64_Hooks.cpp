@@ -7,6 +7,7 @@
 #include <proxies/Ntdll_Proxy.h>
 #include <low_latency/input/input_antilag2.h>
 #include <misc/IdentifyGpu.h>
+#include "Streamline_Hooks.h"
 
 #pragma endregion
 
@@ -191,6 +192,15 @@ HRESULT STDMETHODCALLTYPE Amdxc64Hooks::hkAmdExtD3DCreateInterface(IUnknown* pOu
         *ppvObject = amdExtAntiLagApi;
 
         LOG_INFO("Providing the game with AL2 proxy, AL2 inputs should be avaliable");
+
+        return S_OK;
+    }
+#else
+    else if (riid == IID_IAmdExtAntiLagApi && giveGameAl2Proxy && StreamlineHooks::isReflexHooked())
+    {
+        *ppvObject = nullptr;
+
+        LOG_INFO("Killing native AL2");
 
         return S_OK;
     }
