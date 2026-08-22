@@ -4496,22 +4496,28 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 ImGui::Text("DE Ver: %d.%d.%d.%d   GB Ver: %d.%d", featureVer.major, featureVer.minor, featureVer.patch,
                             featureVer.reserved, antighostingVer.major, antighostingVer.minor);
 
-                static std::vector<FlagDefinition> known_flags = {
-                    { "FRAME_INDEX_LINE", 0x00010000, "" },
-                    { "HUD_DETECTION", 0x00020000, "" },
-                    { "DISOCCLUSION_TINT", 0x00040000, "" },
-                    { "ARTIFACTS_DETECTION", 0x00080000, "" },
-                    { "ANTIGHOSTING_ENABLE", 0x00100000, "Enable anti-ghosting correction" },
-                    { "ANTIGHOSTING_RED_TINT", 0x00200000, "Debug: red tint on corrected pixels" },
-                    { "ANTIGHOSTING_SPLIT_SCREEN", 0x00400000, "Debug: split screen comparison" },
-                    { "CAMERA_MV_DEBUG", 0x00800000, "Debug: blue tint where camera MV fallback is used" },
-                    { "TRAPEZOID_VIS", 0x01000000, "Debug: trapezoid zone visualization" },
-                    { "HUDLESS_UI_MASK", 0x02000000, "Use HUD-less as UI mask (DL2 inverted semantics)" },
-                    { "TEMPORAL_HUD_PIN", 0x04000000, "Enable temporal HUD pinning (present-backbuffer stability)" },
-                    { "HUD_INTERPOLATION", 0x08000000, "HUD OF interpolation (0=legacy pin-present, 1=OF warp)" },
-                    { "IGNORE_UI_TEXTURE", 0x10000000, "Ignore dedicated DLSSG.UI texture (force legacy HUD path)" },
-                    { "DP4A_ACTIVE", 0x20000000, "OF pipeline using dp4a-accelerated SSD (SM 6.4+)" },
-                    { "PIN_BACKBUFFER", 0x40000000, "Pin DLSSG.Backbuffer to subframe-1 snapshot across MFG frame" }
+                static std::vector<FlagDefinition> common_flags = {
+                    { "Antighosting (GB)", 0x00100000, "Enable anti-ghosting correction" },
+                    { "Temporal HUD pin", 0x04000000, "Enable temporal HUD pinning (present-backbuffer stability)" }
+                };
+
+                static std::vector<FlagDefinition> uncommon_flags = {
+                    //{ "Hudless UI mask", 0x02000000, "Use HUD-less as UI mask (DL2 inverted semantics)" },
+                    { "HUD interpolation", 0x08000000, "HUD OF interpolation (0=legacy pin-present, 1=OF warp)" },
+                    { "Ignore UI texture", 0x10000000, "Ignore dedicated DLSSG.UI texture (force legacy HUD path)" },
+                    //{ "Dp4a active", 0x20000000, "OF pipeline using dp4a-accelerated SSD (SM 6.4+)" },
+                    { "Pin backbuffer", 0x40000000, "Pin DLSSG.Backbuffer to subframe-1 snapshot across MFG frame" }
+                };
+
+                static std::vector<FlagDefinition> debug_flags = {
+                    { "Antighosting red tint", 0x00200000, "Debug: red tint on corrected pixels" },
+                    { "Antighosting split screen", 0x00400000, "Debug: split screen comparison" },
+                    { "Frame index line", 0x00010000, "" },
+                    { "HUD detection", 0x00020000, "" },
+                    { "Disocclusion tint", 0x00040000, "" },
+                    { "Artifacts detection", 0x00080000, "" },
+                    { "Camera MV debug", 0x00800000, "Debug: blue tint where camera MV fallback is used" },
+                    { "Generic visualization", 0x01000000, "Debug: trapezoid zone visualization" }
                 };
 
                 uint32_t temp_flags = config->NvngxFGDispatchFlags.value_or_default();
@@ -4534,14 +4540,32 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 if (auto ch = ScopedCollapsingHeader("Active DispatchFlags"); ch.IsHeaderOpen())
                 {
                     ScopedIndent indent {};
-                    for (const auto& flag : known_flags)
-                    {
-                        changed |= ImGui::CheckboxFlags(flag.name.c_str(), &temp_flags, flag.mask);
 
-                        if (ImGui::IsItemHovered() && !flag.description.empty())
+                    auto render_flags = [&](const std::vector<FlagDefinition>& flags)
+                    {
+                        for (const auto& flag : flags)
                         {
-                            ImGui::SetTooltip("%s", flag.description.c_str());
+                            changed |= ImGui::CheckboxFlags(flag.name.c_str(), &temp_flags, flag.mask);
+
+                            if (ImGui::IsItemHovered() && !flag.description.empty())
+                            {
+                                ImGui::SetTooltip("%s", flag.description.c_str());
+                            }
                         }
+                    };
+
+                    ImGui::TextDisabled("Common");
+                    render_flags(common_flags);
+
+                    ImGui::Spacing();
+                    ImGui::TextDisabled("Uncommon");
+                    render_flags(uncommon_flags);
+
+                    if (config->NvngxFGShowDebug.value_or_default())
+                    {
+                        ImGui::Spacing();
+                        ImGui::TextDisabled("Debug");
+                        render_flags(debug_flags);
                     }
                 }
 
