@@ -1096,6 +1096,13 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
     }
 #endif
 
+    if (*ppPresentQueue != nullptr)
+    {
+        auto state = &State::Instance();
+        state->currentCommandQueue = (ID3D12CommandQueue*) *ppPresentQueue;
+        _device = state->currentCommandQueue;
+    }
+
     if (State::Instance().activeFgOutput == FGOutput::FSRFG &&
         Config::Instance()->FGUseMutexForSwapchain.value_or_default())
     {
