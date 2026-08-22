@@ -1128,11 +1128,19 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
 #endif
 
     if (State::Instance().currentFG != nullptr && Config::Instance()->FGUseMutexForSwapchain.value_or_default() &&
-        State::Instance().currentFG->Mutex.getOwner() != 6677 && State::Instance().currentFG->Mutex.getOwner() != 6678)
+        State::Instance().currentFG->Mutex.getOwner() != 6677 &&
+        State::Instance().currentFG->Mutex.getOwner() != 6678 && State::Instance().currentFG->Mutex.getOwner() != 2)
     {
         LOG_TRACE("Waiting ffxMutex 3, current: {}", State::Instance().currentFG->Mutex.getOwner());
         State::Instance().currentFG->Mutex.lock(3);
         LOG_TRACE("Accuired ffxMutex: {}", State::Instance().currentFG->Mutex.getOwner());
+    }
+
+    auto state = &State::Instance();
+    if (*ppPresentQueue != nullptr && state->activeFgOutput == FGOutput::XeFG && state->currentFG != nullptr)
+    {
+        state->currentCommandQueue = (ID3D12CommandQueue*) *ppPresentQueue;
+        _device = state->currentCommandQueue;
     }
 
     HRESULT result = E_FAIL;
