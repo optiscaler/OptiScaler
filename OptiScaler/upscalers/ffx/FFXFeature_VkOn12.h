@@ -17,6 +17,8 @@ class FFXFeatureVkOn12 : public FFXFeature, public IFeature_VkwDx12
   public:
     feature_version Version() override { return FFXFeature::Version(); }
     Upscaler GetUpscalerType() const final { return Upscaler::FFX_on12; }
+    API Api() const override { return IFeature_VkwDx12::Api(); }
+    bool IsWithDx12() override { return IFeature_VkwDx12::IsWithDx12(); }
 
     FFXFeatureVkOn12(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters);
 

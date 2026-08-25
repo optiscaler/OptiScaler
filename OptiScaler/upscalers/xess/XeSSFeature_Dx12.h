@@ -10,6 +10,8 @@ class XeSSFeatureDx12 : public XeSSFeature, public IFeature_Dx12
   public:
     feature_version Version() override { return XeSSFeature::Version(); }
     Upscaler GetUpscalerType() const final { return Upscaler::XeSS; }
+    API Api() const override { return IFeature_Dx12::Api(); }
+    bool CallsUpscalerEndByItself() override { return IFeature_Dx12::CallsUpscalerEndByItself(); }
 
     XeSSFeatureDx12(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters)
         : IFeature(InHandleId, InParameters), IFeature_Dx12(InHandleId, InParameters),

@@ -16,6 +16,7 @@ class DLSSFeatureVk : public DLSSFeature, public IFeature_Vk
 
     feature_version Version() override { return DLSSFeature::Version(); }
     Upscaler GetUpscalerType() const final { return DLSSFeature::GetUpscalerType(); }
+    API Api() const override { return IFeature_Vk::Api(); }
 
     bool IsWithDx12() override { return false; }
 

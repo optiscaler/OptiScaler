@@ -59,11 +59,6 @@ bool XeSSFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
 
     GetRenderResolution(InParameters, &params.inputWidth, &params.inputHeight);
 
-    float ssMulti = Config::Instance()->OutputScalingMultiplier.value_or(1.5f);
-
-    bool useSS =
-        Config::Instance()->OutputScalingEnabled.value_or_default() && (LowResMV() || RenderWidth() == DisplayWidth());
-
     LOG_DEBUG("Input Resolution: {0}x{1}", params.inputWidth, params.inputHeight);
 
     ID3D12Resource* paramColor;

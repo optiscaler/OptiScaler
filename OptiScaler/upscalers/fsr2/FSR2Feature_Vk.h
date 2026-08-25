@@ -21,6 +21,7 @@ class FSR2FeatureVk : public FSR2Feature, public IFeature_Vk
 
     feature_version Version() override { return FSR2Feature::Version(); }
     Upscaler GetUpscalerType() const final { return Upscaler::FSR22; }
+    API Api() const override { return IFeature_Vk::Api(); }
 
     bool Init(VkInstance InInstance, VkPhysicalDevice InPD, VkDevice InDevice, VkCommandBuffer InCmdList,
               PFN_vkGetInstanceProcAddr InGIPA, PFN_vkGetDeviceProcAddr InGDPA,

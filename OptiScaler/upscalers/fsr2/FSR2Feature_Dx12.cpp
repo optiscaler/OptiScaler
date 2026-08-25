@@ -37,9 +37,6 @@ bool FSR2FeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
     GetRenderResolution(InParameters, &params.renderSize.width, &params.renderSize.height);
     LOG_DEBUG("Input Resolution: {0}x{1}", params.renderSize.width, params.renderSize.height);
 
-    bool useSS =
-        Config::Instance()->OutputScalingEnabled.value_or_default() && (LowResMV() || RenderWidth() == DisplayWidth());
-
     params.commandList = ffxGetCommandListDX12(InCommandList);
 
     ID3D12Resource* paramColor;

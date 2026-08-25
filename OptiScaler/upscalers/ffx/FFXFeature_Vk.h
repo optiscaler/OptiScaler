@@ -21,6 +21,7 @@ class FFXFeatureVk : public FFXFeature, public IFeature_Vk
 
     feature_version Version() override { return FFXFeature::Version(); }
     Upscaler GetUpscalerType() const final { return Upscaler::FFX; }
+    API Api() const override { return IFeature_Vk::Api(); }
 
     bool IsWithDx12() final { return false; }
 

@@ -26,6 +26,7 @@ class FSR2FeatureVk212 : public FSR2Feature212, public IFeature_Vk
 
     feature_version Version() override { return FSR2Feature212::Version(); }
     Upscaler GetUpscalerType() const final { return Upscaler::FSR21; }
+    API Api() const override { return IFeature_Vk::Api(); }
 
     bool IsWithDx12() override { return false; }
 };
