@@ -102,18 +102,8 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
     if (!InOurHandle)
         return NVSDK_NGX_Result_FAIL_InvalidParameter;
 
-    if (inited && InOurHandle->fgContext)
-    {
-        auto retCode = FfxApiProxy::D3D12_DestroyContext(&InOurHandle->fgContext, nullptr);
-
-        if (retCode == FFX_API_RETURN_OK)
-            InOurHandle->fgContext = nullptr;
-        else
-            LOG_WARN("Could destroy FFX context");
-    }
-
     InOurHandle->device->Release();
-    delete InOurHandle;
+    delete InOurHandle; // destroys FFX context automatically
 
     return NVSDK_NGX_Result_Success;
 }
@@ -266,6 +256,8 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
     InParameters->Get("DLSSG.MVecs", &motionVectors);
     InParameters->Get("DLSSG.OutputInterpolated", &output);
 
+    auto outputFfx = ffxApiGetResourceDX12(output, FFX_API_RESOURCE_STATE_UNORDERED_ACCESS);
+
     uint32_t depthInverted = 0;
     InParameters->Get("DLSSG.DepthInverted", &depthInverted);
 
@@ -275,12 +267,6 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
     float cameraNear {};
     float cameraFar {};
     float cameraFovAngleVertical {};
-
-    float mvecScaleX = 1.0f;
-    float mvecScaleY = 1.0f;
-
-    float jitterOffsetX = 0.0f;
-    float jitterOffsetY = 0.0f;
 
     bool depthPlaneInfinite = false;
 
@@ -377,19 +363,26 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
     backendDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_DX12;
     backendDesc.device = InOurHandle->device;
 
-    if (State::Instance().fgChanged && InOurHandle->fgContext)
-    {
-        auto retCode = FfxApiProxy::D3D12_DestroyContext(&InOurHandle->fgContext, nullptr);
+    const bool outputMismatch = outputFfx.description.width != InOurHandle->swapchainWidth ||
+                                outputFfx.description.height != InOurHandle->swapchainHeight;
 
-        if (retCode == FFX_API_RETURN_OK)
-            InOurHandle->fgContext = nullptr;
-        else
-            LOG_WARN("Could destroy FFX context");
+    if ((State::Instance().fgChanged || outputMismatch) && InOurHandle->fgContext && InOurHandle->fgContext->ctx)
+    {
+        if (outputMismatch)
+        {
+            InOurHandle->swapchainWidth = outputFfx.description.width;
+            InOurHandle->swapchainHeight = outputFfx.description.height;
+        }
+
+        Util::DelayedDestroy(std::move(InOurHandle->fgContext));
     }
 
     State::Instance().fgChanged = false;
 
-    if (InOurHandle->fgContext == nullptr)
+    if (!InOurHandle->fgContext)
+        InOurHandle->fgContext = std::make_unique<ffxContext_wrap>();
+
+    if (InOurHandle->fgContext->ctx == nullptr)
     {
         ffxQueryDescGetVersions versionQuery {};
         versionQuery.header.type = FFX_API_QUERY_DESC_TYPE_GET_VERSIONS;
@@ -410,8 +403,8 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
         ffxCreateContextDescFrameGeneration createFg {};
         createFg.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION;
 
-        createFg.displaySize = { InOurHandle->swapchainWidth, InOurHandle->swapchainHeight };
-        createFg.maxRenderSize = { InOurHandle->swapchainWidth, InOurHandle->swapchainHeight };
+        createFg.displaySize = { outputFfx.description.width, outputFfx.description.height };
+        createFg.maxRenderSize = { outputFfx.description.width, outputFfx.description.height };
 
         // TODO: consider grabbing that in some other way, maybe depth and reinit if higher than what we set
         // createFg.maxRenderSize = { fgConstants.displayWidth, fgConstants.displayHeight };
@@ -475,7 +468,7 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
             ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
             ScopedSkipHeapCapture skipHeapCapture {};
             ffxReturnCode_t retCode =
-                FfxApiProxy::D3D12_CreateContext(&InOurHandle->fgContext, &createFg.header, nullptr);
+                FfxApiProxy::D3D12_CreateContext(&InOurHandle->fgContext->ctx, &createFg.header, nullptr);
 
             if (retCode != FFX_API_RETURN_OK)
             {
@@ -484,12 +477,6 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
             }
         }
     }
-
-    InParameters->Get("DLSSG.MvecScaleX", &mvecScaleX);
-    InParameters->Get("DLSSG.MvecScaleY", &mvecScaleY);
-
-    InParameters->Get("DLSSG.JitterOffsetX", &jitterOffsetX);
-    InParameters->Get("DLSSG.JitterOffsetY", &jitterOffsetY);
 
     InParameters->Get("DLSSG.Reset", &reset);
 
@@ -505,18 +492,36 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
         configureDesc.flags |= FFX_FRAMEGENERATION_FLAG_DRAW_DEBUG_VIEW;
 
     configureDesc.frameID = InOurHandle->lastFrameId;
-    configureDesc.generationRect = { 0, 0, (int) InOurHandle->swapchainWidth, (int) InOurHandle->swapchainHeight };
+
+    if (InParameters->Get("DLSSG.BackbufferSubrectBaseX", &configureDesc.generationRect.left) !=
+            NVSDK_NGX_Result_Success ||
+        InParameters->Get("DLSSG.BackbufferSubrectBaseY", &configureDesc.generationRect.top) !=
+            NVSDK_NGX_Result_Success ||
+        InParameters->Get("DLSSG.BackbufferSubrectWidth", &configureDesc.generationRect.width) !=
+            NVSDK_NGX_Result_Success ||
+        InParameters->Get("DLSSG.BackbufferSubrectHeight", &configureDesc.generationRect.height) !=
+            NVSDK_NGX_Result_Success)
+    {
+        // Fallback
+        configureDesc.generationRect = { 0, 0, (int) InOurHandle->swapchainWidth, (int) InOurHandle->swapchainHeight };
+    }
 
     if (hudless)
         configureDesc.HUDLessColor = ffxApiGetResourceDX12(hudless, FFX_API_RESOURCE_STATE_COPY_DEST);
 
-    auto retCode = FfxApiProxy::D3D12_Configure(&InOurHandle->fgContext, &configureDesc.header);
+    auto retCode = FfxApiProxy::D3D12_Configure(&InOurHandle->fgContext->ctx, &configureDesc.header);
+
+    if (retCode != FFX_API_RETURN_OK)
+    {
+        LOG_ERROR("Failed to configure FFX");
+        return NVSDK_NGX_Result_Fail;
+    }
 
     ffxConfigureDescGlobalDebug1 fgLogging = {};
     fgLogging.header.type = FFX_API_CONFIGURE_DESC_TYPE_GLOBALDEBUG1;
     fgLogging.fpMessage = &fgLogCallback;
     fgLogging.debugLevel = FFX_API_CONFIGURE_GLOBALDEBUG_LEVEL_VERBOSE;
-    ffxReturnCode_t loggingRetCode = FfxApiProxy::D3D12_Configure(&InOurHandle->fgContext, &fgLogging.header);
+    ffxReturnCode_t loggingRetCode = FfxApiProxy::D3D12_Configure(&InOurHandle->fgContext->ctx, &fgLogging.header);
 
     ffxDispatchDescFrameGenerationPrepareCameraInfo dfgCameraData {};
     dfgCameraData.header.type = FFX_API_DISPATCH_DESC_TYPE_FRAMEGENERATION_PREPARE_CAMERAINFO;
@@ -549,10 +554,16 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
     dispatchPrepareDesc.frameID = InOurHandle->lastFrameId;
     dispatchPrepareDesc.flags = 0;
 
-    auto depthDesc = depth->GetDesc();
-    dispatchPrepareDesc.renderSize = { (uint32_t) depthDesc.Width, depthDesc.Height };
-    dispatchPrepareDesc.jitterOffset = { jitterOffsetX, jitterOffsetY };
-    dispatchPrepareDesc.motionVectorScale = { mvecScaleX, mvecScaleY };
+    // Assumes that we never get dilated depth
+    InParameters->Get("DLSSG.DepthSubrectWidth", &dispatchPrepareDesc.renderSize.width);
+    InParameters->Get("DLSSG.DepthSubrectHeight", &dispatchPrepareDesc.renderSize.height);
+
+    InParameters->Get("DLSSG.JitterOffsetX", &dispatchPrepareDesc.jitterOffset.x);
+    InParameters->Get("DLSSG.JitterOffsetY", &dispatchPrepareDesc.jitterOffset.y);
+
+    InParameters->Get("DLSSG.MvecScaleX", &dispatchPrepareDesc.motionVectorScale.x);
+    InParameters->Get("DLSSG.MvecScaleY", &dispatchPrepareDesc.motionVectorScale.y);
+
     dispatchPrepareDesc.viewSpaceToMetersFactor = 1.0f; // TODO: try query
     dispatchPrepareDesc.frameTimeDelta = 1000.0f / 60.0f;
 
@@ -560,10 +571,16 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
     dispatchPrepareDesc.cameraFar = cameraFar;
     dispatchPrepareDesc.cameraFovAngleVertical = cameraFovAngleVertical;
 
-    dispatchPrepareDesc.motionVectors = ffxApiGetResourceDX12(motionVectors, FFX_API_RESOURCE_STATE_UNORDERED_ACCESS);
-    dispatchPrepareDesc.depth = ffxApiGetResourceDX12(depth, FFX_API_RESOURCE_STATE_COMPUTE_READ);
+    dispatchPrepareDesc.motionVectors = ffxApiGetResourceDX12(motionVectors, FFX_API_RESOURCE_STATE_COPY_DEST);
+    dispatchPrepareDesc.depth = ffxApiGetResourceDX12(depth, FFX_API_RESOURCE_STATE_COPY_DEST);
 
-    retCode = FfxApiProxy::D3D12_Dispatch(&InOurHandle->fgContext, &dispatchPrepareDesc.header);
+    retCode = FfxApiProxy::D3D12_Dispatch(&InOurHandle->fgContext->ctx, &dispatchPrepareDesc.header);
+
+    if (retCode != FFX_API_RETURN_OK)
+    {
+        LOG_ERROR("Failed to dispatch[1] FFX");
+        return NVSDK_NGX_Result_Fail;
+    }
 
     ffxDispatchDescFrameGeneration dispatchDesc {};
     dispatchDesc.header.type = FFX_API_DISPATCH_DESC_TYPE_FRAMEGENERATION;
@@ -571,7 +588,6 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
 
     dispatchDesc.commandList = InCmdList;
     dispatchDesc.frameID = InOurHandle->lastFrameId;
-    dispatchDesc.generationRect = { 0, 0, (int) InOurHandle->swapchainWidth, (int) InOurHandle->swapchainHeight };
 
     dispatchDesc.backbufferTransferFunction =
         hdr ? FFX_API_BACKBUFFER_TRANSFER_FUNCTION_PQ : FFX_API_BACKBUFFER_TRANSFER_FUNCTION_SRGB;
@@ -589,16 +605,18 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
     }
 
     dispatchDesc.numGeneratedFrames = 1;
-    dispatchDesc.outputs[0] = ffxApiGetResourceDX12(output, FFX_API_RESOURCE_STATE_UNORDERED_ACCESS);
+    dispatchDesc.outputs[0] = outputFfx;
     dispatchDesc.presentColor = ffxApiGetResourceDX12(backbuffer, FFX_API_RESOURCE_STATE_COMPUTE_READ);
     dispatchDesc.reset = reset;
 
-    retCode = FfxApiProxy::D3D12_Dispatch(&InOurHandle->fgContext, &dispatchDesc.header);
+    dispatchDesc.generationRect = configureDesc.generationRect;
+
+    retCode = FfxApiProxy::D3D12_Dispatch(&InOurHandle->fgContext->ctx, &dispatchDesc.header);
 
     if (retCode != FFX_API_RETURN_OK)
     {
-        LOG_ERROR("Failed to dispatch FFX");
-        return NVSDK_NGX_Result_Fail;
+        LOG_ERROR("Failed to dispatch[2] FFX");
+        // return NVSDK_NGX_Result_Fail;
     }
 
     ID3D12Resource* outputReal = nullptr;
@@ -613,6 +631,17 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
             CopyTexture(InCmdList, &outputRealFfx, &dispatchDesc.outputs[0]);
         else
             CopyTexture(InCmdList, &outputRealFfx, &dispatchDesc.presentColor);
+
+        if (retCode != FFX_API_RETURN_OK)
+        {
+            CopyTexture(InCmdList, &dispatchDesc.outputs[0], &dispatchDesc.presentColor);
+        }
+    }
+
+    if (retCode != FFX_API_RETURN_OK)
+    {
+        // LOG_ERROR("Failed to dispatch[2] FFX");
+        return NVSDK_NGX_Result_Fail;
     }
 
     return NVSDK_NGX_Result_Success;

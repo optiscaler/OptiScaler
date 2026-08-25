@@ -2,11 +2,28 @@
 #include "IFGNvngx.h"
 #include <ffx_framegeneration.h>
 #include <d3d12.h>
+#include <proxies/FfxApi_Proxy.h>
+
+struct ffxContext_wrap
+{
+    ffxContext ctx = nullptr;
+
+    ~ffxContext_wrap()
+    {
+        if (!ctx)
+            return;
+
+        auto retCode = FfxApiProxy::D3D12_DestroyContext(&ctx, nullptr);
+
+        if (retCode != FFX_API_RETURN_OK)
+            LOG_WARN("Could destroy FFX context");
+    }
+};
 
 struct Nvngx_FFX_Handle
 {
     unsigned int Id;
-    ffxContext fgContext = nullptr;
+    std::unique_ptr<ffxContext_wrap> fgContext {};
     ID3D12Device* device = nullptr;
 
     uint32_t swapchainWidth = 0;
