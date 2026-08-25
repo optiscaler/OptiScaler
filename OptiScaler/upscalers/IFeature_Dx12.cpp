@@ -165,6 +165,9 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
                   rcasConstants.DepthIsReversed = DepthInverted();
                   rcasConstants.IsHdr = IsHdr();
 
+                  // Restore value
+                  _sharpness = localSharpness;
+
                   InParameters->Get(NVSDK_NGX_Parameter_MV_Scale_X, &rcasConstants.MvScaleX);
                   InParameters->Get(NVSDK_NGX_Parameter_MV_Scale_Y, &rcasConstants.MvScaleY);
 

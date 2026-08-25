@@ -95,11 +95,12 @@ class FSR31FeatureDx11 : public FSR31Feature, public IFeature_Dx11
   public:
     FSR31FeatureDx11(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters);
 
-    bool Init(ID3D11Device* InDevice, ID3D11DeviceContext* InContext, NVSDK_NGX_Parameter* InParameters) override;
-    bool Evaluate(ID3D11DeviceContext* DeviceContext, NVSDK_NGX_Parameter* InParameters) override;
+    bool InitInternal(ID3D11DeviceContext* InContext, NVSDK_NGX_Parameter* InParameters) override;
+    bool EvaluateInternal(ID3D11DeviceContext* DeviceContext, NVSDK_NGX_Parameter* InParameters) override;
 
     feature_version Version() override { return feature_version { 3, 1, 2 }; }
     Upscaler GetUpscalerType() const final { return Upscaler::FSR31; }
+    API Api() const override { return IFeature_Dx11::Api(); }
 
     bool IsWithDx12() final { return false; }
 
