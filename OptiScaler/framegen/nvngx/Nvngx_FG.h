@@ -16,6 +16,7 @@ class Nvngx_FG
     {
         unsigned int id;
         NVSDK_NGX_Handle* nativeHandle = nullptr;
+        std::shared_mutex handleMutex {}; // FFX is not mutex'ed and replies on this
     };
 
     static inline std::atomic_uint32_t lastIdCreated = 0;

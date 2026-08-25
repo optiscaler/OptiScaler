@@ -276,6 +276,9 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_CreateFeature(ID3D12GraphicsCommandList* InCmdL
         return NVSDK_NGX_Result_FAIL_InvalidParameter;
 
     auto proxyHandle = new Nvngx_FG_Handle(lastIdCreated++ + NVNGX_PROVIDER_ID_OFFSET);
+
+    std::scoped_lock lock(proxyHandle->handleMutex);
+
     auto result = provider->D3D12_CreateFeature(InCmdList, InFeatureID, InParameters, &proxyHandle->nativeHandle);
 
     *OutHandle = (NVSDK_NGX_Handle*) proxyHandle;
@@ -299,6 +302,8 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
         return NVSDK_NGX_Result_FAIL_FeatureNotFound;
 
     // LOG_TRACE("Handle received from the game: {:X}", (uint64_t) InHandle);
+
+    std::scoped_lock lock(((Nvngx_FG_Handle*) InHandle)->handleMutex);
 
     auto result = provider->D3D12_ReleaseFeature(((Nvngx_FG_Handle*) InHandle)->nativeHandle);
 
@@ -335,6 +340,8 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InCm
 
     if (InFeatureHandle->Id < NVNGX_PROVIDER_ID_OFFSET)
         return NVSDK_NGX_Result_FAIL_FeatureNotFound;
+
+    std::shared_lock lock(((Nvngx_FG_Handle*) InFeatureHandle)->handleMutex);
 
     bool applyHudCutoff = Config::Instance()->FGHudCutoff.value_or_default() > 0.0f ||
                           State::Instance().gameQuirks & GameQuirk::FSRFGHudlessMismatchFixup;
