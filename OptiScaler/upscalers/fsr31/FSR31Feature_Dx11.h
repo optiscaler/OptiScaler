@@ -101,6 +101,7 @@ class FSR31FeatureDx11 : public FSR31Feature, public IFeature_Dx11
     feature_version Version() override { return feature_version { 3, 1, 2 }; }
     Upscaler GetUpscalerType() const final { return Upscaler::FSR31; }
     API Api() const override { return IFeature_Dx11::Api(); }
+    bool CallsUpscalerEndByItself() override { return IFeature_Dx11::CallsUpscalerEndByItself(); }
 
     bool IsWithDx12() final { return false; }
 

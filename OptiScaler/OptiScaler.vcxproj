@@ -338,6 +338,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="low_latency\input\input_reflex.h" />
     <ClInclude Include="low_latency\input\input_xell.h" />
     <ClInclude Include="low_latency\input\input_antilag2.h" />
+    <ClInclude Include="shaders\magnifier\Magnifier_Dx11.h" />
     <ClInclude Include="menu\input\input_system.h" />
     <ClInclude Include="menu\input\input_system_internal.h" />
     <ClInclude Include="framegen\nvngx\Nvngx_FFX.h" />
@@ -373,6 +374,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="shaders\rcas\shaders\RCAS_Shader.h" />
     <ClInclude Include="shaders\Shader_Common.h" />
     <ClInclude Include="misc\SkipSpoof.h" />
+    <ClInclude Include="shaders\Shader_Dx11.h" />
     <ClInclude Include="spoofing\User32_Spoofing.h" />
     <ClInclude Include="hooks\VulkanwDx12_Hooks.h" />
     <ClInclude Include="misc\IdentifyGpu.h" />
@@ -620,6 +622,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="low_latency\input\input_reflex.cpp" />
     <ClCompile Include="low_latency\input\input_xell.cpp" />
     <ClCompile Include="low_latency\input\input_antilag2.cpp" />
+    <ClCompile Include="shaders\magnifier\Magnifier_Dx11.cpp" />
     <ClCompile Include="menu\input\input_system.cpp" />
     <ClCompile Include="menu\input\input_system_cursor.cpp" />
     <ClCompile Include="menu\input\input_system_detours.cpp" />
@@ -671,6 +674,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="shaders\Shader_Dx12.cpp" />
     <ClCompile Include="shaders\Shader_Vk.cpp" />
     <ClCompile Include="misc\SkipSpoof.cpp" />
+    <ClCompile Include="shaders\Shader_Dx11.cpp" />
     <ClCompile Include="spoofing\Dxgi_Spoofing.cpp" />
     <ClCompile Include="spoofing\User32_Spoofing.cpp" />
     <ClCompile Include="spoofing\Vulkan_Spoofing.cpp" />

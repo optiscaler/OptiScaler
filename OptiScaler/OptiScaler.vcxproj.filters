@@ -938,6 +938,12 @@
     <ClInclude Include="misc\SkipSpoof.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="shaders\Shader_Dx11.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\magnifier\Magnifier_Dx11.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Config.cpp">
@@ -1506,6 +1512,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="misc\SkipSpoof.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="shaders\Shader_Dx11.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="shaders\magnifier\Magnifier_Dx11.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

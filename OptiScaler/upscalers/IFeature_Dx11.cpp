@@ -1,6 +1,7 @@
 #include <pch.h>
 #include "IFeature_Dx11.h"
 #include <State.h>
+#include <upscaler_time/UpscalerTime_Dx11.h>
 
 bool IFeature_Dx11::Init(ID3D11Device* InDevice, ID3D11DeviceContext* InContext, NVSDK_NGX_Parameter* InParameters)
 {
@@ -29,7 +30,7 @@ bool IFeature_Dx11::Init(ID3D11Device* InDevice, ID3D11DeviceContext* InContext,
         OutputScaler = std::make_unique<OS_Dx11>("Output Scaling", InDevice, (TargetWidth() < DisplayWidth()));
         RCAS = std::make_unique<RCAS_Dx11>("RCAS", InDevice);
         Bias = std::make_unique<Bias_Dx11>("Bias", InDevice); // TODO: not needed on DLSS/DLSSD
-        // Magnifier = std::make_unique<Magnifier_Dx11>("Magnifier", InDevice);
+        Magnifier = std::make_unique<Magnifier_Dx11>("Magnifier", InDevice);
     }
 
     return result;
@@ -37,14 +38,6 @@ bool IFeature_Dx11::Init(ID3D11Device* InDevice, ID3D11DeviceContext* InContext,
 
 bool IFeature_Dx11::Evaluate(ID3D11DeviceContext* DeviceContext, NVSDK_NGX_Parameter* InParameters)
 {
-    // TODO: what about DLSS/DLSSD as they are special with RCAS
-    // ; bool rcasEnabled = Version() >= feature_version { 2, 5, 1 };
-    // if (!RCAS->IsInit())
-    //     Config::Instance()->RcasEnabled.set_volatile_value(false);
-
-    // if (!OutputScaler->IsInit())
-    //     Config::Instance()->OutputScalingEnabled.set_volatile_value(false);
-
     ID3D11ShaderResourceView* restoreSRVs[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
     ID3D11SamplerState* restoreSamplerStates[D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT] = {};
     ID3D11Buffer* restoreCBVs[D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT] = {};
@@ -240,6 +233,36 @@ bool IFeature_Dx11::Evaluate(ID3D11DeviceContext* DeviceContext, NVSDK_NGX_Param
                                      return false;
                                  }
                                  return true;
+                             } });
+    }
+
+    if (Magnifier->ShouldRun())
+    {
+        pipeline.push_back({ // Setup
+                             [&](ID3D11Resource* nextOutput) -> ID3D11Resource*
+                             {
+                                 magnifierRanSuccess = false;
+
+                                 if (Magnifier->CreateBufferResource(Device, nextOutput))
+                                 {
+                                     return Magnifier->Buffer();
+                                 }
+
+                                 return nullptr;
+                             },
+
+                             // Dispatch
+                             [&](ID3D11Resource* input, ID3D11Resource* output) -> bool
+                             {
+                                 if (!Magnifier->CanRender() || !paramMotion || !paramOutput)
+                                     return true;
+
+                                 UpscalerTimeDx11::UpscaleEnd(DeviceContext);
+
+                                 magnifierRanSuccess = Magnifier->Dispatch(
+                                     Device, DeviceContext, (ID3D11Texture2D*) input, (ID3D11Texture2D*) output);
+
+                                 return magnifierRanSuccess;
                              } });
     }
 

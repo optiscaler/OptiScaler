@@ -9,199 +9,29 @@
 
 #include <Config.h>
 
-inline static DXGI_FORMAT TranslateTypelessFormats(DXGI_FORMAT format)
-{
-    switch (format)
-    {
-    case DXGI_FORMAT_R32G32B32A32_TYPELESS:
-        return DXGI_FORMAT_R32G32B32A32_FLOAT;
-    case DXGI_FORMAT_R32G32B32_TYPELESS:
-        return DXGI_FORMAT_R32G32B32_FLOAT;
-    case DXGI_FORMAT_R16G16B16A16_TYPELESS:
-        return DXGI_FORMAT_R16G16B16A16_FLOAT;
-    case DXGI_FORMAT_R10G10B10A2_TYPELESS:
-        return DXGI_FORMAT_R10G10B10A2_UINT;
-    case DXGI_FORMAT_R8G8B8A8_TYPELESS:
-        return DXGI_FORMAT_R8G8B8A8_UNORM;
-    case DXGI_FORMAT_B8G8R8A8_TYPELESS:
-        return DXGI_FORMAT_B8G8R8A8_UNORM;
-    case DXGI_FORMAT_R16G16_TYPELESS:
-        return DXGI_FORMAT_R16G16_FLOAT;
-    case DXGI_FORMAT_R32G32_TYPELESS:
-        return DXGI_FORMAT_R32G32_FLOAT;
-    case DXGI_FORMAT_R24G8_TYPELESS:
-        return DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
-    case DXGI_FORMAT_D24_UNORM_S8_UINT:
-        return DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
-    case DXGI_FORMAT_R32G8X24_TYPELESS:
-        return DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
-    case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
-        return DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
-    case DXGI_FORMAT_R32_TYPELESS:
-        return DXGI_FORMAT_R32_FLOAT;
-    case DXGI_FORMAT_D32_FLOAT:
-        return DXGI_FORMAT_R32_FLOAT;
-    default:
-        return format;
-    }
-}
-
 bool RCAS_Dx11::CreateBufferResource(ID3D11Device* InDevice, ID3D11Resource* InResource)
 {
-    if (InDevice == nullptr || InResource == nullptr)
-        return false;
-
-    ID3D11Texture2D* originalTexture = nullptr;
-    auto result = InResource->QueryInterface(IID_PPV_ARGS(&originalTexture));
-    if (result != S_OK)
-        return false;
-
-    D3D11_TEXTURE2D_DESC texDesc;
-    originalTexture->Release();
-    originalTexture->GetDesc(&texDesc);
-
-    if (_buffer != nullptr)
-    {
-        D3D11_TEXTURE2D_DESC bufDesc;
-        _buffer->GetDesc(&bufDesc);
-
-        if (bufDesc.Width != (UINT64) (texDesc.Width) || bufDesc.Height != (UINT) (texDesc.Height) ||
-            bufDesc.Format != texDesc.Format)
-        {
-            _buffer->Release();
-            _buffer = nullptr;
-        }
-        else
-            return true;
-    }
-
-    LOG_DEBUG("[{0}] Start!", _name);
-
-    texDesc.BindFlags |= D3D11_BIND_UNORDERED_ACCESS;
-
-    result = InDevice->CreateTexture2D(&texDesc, nullptr, &_buffer);
-    if (result != S_OK)
-    {
-        LOG_ERROR("[{0}] CreateCommittedResource result: {1:x}", _name, result);
-        return false;
-    }
-
-    return true;
+    return CreateBufferResourceCommon(InDevice, InResource, _buffer, [](D3D11_TEXTURE2D_DESC& desc)
+                                      { desc.BindFlags |= D3D11_BIND_UNORDERED_ACCESS; });
 }
 
 bool RCAS_Dx11::InitializeViews(ID3D11Texture2D* InResource, ID3D11Texture2D* InMotionVectors,
                                 ID3D11Texture2D* OutResource)
 {
-    if (!_init || InResource == nullptr || InMotionVectors == nullptr || OutResource == nullptr)
-        return false;
+    auto resultInput = InitializeSRV(InResource, _currentInResource, _srvInput);
+    auto resultMvs = InitializeSRV(InMotionVectors, _currentMotionVectors, _srvMotionVectors);
+    auto resultOutput = InitializeUAV(OutResource, _currentOutResource, _uavOutput);
 
-    D3D11_TEXTURE2D_DESC desc;
-
-    if (InResource != _currentInResource || _srvInput == nullptr)
-    {
-        if (_srvInput != nullptr)
-            _srvInput->Release();
-
-        InResource->GetDesc(&desc);
-
-        // Create SRV for input texture
-        D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-        srvDesc.Format = TranslateTypelessFormats(desc.Format);
-        srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-        srvDesc.Texture2D.MipLevels = desc.MipLevels;
-
-        auto hr = _device->CreateShaderResourceView(InResource, &srvDesc, &_srvInput);
-        if (FAILED(hr))
-        {
-            LOG_ERROR("[{0}] _srvInput CreateShaderResourceView error {1:x}", _name, hr);
-            return false;
-        }
-
-        _currentInResource = InResource;
-    }
-
-    if (InMotionVectors != _currentMotionVectors || _srvMotionVectors == nullptr)
-    {
-        if (_srvMotionVectors != nullptr)
-            _srvMotionVectors->Release();
-
-        InMotionVectors->GetDesc(&desc);
-
-        // Create SRV for motion vectors
-        D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-        srvDesc.Format = TranslateTypelessFormats(desc.Format);
-        srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-        srvDesc.Texture2D.MipLevels = desc.MipLevels;
-
-        auto hr = _device->CreateShaderResourceView(InMotionVectors, &srvDesc, &_srvMotionVectors);
-        if (FAILED(hr))
-        {
-            LOG_ERROR("[{0}] _srvMotionVectors CreateShaderResourceView error {1:x}", _name, hr);
-            return false;
-        }
-
-        _currentMotionVectors = InMotionVectors;
-    }
-
-    if (OutResource != _currentOutResource || _uavOutput == nullptr)
-    {
-        if (_uavOutput != nullptr)
-            _uavOutput->Release();
-
-        OutResource->GetDesc(&desc);
-
-        // Create UAV for output texture
-        D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-        uavDesc.Format = TranslateTypelessFormats(desc.Format);
-        uavDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
-
-        auto hr = _device->CreateUnorderedAccessView(OutResource, &uavDesc, &_uavOutput);
-        if (FAILED(hr))
-        {
-            LOG_ERROR("[{0}] CreateUnorderedAccessView error {1:x}", _name, hr);
-            return false;
-        }
-
-        _currentOutResource = OutResource;
-    }
-
-    return true;
+    return resultInput && resultMvs && resultOutput;
 }
 
 bool RCAS_Dx11::InitializeViewsDA(ID3D11Texture2D* InResource, ID3D11Texture2D* InMotionVectors,
                                   ID3D11Texture2D* InDepth, ID3D11Texture2D* OutResource)
 {
-    if (!_init || InResource == nullptr || InMotionVectors == nullptr || InDepth == nullptr || OutResource == nullptr)
-        return false;
+    auto resultBase = InitializeViews(InResource, InMotionVectors, OutResource);
+    auto resultDepth = InitializeSRV(InDepth, _currentDepth, _srvDepth);
 
-    if (!InitializeViews(InResource, InMotionVectors, OutResource))
-        return false;
-
-    D3D11_TEXTURE2D_DESC desc;
-
-    if (InDepth != _currentDepth || _srvDepth == nullptr)
-    {
-        if (_srvDepth != nullptr)
-            _srvDepth->Release();
-
-        InDepth->GetDesc(&desc);
-
-        D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-        srvDesc.Format = TranslateTypelessFormats(desc.Format);
-        srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-        srvDesc.Texture2D.MipLevels = desc.MipLevels;
-
-        auto hr = _device->CreateShaderResourceView(InDepth, &srvDesc, &_srvDepth);
-        if (FAILED(hr))
-        {
-            LOG_ERROR("[{0}] _srvDepth CreateShaderResourceView error {1:x}", _name, hr);
-            return false;
-        }
-
-        _currentDepth = InDepth;
-    }
-
-    return true;
+    return resultBase && resultDepth;
 }
 
 bool RCAS_Dx11::DispatchRCAS(ID3D11Device* InDevice, ID3D11DeviceContext* InContext, ID3D11Texture2D* InResource,
@@ -427,7 +257,7 @@ bool RCAS_Dx11::Dispatch(ID3D11Device* InDevice, ID3D11DeviceContext* InContext,
     }
 }
 
-RCAS_Dx11::RCAS_Dx11(std::string InName, ID3D11Device* InDevice) : _name(InName), _device(InDevice)
+RCAS_Dx11::RCAS_Dx11(std::string InName, ID3D11Device* InDevice) : Shader_Dx11(InName, InDevice)
 {
     if (InDevice == nullptr)
     {
@@ -437,103 +267,28 @@ RCAS_Dx11::RCAS_Dx11(std::string InName, ID3D11Device* InDevice) : _name(InName)
 
     LOG_DEBUG("{0} start!", _name);
 
-    if (Config::Instance()->UsePrecompiledShaders.value_or_default())
+    HRESULT result = CreateComputeShader(InDevice, _computeShader, reinterpret_cast<const void*>(rcas_cso),
+                                         sizeof(rcas_cso), rcasCode.c_str());
+    if (FAILED(result))
     {
-        auto hr = _device->CreateComputeShader(reinterpret_cast<const void*>(rcas_cso), sizeof(rcas_cso), nullptr,
-                                               &_computeShader);
-        if (FAILED(hr))
-        {
-            LOG_ERROR("[{0}] CreateComputeShader error: {1:X}", _name, hr);
-            return;
-        }
-
-        hr = _device->CreateComputeShader(reinterpret_cast<const void*>(da_rcas_sharpen_cso),
-                                          sizeof(da_rcas_sharpen_cso), nullptr, &_computeShaderDA);
-        if (FAILED(hr))
-        {
-            LOG_ERROR("[{0}] CreateComputeShader error for depth aware shader: {1:X}", _name, hr);
-            return;
-        }
-
-        hr = _device->CreateComputeShader(reinterpret_cast<const void*>(da_das_sharpen_cso), sizeof(da_das_sharpen_cso),
-                                          nullptr, &_computeShaderDASDA);
-        if (FAILED(hr))
-        {
-            LOG_ERROR("[{0}] CreateComputeShader error for DAS depth aware shader: {1:X}", _name, hr);
-            return;
-        }
+        LOG_ERROR("[{0}] CreateComputeShader error for rcas shader: {1:X}", _name, result);
+        return;
     }
-    else
+
+    result = CreateComputeShader(InDevice, _computeShaderDA, reinterpret_cast<const void*>(da_rcas_sharpen_cso),
+                                 sizeof(da_rcas_sharpen_cso), daRcasSharpenCode.c_str());
+    if (FAILED(result))
     {
-        // Compile shader blobs
-        ID3DBlob* shaderBlob = CompileShader(rcasCode.c_str(), "CSMain", "cs_5_0");
+        LOG_ERROR("[{0}] CreateComputeShader error for depth aware shader: {1:X}", _name, result);
+        return;
+    }
 
-        HRESULT hr = E_FAIL;
-
-        if (shaderBlob != nullptr)
-        {
-            // create pso objects
-            hr = _device->CreateComputeShader(shaderBlob->GetBufferPointer(), shaderBlob->GetBufferSize(), nullptr,
-                                              &_computeShader);
-        }
-        else
-        {
-            LOG_ERROR("[{0}] RCAS_CompileShader error!", _name);
-            hr = _device->CreateComputeShader(reinterpret_cast<const void*>(rcas_cso), sizeof(rcas_cso), nullptr,
-                                              &_computeShader);
-        }
-
-        if (shaderBlob != nullptr)
-        {
-            shaderBlob->Release();
-            shaderBlob = nullptr;
-        }
-
-        if (FAILED(hr))
-        {
-            LOG_ERROR("[{0}] CreateComputeShader error for rcas shader: {1:X}", _name, hr);
-            return;
-        }
-
-        shaderBlob = CompileShader(daRcasSharpenCode.c_str(), "CSMain", "cs_5_0");
-
-        if (shaderBlob != nullptr)
-        {
-            hr = _device->CreateComputeShader(shaderBlob->GetBufferPointer(), shaderBlob->GetBufferSize(), nullptr,
-                                              &_computeShaderDA);
-        }
-        else
-        {
-            LOG_ERROR("[{0}] RCAS_CompileShader error for depth aware shader!", _name);
-            hr = _device->CreateComputeShader(reinterpret_cast<const void*>(da_rcas_sharpen_cso),
-                                              sizeof(da_rcas_sharpen_cso), nullptr, &_computeShaderDA);
-        }
-
-        shaderBlob = CompileShader(dasDASharpenCode.c_str(), "CSMain", "cs_5_0");
-
-        if (shaderBlob != nullptr)
-        {
-            hr = _device->CreateComputeShader(shaderBlob->GetBufferPointer(), shaderBlob->GetBufferSize(), nullptr,
-                                              &_computeShaderDASDA);
-        }
-        else
-        {
-            LOG_ERROR("[{0}] RCAS_CompileShader error for DAS depth aware shader!", _name);
-            hr = _device->CreateComputeShader(reinterpret_cast<const void*>(da_das_sharpen_cso),
-                                              sizeof(da_das_sharpen_cso), nullptr, &_computeShaderDASDA);
-        }
-
-        if (shaderBlob != nullptr)
-        {
-            shaderBlob->Release();
-            shaderBlob = nullptr;
-        }
-
-        if (FAILED(hr))
-        {
-            LOG_ERROR("[{0}] CreateComputeShader error for depth adaptive shader: {1:X}", _name, hr);
-            return;
-        }
+    result = CreateComputeShader(InDevice, _computeShaderDASDA, reinterpret_cast<const void*>(da_das_sharpen_cso),
+                                 sizeof(da_das_sharpen_cso), dasDASharpenCode.c_str());
+    if (FAILED(result))
+    {
+        LOG_ERROR("[{0}] CreateComputeShader error for DAS depth aware shader: {1:X}", _name, result);
+        return;
     }
 
     // CBV
@@ -542,7 +297,8 @@ RCAS_Dx11::RCAS_Dx11(std::string InName, ID3D11Device* InDevice) : _name(InName)
     cbDesc.ByteWidth = sizeof(InternalConstantsDA);
     cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     cbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    auto result = InDevice->CreateBuffer(&cbDesc, nullptr, &_constantBuffer);
+
+    result = InDevice->CreateBuffer(&cbDesc, nullptr, &_constantBuffer);
     if (result != S_OK)
     {
         LOG_ERROR("CreateBuffer error: {0:X}", (UINT) result);
@@ -557,12 +313,10 @@ RCAS_Dx11::~RCAS_Dx11()
     if (!_init || State::Instance().isShuttingDown)
         return;
 
-    SAFE_RELEASE(_computeShader);
     SAFE_RELEASE(_computeShaderDA);
-    SAFE_RELEASE(_constantBuffer);
-    SAFE_RELEASE(_srvInput);
+    SAFE_RELEASE(_computeShaderDASDA);
     SAFE_RELEASE(_srvMotionVectors);
     SAFE_RELEASE(_srvDepth);
-    SAFE_RELEASE(_uavOutput);
-    SAFE_RELEASE(_buffer);
+    SAFE_RELEASE(_currentMotionVectors);
+    SAFE_RELEASE(_currentDepth);
 }

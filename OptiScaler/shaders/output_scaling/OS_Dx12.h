@@ -27,7 +27,7 @@ class OS_Dx12 : public Shader_Dx12
     bool Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InResource, ID3D12Resource* OutResource);
 
     ID3D12Resource* Buffer() { return _buffer; }
-    bool IsUpsampling() { return _upsample; }
+    bool IsUpsampling() const { return _upsample; }
     bool CanRender() const { return _init && _buffer != nullptr; }
 
     OS_Dx12(std::string InName, ID3D12Device* InDevice, bool InUpsample);

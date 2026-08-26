@@ -46,7 +46,7 @@ class IFeature_Dx12 : public virtual IFeature
     bool Init(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters);
     bool Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters);
 
-    bool CallsUpscalerEndByItself() override;
+    bool CallsUpscalerEndByItself() override { return Magnifier && Magnifier->ShouldRun() && magnifierRanSuccess; }
     API Api() const override { return API::DX12; }
 
     IFeature_Dx12(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters);
