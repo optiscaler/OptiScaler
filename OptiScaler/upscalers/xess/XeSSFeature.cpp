@@ -198,7 +198,8 @@ bool XeSSFeature::InitXeSS(ID3D12Device* device, const NVSDK_NGX_Parameter* InPa
 
             if (ret == XESS_RESULT_SUCCESS)
             {
-                CD3DX12_HEAP_DESC bufferHeapDesc(xessProps.tempBufferHeapSize, D3D12_HEAP_TYPE_DEFAULT);
+                CD3DX12_HEAP_DESC bufferHeapDesc(xessProps.tempBufferHeapSize, D3D12_HEAP_TYPE_DEFAULT, 0,
+                                                 D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS);
 
                 {
                     ScopedSkipHeapCapture skipHeapCapture {};
