@@ -1,26 +1,13 @@
 #pragma once
 #include "SysUtils.h"
 
+#include <shaders/Shader_Dx11.h>
 #include <d3d11.h>
 
-class OS_Dx11
+class OS_Dx11 : public Shader_Dx11
 {
   private:
-    std::string _name = "";
-    bool _init = false;
-    int _counter = 0;
     bool _upsample = false;
-
-    ID3D11Device* _device = nullptr;
-
-    ID3D11ComputeShader* _computeShader = nullptr;
-    ID3D11Buffer* _constantBuffer = nullptr;
-    ID3D11Texture2D* _buffer = nullptr;
-    ID3D11ShaderResourceView* _srvInput = nullptr;
-    ID3D11UnorderedAccessView* _uavOutput = nullptr;
-
-    ID3D11Texture2D* _currentInResource = nullptr;
-    ID3D11Texture2D* _currentOutResource = nullptr;
 
     uint32_t InNumThreadsX = 16;
     uint32_t InNumThreadsY = 16;
@@ -32,12 +19,7 @@ class OS_Dx11
     bool Dispatch(ID3D11Device* InDevice, ID3D11DeviceContext* InContext, ID3D11Texture2D* InResource,
                   ID3D11Texture2D* OutResource);
 
-    ID3D11Texture2D* Buffer() { return _buffer; }
-    bool IsInit() const { return _init; }
-    bool IsUpsampling() { return _upsample; }
-    bool CanRender() const { return _init && _buffer != nullptr; }
+    bool IsUpsampling() const { return _upsample; }
 
     OS_Dx11(std::string InName, ID3D11Device* InDevice, bool InUpsample);
-
-    ~OS_Dx11();
 };

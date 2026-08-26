@@ -9,90 +9,21 @@
 
 bool DepthTransfer_Dx11::CreateBufferResource(ID3D11Device* InDevice, ID3D11Resource* InResource)
 {
-    if (InDevice == nullptr || InResource == nullptr)
-        return false;
-
-    ID3D11Texture2D* originalTexture = nullptr;
-    auto result = InResource->QueryInterface(IID_PPV_ARGS(&originalTexture));
-    if (result != S_OK)
-        return false;
-
-    D3D11_TEXTURE2D_DESC texDesc;
-    originalTexture->Release();
-    originalTexture->GetDesc(&texDesc);
-
-    texDesc.Format = DXGI_FORMAT_R32_FLOAT;
-    texDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
-    texDesc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
-
-    result = InDevice->CreateTexture2D(&texDesc, nullptr, &_buffer);
-    if (result != S_OK)
-    {
-        LOG_ERROR("[{0}] CreateCommittedResource result: {1:x}", _name, result);
-        return false;
-    }
-
-    return true;
+    return CreateBufferResourceCommon(InDevice, InResource, _buffer,
+                                      [](D3D11_TEXTURE2D_DESC& desc)
+                                      {
+                                          desc.Format = DXGI_FORMAT_R32_FLOAT;
+                                          desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+                                          desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
+                                      });
 }
 
 bool DepthTransfer_Dx11::InitializeViews(ID3D11Texture2D* InResource, ID3D11Texture2D* OutResource)
 {
-    if (!_init || InResource == nullptr || OutResource == nullptr)
-        return false;
+    auto resultInput = InitializeSRV(InResource, _currentInResource, _srvInput);
+    auto resultOutput = InitializeUAV(OutResource, _currentOutResource, _uavOutput);
 
-    D3D11_TEXTURE2D_DESC desc;
-
-    if (InResource != _currentInResource || _srvInput == nullptr)
-    {
-        SAFE_RELEASE(_srvInput);
-
-        InResource->GetDesc(&desc);
-
-        // Create SRV for input texture
-        D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-
-        if (desc.Format == DXGI_FORMAT_R24G8_TYPELESS)
-            srvDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
-        else if (desc.Format == DXGI_FORMAT_R32G8X24_TYPELESS)
-            srvDesc.Format = DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
-        else
-            srvDesc.Format = desc.Format;
-
-        srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-        srvDesc.Texture2D.MipLevels = 1;
-
-        auto hr = _device->CreateShaderResourceView(InResource, &srvDesc, &_srvInput);
-        if (FAILED(hr))
-        {
-            LOG_ERROR("[{0}] _srvInput CreateShaderResourceView error {1:x}", _name, hr);
-            return false;
-        }
-
-        _currentInResource = InResource;
-    }
-
-    if (OutResource != _currentOutResource || _uavOutput == nullptr)
-    {
-        SAFE_RELEASE(_uavOutput);
-
-        OutResource->GetDesc(&desc);
-
-        // Create UAV for output texture
-        D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-        uavDesc.Format = DXGI_FORMAT_R32_FLOAT;
-        uavDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
-
-        auto hr = _device->CreateUnorderedAccessView(OutResource, &uavDesc, &_uavOutput);
-        if (FAILED(hr))
-        {
-            LOG_ERROR("[{0}] CreateUnorderedAccessView error {1:x}", _name, hr);
-            return false;
-        }
-
-        _currentOutResource = OutResource;
-    }
-
-    return true;
+    return resultInput && resultOutput;
 }
 
 bool DepthTransfer_Dx11::Dispatch(ID3D11Device* InDevice, ID3D11DeviceContext* InContext, ID3D11Texture2D* InResource,
@@ -133,7 +64,7 @@ bool DepthTransfer_Dx11::Dispatch(ID3D11Device* InDevice, ID3D11DeviceContext* I
     return true;
 }
 
-DepthTransfer_Dx11::DepthTransfer_Dx11(std::string InName, ID3D11Device* InDevice) : _name(InName), _device(InDevice)
+DepthTransfer_Dx11::DepthTransfer_Dx11(std::string InName, ID3D11Device* InDevice) : Shader_Dx11(InName, InDevice)
 {
     if (InDevice == nullptr)
     {
@@ -143,56 +74,14 @@ DepthTransfer_Dx11::DepthTransfer_Dx11(std::string InName, ID3D11Device* InDevic
 
     LOG_DEBUG("{0} start!", _name);
 
-    if (Config::Instance()->UsePrecompiledShaders.value_or_default())
+    auto result = CreateComputeShader(InDevice, _computeShader, reinterpret_cast<const void*>(dt_dx11_cso),
+                                      sizeof(dt_dx11_cso), shaderCode.c_str());
+
+    if (FAILED(result))
     {
-        HRESULT hr;
-        hr = _device->CreateComputeShader(reinterpret_cast<const void*>(dt_dx11_cso), sizeof(dt_dx11_cso), nullptr,
-                                          &_computeShader);
-
-        if (FAILED(hr))
-        {
-            LOG_ERROR("[{0}] CreateComputeShader error: {1:X}", _name, hr);
-            return;
-        }
-    }
-    else
-    {
-        // Compile shader blobs
-        ID3DBlob* shaderBlob = CompileShader(shaderCode.c_str(), "CSMain", "cs_5_0");
-
-        if (shaderBlob == nullptr)
-            LOG_ERROR("[{0}] CompileShader error!", _name);
-
-        // create pso objects
-        HRESULT hr = E_FAIL;
-
-        if (shaderBlob != nullptr)
-            hr = _device->CreateComputeShader(shaderBlob->GetBufferPointer(), shaderBlob->GetBufferSize(), nullptr,
-                                              &_computeShader);
-        else
-            hr = _device->CreateComputeShader(reinterpret_cast<const void*>(dt_dx11_cso), sizeof(dt_dx11_cso), nullptr,
-                                              &_computeShader);
-
-        SAFE_RELEASE(shaderBlob);
-
-        if (FAILED(hr))
-        {
-            LOG_ERROR("[{0}] CreateComputeShader error: {1:X}", _name, hr);
-            return;
-        }
+        LOG_ERROR("[{0}] CreateComputeShader error: {1:X}", _name, result);
+        return;
     }
 
     _init = true;
-}
-
-DepthTransfer_Dx11::~DepthTransfer_Dx11()
-{
-    if (!_init || State::Instance().isShuttingDown)
-        return;
-
-    SAFE_RELEASE(_computeShader);
-    SAFE_RELEASE(_constantBuffer);
-    SAFE_RELEASE(_srvInput);
-    SAFE_RELEASE(_uavOutput);
-    SAFE_RELEASE(_buffer);
 }
