@@ -1439,12 +1439,12 @@ static void CheckQuirks(bool isNvidia)
         quirks.reset(GameQuirk::DontUseNTShared);
 
     if (quirks & GameQuirk::DontUseUnrealColorBarriers && !Config::Instance()->ColorResourceBarrier.has_value())
-        Config::Instance()->ColorResourceBarrier.set_volatile_value(128);
+        Config::Instance()->ColorResourceBarrier.set_volatile_value(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     else
         quirks.reset(GameQuirk::DontUseUnrealColorBarriers);
 
     if (quirks & GameQuirk::DontUseUnrealMVBarriers && !Config::Instance()->MVResourceBarrier.has_value())
-        Config::Instance()->MVResourceBarrier.set_volatile_value(128);
+        Config::Instance()->MVResourceBarrier.set_volatile_value(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     else
         quirks.reset(GameQuirk::DontUseUnrealMVBarriers);
 
