@@ -204,6 +204,15 @@ bool IFeature_Dx11wDx12::Init(ID3D11Device* InDevice, ID3D11DeviceContext* InCon
     if (IsInited())
         return true;
 
+    if (State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
+        State::Instance().gameEngine == GameEngineType::Unreal ||
+        State::Instance().gameQuirks & GameQuirk::ForceUnrealEngine)
+    {
+        LOG_INFO("Dx11 detected, disabling UE resource barrier overrides");
+        Config::Instance()->ColorResourceBarrier.set_volatile_value(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        Config::Instance()->MVResourceBarrier.set_volatile_value(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    }
+
     Device = InDevice;
     DeviceContext = InContext;
 
