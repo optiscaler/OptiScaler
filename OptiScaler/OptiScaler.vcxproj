@@ -338,6 +338,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="low_latency\input\input_reflex.h" />
     <ClInclude Include="low_latency\input\input_xell.h" />
     <ClInclude Include="low_latency\input\input_antilag2.h" />
+    <ClInclude Include="shaders\magnifier\Magnifier_Dx11.h" />
     <ClInclude Include="menu\input\input_system.h" />
     <ClInclude Include="menu\input\input_system_internal.h" />
     <ClInclude Include="framegen\nvngx\Nvngx_FFX.h" />
@@ -621,6 +622,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="low_latency\input\input_reflex.cpp" />
     <ClCompile Include="low_latency\input\input_xell.cpp" />
     <ClCompile Include="low_latency\input\input_antilag2.cpp" />
+    <ClCompile Include="shaders\magnifier\Magnifier_Dx11.cpp" />
     <ClCompile Include="menu\input\input_system.cpp" />
     <ClCompile Include="menu\input\input_system_cursor.cpp" />
     <ClCompile Include="menu\input\input_system_detours.cpp" />

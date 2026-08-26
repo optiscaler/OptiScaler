@@ -23,8 +23,6 @@ void IFeature_Dx12::ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID
     InCommandList->ResourceBarrier(1, &barrier);
 }
 
-bool IFeature_Dx12::CallsUpscalerEndByItself() { return Magnifier && Magnifier->ShouldRun() && magnifierRanSuccess; }
-
 bool IFeature_Dx12::Init(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCommandList,
                          NVSDK_NGX_Parameter* InParameters)
 {

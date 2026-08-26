@@ -14,6 +14,7 @@ class DLSSDFeatureDx11 : public DLSSDFeature, public IFeature_Dx11
     feature_version Version() override { return DLSSDFeature::Version(); }
     Upscaler GetUpscalerType() const final { return DLSSDFeature::GetUpscalerType(); }
     API Api() const override { return IFeature_Dx11::Api(); }
+    bool CallsUpscalerEndByItself() override { return IFeature_Dx11::CallsUpscalerEndByItself(); }
 
     bool IsWithDx12() override { return false; }
 
