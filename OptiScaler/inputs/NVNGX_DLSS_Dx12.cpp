@@ -13,7 +13,6 @@
 #include "FG/FSR3_Dx12_FG.h"
 #include "FG/Upscaler_Inputs_Dx12.h"
 
-#include <upscaler_time/UpscalerTime_Dx12.h>
 #include <imgui/ImGuiNotify.hpp>
 
 #include <hooks/D3D12_Hooks.h>
@@ -213,8 +212,6 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Init_Ext(unsigned long long InApp
     D3D12Device = InDevice;
     State::Instance().currentD3D12Device = InDevice;
     D3D12Hooks::HookDevice(InDevice);
-
-    UpscalerTimeDx12::Init(InDevice);
 
     State::Instance().nvngxDx12Inited = true;
 
@@ -1047,9 +1044,6 @@ static NVSDK_NGX_Result TryEvaluateOptiFeature(ID3D12GraphicsCommandList* InCmdL
     UpscalerInputsDx12::UpscaleStart(InCmdList, InParameters, feature);
     FSR3FG::SetUpscalerInputs(InCmdList, InParameters, feature);
 
-    // Record the first timestamp
-    UpscalerTimeDx12::UpscaleStart(InCmdList);
-
     // Evaluate the feature
     bool evalSuccess = false;
     {
@@ -1060,15 +1054,7 @@ static NVSDK_NGX_Result TryEvaluateOptiFeature(ID3D12GraphicsCommandList* InCmdL
         evalSuccess = feature->Evaluate(InCmdList, InParameters);
     }
 
-    // Cleanup on success
-    if (evalSuccess)
-    {
-        // Upscaler time calc
-        // Record the second timestamp
-        if (!feature->CallsUpscalerEndByItself())
-            UpscalerTimeDx12::UpscaleEnd(InCmdList);
-    }
-    else
+    if (!evalSuccess)
     {
         LOG_ERROR("Feature evaluation failed for '{}'", feature->Name());
         ImGui::InsertNotification({ ImGuiToastType::Error, 10000, "Upscaler failed to run!" });

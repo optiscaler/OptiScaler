@@ -9,6 +9,7 @@
 #include <shaders/rcas/RCAS_Dx12.h>
 #include <shaders/bias/Bias_Dx12.h>
 #include <shaders/magnifier/Magnifier_Dx12.h>
+#include <gpu_time/GpuTime_Dx12.h>
 
 class IFeature_Dx12 : public virtual IFeature
 {
@@ -26,6 +27,10 @@ class IFeature_Dx12 : public virtual IFeature
         ID3D12Resource* outputBuffer = nullptr;
     };
 
+    std::optional<double> lastUpscalerTime {};
+    std::optional<double> lastRcasTime {};
+    std::optional<double> lastOutputScalingTime {};
+
   protected:
     ID3D12Device* Device = nullptr;
     static inline std::unique_ptr<Menu_Dx12> Imgui = nullptr;
@@ -34,7 +39,7 @@ class IFeature_Dx12 : public virtual IFeature
     std::unique_ptr<Bias_Dx12> Bias = nullptr;
     std::unique_ptr<Magnifier_Dx12> Magnifier = nullptr;
 
-    bool magnifierRanSuccess = false;
+    std::unique_ptr<GpuTime_Dx12> UpscalerTime = nullptr;
 
     void ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
                          D3D12_RESOURCE_STATES InBeforeState, D3D12_RESOURCE_STATES InAfterState) const;
@@ -46,8 +51,9 @@ class IFeature_Dx12 : public virtual IFeature
     bool Init(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters);
     bool Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters);
 
-    bool CallsUpscalerEndByItself() override { return Magnifier && Magnifier->ShouldRun() && magnifierRanSuccess; }
     API Api() const override { return API::DX12; }
+    std::optional<double> ReadUpscalerTime(void* commandQueue) override;
+    void ReadDetailedGpuTimes(void* commandQueue, std::vector<DetailedGpuTime>& detailedGpuTimes) override;
 
     IFeature_Dx12(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters);
 

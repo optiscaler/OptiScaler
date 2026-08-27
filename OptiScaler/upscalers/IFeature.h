@@ -21,6 +21,13 @@ struct InitFlags
     bool JitteredMV;
 };
 
+struct DetailedGpuTime
+{
+    std::string name;
+    double time = 0.0;
+    bool includedInUpscalerTime = false;
+};
+
 class IFeature
 {
   private:
@@ -96,6 +103,8 @@ class IFeature
     virtual API Api() const = 0;
     std::string Name() const { return UpscalerDisplayName(GetUpscalerType()); };
     std::string ShortName() const { return UpscalerShortName(GetUpscalerType()); }; // Without the version
+    virtual std::optional<double> ReadUpscalerTime(void* commandQueue) { return std::nullopt; }
+    virtual void ReadDetailedGpuTimes(void* commandQueue, std::vector<DetailedGpuTime>& detailedGpuTimes) {};
 
     virtual size_t JitterCount() { return _jitterInfo.size(); }
 

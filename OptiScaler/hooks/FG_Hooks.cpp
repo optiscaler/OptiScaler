@@ -14,7 +14,6 @@
 
 #include <misc/FrameLimit.h>
 #include <upscaler_time/UpscalerTime_Dx11.h>
-#include <upscaler_time/UpscalerTime_Dx12.h>
 
 #include <misc/IdentifyGpu.h>
 #include <hooks/Reflex_Hooks.h>
@@ -1143,16 +1142,33 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
 
     if (fg != nullptr && willPresent)
     {
-        if (state.swapchainInteropApi == SwapchainInteropApi::Dx11wDx12 && state.currentD3D11Device != nullptr)
+        if (auto currentFeature = State::Instance().currentFeature; currentFeature != nullptr)
         {
-            ID3D11DeviceContext* context = nullptr;
-            state.currentD3D11Device->GetImmediateContext(&context);
-            UpscalerTimeDx11::ReadUpscalingTime(context);
-            context->Release();
-        }
-        else if (state.swapchainInteropApi == SwapchainInteropApi::None && state.currentCommandQueue != nullptr)
-        {
-            UpscalerTimeDx12::ReadUpscalingTime(state.currentCommandQueue);
+            if (state.swapchainInteropApi == SwapchainInteropApi::Dx11wDx12 && state.currentD3D11Device != nullptr)
+            {
+                ID3D11DeviceContext* context = nullptr;
+                state.currentD3D11Device->GetImmediateContext(&context);
+                UpscalerTimeDx11::ReadUpscalingTime(context);
+                context->Release();
+            }
+            else if (state.swapchainInteropApi == SwapchainInteropApi::None && state.currentCommandQueue != nullptr)
+            {
+                if (auto upscalerTimeOpt = currentFeature->ReadUpscalerTime(state.currentCommandQueue);
+                    upscalerTimeOpt.has_value())
+                {
+                    currentFeature->ReadDetailedGpuTimes(state.currentCommandQueue, state.detailedGpuTimes);
+
+                    auto upscalerTime = upscalerTimeOpt.value();
+                    // filter out possibly wrong measured high values
+                    if (upscalerTime < 100.0)
+                    {
+                        State::Instance().frameTimeMutex.lock();
+                        State::Instance().upscaleTimes.push_back(upscalerTime);
+                        State::Instance().upscaleTimes.pop_front();
+                        State::Instance().frameTimeMutex.unlock();
+                    }
+                }
+            }
         }
     }
 

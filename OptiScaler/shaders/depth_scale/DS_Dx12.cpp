@@ -42,6 +42,8 @@ bool DS_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InR
 
     LOG_DEBUG("[{0}] Start!", _name);
 
+    ScopedGpuTime scopedGpuTime(GpuTime.get(), InCmdList);
+
     _counter++;
     _counter = _counter % DS_NUM_OF_HEAPS;
     FrameDescriptorHeap& currentHeap = _frameHeaps[_counter];

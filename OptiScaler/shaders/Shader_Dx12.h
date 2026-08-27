@@ -1,6 +1,7 @@
 #pragma once
 #include <d3d12.h>
 #include "Shader_Common.h"
+#include <gpu_time/GpuTime_Dx12.h>
 
 class Shader_Dx12
 {
@@ -15,6 +16,8 @@ class Shader_Dx12
     std::string _name = "";
     bool _init = false;
     int _counter = 0;
+
+    std::unique_ptr<GpuTime_Dx12> GpuTime = nullptr;
 
     ID3D12RootSignature* _rootSignature = nullptr;
     ID3D12PipelineState* _pipelineState = nullptr;
@@ -55,6 +58,8 @@ class Shader_Dx12
 
   public:
     bool IsInit() const { return _init; }
+    std::string Name() const { return _name; }
+    std::optional<double> ReadGpuTime(ID3D12CommandQueue* commandQueue) { return GpuTime->ReadGpuTime(commandQueue); }
 
     Shader_Dx12(std::string InName, ID3D12Device* InDevice);
 

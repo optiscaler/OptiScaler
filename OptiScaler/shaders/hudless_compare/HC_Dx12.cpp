@@ -218,6 +218,8 @@ bool HC_Dx12::Dispatch(IDXGISwapChain3* sc, ID3D12GraphicsCommandList* cmdList, 
     if (sc == nullptr || hudless == nullptr || !_init)
         return false;
 
+    ScopedGpuTime scopedGpuTime(GpuTime.get(), cmdList);
+
     DXGI_SWAP_CHAIN_DESC scDesc {};
     if (sc->GetDesc(&scDesc) != S_OK)
     {

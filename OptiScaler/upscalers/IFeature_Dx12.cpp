@@ -6,8 +6,6 @@
 #include "IFeature_Dx12.h"
 #include "State.h"
 
-#include "upscaler_time/UpscalerTime_Dx12.h"
-
 void IFeature_Dx12::ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
                                     D3D12_RESOURCE_STATES InBeforeState, D3D12_RESOURCE_STATES InAfterState) const
 {
@@ -39,6 +37,8 @@ bool IFeature_Dx12::Init(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCo
         RCAS = std::make_unique<RCAS_Dx12>("RCAS", InDevice);
         Bias = std::make_unique<Bias_Dx12>("Bias", InDevice); // TODO: not needed on DLSS/DLSSD
         Magnifier = std::make_unique<Magnifier_Dx12>("Magnifier", InDevice);
+
+        UpscalerTime = std::make_unique<GpuTime_Dx12>(InDevice);
     }
 
     return result;
@@ -201,8 +201,6 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
             { // Setup
               [&](ID3D12Resource* nextOutput) -> ID3D12Resource*
               {
-                  magnifierRanSuccess = false;
-
                   if (Magnifier->CreateBufferResource(Device, nextOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
                   {
                       Magnifier->SetBufferState(InCommandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -220,11 +218,7 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
 
                   Magnifier->SetBufferState(InCommandList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
-                  UpscalerTimeDx12::UpscaleEnd(InCommandList);
-
-                  magnifierRanSuccess = Magnifier->Dispatch(InCommandList, input, output);
-
-                  return magnifierRanSuccess;
+                  return Magnifier->Dispatch(InCommandList, input, output);
               } });
     }
 
@@ -244,7 +238,11 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     // Upscaler will write to the first active shader, or just output
     InParameters->Set(NVSDK_NGX_Parameter_Output, currentTarget);
 
+    UpscalerTime->Start(InCommandList);
+
     auto evalResult = EvaluateInternal(InCommandList, InParameters);
+
+    UpscalerTime->End(InCommandList);
 
     if (!evalResult)
         return false;
@@ -283,6 +281,41 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     InParameters->Set(NVSDK_NGX_Parameter_Output, paramOutput);
 
     return evalResult;
+}
+
+static auto sumOpts(const auto&... opts) { return (opts.value_or(0.0) + ... + 0.0); }
+
+std::optional<double> IFeature_Dx12::ReadUpscalerTime(void* commandQueueVoid)
+{
+    ID3D12CommandQueue* commandQueue = (ID3D12CommandQueue*) commandQueueVoid;
+
+    lastUpscalerTime = UpscalerTime->ReadGpuTime(commandQueue);
+    lastRcasTime = RCAS->ReadGpuTime(commandQueue);
+    lastOutputScalingTime = OutputScaler->ReadGpuTime(commandQueue);
+
+    return sumOpts(lastUpscalerTime, lastRcasTime, lastOutputScalingTime);
+}
+
+void IFeature_Dx12::ReadDetailedGpuTimes(void* commandQueueVoid, std::vector<DetailedGpuTime>& detailedGpuTimes)
+{
+    ID3D12CommandQueue* commandQueue = (ID3D12CommandQueue*) commandQueueVoid;
+
+    detailedGpuTimes.clear();
+
+    // Do not call ReadGpuTime twice for shaders
+    if (lastUpscalerTime)
+        detailedGpuTimes.emplace_back(DetailedGpuTime { ShortName(), lastUpscalerTime.value(), true });
+
+    if (lastRcasTime)
+        detailedGpuTimes.emplace_back(DetailedGpuTime { RCAS->Name(), lastRcasTime.value(), true });
+
+    if (lastOutputScalingTime)
+        detailedGpuTimes.emplace_back(DetailedGpuTime { OutputScaler->Name(), lastOutputScalingTime.value(), true });
+
+    auto magnifierTime = Magnifier->ReadGpuTime(commandQueue);
+
+    if (magnifierTime)
+        detailedGpuTimes.emplace_back(DetailedGpuTime { Magnifier->Name(), magnifierTime.value(), false });
 }
 
 IFeature_Dx12::IFeature_Dx12(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters) {}

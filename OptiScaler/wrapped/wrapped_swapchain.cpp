@@ -12,7 +12,6 @@
 
 #include <misc/FrameLimit.h>
 #include <upscaler_time/UpscalerTime_Dx11.h>
-#include <upscaler_time/UpscalerTime_Dx12.h>
 
 #include <d3d11.h>
 #include <d3d12.h>
@@ -247,16 +246,32 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
     // Upscaler GPU time computation
     if (willPresent && (fg == nullptr || !fg->IsActive() || fg->IsPaused()))
     {
-        if (cq != nullptr)
+        if (auto currentFeature = State::Instance().currentFeature; currentFeature != nullptr)
         {
-            UpscalerTimeDx12::ReadUpscalingTime(cq);
-        }
-        else if (device != nullptr)
-        {
-            ID3D11DeviceContext* context = nullptr;
-            device->GetImmediateContext(&context);
-            UpscalerTimeDx11::ReadUpscalingTime(context);
-            context->Release();
+            if (cq != nullptr)
+            {
+                if (auto upscalerTimeOpt = currentFeature->ReadUpscalerTime(cq); upscalerTimeOpt.has_value())
+                {
+                    currentFeature->ReadDetailedGpuTimes(cq, State::Instance().detailedGpuTimes);
+
+                    auto upscalerTime = upscalerTimeOpt.value();
+                    // filter out possibly wrong measured high values
+                    if (upscalerTime < 100.0)
+                    {
+                        State::Instance().frameTimeMutex.lock();
+                        State::Instance().upscaleTimes.push_back(upscalerTime);
+                        State::Instance().upscaleTimes.pop_front();
+                        State::Instance().frameTimeMutex.unlock();
+                    }
+                }
+            }
+            else if (device != nullptr)
+            {
+                ID3D11DeviceContext* context = nullptr;
+                device->GetImmediateContext(&context);
+                UpscalerTimeDx11::ReadUpscalingTime(context);
+                context->Release();
+            }
         }
     }
 

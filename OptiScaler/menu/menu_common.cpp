@@ -19,7 +19,6 @@
 
 #include <upscaler_time/UpscalerTime_Vk.h>
 #include <upscaler_time/UpscalerTime_Dx11.h>
-#include <upscaler_time/UpscalerTime_Dx12.h>
 
 #include <imgui/imgui_internal.h>
 #include <imgui/ImGuiNotify.hpp>
@@ -6947,6 +6946,64 @@ void MenuCommon::RenderMainMenuGraphs(RenderMenuContext& ctx)
         {
             ImGui::TableNextColumn();
             ImGui::Text("Upscaler");
+
+            ImGui::SameLine();
+            ImGui::TextDisabled("(?)");
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && !state.detailedGpuTimes.empty())
+            {
+                ImGui::BeginTooltip();
+
+                ImGui::TextDisabled("Per shader breakdown:");
+                if (ImGui::BeginTable("ShaderTimes", 2, ImGuiTableFlags_SizingStretchProp))
+                {
+                    bool hasExtra = false;
+
+                    for (auto& [name, time, includedInUpscalerTime] : state.detailedGpuTimes)
+                    {
+                        if (!includedInUpscalerTime)
+                        {
+                            hasExtra = true;
+                            continue;
+                        }
+
+                        auto formattedTime = StrFmt("%.2f ms", time);
+
+                        ImGui::TableNextColumn();
+                        ImGui::Text(name.c_str());
+
+                        ImGui::TableNextColumn();
+                        ImGui::Text(formattedTime.c_str());
+                    }
+
+                    if (hasExtra)
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn();
+                        ImGui::TextDisabled("Extra shaders:");
+                        ImGui::TableNextColumn();
+                        ImGui::TextDisabled("");
+                        for (auto& [name, time, includedInUpscalerTime] : state.detailedGpuTimes)
+                        {
+                            if (includedInUpscalerTime)
+                                continue;
+
+                            auto formattedTime = StrFmt("%.2f ms", time);
+
+                            ImGui::TableNextColumn();
+                            ImGui::Text(name.c_str());
+
+                            ImGui::TableNextColumn();
+                            ImGui::Text(formattedTime.c_str());
+                        }
+                    }
+
+                    ImGui::EndTable();
+                }
+
+                ImGui::EndTooltip();
+            }
+
             auto ups = StrFmt("%7.2f ms", state.upscaleTimes.back());
             ImGui::PlotLines(
                 ups.c_str(), [](void* rb, int idx) -> float

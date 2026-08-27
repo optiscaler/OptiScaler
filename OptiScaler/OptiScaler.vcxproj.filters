@@ -551,9 +551,6 @@
     <ClInclude Include="hooks\Dxgi_Hooks.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="upscaler_time\UpscalerTime_Dx12.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="upscaler_time\UpscalerTime_Dx11.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -944,6 +941,9 @@
     <ClInclude Include="shaders\magnifier\Magnifier_Dx11.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="gpu_time\GpuTime_Dx12.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Config.cpp">
@@ -1256,9 +1256,6 @@
     <ClCompile Include="spoofing\Dxgi_Spoofing.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="upscaler_time\UpscalerTime_Dx12.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="upscaler_time\UpscalerTime_Dx11.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -1518,6 +1515,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="shaders\magnifier\Magnifier_Dx11.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="gpu_time\GpuTime_Dx12.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

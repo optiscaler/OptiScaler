@@ -1,15 +1,12 @@
 #include "pch.h"
-#include "UpscalerTime_Dx12.h"
+#include "GpuTime_Dx12.h"
 
 #include <State.h>
 
 #include <include/d3dx/d3dx12.h>
 
-void UpscalerTimeDx12::Init(ID3D12Device* device)
+GpuTime_Dx12::GpuTime_Dx12(ID3D12Device* device)
 {
-    if (_queryHeap != nullptr)
-        return;
-
     // Create query heap for timestamp queries
     D3D12_QUERY_HEAP_DESC queryHeapDesc = {};
     queryHeapDesc.Count = 2; // Start and End timestamps
@@ -33,36 +30,49 @@ void UpscalerTimeDx12::Init(ID3D12Device* device)
                                              D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&_readbackBuffer));
 
     if (result != S_OK)
+    {
         LOG_ERROR("CreateCommittedResource error: {:X}", (UINT) result);
+        return;
+    }
+
+    _init = true;
 }
 
-void UpscalerTimeDx12::UpscaleStart(ID3D12GraphicsCommandList* cmdList)
+GpuTime_Dx12::~GpuTime_Dx12()
 {
-    if (_queryHeap != nullptr)
+    SAFE_RELEASE(_queryHeap);
+    SAFE_RELEASE(_readbackBuffer);
+}
+
+void GpuTime_Dx12::Start(ID3D12GraphicsCommandList* cmdList)
+{
+    if (_init && _queryHeap != nullptr)
         cmdList->EndQuery(_queryHeap, D3D12_QUERY_TYPE_TIMESTAMP, 0);
 }
 
-void UpscalerTimeDx12::UpscaleEnd(ID3D12GraphicsCommandList* cmdList)
+void GpuTime_Dx12::End(ID3D12GraphicsCommandList* cmdList)
 {
-    if (_queryHeap != nullptr)
+    if (_init && _queryHeap != nullptr)
     {
         cmdList->EndQuery(_queryHeap, D3D12_QUERY_TYPE_TIMESTAMP, 1);
 
         // Resolve the queries to the readback buffer
         cmdList->ResolveQueryData(_queryHeap, D3D12_QUERY_TYPE_TIMESTAMP, 0, 2, _readbackBuffer, 0);
 
-        _dx12UpscaleTrig = true;
+        _trigger = true;
     }
 }
 
-void UpscalerTimeDx12::ReadUpscalingTime(ID3D12CommandQueue* commandQueue)
+std::optional<double> GpuTime_Dx12::ReadGpuTime(ID3D12CommandQueue* commandQueue)
 {
-    if (_queryHeap == nullptr || !_dx12UpscaleTrig || _readbackBuffer == nullptr)
-        return;
+    std::optional<double> elapsedTimeMs = std::nullopt;
 
-    _dx12UpscaleTrig = false;
+    if (!_init || _queryHeap == nullptr || !_trigger || _readbackBuffer == nullptr)
+        return elapsedTimeMs;
 
-    UINT64* timestampData;
+    _trigger = false;
+
+    UINT64* timestampData {};
     _readbackBuffer->Map(0, nullptr, reinterpret_cast<void**>(&timestampData));
 
     if (timestampData != nullptr)
@@ -74,16 +84,11 @@ void UpscalerTimeDx12::ReadUpscalingTime(ID3D12CommandQueue* commandQueue)
         // Calculate elapsed time in milliseconds
         UINT64 startTime = timestampData[0];
         UINT64 endTime = timestampData[1];
-        double elapsedTimeMs = (endTime - startTime) / static_cast<double>(gpuFrequency) * 1000.0;
 
-        // filter out posibly wrong measured high values
-        if (elapsedTimeMs < 100.0)
-        {
-            State::Instance().frameTimeMutex.lock();
-            State::Instance().upscaleTimes.push_back(elapsedTimeMs);
-            State::Instance().upscaleTimes.pop_front();
-            State::Instance().frameTimeMutex.unlock();
-        }
+        if (endTime < startTime)
+            return elapsedTimeMs;
+
+        elapsedTimeMs = (endTime - startTime) / static_cast<double>(gpuFrequency) * 1000.0;
     }
     else
     {
@@ -92,4 +97,6 @@ void UpscalerTimeDx12::ReadUpscalingTime(ID3D12CommandQueue* commandQueue)
 
     // Unmap the buffer
     _readbackBuffer->Unmap(0, nullptr);
+
+    return elapsedTimeMs;
 }
