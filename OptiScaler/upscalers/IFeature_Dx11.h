@@ -6,6 +6,7 @@
 #include <shaders/output_scaling/OS_Dx11.h>
 #include <shaders/bias/Bias_Dx11.h>
 #include <shaders/magnifier/Magnifier_Dx11.h>
+#include <gpu_time/GpuTime_Dx11.h>
 
 class IFeature_Dx11 : public virtual IFeature
 {
@@ -32,7 +33,7 @@ class IFeature_Dx11 : public virtual IFeature
     std::unique_ptr<Bias_Dx11> Bias = nullptr;
     std::unique_ptr<Magnifier_Dx11> Magnifier = nullptr;
 
-    bool magnifierRanSuccess = false;
+    std::unique_ptr<GpuTime_Dx11> UpscalerTime = nullptr;
 
     virtual bool InitInternal(ID3D11DeviceContext* InContext, NVSDK_NGX_Parameter* InParameters) = 0;
     virtual bool EvaluateInternal(ID3D11DeviceContext* DeviceContext, NVSDK_NGX_Parameter* InParameters) = 0;
@@ -42,8 +43,9 @@ class IFeature_Dx11 : public virtual IFeature
     virtual bool Init(ID3D11Device* InDevice, ID3D11DeviceContext* InContext, NVSDK_NGX_Parameter* InParameters);
     virtual bool Evaluate(ID3D11DeviceContext* DeviceContext, NVSDK_NGX_Parameter* InParameters);
 
-    bool CallsUpscalerEndByItself() override { return Magnifier && Magnifier->ShouldRun() && magnifierRanSuccess; }
     API Api() const override { return API::DX11; }
+    std::optional<double> ReadUpscalerTime(void* deviceContextVoid) override;
+    void ReadDetailedGpuTimes(void* deviceContextVoid, std::vector<DetailedGpuTime>& detailedGpuTimes) override;
 
     IFeature_Dx11(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters) : IFeature(InHandleId, InParameters) {}
 

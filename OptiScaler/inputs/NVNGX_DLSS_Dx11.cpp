@@ -13,8 +13,6 @@
 #include <with_dx12/with_dx12.h>
 #include "FG/Upscaler_Inputs_Dx11wDx12.h"
 
-#include <upscaler_time/UpscalerTime_Dx11.h>
-
 #include <ankerl/unordered_dense.h>
 #include <imgui/ImGuiNotify.hpp>
 #include <misc/IdentifyGpu.h>
@@ -202,8 +200,6 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_Init_Ext(unsigned long long InApp
 
     State::Instance().currentD3D11Device = InDevice;
     State::Instance().nvngxDx11Inited = true;
-
-    UpscalerTimeDx11::Init(InDevice);
 
     return NVSDK_NGX_Result_Success;
 }
@@ -784,12 +780,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_EvaluateFeature(ID3D11DeviceConte
         return NVSDK_NGX_Result_Success;
     }
 
-    UpscalerTimeDx11::UpscaleStart(InDevCtx);
-
     auto upscaleResult = deviceContext->Evaluate(InDevCtx, InParameters);
-
-    if (!deviceContext->CallsUpscalerEndByItself())
-        UpscalerTimeDx11::UpscaleEnd(InDevCtx);
 
     if (State::Instance().activeFgInput == FGInput::Upscaler)
     {

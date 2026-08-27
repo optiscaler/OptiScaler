@@ -21,6 +21,7 @@ struct InitFlags
     bool JitteredMV;
 };
 
+static auto sumOpts(const auto&... opts) { return (opts.value_or(0.0) + ... + 0.0); }
 struct DetailedGpuTime
 {
     std::string name;
@@ -83,6 +84,10 @@ class IFeature
     long _frameCount = 0;
     bool _featureFrozen = false;
     bool _moduleLoaded = false;
+
+    std::optional<double> lastUpscalerTime {};
+    std::optional<double> lastRcasTime {};
+    std::optional<double> lastOutputScalingTime {};
 
     void SetHandle(unsigned int InHandleId);
     bool SetInitParameters(NVSDK_NGX_Parameter* InParameters);

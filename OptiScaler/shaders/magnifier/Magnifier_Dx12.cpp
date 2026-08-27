@@ -26,7 +26,7 @@ bool Magnifier_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resour
     if (!_init || _device == nullptr || InCmdList == nullptr || InResource == nullptr || OutResource == nullptr)
         return false;
 
-    ScopedGpuTime scopedGpuTime(GpuTime.get(), InCmdList);
+    ScopedGpuTime_Dx12 scopedGpuTime(GpuTime.get(), InCmdList);
 
     _counter++;
     _counter = _counter % Magnifier_NUM_OF_HEAPS;

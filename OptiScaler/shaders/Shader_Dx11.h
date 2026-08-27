@@ -2,12 +2,16 @@
 #include "Shader_Common.h"
 #include <d3d11.h>
 
+#include <gpu_time/GpuTime_Dx11.h>
+
 class Shader_Dx11
 {
   protected:
     std::string _name = "";
     bool _init = false;
     int _counter = 0;
+
+    std::unique_ptr<GpuTime_Dx11> GpuTime = nullptr;
 
     ID3D11Device* _device = nullptr;
 
@@ -38,6 +42,12 @@ class Shader_Dx11
     ID3D11Texture2D* Buffer() { return _buffer; }
     bool IsInit() const { return _init; }
     bool CanRender() const { return _init && _buffer != nullptr; }
+
+    std::string Name() const { return _name; }
+    std::optional<double> ReadGpuTime(ID3D11DeviceContext* deviceContext)
+    {
+        return GpuTime->ReadGpuTime(deviceContext);
+    }
 
     Shader_Dx11(std::string InName, ID3D11Device* InDevice);
 

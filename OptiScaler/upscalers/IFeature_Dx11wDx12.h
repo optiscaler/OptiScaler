@@ -71,6 +71,19 @@ class IFeature_Dx11wDx12 : public virtual IFeature_Dx11
     bool IsWithDx12() final { return true; }
     API Api() const override { return API::DX12; }
 
+    std::optional<double> ReadUpscalerTime(void* deviceContextVoid) override
+    {
+        if (auto feature = dx12Feature.get(); feature && Dx12CommandQueue)
+            return feature->ReadUpscalerTime(Dx12CommandQueue);
+
+        return std::nullopt;
+    };
+    void ReadDetailedGpuTimes(void* deviceContextVoid, std::vector<DetailedGpuTime>& detailedGpuTimes) override
+    {
+        if (auto feature = dx12Feature.get(); feature && Dx12CommandQueue)
+            return feature->ReadDetailedGpuTimes(Dx12CommandQueue, detailedGpuTimes);
+    };
+
     feature_version Version() final
     {
         return CallFeature([](auto f) { return f->Version(); }, feature_version {});

@@ -305,6 +305,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
   <ItemGroup>
     <ClInclude Include="framegen\nvngx\Nvngx_Combo.h" />
     <ClInclude Include="fsr4\FSR4Upgrade.h" />
+    <ClInclude Include="gpu_time\GpuTime_Dx11.h" />
     <ClInclude Include="gpu_time\GpuTime_Dx12.h" />
     <ClInclude Include="hooks\Amdxc64_Hooks.h" />
     <ClInclude Include="DllNames.h" />
@@ -431,7 +432,6 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="upscalers\ffx\FFXFeature_VkOn12.h" />
     <ClInclude Include="upscalers\fsr31\FSR31Feature.h" />
     <ClInclude Include="upscalers\IFeature_VkwDx12.h" />
-    <ClInclude Include="upscaler_time\UpscalerTime_Dx11.h" />
     <ClInclude Include="upscaler_time\UpscalerTime_Vk.h" />
     <ClInclude Include="SysUtils.h" />
     <ClInclude Include="with_dx12\dx11_with_dx12.h" />
@@ -599,6 +599,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
   <ItemGroup>
     <ClCompile Include="framegen\nvngx\Nvngx_Combo.cpp" />
     <ClCompile Include="fsr4\FSR4Upgrade.cpp" />
+    <ClCompile Include="gpu_time\GpuTime_Dx11.cpp" />
     <ClCompile Include="gpu_time\GpuTime_Dx12.cpp" />
     <ClCompile Include="hooks\Amdxc64_Hooks.cpp" />
     <ClCompile Include="framegen\dlssg\DLSSG_Dx12.cpp" />
@@ -684,7 +685,6 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="upscalers\ffx\FFXFeature_VkOn12.cpp" />
     <ClCompile Include="upscalers\fsr31\FSR31Feature.cpp" />
     <ClCompile Include="upscalers\IFeature_VkwDx12.cpp" />
-    <ClCompile Include="upscaler_time\UpscalerTime_Dx11.cpp" />
     <ClCompile Include="upscaler_time\UpscalerTime_Vk.cpp" />
     <ClCompile Include="with_dx12\dx11_with_dx12.cpp" />
     <ClCompile Include="with_dx12\with_dx12.cpp" />

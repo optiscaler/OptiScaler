@@ -35,7 +35,7 @@ bool Bias_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* I
 
     LOG_DEBUG("[{0}] Start!", _name);
 
-    ScopedGpuTime scopedGpuTime(GpuTime.get(), InCmdList);
+    ScopedGpuTime_Dx12 scopedGpuTime(GpuTime.get(), InCmdList);
 
     _counter++;
     _counter = _counter % BIAS_NUM_OF_HEAPS;

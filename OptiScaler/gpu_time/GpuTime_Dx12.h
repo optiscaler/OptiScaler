@@ -19,19 +19,19 @@ class GpuTime_Dx12
     std::optional<double> ReadGpuTime(ID3D12CommandQueue* commandQueue);
 };
 
-class ScopedGpuTime
+class ScopedGpuTime_Dx12
 {
     GpuTime_Dx12* _gpuTime;
     ID3D12GraphicsCommandList* _cmdList;
 
   public:
-    ScopedGpuTime(GpuTime_Dx12* gpuTime, ID3D12GraphicsCommandList* cmdList) : _gpuTime(gpuTime), _cmdList(cmdList)
+    ScopedGpuTime_Dx12(GpuTime_Dx12* gpuTime, ID3D12GraphicsCommandList* cmdList) : _gpuTime(gpuTime), _cmdList(cmdList)
     {
         if (_gpuTime && _cmdList)
             _gpuTime->Start(_cmdList);
     }
 
-    ~ScopedGpuTime()
+    ~ScopedGpuTime_Dx12()
     {
         if (_gpuTime && _cmdList)
             _gpuTime->End(_cmdList);

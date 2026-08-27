@@ -3,7 +3,10 @@
 
 using Microsoft::WRL::ComPtr;
 
-Shader_Dx11::Shader_Dx11(std::string InName, ID3D11Device* InDevice) : _name(InName), _device(InDevice) {}
+Shader_Dx11::Shader_Dx11(std::string InName, ID3D11Device* InDevice) : _name(InName), _device(InDevice)
+{
+    GpuTime = std::make_unique<GpuTime_Dx11>(InDevice);
+}
 
 Shader_Dx11::~Shader_Dx11()
 {

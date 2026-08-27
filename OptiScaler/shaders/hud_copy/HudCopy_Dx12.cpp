@@ -28,7 +28,7 @@ bool HudCopy_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* 
     if (!_init || _device == nullptr || hudless == nullptr || present == nullptr || cmdList == nullptr)
         return false;
 
-    ScopedGpuTime scopedGpuTime(GpuTime.get(), cmdList);
+    ScopedGpuTime_Dx12 scopedGpuTime(GpuTime.get(), cmdList);
 
     _counter++;
     _counter = _counter % HudCopy_NUM_OF_HEAPS;

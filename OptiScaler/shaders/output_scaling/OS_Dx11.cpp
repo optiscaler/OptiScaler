@@ -55,6 +55,8 @@ bool OS_Dx11::Dispatch(ID3D11Device* InDevice, ID3D11DeviceContext* InContext, I
 
     LOG_DEBUG("[{0}] Start!", _name);
 
+    ScopedGpuTime_Dx11 scopedGpuTime(GpuTime.get(), InContext);
+
     _device = InDevice;
 
     if (!InitializeViews(InResource, OutResource))

@@ -283,8 +283,6 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     return evalResult;
 }
 
-static auto sumOpts(const auto&... opts) { return (opts.value_or(0.0) + ... + 0.0); }
-
 std::optional<double> IFeature_Dx12::ReadUpscalerTime(void* commandQueueVoid)
 {
     ID3D12CommandQueue* commandQueue = (ID3D12CommandQueue*) commandQueueVoid;

@@ -27,10 +27,6 @@ class IFeature_Dx12 : public virtual IFeature
         ID3D12Resource* outputBuffer = nullptr;
     };
 
-    std::optional<double> lastUpscalerTime {};
-    std::optional<double> lastRcasTime {};
-    std::optional<double> lastOutputScalingTime {};
-
   protected:
     ID3D12Device* Device = nullptr;
     static inline std::unique_ptr<Menu_Dx12> Imgui = nullptr;
