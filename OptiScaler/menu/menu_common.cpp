@@ -6969,7 +6969,7 @@ void MenuCommon::RenderMainMenuGraphs(RenderMenuContext& ctx)
                             continue;
                         }
 
-                        auto formattedTime = StrFmt("%.2f ms", time);
+                        auto formattedTime = StrFmt("%7.2f ms", time);
 
                         ImGui::TableNextColumn();
                         ImGui::Text(name.c_str());
@@ -6991,7 +6991,7 @@ void MenuCommon::RenderMainMenuGraphs(RenderMenuContext& ctx)
                             if (includedInUpscalerTime)
                                 continue;
 
-                            auto formattedTime = StrFmt("%.2f ms", time);
+                            auto formattedTime = StrFmt("%7.2f ms", time);
 
                             ImGui::TableNextColumn();
                             ImGui::Text(name.c_str());
