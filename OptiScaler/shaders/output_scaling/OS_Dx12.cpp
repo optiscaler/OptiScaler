@@ -3,6 +3,8 @@
 
 #include "OS_Common.h"
 
+using Microsoft::WRL::ComPtr;
+
 #define A_CPU
 // FSR compute shader is from : https://github.com/fholger/vrperfkit/
 
@@ -139,171 +141,87 @@ OS_Dx12::OS_Dx12(std::string InName, ID3D12Device* InDevice, bool InUpsample)
     InDevice->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ,
                                       nullptr, IID_PPV_ARGS(&_constantBuffer));
 
-    // don't wanna compile fsr easu on runtime :)
-    if (Config::Instance()->UsePrecompiledShaders.value_or_default() ||
-        Config::Instance()->OutputScalingDownscaler.value_or_default() == Scaler::FSR1)
+    auto downscalerConfig = Config::Instance()->OutputScalingDownscaler.value_or_default();
+
+    const void* csoData = nullptr;
+    size_t csoSize = 0;
+    const char* sourceCode = nullptr;
+
+    std::string name = "OS: ";
+
+    if (downscalerConfig == Scaler::FSR1)
     {
-        D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
-        computePsoDesc.pRootSignature = _rootSignature;
-        computePsoDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
-
-        // fsr upscaling
-        if (Config::Instance()->OutputScalingDownscaler.value_or_default() == Scaler::FSR1)
-        {
-            computePsoDesc.CS =
-                CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(fsr_easu_cso), sizeof(fsr_easu_cso));
-        }
-        else
-        {
-            if (_upsample)
-            {
-                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcus_cso), sizeof(bcus_cso));
-            }
-            else
-            {
-                InNumThreadsY = 8;
-                InNumThreadsX = 8;
-
-                switch (Config::Instance()->OutputScalingDownscaler.value_or_default())
-                {
-                case Scaler::Bicubic:
-                    computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_bicubic_cso),
-                                                                sizeof(bcds_bicubic_cso));
-
-                    break;
-
-                case Scaler::CatmullRom:
-                    computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_catmull_cso),
-                                                                sizeof(bcds_catmull_cso));
-                    break;
-
-                case Scaler::Lanczos2:
-                    computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_lanczos2_cso),
-                                                                sizeof(bcds_lanczos2_cso));
-                    break;
-
-                case Scaler::Lanczos3:
-                    computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_lanczos3_cso),
-                                                                sizeof(bcds_lanczos3_cso));
-                    break;
-
-                case Scaler::Kaiser2:
-                    computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_kaiser2_cso),
-                                                                sizeof(bcds_kaiser2_cso));
-                    break;
-
-                case Scaler::Kaiser3:
-                    computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_kaiser3_cso),
-                                                                sizeof(bcds_kaiser3_cso));
-                    break;
-
-                case Scaler::Magic:
-                    computePsoDesc.CS =
-                        CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_magc_cso), sizeof(bcds_magc_cso));
-                    break;
-
-                default:
-                    computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_bicubic_cso),
-                                                                sizeof(bcds_bicubic_cso));
-                    break;
-                }
-            }
-        }
-
-        auto hr = InDevice->CreateComputePipelineState(&computePsoDesc, __uuidof(ID3D12PipelineState*),
-                                                       (void**) &_pipelineState);
-
-        if (FAILED(hr))
-        {
-            LOG_ERROR("[{0}] CreateComputePipelineState error: {1:X}", _name, hr);
-            return;
-        }
+        csoData = fsr_easu_cso;
+        csoSize = sizeof(fsr_easu_cso);
+        sourceCode = nullptr; // FSR1 is precompiled only
+        name += "FSR1";
+    }
+    else if (_upsample)
+    {
+        csoData = bcus_cso;
+        csoSize = sizeof(bcus_cso);
+        sourceCode = upsampleCode.c_str();
+        name += "BicubicUp";
     }
     else
     {
-        // Compile shader blobs
-        ID3DBlob* _recEncodeShader = nullptr;
-        D3D12_SHADER_BYTECODE byteCode = {};
+        InNumThreadsY = 8;
+        InNumThreadsX = 8;
 
-        if (_upsample)
+        switch (downscalerConfig)
         {
-            _recEncodeShader = CompileShader(upsampleCode.c_str(), "CSMain", "cs_5_0");
-            byteCode = CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcus_cso), sizeof(bcus_cso));
+        case Scaler::CatmullRom:
+            csoData = bcds_catmull_cso;
+            csoSize = sizeof(bcds_catmull_cso);
+            sourceCode = downsampleCodeCatmull.c_str();
+            name += "CatmullRom";
+            break;
+        case Scaler::Lanczos2:
+            csoData = bcds_lanczos2_cso;
+            csoSize = sizeof(bcds_lanczos2_cso);
+            sourceCode = downsampleCodeLanczos2.c_str();
+            name += "Lanczos2";
+            break;
+        case Scaler::Lanczos3:
+            csoData = bcds_lanczos3_cso;
+            csoSize = sizeof(bcds_lanczos3_cso);
+            sourceCode = downsampleCodeLanczos3.c_str();
+            name += "Lanczos3";
+            break;
+        case Scaler::Kaiser2:
+            csoData = bcds_kaiser2_cso;
+            csoSize = sizeof(bcds_kaiser2_cso);
+            sourceCode = downsampleCodeKaiser2.c_str();
+            name += "Kaiser2";
+            break;
+        case Scaler::Kaiser3:
+            csoData = bcds_kaiser3_cso;
+            csoSize = sizeof(bcds_kaiser3_cso);
+            sourceCode = downsampleCodeKaiser3.c_str();
+            name += "Kaiser3";
+            break;
+        case Scaler::Magic:
+            csoData = bcds_magc_cso;
+            csoSize = sizeof(bcds_magc_cso);
+            sourceCode = downsampleCodeMAGIC.c_str();
+            name += "Magic";
+            break;
+        case Scaler::Bicubic:
+        default:
+            csoData = bcds_bicubic_cso;
+            csoSize = sizeof(bcds_bicubic_cso);
+            sourceCode = downsampleCodeBC.c_str();
+            name += "Bicubic";
+            break;
         }
-        else
-        {
-            InNumThreadsY = 8;
-            InNumThreadsX = 8;
+    }
 
-            switch (Config::Instance()->OutputScalingDownscaler.value_or_default())
-            {
-            case Scaler::Bicubic:
-                _recEncodeShader = CompileShader(downsampleCodeBC.c_str(), "CSMain", "cs_5_0");
-                byteCode =
-                    CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_bicubic_cso), sizeof(bcds_bicubic_cso));
+    _name = name;
 
-                break;
-
-            case Scaler::CatmullRom:
-                _recEncodeShader = CompileShader(downsampleCodeCatmull.c_str(), "CSMain", "cs_5_0");
-                byteCode =
-                    CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_catmull_cso), sizeof(bcds_catmull_cso));
-
-                break;
-
-            case Scaler::Lanczos2:
-                _recEncodeShader = CompileShader(downsampleCodeLanczos2.c_str(), "CSMain", "cs_5_0");
-                byteCode = CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_lanczos2_cso),
-                                                   sizeof(bcds_lanczos2_cso));
-
-                break;
-
-            case Scaler::Lanczos3:
-                _recEncodeShader = CompileShader(downsampleCodeLanczos3.c_str(), "CSMain", "cs_5_0");
-                byteCode = CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_lanczos3_cso),
-                                                   sizeof(bcds_lanczos3_cso));
-
-                break;
-
-            case Scaler::Kaiser2:
-                _recEncodeShader = CompileShader(downsampleCodeKaiser2.c_str(), "CSMain", "cs_5_0");
-                byteCode =
-                    CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_kaiser2_cso), sizeof(bcds_kaiser2_cso));
-                break;
-
-            case Scaler::Kaiser3:
-                _recEncodeShader = CompileShader(downsampleCodeKaiser3.c_str(), "CSMain", "cs_5_0");
-                byteCode =
-                    CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_kaiser3_cso), sizeof(bcds_kaiser3_cso));
-
-                break;
-
-            case Scaler::Magic:
-                _recEncodeShader = CompileShader(downsampleCodeMAGIC.c_str(), "CSMain", "cs_5_0");
-                byteCode = CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_magc_cso), sizeof(bcds_magc_cso));
-
-                break;
-
-            default:
-                _recEncodeShader = CompileShader(downsampleCodeBC.c_str(), "CSMain", "cs_5_0");
-                byteCode =
-                    CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(bcds_bicubic_cso), sizeof(bcds_bicubic_cso));
-
-                break;
-            }
-        }
-
-        if (_recEncodeShader == nullptr)
-            LOG_ERROR("[{0}] CompileShader error!", _name);
-
-        // create pso objects
-        if (!Shader_Dx12::CreateComputeShader(InDevice, _rootSignature, &_pipelineState, _recEncodeShader, byteCode))
-        {
-            LOG_ERROR("[{0}] CreateComputeShader error!", _name);
-            return;
-        }
-
-        SAFE_RELEASE(_recEncodeShader);
+    if (!Shader_Dx12::CreateComputePipeline(InDevice, &_pipelineState, csoData, csoSize, sourceCode))
+    {
+        LOG_ERROR("[{0}] CreateComputePipeline error!", _name);
+        return;
     }
 
     _init = InitHeaps(InDevice, _frameHeaps, OS_NUM_OF_HEAPS);

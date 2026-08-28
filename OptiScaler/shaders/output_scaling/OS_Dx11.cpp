@@ -146,10 +146,13 @@ OS_Dx11::OS_Dx11(std::string InName, ID3D11Device* InDevice, bool InUpsample)
 
     const auto downscaler = Config::Instance()->OutputScalingDownscaler.value_or_default();
 
+    std::string name = "OS: ";
+
     if (downscaler == Scaler::FSR1)
     {
         csoData = fsr_easu_cso;
         csoSize = sizeof(fsr_easu_cso);
+        name += "FSR1";
         // FSR1 bypasses runtime compilation
     }
     else if (_upsample)
@@ -157,6 +160,7 @@ OS_Dx11::OS_Dx11(std::string InName, ID3D11Device* InDevice, bool InUpsample)
         csoData = bcus_cso;
         csoSize = sizeof(bcus_cso);
         shaderCode = upsampleCode.c_str();
+        name += "BicubicUp";
     }
     else
     {
@@ -169,36 +173,42 @@ OS_Dx11::OS_Dx11(std::string InName, ID3D11Device* InDevice, bool InUpsample)
             csoData = bcds_catmull_cso;
             csoSize = sizeof(bcds_catmull_cso);
             shaderCode = downsampleCodeCatmull.c_str();
+            name += "CatmullRom";
             break;
 
         case Scaler::Lanczos2:
             csoData = bcds_lanczos2_cso;
             csoSize = sizeof(bcds_lanczos2_cso);
             shaderCode = downsampleCodeLanczos2.c_str();
+            name += "Lanczos2";
             break;
 
         case Scaler::Lanczos3:
             csoData = bcds_lanczos3_cso;
             csoSize = sizeof(bcds_lanczos3_cso);
             shaderCode = downsampleCodeLanczos3.c_str();
+            name += "Lanczos3";
             break;
 
         case Scaler::Kaiser2:
             csoData = bcds_kaiser2_cso;
             csoSize = sizeof(bcds_kaiser2_cso);
             shaderCode = downsampleCodeKaiser2.c_str();
+            name += "Kaiser2";
             break;
 
         case Scaler::Kaiser3:
             csoData = bcds_kaiser3_cso;
             csoSize = sizeof(bcds_kaiser3_cso);
             shaderCode = downsampleCodeKaiser3.c_str();
+            name += "Kaiser3";
             break;
 
         case Scaler::Magic:
             csoData = bcds_magc_cso;
             csoSize = sizeof(bcds_magc_cso);
             shaderCode = downsampleCodeMAGIC.c_str();
+            name += "Magic";
             break;
 
         case Scaler::Bicubic:
@@ -206,9 +216,12 @@ OS_Dx11::OS_Dx11(std::string InName, ID3D11Device* InDevice, bool InUpsample)
             csoData = bcds_bicubic_cso;
             csoSize = sizeof(bcds_bicubic_cso);
             shaderCode = downsampleCodeBC.c_str();
+            name += "Bicubic";
             break;
         }
     }
+
+    _name = name;
 
     HRESULT result = CreateComputeShader(InDevice, _computeShader, csoData, csoSize, shaderCode);
     if (FAILED(result))
