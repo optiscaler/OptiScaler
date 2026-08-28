@@ -21,7 +21,16 @@ struct InitFlags
     bool JitteredMV;
 };
 
-static auto sumOpts(const auto&... opts) { return (opts.value_or(0.0) + ... + 0.0); }
+static auto sumOpts(const auto&... opts) -> std::optional<double>
+{
+    if ((opts.has_value() || ... || false))
+    {
+        return (opts.value_or(0.0) + ... + 0.0);
+    }
+
+    return std::nullopt;
+}
+
 struct DetailedGpuTime
 {
     std::string name;

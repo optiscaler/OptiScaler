@@ -7,9 +7,9 @@
 
 GpuTime_Dx12::GpuTime_Dx12(ID3D12Device* device)
 {
-    // Create query heap for timestamp queries
+    // Create query heap for Start and End timestamps per buffer
     D3D12_QUERY_HEAP_DESC queryHeapDesc = {};
-    queryHeapDesc.Count = 2; // Start and End timestamps
+    queryHeapDesc.Count = QUERY_BUFFER_COUNT * 2;
     queryHeapDesc.NodeMask = 0;
     queryHeapDesc.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
 
@@ -21,8 +21,8 @@ GpuTime_Dx12::GpuTime_Dx12(ID3D12Device* device)
         return;
     }
 
-    // Create a readback buffer to retrieve timestamp data
-    D3D12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(2 * sizeof(UINT64));
+    // Create a readback buffer large enough for all frames
+    D3D12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(QUERY_BUFFER_COUNT * 2 * sizeof(UINT64));
     D3D12_HEAP_PROPERTIES heapProps = {};
     heapProps.Type = D3D12_HEAP_TYPE_READBACK;
 
@@ -47,19 +47,23 @@ GpuTime_Dx12::~GpuTime_Dx12()
 void GpuTime_Dx12::Start(ID3D12GraphicsCommandList* cmdList)
 {
     if (_init && _queryHeap != nullptr)
-        cmdList->EndQuery(_queryHeap, D3D12_QUERY_TYPE_TIMESTAMP, 0);
+    {
+        _currentFrameIndex = (_currentFrameIndex + 1) % QUERY_BUFFER_COUNT;
+
+        cmdList->EndQuery(_queryHeap, D3D12_QUERY_TYPE_TIMESTAMP, _currentFrameIndex * 2);
+    }
 }
 
 void GpuTime_Dx12::End(ID3D12GraphicsCommandList* cmdList)
 {
     if (_init && _queryHeap != nullptr)
     {
-        cmdList->EndQuery(_queryHeap, D3D12_QUERY_TYPE_TIMESTAMP, 1);
+        cmdList->EndQuery(_queryHeap, D3D12_QUERY_TYPE_TIMESTAMP, _currentFrameIndex * 2 + 1);
 
-        // Resolve the queries to the readback buffer
-        cmdList->ResolveQueryData(_queryHeap, D3D12_QUERY_TYPE_TIMESTAMP, 0, 2, _readbackBuffer, 0);
+        cmdList->ResolveQueryData(_queryHeap, D3D12_QUERY_TYPE_TIMESTAMP, _currentFrameIndex * 2, 2, _readbackBuffer,
+                                  _currentFrameIndex * 2 * sizeof(UINT64));
 
-        _trigger = true;
+        _trigger[_currentFrameIndex] = true;
     }
 }
 
@@ -67,13 +71,23 @@ std::optional<double> GpuTime_Dx12::ReadGpuTime(ID3D12CommandQueue* commandQueue
 {
     std::optional<double> elapsedTimeMs = std::nullopt;
 
-    if (!_init || _queryHeap == nullptr || !_trigger || _readbackBuffer == nullptr)
+    if (!_init || _queryHeap == nullptr || _readbackBuffer == nullptr)
         return elapsedTimeMs;
 
-    _trigger = false;
+    // Try to read the previous frame's timestamps
+    uint32_t previousFrameIndex = (_currentFrameIndex + 1) % QUERY_BUFFER_COUNT;
+
+    if (!_trigger[previousFrameIndex])
+        return elapsedTimeMs;
 
     UINT64* timestampData {};
-    _readbackBuffer->Map(0, nullptr, reinterpret_cast<void**>(&timestampData));
+
+    // Tell it which timestamps we will be reading
+    D3D12_RANGE readRange = { previousFrameIndex * 2 * sizeof(UINT64), (previousFrameIndex * 2 + 2) * sizeof(UINT64) };
+    _readbackBuffer->Map(0, &readRange, reinterpret_cast<void**>(&timestampData));
+
+    // CPU doesn't write anything
+    D3D12_RANGE writeRange = { 0, 0 };
 
     if (timestampData != nullptr)
     {
@@ -82,11 +96,14 @@ std::optional<double> GpuTime_Dx12::ReadGpuTime(ID3D12CommandQueue* commandQueue
         commandQueue->GetTimestampFrequency(&gpuFrequency);
 
         // Calculate elapsed time in milliseconds
-        UINT64 startTime = timestampData[0];
-        UINT64 endTime = timestampData[1];
+        UINT64 startTime = timestampData[previousFrameIndex * 2];
+        UINT64 endTime = timestampData[previousFrameIndex * 2 + 1];
 
         if (endTime < startTime)
+        {
+            _readbackBuffer->Unmap(0, &writeRange);
             return elapsedTimeMs;
+        }
 
         elapsedTimeMs = (endTime - startTime) / static_cast<double>(gpuFrequency) * 1000.0;
     }
@@ -95,8 +112,7 @@ std::optional<double> GpuTime_Dx12::ReadGpuTime(ID3D12CommandQueue* commandQueue
         LOG_WARN("timestampData is null!");
     }
 
-    // Unmap the buffer
-    _readbackBuffer->Unmap(0, nullptr);
+    _readbackBuffer->Unmap(0, &writeRange);
 
     return elapsedTimeMs;
 }
