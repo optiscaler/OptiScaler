@@ -215,12 +215,9 @@ class State
     float lastMipBias = 100.0f;
     float lastMipBiasMax = -100.0f;
 
-    int xefgMaxInterpolationCount = 1;
     bool WAR_xefgRequestFGToggle = false;
 
-    int dlssgMaxInterpolationCount = 1;
     bool dlssgGameDMFGSupported = false;
-    bool dlssgOptiDMFGSupported = false;
     sl::DLSSGMode dlssgLastSetMode = sl::DLSSGMode::eOff;
     int dlssgDetectedInterpolationCount = 0;
 

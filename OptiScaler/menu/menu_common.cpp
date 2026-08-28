@@ -1782,9 +1782,9 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             {
                 fgText = formatFg("Combo", Nvngx_FG::getMaxFakeFramesCount());
             }
-            else if (state.activeFgOutput == FGOutput::DLSSG)
+            else if (state.activeFgOutput == FGOutput::DLSSG && fg)
             {
-                fgText = formatFg("DLSSG", state.dlssgMaxInterpolationCount);
+                fgText = formatFg("DLSSG", fg->GetMaxInterpolationCount());
             }
 
             const auto overlayType = config->FpsOverlayType.value_or_default();
@@ -3514,6 +3514,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
     auto& currentFeature = ctx.currentFeature;
     auto& menuResScale = ctx.menuResScale;
     auto& primaryGpu = *ctx.primaryGpu;
+    auto fgOutput = state.currentFG;
 
     // FSR FG controls
     if (state.activeFgOutput == FGOutput::FSRFG && state.activeFgInput != FGInput::NoFG &&
@@ -3769,7 +3770,8 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
     // XeFG controls
     if (state.activeFgOutput == FGOutput::XeFG && state.activeFgInput != FGInput::NoFG &&
-        state.activeFgInput != FGInput::ForceXeLL && state.currentFGSwapchain != nullptr && XeFGProxy::InitXeFG())
+        state.activeFgInput != FGInput::ForceXeLL && state.currentFGSwapchain != nullptr && XeFGProxy::InitXeFG() &&
+        fgOutput)
     {
         ImGui::SeparatorText("Frame Generation (XeFG)");
 
@@ -3779,8 +3781,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         if (state.activeFgInput == FGInput::Upscaler && currentFeature != nullptr)
             nativeAA = currentFeature->RenderWidth() == currentFeature->DisplayWidth();
 
-        auto fgOutput = reinterpret_cast<IFGFeature_Dx12*>(state.currentFG);
-        const bool correctMVs = fgOutput && fgOutput->IsLowResMV() || nativeAA ||
+        const bool correctMVs = fgOutput->IsLowResMV() || nativeAA ||
                                 (State::Instance().gameQuirks & GameQuirk::ForceFGRenderSizeMVs) || ignoreChecks;
 
         if (!correctMVs || state.realExclusiveFullscreen)
@@ -3789,10 +3790,9 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             config->FGXeFGDebugView.reset();
         }
 
-        const bool restartNeeded =
-            fgOutput && (config->FGXeFGDepthInverted.value_or_default() != fgOutput->IsInvertedDepth() ||
-                         config->FGXeFGJitteredMV.value_or_default() != fgOutput->IsJitteredMVs() ||
-                         config->FGXeFGHighResMV.value_or_default() == fgOutput->IsLowResMV());
+        const bool restartNeeded = config->FGXeFGDepthInverted.value_or_default() != fgOutput->IsInvertedDepth() ||
+                                   config->FGXeFGJitteredMV.value_or_default() != fgOutput->IsJitteredMVs() ||
+                                   config->FGXeFGHighResMV.value_or_default() == fgOutput->IsLowResMV();
 
         bool cantActivate = false;
         if (restartNeeded)
@@ -3847,14 +3847,14 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
         ShowHelpMarker("Enable Frame Generation");
 
-        auto maxInterpolationCount = state.xefgMaxInterpolationCount;
+        auto maxInterpolationCount = fgOutput->GetMaxInterpolationCount();
 
         if (maxInterpolationCount > 1)
         {
             ImGui::SameLine(0.0f, 16.0f);
 
             const char* intModes[] = { "2X", "3X", "4X", "5X", "6X" };
-            auto currentSet = config->FGXeFGInterpolationCount.value_or_default() - 1;
+            auto currentSet = fgOutput->GetInterpolatedFrameCount() - 1;
             auto currentIntCount = intModes[currentSet];
 
             ImGui::PushItemWidth(95.0f * menuResScale);
@@ -3973,7 +3973,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
     // DLSSG controls
     if (state.activeFgOutput == FGOutput::DLSSG && state.activeFgInput != FGInput::NoFG &&
-        state.currentFGSwapchain != nullptr && StreamlineProxy::LoadStreamline())
+        state.currentFGSwapchain != nullptr && StreamlineProxy::LoadStreamline() && fgOutput)
     {
         ImGui::SeparatorText("Frame Generation (DLSSG)");
 
@@ -4009,7 +4009,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
         ShowHelpMarker("Enable Frame Generation");
 
-        auto maxInterpolationCount = state.dlssgMaxInterpolationCount;
+        auto maxInterpolationCount = fgOutput->GetMaxInterpolationCount();
 
         if (maxInterpolationCount > 1)
         {
@@ -4018,7 +4018,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             ImGui::BeginDisabled(config->FGDLSSGForceDMFG.value_or_default());
 
             const char* intModes[] = { "2X", "3X", "4X", "5X", "6X" };
-            auto currentSet = config->FGDLSSGInterpolationCount.value_or_default() - 1;
+            auto currentSet = fgOutput->GetInterpolatedFrameCount() - 1;
             auto currentIntCount = intModes[currentSet];
 
             ImGui::PushItemWidth(95.0f * menuResScale);
@@ -4043,7 +4043,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
             ImGui::EndDisabled();
 
-            if (state.dlssgOptiDMFGSupported)
+            if (fgOutput->GetDMFGSupport())
             {
                 ImGui::SameLine(0.0f, 16.0f);
 

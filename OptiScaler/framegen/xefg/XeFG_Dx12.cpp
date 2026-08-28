@@ -136,7 +136,7 @@ const char* XeFG_Dx12::Name()
 {
     static std::string nameBuffer;
 
-    if (State::Instance().xefgMaxInterpolationCount == 1 || _framesToInterpolate < 0)
+    if (_maxInterpolationCount == 1 || _framesToInterpolate < 0)
     {
         nameBuffer = "XeFG";
     }
@@ -301,7 +301,7 @@ bool XeFG_Dx12::CreateSwapchain(IDXGIFactory* factory, ID3D12CommandQueue* cmdQu
         auto result = XeFGProxy::GetProperties()(_swapChainContext, &props);
         if (result == XEFG_SWAPCHAIN_RESULT_SUCCESS)
         {
-            State::Instance().xefgMaxInterpolationCount = props.maxSupportedInterpolations;
+            _maxInterpolationCount = props.maxSupportedInterpolations;
             LOG_INFO("Max supported interpolations: {}", props.maxSupportedInterpolations);
         }
         else
@@ -363,16 +363,15 @@ bool XeFG_Dx12::CreateSwapchain(IDXGIFactory* factory, ID3D12CommandQueue* cmdQu
 
     xefg_swapchain_d3d12_init_params_t params {};
 
-    int intTarget = State::Instance().xefgMaxInterpolationCount;
+    int intTarget = _maxInterpolationCount;
 
     // For old libxess_fg versions we use max to control interpolation count
     if (XeFGProxy::SetNumInterpolatedFrames() == nullptr)
         intTarget = Config::Instance()->FGXeFGInterpolationCount.value_or_default();
 
-    if (intTarget < 1 || intTarget > State::Instance().xefgMaxInterpolationCount)
+    if (intTarget < 1 || intTarget > _maxInterpolationCount)
     {
-        LOG_WARN("Invalid XeFG interpolation count: {}, max count: {}", intTarget,
-                 State::Instance().xefgMaxInterpolationCount);
+        LOG_WARN("Invalid XeFG interpolation count: {}, max count: {}", intTarget, _maxInterpolationCount);
 
         intTarget = 1;
     }
@@ -505,7 +504,7 @@ bool XeFG_Dx12::CreateSwapchain1(IDXGIFactory* factory, ID3D12CommandQueue* cmdQ
         auto result = XeFGProxy::GetProperties()(_swapChainContext, &props);
         if (result == XEFG_SWAPCHAIN_RESULT_SUCCESS)
         {
-            State::Instance().xefgMaxInterpolationCount = props.maxSupportedInterpolations;
+            _maxInterpolationCount = props.maxSupportedInterpolations;
             LOG_INFO("Max supported interpolations: {}", props.maxSupportedInterpolations);
         }
         else
@@ -531,16 +530,15 @@ bool XeFG_Dx12::CreateSwapchain1(IDXGIFactory* factory, ID3D12CommandQueue* cmdQ
 
     xefg_swapchain_d3d12_init_params_t params {};
 
-    int intTarget = State::Instance().xefgMaxInterpolationCount;
+    int intTarget = _maxInterpolationCount;
 
     // For old libxess_fg versions we use max to control interpolation count
     if (XeFGProxy::SetNumInterpolatedFrames() == nullptr)
         intTarget = Config::Instance()->FGXeFGInterpolationCount.value_or_default();
 
-    if (intTarget < 1 || intTarget > State::Instance().xefgMaxInterpolationCount)
+    if (intTarget < 1 || intTarget > _maxInterpolationCount)
     {
-        LOG_WARN("Invalid XeFG interpolation count: {}, max count: {}", intTarget,
-                 State::Instance().xefgMaxInterpolationCount);
+        LOG_WARN("Invalid XeFG interpolation count: {}, max count: {}", intTarget, _maxInterpolationCount);
 
         intTarget = 1;
     }
@@ -780,12 +778,11 @@ bool XeFG_Dx12::Dispatch()
 
     if (XeFGProxy::SetNumInterpolatedFrames() != nullptr)
     {
-        if (Config::Instance()->FGXeFGInterpolationCount.value_or_default() >
-            State::Instance().xefgMaxInterpolationCount)
+        if (Config::Instance()->FGXeFGInterpolationCount.value_or_default() > _maxInterpolationCount)
         {
-            Config::Instance()->FGXeFGInterpolationCount = State::Instance().xefgMaxInterpolationCount;
+            Config::Instance()->FGXeFGInterpolationCount = _maxInterpolationCount;
             LOG_WARN("Requested interpolation count is higher than max supported, setting to max: {}",
-                     State::Instance().xefgMaxInterpolationCount);
+                     _maxInterpolationCount);
         }
 
         if (_framesToInterpolate != Config::Instance()->FGXeFGInterpolationCount.value_or_default())

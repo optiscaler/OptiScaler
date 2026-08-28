@@ -119,15 +119,10 @@ bool DLSSG_Dx12::CreateSwapchain(IDXGIFactory* factory, ID3D12CommandQueue* cmdQ
     sl::DLSSGOptions dlssgOptions {};
     if (StreamlineProxy::DLSSGGetState()(viewport, dlssgState, &dlssgOptions) == sl::Result::eOk)
     {
-        State::Instance().dlssgMaxInterpolationCount = dlssgState.numFramesToGenerateMax;
+        _maxInterpolationCount = dlssgState.numFramesToGenerateMax;
         LOG_INFO("Max supported interpolations: {}", dlssgState.numFramesToGenerateMax);
 
-        int maxCount = State::Instance().dlssgMaxInterpolationCount;
-
-        if (_framesToInterpolate > State::Instance().dlssgMaxInterpolationCount)
-            _framesToInterpolate = maxCount;
-
-        State::Instance().dlssgOptiDMFGSupported = dlssgState.bIsDynamicMFGSupported == sl::Boolean::eTrue;
+        _supportsDMFG = dlssgState.bIsDynamicMFGSupported == sl::Boolean::eTrue;
     }
 
     _gameCommandQueue = cmdQueue;
@@ -233,15 +228,10 @@ bool DLSSG_Dx12::CreateSwapchain1(IDXGIFactory* factory, ID3D12CommandQueue* cmd
     sl::DLSSGOptions dlssgOptions {};
     if (StreamlineProxy::DLSSGGetState()(viewport, dlssgState, &dlssgOptions) == sl::Result::eOk)
     {
-        State::Instance().dlssgMaxInterpolationCount = dlssgState.numFramesToGenerateMax;
+        _maxInterpolationCount = dlssgState.numFramesToGenerateMax;
         LOG_INFO("Max supported interpolations: {}", dlssgState.numFramesToGenerateMax);
 
-        int maxCount = State::Instance().dlssgMaxInterpolationCount;
-
-        if (_framesToInterpolate > State::Instance().dlssgMaxInterpolationCount)
-            _framesToInterpolate = maxCount;
-
-        State::Instance().dlssgOptiDMFGSupported = dlssgState.bIsDynamicMFGSupported == sl::Boolean::eTrue;
+        _supportsDMFG = dlssgState.bIsDynamicMFGSupported == sl::Boolean::eTrue;
     }
 
     _gameCommandQueue = cmdQueue;
@@ -345,11 +335,11 @@ bool DLSSG_Dx12::Dispatch()
 
     auto& state = State::Instance();
 
-    if (Config::Instance()->FGDLSSGInterpolationCount.value_or_default() > State::Instance().dlssgMaxInterpolationCount)
+    if (Config::Instance()->FGDLSSGInterpolationCount.value_or_default() > _maxInterpolationCount)
     {
-        Config::Instance()->FGDLSSGInterpolationCount = State::Instance().dlssgMaxInterpolationCount;
+        Config::Instance()->FGDLSSGInterpolationCount = _maxInterpolationCount;
         LOG_WARN("Requested interpolation count is higher than max supported, setting to max: {}",
-                 State::Instance().dlssgMaxInterpolationCount);
+                 _maxInterpolationCount);
     }
 
     if (_framesToInterpolate != Config::Instance()->FGDLSSGInterpolationCount.value_or_default())
