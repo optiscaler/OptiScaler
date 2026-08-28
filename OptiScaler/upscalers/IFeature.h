@@ -73,7 +73,8 @@ class IFeature
     bool _initParameters = false;
     NVSDK_NGX_Handle* _handle = nullptr;
 
-    float _sharpness = 0;
+    float _sharpness = 0; // Used by the feature itself, might get spoofed to 0 when RCAS is used
+    std::optional<float> _actualSharpness = std::nullopt;
     bool _hasColor = false;
     bool _hasDepth = false;
     bool _hasMV = false;
@@ -134,7 +135,12 @@ class IFeature
     virtual NVSDK_NGX_PerfQuality_Value PerfQualityValue() { return _perfQualityValue; }
     virtual bool IsInitParameters() { return _initParameters; };
     virtual bool IsInited() { return _isInited; }
-    virtual float Sharpness() { return _sharpness; }
+    virtual float Sharpness()
+    {
+        if (_actualSharpness.has_value())
+            return _actualSharpness.value();
+        return _sharpness;
+    }
     virtual bool HasColor() { return _hasColor; }
     virtual bool HasDepth() { return _hasDepth; }
     virtual bool HasMV() { return _hasMV; }

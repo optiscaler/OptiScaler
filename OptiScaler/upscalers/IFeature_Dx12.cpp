@@ -129,7 +129,7 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
               } });
     }
 
-    float localSharpness = _sharpness;
+    _actualSharpness = _sharpness;
     if (useRcas)
     {
         pipeline.push_back(
@@ -158,13 +158,14 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
 
                   RcasConstants rcasConstants {};
 
-                  rcasConstants.Sharpness = localSharpness;
+                  rcasConstants.Sharpness = _actualSharpness.value_or(_sharpness);
                   rcasConstants.DepthIsLinear = DepthLinear();
                   rcasConstants.DepthIsReversed = DepthInverted();
                   rcasConstants.IsHdr = IsHdr();
 
                   // Restore value
-                  _sharpness = localSharpness;
+                  _sharpness = _actualSharpness.value_or(_sharpness);
+                  _actualSharpness.reset();
 
                   InParameters->Get(NVSDK_NGX_Parameter_MV_Scale_X, &rcasConstants.MvScaleX);
                   InParameters->Get(NVSDK_NGX_Parameter_MV_Scale_Y, &rcasConstants.MvScaleY);
