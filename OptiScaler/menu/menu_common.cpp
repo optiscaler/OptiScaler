@@ -4979,12 +4979,14 @@ void MenuCommon::RenderFakenvapiSettings(RenderMenuContext& ctx)
     auto config = ctx.config;
 
     // FAKENVAPI ---------------------------
-    if (fakenvapi::isUsingAsMainNvapi() || (state.activeFgOutput == FGOutput::XeFG && state.reflexLimitsFps))
+    ImGui::SeparatorText("fakenvapi");
+
+    // Using state.reflexLimitsFps as a detection for Reflex being used on Nvidia
+    bool showLatencyFlex =
+        fakenvapi::isUsingAsMainNvapi() || (state.activeFgOutput == FGOutput::XeFG && state.reflexLimitsFps);
+
+    if (showLatencyFlex)
     {
-        // Using state.reflexLimitsFps as a detection for Reflex being used on Nvidia
-
-        ImGui::SeparatorText("fakenvapi");
-
         ImGui::BeginDisabled(state.activeFgOutput == FGOutput::XeFG || state.activeFgInput == FGInput::ForceXeLL);
         if (bool forceLFX = config->FN_ForceLatencyFlex.value_or_default();
             ImGui::Checkbox("Force LatencyFlex", &forceLFX))
@@ -4995,28 +4997,30 @@ void MenuCommon::RenderFakenvapiSettings(RenderMenuContext& ctx)
                        "This setting lets you force LatencyFlex instead");
         ImGui::EndDisabled();
 
-        bool forceXell = config->ForceXeLL.value_or_default();
-        static bool activeForceXeLL = forceXell;
+        // Keep Force XeLL on the same line if LatencyFlex is visible
+        ImGui::SameLine(0.0f, 16.0f);
+    }
 
-        if (fakenvapi::isUsingAsMainNvapi())
-        {
-            ImGui::SameLine(0.0f, 16.0f);
+    // Force XeLL is always visible
+    bool forceXell = config->ForceXeLL.value_or_default();
+    static bool activeForceXeLL = forceXell;
 
-            if (ImGui::Checkbox("Force XeLL", &forceXell))
-            {
-                config->ForceXeLL = forceXell;
-            }
-            ShowHelpMarker("Allows XeLL to work without FG on non-Intel cards.\n\nDisables FG "
-                           "options\n\nRequires a restart");
-        }
+    if (ImGui::Checkbox("Force XeLL", &forceXell))
+    {
+        config->ForceXeLL = forceXell;
+    }
+    ShowHelpMarker("Allows XeLL to work without FG on non-Intel cards.\n\nDisables FG "
+                   "options\n\nRequires a restart");
 
-        if (activeForceXeLL != forceXell)
-        {
-            ImGui::Spacing();
-            ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.0f, 1.f)), "Save INI and restart to apply the changes");
-            ImGui::Spacing();
-        }
+    if (activeForceXeLL != forceXell)
+    {
+        ImGui::Spacing();
+        ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.0f, 1.f)), "Save INI and restart to apply the changes");
+        ImGui::Spacing();
+    }
 
+    if (showLatencyFlex)
+    {
         // clang-format off
         static const std::vector<MenuOption<LFXMode>> lfx_modes = {
             { LFXMode::Conservative, "Conservative",
