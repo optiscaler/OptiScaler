@@ -564,9 +564,9 @@ bool FSR2FeatureVk212::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter
         VkExtent2D outExtent = { DisplayWidth(), DisplayHeight() };
 
         if (!rcasEnabled)
-            OS->Dispatch(Device, InCmdBuffer, OS->GetImageView(), finalOutputView, outExtent);
+            OS->Dispatch(InCmdBuffer, OS->GetImageView(), finalOutputView, outExtent);
         else
-            OS->Dispatch(Device, InCmdBuffer, OS->GetImageView(), RCAS->GetImageView(), outExtent);
+            OS->Dispatch(InCmdBuffer, OS->GetImageView(), RCAS->GetImageView(), outExtent);
     }
 
     if (rcasEnabled)
