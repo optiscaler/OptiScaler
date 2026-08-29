@@ -24,20 +24,21 @@ class RCAS_Vk : public Shader_Vk, public RCAS_Common
     void UpdateDescriptorSetDA(VkDescriptorSet descriptorSet, VkBuffer constantBuffer, VkImageView inputView,
                                VkImageView motionView, VkImageView depthView, VkImageView outputView);
 
-    bool DispatchRCAS(VkCommandBuffer InCmdList, RcasConstants InConstants, VkImageInfo* InResourceInfo,
-                      VkImageInfo* InMotionVectorsInfo, VkImageInfo* OutResourceInfo);
+    bool DispatchRCAS(VkCommandBuffer InCmdList, RcasConstants InConstants, const VkImageInfo& InResourceInfo,
+                      const VkImageInfo& InMotionVectorsInfo, const VkImageInfo& OutResourceInfo);
 
     // Merged Dispatch for DA and DASDA
-    bool DispatchDepthAdaptive(VkCommandBuffer InCmdList, RcasConstants InConstants, VkImageInfo* InResourceInfo,
-                               VkImageInfo* InMotionVectorsInfo, VkImageInfo* OutResourceInfo, VkImageInfo* InDepthInfo,
-                               bool isDAS);
+    bool DispatchDepthAdaptive(VkCommandBuffer InCmdList, RcasConstants InConstants, const VkImageInfo& InResourceInfo,
+                               const VkImageInfo& InMotionVectorsInfo, const VkImageInfo& OutResourceInfo,
+                               VkImageInfo* InDepthInfo, bool isDAS);
 
   public:
     RCAS_Vk(std::string InName, VkDevice InDevice, VkPhysicalDevice InPhysicalDevice);
     ~RCAS_Vk();
 
-    bool Dispatch(VkDevice InDevice, VkCommandBuffer InCmdList, RcasConstants InConstants, VkImageInfo* InResourceView,
-                  VkImageInfo* InMotionVectorsInfo, VkImageInfo* OutResourceInfo, VkImageInfo* InDepthInfo = nullptr);
+    bool Dispatch(VkDevice InDevice, VkCommandBuffer InCmdList, RcasConstants InConstants,
+                  const VkImageInfo& InResourceView, const VkImageInfo& InMotionVectorsInfo,
+                  const VkImageInfo& OutResourceInfo, VkImageInfo* InDepthInfo = nullptr);
 
     // Wrappers to maintain the original public API while using the generalized base methods
     bool CreateBufferResource(VkDevice device, VkPhysicalDevice physicalDevice, VkBuffer* buffer,

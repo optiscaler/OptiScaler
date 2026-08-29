@@ -684,6 +684,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="upscalers\fsr2_212\FSR2Feature_VkOnDx12_212.cpp" />
     <ClCompile Include="upscalers\ffx\FFXFeature_VkOn12.cpp" />
     <ClCompile Include="upscalers\fsr31\FSR31Feature.cpp" />
+    <ClCompile Include="upscalers\IFeature_Vk.cpp" />
     <ClCompile Include="upscalers\IFeature_VkwDx12.cpp" />
     <ClCompile Include="upscaler_time\UpscalerTime_Vk.cpp" />
     <ClCompile Include="with_dx12\dx11_with_dx12.cpp" />

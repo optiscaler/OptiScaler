@@ -108,8 +108,7 @@ OS_Vk::OS_Vk(std::string InName, VkDevice InDevice, VkPhysicalDevice InPhysicalD
     _init = true;
 }
 
-bool OS_Vk::Dispatch(VkCommandBuffer InCmdList, VkImageView InResourceView, VkImageView OutResourceView,
-                     VkExtent2D OutExtent)
+bool OS_Vk::Dispatch(VkCommandBuffer InCmdList, const VkImageInfo& InResourceView, const VkImageInfo& OutResourceView)
 {
     if (!_init || InCmdList == VK_NULL_HANDLE)
         return false;
@@ -139,8 +138,9 @@ bool OS_Vk::Dispatch(VkCommandBuffer InCmdList, VkImageView InResourceView, VkIm
 
     // Build Descriptor Writes
     VkDescriptorBufferInfo bufferInfo { _constantBuffer, 0, sizeof(Constants) };
-    VkDescriptorImageInfo sourceInfo { VK_NULL_HANDLE, InResourceView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-    VkDescriptorImageInfo destInfo { VK_NULL_HANDLE, OutResourceView, VK_IMAGE_LAYOUT_GENERAL };
+    VkDescriptorImageInfo sourceInfo { VK_NULL_HANDLE, InResourceView.ImageView,
+                                       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+    VkDescriptorImageInfo destInfo { VK_NULL_HANDLE, OutResourceView.ImageView, VK_IMAGE_LAYOUT_GENERAL };
     VkDescriptorImageInfo samplerInfo { _textureSampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED };
 
     std::vector<VkWriteDescriptorSet> writes = { { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, currentSet, 0, 0, 1,
@@ -160,14 +160,14 @@ bool OS_Vk::Dispatch(VkCommandBuffer InCmdList, VkImageView InResourceView, VkIm
     // Dispatch
     if (Config::Instance()->OutputScalingDownscaler.value_or_default() == Scaler::FSR1 || _upsample)
     {
-        uint32_t groupX = (OutExtent.width + 15) / 16;
-        uint32_t groupY = (OutExtent.height + 15) / 16;
+        uint32_t groupX = (OutResourceView.Width + 15) / 16;
+        uint32_t groupY = (OutResourceView.Height + 15) / 16;
         vkCmdDispatch(InCmdList, groupX, groupY, 1);
     }
     else
     {
-        uint32_t groupX = (OutExtent.width + 7) / 8;
-        uint32_t groupY = (OutExtent.height + 7) / 8;
+        uint32_t groupX = (OutResourceView.Width + 7) / 8;
+        uint32_t groupY = (OutResourceView.Height + 7) / 8;
         vkCmdDispatch(InCmdList, groupX, groupY, 1);
     }
 

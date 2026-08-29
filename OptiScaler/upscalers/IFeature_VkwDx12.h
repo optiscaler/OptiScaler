@@ -127,6 +127,10 @@ class IFeature_VkwDx12 : public virtual IFeature_Vk
     void ReleaseSharedResources();
     void ReleaseSyncResources();
 
+    // vk w/dx12 can't be wrapped by the IFeature_Vk, needs its own Init and Evaluate
+    bool InitInternal(VkCommandBuffer InCmdList, NVSDK_NGX_Parameter* InParameters) final { return false; };
+    bool EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters) final { return false; };
+
   public:
     bool BaseInit(VkInstance InInstance, VkPhysicalDevice InPD, VkDevice InDevice, VkCommandBuffer InCmdList,
                   PFN_vkGetInstanceProcAddr InGIPA, PFN_vkGetDeviceProcAddr InGDPA, NVSDK_NGX_Parameter* InParameters);

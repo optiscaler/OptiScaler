@@ -11,13 +11,12 @@ class FFXFeatureVk : public FFXFeature, public IFeature_Vk
   protected:
     bool InitFFX(const NVSDK_NGX_Parameter* InParameters);
 
+    // From IFeature_Vk
+    bool InitInternal(VkCommandBuffer InCmdList, NVSDK_NGX_Parameter* InParameters) override;
+    bool EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters) override;
+
   public:
     FFXFeatureVk(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters);
-
-    bool Init(VkInstance InInstance, VkPhysicalDevice InPD, VkDevice InDevice, VkCommandBuffer InCmdList,
-              PFN_vkGetInstanceProcAddr InGIPA, PFN_vkGetDeviceProcAddr InGDPA,
-              NVSDK_NGX_Parameter* InParameters) override;
-    bool Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters) override;
 
     feature_version Version() override { return FFXFeature::Version(); }
     Upscaler GetUpscalerType() const final { return Upscaler::FFX; }

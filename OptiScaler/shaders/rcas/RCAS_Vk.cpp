@@ -172,22 +172,22 @@ void RCAS_Vk::UpdateDescriptorSetDA(VkDescriptorSet descriptorSet, VkBuffer cons
     vkUpdateDescriptorSets(_device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
 }
 
-bool RCAS_Vk::DispatchRCAS(VkCommandBuffer InCmdList, RcasConstants InConstants, VkImageInfo* InResourceInfo,
-                           VkImageInfo* InMotionVectorsInfo, VkImageInfo* OutResourceInfo)
+bool RCAS_Vk::DispatchRCAS(VkCommandBuffer InCmdList, RcasConstants InConstants, const VkImageInfo& InResourceInfo,
+                           const VkImageInfo& InMotionVectorsInfo, const VkImageInfo& OutResourceInfo)
 {
     InternalConstants constants {};
-    constants.OutputWidth = OutResourceInfo->Width;
-    constants.OutputHeight = OutResourceInfo->Height;
-    constants.MotionWidth = InMotionVectorsInfo->Width;
-    constants.MotionHeight = InMotionVectorsInfo->Height;
+    constants.OutputWidth = OutResourceInfo.Width;
+    constants.OutputHeight = OutResourceInfo.Height;
+    constants.MotionWidth = InMotionVectorsInfo.Width;
+    constants.MotionHeight = InMotionVectorsInfo.Height;
     FillMotionConstants(constants, InConstants);
 
     if (_mappedConstantBuffer)
         memcpy(_mappedConstantBuffer, &constants, sizeof(InternalConstants));
 
     _currentSetIndex = (_currentSetIndex + 1) % _maxFramesInFlight;
-    UpdateDescriptorSet(InCmdList, _currentSetIndex, InResourceInfo->ImageView, InMotionVectorsInfo->ImageView,
-                        OutResourceInfo->ImageView);
+    UpdateDescriptorSet(InCmdList, _currentSetIndex, InResourceInfo.ImageView, InMotionVectorsInfo.ImageView,
+                        OutResourceInfo.ImageView);
 
     vkCmdBindPipeline(InCmdList, VK_PIPELINE_BIND_POINT_COMPUTE, _pipeline);
     vkCmdBindDescriptorSets(InCmdList, VK_PIPELINE_BIND_POINT_COMPUTE, _pipelineLayout, 0, 1,
@@ -199,19 +199,19 @@ bool RCAS_Vk::DispatchRCAS(VkCommandBuffer InCmdList, RcasConstants InConstants,
     return true;
 }
 
-bool RCAS_Vk::DispatchDepthAdaptive(VkCommandBuffer InCmdList, RcasConstants InConstants, VkImageInfo* InResourceInfo,
-                                    VkImageInfo* InMotionVectorsInfo, VkImageInfo* OutResourceInfo,
-                                    VkImageInfo* InDepthInfo, bool isDAS)
+bool RCAS_Vk::DispatchDepthAdaptive(VkCommandBuffer InCmdList, RcasConstants InConstants,
+                                    const VkImageInfo& InResourceInfo, const VkImageInfo& InMotionVectorsInfo,
+                                    const VkImageInfo& OutResourceInfo, VkImageInfo* InDepthInfo, bool isDAS)
 {
     VkPipeline targetPipeline = isDAS ? _pipelineDASDA : _pipelineDA;
     if (InDepthInfo == VK_NULL_HANDLE || targetPipeline == VK_NULL_HANDLE)
         return false;
 
     InternalConstantsDA constants {};
-    constants.OutputWidth = OutResourceInfo->Width;
-    constants.OutputHeight = OutResourceInfo->Height;
-    constants.MotionWidth = InMotionVectorsInfo->Width;
-    constants.MotionHeight = InMotionVectorsInfo->Height;
+    constants.OutputWidth = OutResourceInfo.Width;
+    constants.OutputHeight = OutResourceInfo.Height;
+    constants.MotionWidth = InMotionVectorsInfo.Width;
+    constants.MotionHeight = InMotionVectorsInfo.Height;
     constants.DepthWidth = InDepthInfo->Width;
     constants.DepthHeight = InDepthInfo->Height;
     FillMotionConstants(constants, InConstants);
@@ -220,8 +220,8 @@ bool RCAS_Vk::DispatchDepthAdaptive(VkCommandBuffer InCmdList, RcasConstants InC
         memcpy(_mappedConstantBufferDA, &constants, sizeof(InternalConstantsDA));
 
     _currentSetIndex = (_currentSetIndex + 1) % _maxFramesInFlight;
-    UpdateDescriptorSetDA(_descriptorSetsDA[_currentSetIndex], _constantBufferDA, InResourceInfo->ImageView,
-                          InMotionVectorsInfo->ImageView, InDepthInfo->ImageView, OutResourceInfo->ImageView);
+    UpdateDescriptorSetDA(_descriptorSetsDA[_currentSetIndex], _constantBufferDA, InResourceInfo.ImageView,
+                          InMotionVectorsInfo.ImageView, InDepthInfo->ImageView, OutResourceInfo.ImageView);
 
     vkCmdBindPipeline(InCmdList, VK_PIPELINE_BIND_POINT_COMPUTE, targetPipeline);
     vkCmdBindDescriptorSets(InCmdList, VK_PIPELINE_BIND_POINT_COMPUTE, _pipelineLayoutDA, 0, 1,
@@ -234,8 +234,8 @@ bool RCAS_Vk::DispatchDepthAdaptive(VkCommandBuffer InCmdList, RcasConstants InC
 }
 
 bool RCAS_Vk::Dispatch(VkDevice InDevice, VkCommandBuffer InCmdList, RcasConstants InConstants,
-                       VkImageInfo* InResourceInfo, VkImageInfo* InMotionVectorsInfo, VkImageInfo* OutResourceInfo,
-                       VkImageInfo* InDepthInfo)
+                       const VkImageInfo& InResourceInfo, const VkImageInfo& InMotionVectorsInfo,
+                       const VkImageInfo& OutResourceInfo, VkImageInfo* InDepthInfo)
 {
     if (!_init || InDevice == VK_NULL_HANDLE || InCmdList == VK_NULL_HANDLE ||
         State::Instance().currentFeature == nullptr)

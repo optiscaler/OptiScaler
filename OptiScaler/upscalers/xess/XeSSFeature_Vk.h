@@ -18,6 +18,10 @@ class XeSSFeature_Vk : public virtual IFeature_Vk
     uint32_t _xessInitFlags = 0;
     int dumpCount = 0;
 
+    // From IFeature_Vk
+    bool InitInternal(VkCommandBuffer InCmdList, NVSDK_NGX_Parameter* InParameters) override;
+    bool EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters) override;
+
   public:
     // version is above 1.3 if we can use vulkan
     feature_version Version() final
@@ -25,11 +29,6 @@ class XeSSFeature_Vk : public virtual IFeature_Vk
         return feature_version { XeSSProxy::Version().major, XeSSProxy::Version().minor, XeSSProxy::Version().patch };
     }
     Upscaler GetUpscalerType() const final { return Upscaler::XeSS; }
-
-    bool Init(VkInstance InInstance, VkPhysicalDevice InPD, VkDevice InDevice, VkCommandBuffer InCmdList,
-              PFN_vkGetInstanceProcAddr InGIPA, PFN_vkGetDeviceProcAddr InGDPA,
-              NVSDK_NGX_Parameter* InParameters) override;
-    bool Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters) override;
 
     bool IsWithDx12() final { return false; }
 

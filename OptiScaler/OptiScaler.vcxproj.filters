@@ -1520,6 +1520,9 @@
     <ClCompile Include="gpu_time\GpuTime_Dx11.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="upscalers\IFeature_Vk.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="OptiScaler.rc" />

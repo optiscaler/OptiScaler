@@ -24,6 +24,5 @@ class OS_Vk : public Shader_Vk
         Shader_Vk::SetImageLayout(cmdBuffer, image, oldLayout, newLayout, subresourceRange);
     }
 
-    bool Dispatch(VkCommandBuffer InCmdList, VkImageView InResourceView, VkImageView OutResourceView,
-                  VkExtent2D OutExtent);
+    bool Dispatch(VkCommandBuffer InCmdList, const VkImageInfo& InResourceView, const VkImageInfo& OutResourceView);
 };

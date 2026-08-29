@@ -63,9 +63,7 @@ static void XeSSLogCallback(const char* Message, xess_logging_level_t Level)
     spdlog::log((spdlog::level::level_enum) logLevel, "XeSSFeature::LogCallback XeSS Runtime ({0})", Message);
 }
 
-bool XeSSFeature_Vk::Init(VkInstance InInstance, VkPhysicalDevice InPD, VkDevice InDevice, VkCommandBuffer InCmdList,
-                          PFN_vkGetInstanceProcAddr InGIPA, PFN_vkGetDeviceProcAddr InGDPA,
-                          NVSDK_NGX_Parameter* InParameters)
+bool XeSSFeature_Vk::InitInternal(VkCommandBuffer InCmdList, NVSDK_NGX_Parameter* InParameters)
 {
     LOG_FUNC();
 
@@ -77,45 +75,15 @@ bool XeSSFeature_Vk::Init(VkInstance InInstance, VkPhysicalDevice InPD, VkDevice
         return false;
     }
 
-    Instance = InInstance;
-    PhysicalDevice = InPD;
-    Device = InDevice;
-    GIPA = InGIPA;
-    GDPA = InGDPA;
-
     if (IsInited())
         return true;
-
-    if (InInstance == nullptr)
-    {
-        LOG_ERROR("VkInstance is null!");
-        return false;
-    }
-
-    if (InPD == nullptr)
-    {
-        LOG_ERROR("VkPhysicalDevice is null!");
-        return false;
-    }
-
-    if (InDevice == nullptr)
-    {
-        LOG_ERROR("VkDevice is null!");
-        return false;
-    }
-
-    if (InCmdList == nullptr)
-    {
-        LOG_ERROR("VkCommandBuffer is null!");
-        return false;
-    }
 
     {
 #ifndef DONT_USE_XMX
         ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 #endif // !DONT_USE_XMX
 
-        auto ret = XeSSProxy::VKCreateContext()(InInstance, InPD, InDevice, &_xessContext);
+        auto ret = XeSSProxy::VKCreateContext()(Instance, PhysicalDevice, Device, &_xessContext);
 
         if (ret != XESS_RESULT_SUCCESS)
         {
@@ -271,12 +239,6 @@ bool XeSSFeature_Vk::Init(VkInstance InInstance, VkPhysicalDevice InPD, VkDevice
             LOG_ERROR("VKInit error: {0}", ResultToString(ret));
             return false;
         }
-
-        if (RCAS == nullptr)
-            RCAS = std::make_unique<RCAS_Vk>("RCAS", InDevice, InPD);
-
-        if (OS == nullptr)
-            OS = std::make_unique<OS_Vk>("OS", InDevice, InPD, (TargetWidth() < DisplayWidth()));
     }
 
     SetInit(true);
@@ -284,7 +246,7 @@ bool XeSSFeature_Vk::Init(VkInstance InInstance, VkPhysicalDevice InPD, VkDevice
     return true;
 }
 
-bool XeSSFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters)
+bool XeSSFeature_Vk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters)
 {
     LOG_FUNC();
 
@@ -293,12 +255,6 @@ bool XeSSFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
         LOG_ERROR("Not inited!");
         return false;
     }
-
-    if (!RCAS->IsInit())
-        Config::Instance()->RcasEnabled.set_volatile_value(false);
-
-    if (!OS->IsInit())
-        Config::Instance()->OutputScalingEnabled.set_volatile_value(false);
 
     if (State::Instance().xessDebug)
     {
@@ -332,13 +288,6 @@ bool XeSSFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
     InParameters->Get(NVSDK_NGX_Parameter_Reset, &params.resetHistory);
 
     GetRenderResolution(InParameters, &params.inputWidth, &params.inputHeight);
-
-    _sharpness = GetSharpness(InParameters);
-
-    float ssMulti = Config::Instance()->OutputScalingMultiplier.value_or(1.5f);
-    bool useSS =
-        Config::Instance()->OutputScalingEnabled.value_or_default() && (LowResMV() || RenderWidth() == DisplayWidth());
-
     LOG_DEBUG("Input Resolution: {0}x{1}", params.inputWidth, params.inputHeight);
 
     NVSDK_NGX_Resource_VK* paramColor = nullptr;
@@ -502,75 +451,6 @@ bool XeSSFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
     InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_SubrectBase_Y,
                       &params.inputResponsiveMaskBase.y);
 
-    VkImageView finalOutputView = params.outputTexture.imageView;
-    VkImage finalOutputImage = params.outputTexture.image;
-
-    bool rcasEnabled = Config::Instance()->RcasEnabled.value_or(true) &&
-                       (_sharpness > 0.0f || (Config::Instance()->MotionSharpnessEnabled.value_or(false) &&
-                                              Config::Instance()->MotionSharpness.value_or(0.4) > 0.0f)) &&
-                       RCAS->CanRender();
-
-    if (rcasEnabled)
-    {
-        VkImage oldImage = RCAS->GetImage();
-
-        if (RCAS->CreateImageResource(Device, PhysicalDevice, params.outputTexture.width, params.outputTexture.height,
-                                      params.outputTexture.format,
-                                      VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
-                                          VK_IMAGE_USAGE_TRANSFER_DST_BIT))
-        {
-            VkImageLayout oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            if (oldImage != VK_NULL_HANDLE && oldImage == params.outputTexture.image)
-                oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-            params.outputTexture.image = RCAS->GetImage();
-            params.outputTexture.imageView = RCAS->GetImageView();
-
-            VkImageSubresourceRange range {};
-            range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            range.baseMipLevel = 0;
-            range.levelCount = 1;
-            range.baseArrayLayer = 0;
-            range.layerCount = 1;
-
-            RCAS->SetImageLayout(InCmdBuffer, params.outputTexture.image, oldLayout, VK_IMAGE_LAYOUT_GENERAL, range);
-        }
-        else
-        {
-            rcasEnabled = false;
-        }
-    }
-
-    if (useSS)
-    {
-        VkImage oldImage = OS->GetImage();
-
-        if (OS->CreateImageResource(Device, PhysicalDevice, TargetWidth(), TargetHeight(), params.outputTexture.format,
-                                    VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
-                                        VK_IMAGE_USAGE_TRANSFER_DST_BIT))
-        {
-            VkImageLayout oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            if (oldImage != VK_NULL_HANDLE && oldImage == params.outputTexture.image)
-                oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-            params.outputTexture.image = OS->GetImage();
-            params.outputTexture.imageView = OS->GetImageView();
-
-            VkImageSubresourceRange range {};
-            range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            range.baseMipLevel = 0;
-            range.levelCount = 1;
-            range.baseArrayLayer = 0;
-            range.layerCount = 1;
-
-            OS->SetImageLayout(InCmdBuffer, params.outputTexture.image, oldLayout, VK_IMAGE_LAYOUT_GENERAL, range);
-        }
-        else
-        {
-            useSS = false;
-        }
-    }
-
     LOG_DEBUG("Executing!!");
     xessResult = XeSSProxy::VKExecute()(_xessContext, InCmdBuffer, &params);
 
@@ -579,74 +459,6 @@ bool XeSSFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
         LOG_ERROR("xessVKExecute error: {0}", ResultToString(xessResult));
         return false;
     }
-
-    if (useSS)
-    {
-        VkImageSubresourceRange range {};
-        range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        range.baseMipLevel = 0;
-        range.levelCount = 1;
-        range.baseArrayLayer = 0;
-        range.layerCount = 1;
-
-        OS->SetImageLayout(InCmdBuffer, OS->GetImage(), VK_IMAGE_LAYOUT_GENERAL,
-                           VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
-
-        VkExtent2D outExtent = { DisplayWidth(), DisplayHeight() };
-
-        if (!rcasEnabled)
-            OS->Dispatch(InCmdBuffer, OS->GetImageView(), finalOutputView, outExtent);
-        else
-            OS->Dispatch(InCmdBuffer, OS->GetImageView(), RCAS->GetImageView(), outExtent);
-    }
-
-    if (rcasEnabled)
-    {
-        VkImageSubresourceRange range {};
-        range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        range.baseMipLevel = 0;
-        range.levelCount = 1;
-        range.baseArrayLayer = 0;
-        range.layerCount = 1;
-
-        RCAS->SetImageLayout(InCmdBuffer, RCAS->GetImage(), VK_IMAGE_LAYOUT_GENERAL,
-                             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
-
-        RcasConstants rcasConstants {};
-        rcasConstants.DepthIsLinear = DepthLinear();
-        rcasConstants.DepthIsReversed = DepthInverted();
-        rcasConstants.IsHdr = IsHdr();
-        rcasConstants.Sharpness = _sharpness;
-        InParameters->Get(NVSDK_NGX_Parameter_MV_Scale_X, &rcasConstants.MvScaleX);
-        InParameters->Get(NVSDK_NGX_Parameter_MV_Scale_Y, &rcasConstants.MvScaleY);
-        rcasConstants.CameraNear = Config::Instance()->FsrCameraNear.value_or_default();
-        rcasConstants.CameraFar = Config::Instance()->FsrCameraFar.value_or_default();
-
-        VkImageInfo InResourceInfo {};
-        InResourceInfo.ImageView = RCAS->GetImageView();
-        InResourceInfo.Image = RCAS->GetImage();
-        // Missing the rest of the info
-
-        VkImageInfo OutResourceInfo {};
-        OutResourceInfo.ImageView = finalOutputView;
-        OutResourceInfo.Image = finalOutputImage;
-        OutResourceInfo.Width = DisplayWidth();
-        OutResourceInfo.Height = DisplayHeight();
-        // Missing the rest of the info
-
-        VkImageInfo InDepthInfo {};
-        InDepthInfo.ImageView = params.depthTexture.imageView;
-        InDepthInfo.Image = params.depthTexture.image;
-        InDepthInfo.Width = params.depthTexture.width;
-        InDepthInfo.Height = params.depthTexture.height;
-        InDepthInfo.Format = params.depthTexture.format;
-        InDepthInfo.SubresourceRange = params.depthTexture.subresourceRange;
-
-        RCAS->Dispatch(Device, InCmdBuffer, rcasConstants, &InResourceInfo,
-                       (VkImageInfo*) &paramVelocity->Resource.ImageViewInfo, &OutResourceInfo, &InDepthInfo);
-    }
-
-    _frameCount++;
 
     return true;
 }

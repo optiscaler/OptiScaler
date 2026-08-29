@@ -4,9 +4,7 @@
 
 #include "DLSSFeature_Vk.h"
 
-bool DLSSFeatureVk::Init(VkInstance InInstance, VkPhysicalDevice InPD, VkDevice InDevice, VkCommandBuffer InCmdList,
-                         PFN_vkGetInstanceProcAddr InGIPA, PFN_vkGetDeviceProcAddr InGDPA,
-                         NVSDK_NGX_Parameter* InParameters)
+bool DLSSFeatureVk::InitInternal(VkCommandBuffer InCmdList, NVSDK_NGX_Parameter* InParameters)
 {
     if (NVNGXProxy::NVNGXModule() == nullptr)
     {
@@ -19,15 +17,12 @@ bool DLSSFeatureVk::Init(VkInstance InInstance, VkPhysicalDevice InPD, VkDevice 
     NVSDK_NGX_Result nvResult;
     bool initResult = false;
 
-    Instance = InInstance;
-    PhysicalDevice = InPD;
-    Device = InDevice;
-
     do
     {
         if (!_dlssInited)
         {
-            _dlssInited = NVNGXProxy::InitVulkan(InInstance, InPD, InDevice, InGIPA, InGDPA);
+
+            _dlssInited = NVNGXProxy::InitVulkan(Instance, PhysicalDevice, Device, GIPA, GDPA);
 
             if (!_dlssInited)
                 return false;
@@ -73,19 +68,10 @@ bool DLSSFeatureVk::Init(VkInstance InInstance, VkPhysicalDevice InPD, VkDevice 
 
     SetInit(initResult);
 
-    if (initResult)
-    {
-        if (RCAS == nullptr)
-            RCAS = std::make_unique<RCAS_Vk>("RCAS", InDevice, InPD);
-
-        if (OS == nullptr)
-            OS = std::make_unique<OS_Vk>("OS", InDevice, InPD, (TargetWidth() < DisplayWidth()));
-    }
-
     return initResult;
 }
 
-bool DLSSFeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters)
+bool DLSSFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters)
 {
     if (!_moduleLoaded)
     {
@@ -93,203 +79,17 @@ bool DLSSFeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* I
         return false;
     }
 
-    if (!RCAS->IsInit())
-        Config::Instance()->RcasEnabled.set_volatile_value(false);
-
-    if (!OS->IsInit())
-        Config::Instance()->OutputScalingEnabled.set_volatile_value(false);
-
-    NVSDK_NGX_Result nvResult;
-
     if (NVNGXProxy::VULKAN_EvaluateFeature() != nullptr)
     {
         ProcessEvaluateParams(InParameters);
 
-        NVSDK_NGX_Resource_VK* paramOutput = nullptr;
-
-        VkImageView finalOutputView = VK_NULL_HANDLE;
-        VkImage finalOutputImage = VK_NULL_HANDLE;
-
-        _sharpness = GetSharpness(InParameters);
-        float ssMulti = Config::Instance()->OutputScalingMultiplier.value_or(1.5f);
-        bool useSS = Config::Instance()->OutputScalingEnabled.value_or_default() &&
-                     (LowResMV() || RenderWidth() == DisplayWidth());
-
-        bool rcasEnabled = Config::Instance()->RcasEnabled.value_or(true) &&
-                           (_sharpness > 0.0f || (Config::Instance()->MotionSharpnessEnabled.value_or(false) &&
-                                                  Config::Instance()->MotionSharpness.value_or(0.4) > 0.0f)) &&
-                           RCAS->CanRender();
-
-        if (rcasEnabled && InParameters->Get(NVSDK_NGX_Parameter_Output, (void**) &paramOutput) &&
-            paramOutput == nullptr)
-        {
-            rcasEnabled = false;
-            useSS = false;
-        }
-
-        if (rcasEnabled)
-        {
-            finalOutputView = paramOutput->Resource.ImageViewInfo.ImageView;
-            finalOutputImage = paramOutput->Resource.ImageViewInfo.Image;
-
-            InParameters->Set(NVSDK_NGX_Parameter_Sharpness, 0.0f);
-            VkImage oldImage = RCAS->GetImage();
-
-            if (RCAS->CreateImageResource(
-                    Device, PhysicalDevice, paramOutput->Resource.ImageViewInfo.Width,
-                    paramOutput->Resource.ImageViewInfo.Height, paramOutput->Resource.ImageViewInfo.Format,
-                    VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT))
-            {
-                VkImageLayout oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                if (oldImage != VK_NULL_HANDLE && oldImage == paramOutput->Resource.ImageViewInfo.Image)
-                    oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-                paramOutput->Resource.ImageViewInfo.Image = RCAS->GetImage();
-                paramOutput->Resource.ImageViewInfo.ImageView = RCAS->GetImageView();
-
-                VkImageSubresourceRange range {};
-                range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                range.baseMipLevel = 0;
-                range.levelCount = 1;
-                range.baseArrayLayer = 0;
-                range.layerCount = 1;
-
-                RCAS->SetImageLayout(InCmdBuffer, paramOutput->Resource.ImageViewInfo.Image, oldLayout,
-                                     VK_IMAGE_LAYOUT_GENERAL, range);
-            }
-            else
-            {
-                rcasEnabled = false;
-            }
-        }
-
-        if (useSS)
-        {
-            if (finalOutputImage != RCAS->GetImage())
-            {
-                finalOutputView = paramOutput->Resource.ImageViewInfo.ImageView;
-                finalOutputImage = paramOutput->Resource.ImageViewInfo.Image;
-            }
-
-            VkImage oldImage = OS->GetImage();
-
-            if (OS->CreateImageResource(
-                    Device, PhysicalDevice, TargetWidth(), TargetHeight(), paramOutput->Resource.ImageViewInfo.Format,
-                    VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT))
-            {
-                VkImageLayout oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                if (oldImage != VK_NULL_HANDLE && oldImage == paramOutput->Resource.ImageViewInfo.Image)
-                    oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-                paramOutput->Resource.ImageViewInfo.Image = OS->GetImage();
-                paramOutput->Resource.ImageViewInfo.ImageView = OS->GetImageView();
-
-                VkImageSubresourceRange range {};
-                range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                range.baseMipLevel = 0;
-                range.levelCount = 1;
-                range.baseArrayLayer = 0;
-                range.layerCount = 1;
-
-                OS->SetImageLayout(InCmdBuffer, paramOutput->Resource.ImageViewInfo.Image, oldLayout,
-                                   VK_IMAGE_LAYOUT_GENERAL, range);
-            }
-            else
-            {
-                useSS = false;
-            }
-        }
-
-        nvResult = NVNGXProxy::VULKAN_EvaluateFeature()(InCmdBuffer, _p_dlssHandle, InParameters, NULL);
+        NVSDK_NGX_Result nvResult =
+            NVNGXProxy::VULKAN_EvaluateFeature()(InCmdBuffer, _p_dlssHandle, InParameters, NULL);
 
         if (nvResult != NVSDK_NGX_Result_Success)
         {
             LOG_ERROR("_EvaluateFeature result: {0:X}", (unsigned int) nvResult);
             return false;
-        }
-
-        if (useSS)
-        {
-            VkImageSubresourceRange range {};
-            range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            range.baseMipLevel = 0;
-            range.levelCount = 1;
-            range.baseArrayLayer = 0;
-            range.layerCount = 1;
-
-            OS->SetImageLayout(InCmdBuffer, OS->GetImage(), VK_IMAGE_LAYOUT_GENERAL,
-                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
-
-            VkExtent2D outExtent = { DisplayWidth(), DisplayHeight() };
-
-            if (!rcasEnabled)
-                OS->Dispatch(InCmdBuffer, OS->GetImageView(), finalOutputView, outExtent);
-            else
-                OS->Dispatch(InCmdBuffer, OS->GetImageView(), RCAS->GetImageView(), outExtent);
-        }
-
-        if (rcasEnabled)
-        {
-            NVSDK_NGX_Resource_VK* paramVelocity = nullptr;
-            NVSDK_NGX_Resource_VK* paramDepth = nullptr;
-
-            InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, (void**) &paramVelocity);
-            InParameters->Get(NVSDK_NGX_Parameter_Depth, (void**) &paramDepth);
-
-            if (paramDepth != nullptr && paramVelocity != nullptr)
-            {
-                VkImageSubresourceRange range {};
-                range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                range.baseMipLevel = 0;
-                range.levelCount = 1;
-                range.baseArrayLayer = 0;
-                range.layerCount = 1;
-
-                RCAS->SetImageLayout(InCmdBuffer, RCAS->GetImage(), VK_IMAGE_LAYOUT_GENERAL,
-                                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
-
-                RcasConstants rcasConstants {};
-                rcasConstants.DepthIsLinear = DepthLinear();
-                rcasConstants.DepthIsReversed = DepthInverted();
-                rcasConstants.IsHdr = IsHdr();
-                rcasConstants.Sharpness = _sharpness;
-                InParameters->Get(NVSDK_NGX_Parameter_MV_Scale_X, &rcasConstants.MvScaleX);
-                InParameters->Get(NVSDK_NGX_Parameter_MV_Scale_Y, &rcasConstants.MvScaleY);
-
-                float nearPlane = 0.0f;
-                float farPlane = 0.0f;
-
-                if (InParameters->Get("DLSSG.CameraNear", &nearPlane) == NVSDK_NGX_Result_Success &&
-                    InParameters->Get("DLSSG.CameraFar", &farPlane) == NVSDK_NGX_Result_Success)
-                {
-                    rcasConstants.CameraNear = nearPlane;
-                    rcasConstants.CameraFar = farPlane;
-                }
-                else
-                {
-                    rcasConstants.CameraNear = Config::Instance()->FsrCameraNear.value_or_default();
-                    rcasConstants.CameraFar = Config::Instance()->FsrCameraFar.value_or_default();
-                }
-
-                VkImageInfo InResourceInfo {};
-                InResourceInfo.ImageView = RCAS->GetImageView();
-                InResourceInfo.Image = RCAS->GetImage();
-                // Missing the rest of the info
-
-                VkImageInfo OutResourceInfo {};
-                OutResourceInfo.ImageView = finalOutputView;
-                OutResourceInfo.Image = finalOutputImage;
-                OutResourceInfo.Width = DisplayWidth();
-                OutResourceInfo.Height = DisplayHeight();
-                // Missing the rest of the info
-
-                RCAS->Dispatch(Device, InCmdBuffer, rcasConstants, &InResourceInfo,
-                               (VkImageInfo*) &paramVelocity->Resource.ImageViewInfo, &OutResourceInfo,
-                               (VkImageInfo*) &paramDepth->Resource.ImageViewInfo);
-
-                paramOutput->Resource.ImageViewInfo.Image = finalOutputImage;
-                paramOutput->Resource.ImageViewInfo.ImageView = finalOutputView;
-            }
         }
     }
     else
@@ -297,8 +97,6 @@ bool DLSSFeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* I
         LOG_ERROR("_EvaluateFeature is nullptr");
         return false;
     }
-
-    _frameCount++;
 
     return true;
 }
