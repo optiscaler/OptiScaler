@@ -1,6 +1,8 @@
 ﻿#include "pch.h"
 #include "menu_common.h"
 
+#include <dlssnr/DlssNr.h>
+
 #include "input/input_system.h"
 
 #include "font/Hack_Compressed.h"
@@ -154,6 +156,9 @@ static std::string updateNoticeUrl;
 static float lastMenuScale = 0.0f;
 static CustomOptional<uint32_t> comboPreset { 0 };
 static int lastKey = 0;
+#if OPTI_DLSSNR
+static bool inputDlssNr = false;
+#endif
 static bool capturingKey = false;
 
 template <typename T, size_t N> struct RingBuffer
@@ -271,6 +276,10 @@ void MenuCommon::UpdateManualInput(HWND targetHwnd)
         CheckShortcut(config->FGShortcutKey.value_or_default(), inputFG, "Menu key pressed, will be switching FG mode");
         CheckShortcut(config->FpsCycleShortcutKey.value_or_default(), inputFpsCycle,
                       "Menu key pressed, will be switching FPS mode");
+#if OPTI_DLSSNR
+        CheckShortcut(config->DlssNrToggleKey.value_or_default(), inputDlssNr,
+                      "Neural Rendering key pressed, will be toggling the pass");
+#endif
     }
     else if (capturingKey)
     {
@@ -1307,6 +1316,21 @@ void MenuCommon::HandleMenuShortcuts(RenderMenuContext& ctx)
             inputFps = false;
             config->ShowFps = !config->ShowFps.value_or_default();
         }
+
+#if OPTI_DLSSNR
+        if (inputDlssNr)
+        {
+            inputDlssNr = false;
+            config->DlssNrEnabled = !config->DlssNrEnabled.value_or_default();
+            LOG_DEBUG("Neural Rendering toggle key pressed, setting DlssNrEnabled to {}",
+                      config->DlssNrEnabled.value_or_default());
+
+            ImGuiToast toast { ImGuiToastType::Info, 2000 };
+            toast.setTitle("DLSS Neural Rendering");
+            toast.setContent(config->DlssNrEnabled.value_or_default() ? "On" : "Off");
+            ImGui::InsertNotification(toast);
+        }
+#endif
 
         if (inputFpsCycle && config->ShowFps.value_or_default())
             config->FpsOverlayType = (FpsOverlay) ((config->FpsOverlayType.value_or_default() + 1) % FpsOverlay_COUNT);
@@ -6881,11 +6905,17 @@ void MenuCommon::RenderKeybindSettings(RenderMenuContext& ctx)
         static auto fpsOverlay = Keybind("FPS Overlay", 11);
         static auto fpsOverlayCycle = Keybind("FPS Overlay Cycle", 12);
         static auto fgEnable = Keybind("Frame Generation", 13);
+#if OPTI_DLSSNR
+        static auto dlssNrToggle = Keybind("Neural Rendering", 14);
+#endif
 
         menu.Render(config->ShortcutKey);
         fpsOverlay.Render(config->FpsShortcutKey);
         fpsOverlayCycle.Render(config->FpsCycleShortcutKey);
         fgEnable.Render(config->FGShortcutKey);
+#if OPTI_DLSSNR
+        dlssNrToggle.Render(config->DlssNrToggleKey);
+#endif
     }
 }
 
@@ -6911,6 +6941,9 @@ void MenuCommon::RenderMainMenuTable(RenderMenuContext& ctx)
 
         // Right column: image quality, initialization, advanced options, appearance, overlay and input settings.
         RenderActiveImageSettings(ctx);
+#if OPTI_DLSSNR
+        DlssNr::RenderMenu(ctx.config, ctx.menuResScale);
+#endif
         RenderMagnifierSettings(ctx);
         RenderQuirksSettings(ctx);
         RenderAdvancedSettings(ctx);
@@ -6978,7 +7011,11 @@ void MenuCommon::RenderMainMenuGraphs(RenderMenuContext& ctx)
                         ImGui::Text(formattedTime.c_str());
                     }
 
-                    if (hasExtra)
+                    std::optional<double> nrTime {};
+#if OPTI_DLSSNR
+                    nrTime = DlssNr::LastGpuTime();
+#endif
+                    if (hasExtra || nrTime.has_value())
                     {
                         ImGui::TableNextRow();
                         ImGui::TableNextRow();
@@ -6998,6 +7035,14 @@ void MenuCommon::RenderMainMenuGraphs(RenderMenuContext& ctx)
 
                             ImGui::TableNextColumn();
                             ImGui::Text(formattedTime.c_str());
+                        }
+
+                        if (nrTime.has_value())
+                        {
+                            ImGui::TableNextColumn();
+                            ImGui::Text("Neural Rendering");
+                            ImGui::TableNextColumn();
+                            ImGui::Text(StrFmt("%.2f ms", nrTime.value()).c_str());
                         }
                     }
 

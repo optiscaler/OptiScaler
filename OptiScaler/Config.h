@@ -1,4 +1,6 @@
 #pragma once
+
+#include "dlssnr/DlssNr_Switch.h"
 #include "SysUtils.h"
 #include "State.h"
 
@@ -251,6 +253,62 @@ class Config
     CustomOptional<bool> BuildPipelines { true };
     CustomOptional<int32_t> NetworkModel { 0 };
     CustomOptional<bool> CreateHeaps { true };
+
+#if OPTI_DLSSNR
+    // --- DLSS 5 Neural Rendering (OptiScaler/dlssnr) --- removable as one block -----------------
+    // DLSS Neural Rendering: a detail-synthesis pass over the upscaler's output. Off by default -- it is
+    // an undocumented feature driven directly through its snippet, not something NVIDIA exposes.
+    CustomOptional<bool> DlssNrEnabled { false };
+    // Toggles the pass in game. Unbound by default -- a key that does something unexpected is worse
+    // than one that does nothing.
+    CustomOptional<int> DlssNrToggleKey { UnboundKey };
+    CustomOptional<uint32_t> DlssNrPreset { 0 };
+    CustomOptional<float> DlssNrIntensity { 1.0f };
+    // 0 default (standard), 1 natural, 2 cinematic -- the model's own processing profiles.
+    CustomOptional<uint32_t> DlssNrStyle { 0 };
+    CustomOptional<float> DlssNrLocalStructure { 1.0f };
+    CustomOptional<float> DlssNrLocalTone { 1.0f };
+    // -1 means follow local structure, which is the model's own default. It is not a strength of zero.
+    CustomOptional<float> DlssNrSkinStructure { -1.0f };
+    CustomOptional<bool> DlssNrAutoMask { true };
+
+    // How much of the model's edit reaches the frame. Separated because detail synthesis is a luminance
+    // edit and any colour shift is usually the part you do not want, and allowed past 1.0 because
+    // exaggerating an edit is the only honest way to see whether there is one.
+    CustomOptional<float> DlssNrTransferStrength { 1.0f };
+    CustomOptional<float> DlssNrColourStrength { 1.0f };
+
+
+    // The most the pass may multiply or divide a pixel by. A detail pass has no business restyling a
+    // light source, whatever the model returns.
+    CustomOptional<float> DlssNrMaxRatio { 2.0f };
+
+    // 0 off, 1 the picture the model was shown, 2 its raw answer, 3 what it changed, amplified.
+    CustomOptional<uint32_t> DlssNrDebugView { 0 };
+
+    // The fraction of the frame's resolution the model works at. The frame itself is never reduced --
+    // only the model's contribution is computed small and enlarged, so the picture underneath is
+    // untouched whatever this is set to. 1.0 is full resolution and behaves exactly as before.
+    CustomOptional<float> DlssNrWorkingScale { 1.0f };
+
+    // Writes one set of matched before/after frames per session, without anyone having to ask. The
+    // folder is cleared at the start of each run, so it holds one session's worth and never grows.
+    CustomOptional<bool> DlssNrAutoCapture { true };
+
+
+
+
+
+    // Multiplies the (auto or manual) white point before the encode: what the model considers "white".
+    // Higher means highlights sit lower on the curve and the model treats them as less extreme.
+    CustomOptional<float> DlssNrWhitePointScale { 1.0f };
+
+
+
+
+
+#endif // OPTI_DLSSNR
+    // --- end DLSS 5 Neural Rendering -------------------------------------------------------------
 
     // DLSS
     CustomOptional<bool> DLSSEnabled { true };
