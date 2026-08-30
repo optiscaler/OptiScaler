@@ -1973,9 +1973,23 @@ HRESULT IFeature_VkwDx12::CreateDx12Device()
     return S_OK;
 }
 
-bool IFeature_VkwDx12::BaseInit(VkInstance InInstance, VkPhysicalDevice InPD, VkDevice InDevice,
-                                VkCommandBuffer InCmdList, PFN_vkGetInstanceProcAddr InGIPA,
-                                PFN_vkGetDeviceProcAddr InGDPA, NVSDK_NGX_Parameter* InParameters)
+IFeature_VkwDx12::IFeature_VkwDx12(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters)
+    : IFeature(InHandleId, InParameters), IFeature_Vk(InHandleId, InParameters)
+{
+    SetInitParameters(InParameters);
+}
+
+IFeature_VkwDx12::~IFeature_VkwDx12()
+{
+    if (State::Instance().isShuttingDown)
+        return;
+
+    ReleaseSharedResources();
+}
+
+bool IFeature_VkwDx12::Init(VkInstance InInstance, VkPhysicalDevice InPD, VkDevice InDevice, VkCommandBuffer InCmdList,
+                            PFN_vkGetInstanceProcAddr InGIPA, PFN_vkGetDeviceProcAddr InGDPA,
+                            NVSDK_NGX_Parameter* InParameters)
 {
     LOG_FUNC();
 
@@ -2035,26 +2049,76 @@ bool IFeature_VkwDx12::BaseInit(VkInstance InInstance, VkPhysicalDevice InPD, Vk
         return false;
     }
 
-    return true;
-}
-
-IFeature_VkwDx12::IFeature_VkwDx12(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters)
-    : IFeature(InHandleId, InParameters), IFeature_Vk(InHandleId, InParameters)
-{
     SetInitParameters(InParameters);
+
+    // Non-DLSS upscalers don't use the cmdList during Init
+    // We have more than one cmdList so unsure how that would even work
+    SetInit(dx12Feature->Init(_dx11on12Device, Dx12CommandList[0], InParameters));
+
+    return IsInited();
 }
 
-IFeature_VkwDx12::~IFeature_VkwDx12()
+bool IFeature_VkwDx12::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters)
 {
-    if (State::Instance().isShuttingDown)
-        return;
+    LOG_FUNC();
 
-    ReleaseSharedResources();
+    if (!IsInited())
+        return false;
 
-    DT.reset();
-    OutputScaler.reset();
-    RCAS.reset();
-    Bias.reset();
+    auto frame = _frameCount % VKDX12_BUFFER_COUNT;
+    auto cmdList = Dx12CommandList[frame];
+
+    bool dx12EvalResult = false;
+    do
+    {
+        if (!ProcessVulkanTextures(InCmdBuffer, InParameters))
+        {
+            LOG_ERROR("Can't process Dx11 textures!");
+            break;
+        }
+
+        if (State::Instance().changeBackend[Handle()->Id])
+        {
+            break;
+        }
+
+        InParameters->Set(NVSDK_NGX_Parameter_Color, (void*) vkColor.Dx12Resource);
+        InParameters->Set(NVSDK_NGX_Parameter_MotionVectors, (void*) vkMv.Dx12Resource);
+        InParameters->Set(NVSDK_NGX_Parameter_Output, (void*) vkOut.Dx12Resource);
+        InParameters->Set(NVSDK_NGX_Parameter_Depth, (void*) vkDepth.Dx12Resource);
+
+        if (!AutoExposure() && vkExp.Dx12Resource != nullptr)
+            InParameters->Set(NVSDK_NGX_Parameter_ExposureTexture, (void*) vkExp.Dx12Resource);
+
+        if (!Config::Instance()->DisableReactiveMask.value_or(false) && vkReactive.Dx12Resource != nullptr)
+            InParameters->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void*) vkReactive.Dx12Resource);
+
+        LOG_DEBUG("Dispatch!!");
+        dx12EvalResult = dx12Feature->Evaluate(cmdList, InParameters);
+
+    } while (false);
+
+    if (!dx12EvalResult)
+        return false;
+
+    if (!CopyBackOutput())
+    {
+        LOG_ERROR("Can't copy output texture back!");
+        return false;
+    }
+
+    // Not restoring the original values of NVSDK_NGX_Parameter_Color etc.
+    // Unsure if that's a potential problem but in theory the game should only be setting those
+    InParameters->Set(NVSDK_NGX_Parameter_Color, (void*) nullptr);
+    InParameters->Set(NVSDK_NGX_Parameter_MotionVectors, (void*) nullptr);
+    InParameters->Set(NVSDK_NGX_Parameter_Output, (void*) nullptr);
+    InParameters->Set(NVSDK_NGX_Parameter_Depth, (void*) nullptr);
+    InParameters->Set(NVSDK_NGX_Parameter_ExposureTexture, (void*) nullptr);
+    InParameters->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void*) nullptr);
+
+    _frameCount++;
+
+    return true;
 }
 
 bool IFeature_VkwDx12::CreateSharedFenceSemaphore()

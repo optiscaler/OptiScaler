@@ -28,7 +28,7 @@ bool IFeature_Dx11wDx12::CreateD3D12Objects()
 {
     HRESULT result;
 
-    for (size_t i = 0; i < 2; i++)
+    for (size_t i = 0; i < DX11WDX12_NUM_OF_BUFFERS; i++)
     {
         if (Dx12CommandAllocator[i] == nullptr)
         {
@@ -82,14 +82,15 @@ bool IFeature_Dx11wDx12::CreateD3D12Objects()
 
 void IFeature_Dx11wDx12::ReleaseSharedResources()
 {
-    SAFE_RELEASE(Dx12CommandList[0]);
-    SAFE_RELEASE(Dx12CommandList[1]);
-    SAFE_RELEASE(Dx12CommandAllocator[0]);
-    SAFE_RELEASE(Dx12CommandAllocator[1]);
+    for (size_t i = 0; i < DX11WDX12_NUM_OF_BUFFERS; i++)
+    {
+        SAFE_RELEASE(Dx12CommandList[i]);
+        SAFE_RELEASE(Dx12CommandAllocator[i]);
+        Dx12CommandAllocatorFenceValue[i] = 0;
+    }
+
     SAFE_RELEASE(Dx12Fence);
     Dx12FenceValue = 0;
-    Dx12CommandAllocatorFenceValue[0] = 0;
-    Dx12CommandAllocatorFenceValue[1] = 0;
 
     if (Dx12FenceEvent)
     {
@@ -505,9 +506,6 @@ bool IFeature_Dx11wDx12::BaseInit(ID3D11Device* InDevice, ID3D11DeviceContext* I
 
     if (IsInited())
         return true;
-
-    Device = InDevice;
-    DeviceContext = InContext;
 
     if (!InContext)
     {
