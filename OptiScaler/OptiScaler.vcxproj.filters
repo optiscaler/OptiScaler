@@ -944,6 +944,12 @@
     <ClInclude Include="gpu_time\GpuTime_Dx11.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="shaders\magnifier\Magnifier_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\magnifier\precompile\Magnifier_Shader_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Config.cpp">
@@ -1523,6 +1529,9 @@
     <ClCompile Include="upscalers\IFeature_Vk.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="shaders\magnifier\Magnifier_Vk.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="OptiScaler.rc" />
@@ -1531,5 +1540,6 @@
     <None Include="Source.def">
       <Filter>Source Files</Filter>
     </None>
+    <None Include="shaders\magnifier\precompile\Magnifier_Shader_Vk.spv" />
   </ItemGroup>
 </Project>

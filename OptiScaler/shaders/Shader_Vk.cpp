@@ -54,7 +54,6 @@ Shader_Vk::~Shader_Vk()
     ReleaseImageResource();
 }
 
-// Implement the missing CreateDescriptorPool
 void Shader_Vk::CreateDescriptorPool(const std::vector<VkDescriptorPoolSize>& poolSizes, uint32_t maxSets)
 {
     VkDescriptorPoolCreateInfo poolInfo {};
@@ -69,7 +68,6 @@ void Shader_Vk::CreateDescriptorPool(const std::vector<VkDescriptorPoolSize>& po
     }
 }
 
-// Implement the missing CreateSampler
 void Shader_Vk::CreateSampler(VkFilter filter, VkSamplerAddressMode addressMode)
 {
     VkSamplerCreateInfo samplerInfo {};

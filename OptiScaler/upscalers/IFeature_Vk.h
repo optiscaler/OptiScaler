@@ -4,6 +4,7 @@
 
 #include <shaders/rcas/RCAS_Vk.h>
 #include <shaders/output_scaling/OS_Vk.h>
+#include <shaders/magnifier/Magnifier_Vk.h>
 
 class IFeature_Vk : public virtual IFeature
 {
@@ -30,6 +31,7 @@ class IFeature_Vk : public virtual IFeature
 
     std::unique_ptr<OS_Vk> OutputScaler = nullptr;
     std::unique_ptr<RCAS_Vk> RCAS = nullptr;
+    std::unique_ptr<Magnifier_Vk> Magnifier = nullptr;
 
     virtual bool InitInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters) = 0;
     virtual bool EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters) = 0;

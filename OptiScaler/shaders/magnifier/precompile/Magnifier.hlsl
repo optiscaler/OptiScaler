@@ -1,4 +1,8 @@
+#ifdef VK_MODE
+cbuffer Params : register(b0, space0)
+#else
 cbuffer MagnifierCB : register(b0)
+#endif
 {
     float2 Resolution; // Screen or texture resolution in pixels
     float2 CursorPos; // Cursor position in pixel coordinates
@@ -9,7 +13,14 @@ cbuffer MagnifierCB : register(b0)
     float3 Padding; // Padding to maintain 16-byte alignment
 };
 
+#ifdef VK_MODE
+[[vk::binding(1, 0)]]
+#endif
 Texture2D<float4> InTexture : register(t0);
+
+#ifdef VK_MODE
+[[vk::binding(2, 0)]]
+#endif
 RWTexture2D<float4> OutTexture : register(u0);
 
 [numthreads(16, 16, 1)]

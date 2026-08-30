@@ -21,7 +21,7 @@ bool IFeature_Vk::Init(VkInstance InInstance, VkPhysicalDevice InPD, VkDevice In
 
         OutputScaler = std::make_unique<OS_Vk>("Output Scaling", InDevice, InPD, (TargetWidth() < DisplayWidth()));
         RCAS = std::make_unique<RCAS_Vk>("RCAS", InDevice, InPD);
-        // Magnifier = std::make_unique<Magnifier_Vk>("Magnifier", InDevice);
+        Magnifier = std::make_unique<Magnifier_Vk>("Magnifier", InDevice, InPD);
 
         // UpscalerTime = std::make_unique<GpuTime_Vk>(InDevice);
     }
@@ -206,6 +206,43 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
                       return false;
                   }
                   return true;
+              } });
+    }
+
+    if (Magnifier->ShouldRun())
+    {
+        pipeline.push_back(
+            { // Setup
+              [&](const VkImageInfo& nextOutput) -> VkImageInfo
+              {
+                  if (Magnifier->CreateImageResource(Device, PhysicalDevice, nextOutput.Width, nextOutput.Height,
+                                                     nextOutput.Format, intermediateUsage))
+                  {
+                      Magnifier->SetImageLayout(InCmdBuffer, Magnifier->GetImage(), VK_IMAGE_LAYOUT_UNDEFINED,
+                                                VK_IMAGE_LAYOUT_GENERAL, nextOutput.SubresourceRange);
+
+                      VkImageInfo info = nextOutput;
+                      info.Image = Magnifier->GetImage();
+                      info.ImageView = Magnifier->GetImageView();
+                      return info;
+                  }
+                  return VkImageInfo {};
+              },
+
+              // Dispatch
+              [&](const VkImageInfo& input, const VkImageInfo& output) -> bool
+              {
+                  if (!Magnifier->CanRender())
+                      return true;
+
+                  Magnifier->SetImageLayout(InCmdBuffer, input.Image, VK_IMAGE_LAYOUT_GENERAL,
+                                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, input.SubresourceRange);
+
+                  // In Vulkan we pass the Info structs instead of raw resources
+                  VkImageInfo mvInfo = *(VkImageInfo*) &paramMotion->Resource.ImageViewInfo;
+                  VkImageInfo depthInfo = *(VkImageInfo*) &paramDepth->Resource.ImageViewInfo;
+
+                  return Magnifier->Dispatch(InCmdBuffer, input, output);
               } });
     }
 
