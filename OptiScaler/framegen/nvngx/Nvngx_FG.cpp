@@ -541,7 +541,10 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
 
     // LOG_TRACE("Handle received from the game: {:X}", (uint64_t) InHandle);
 
-    auto result = provider->VULKAN_ReleaseFeature(((Nvngx_FG_Handle*) InHandle)->nativeHandle);
+    Nvngx_FG_Handle* ourHandle = (Nvngx_FG_Handle*) InHandle;
+    std::scoped_lock lock(ourHandle->handleMutex);
+
+    auto result = provider->VULKAN_ReleaseFeature(ourHandle->nativeHandle);
 
     if (result == NVSDK_NGX_Result_Success)
         delete InHandle;
@@ -571,12 +574,18 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_EvaluateFeature(VkCommandBuffer InCmdList, con
     if (!provider)
         return NVSDK_NGX_Result_Fail;
 
+    if (!InFeatureHandle)
+        return NVSDK_NGX_Result_FAIL_InvalidParameter;
+
     if (InFeatureHandle->Id < NVNGX_PROVIDER_ID_OFFSET)
         return NVSDK_NGX_Result_FAIL_FeatureNotFound;
 
+    Nvngx_FG_Handle* ourHandle = (Nvngx_FG_Handle*) InFeatureHandle;
+    std::shared_lock lock(ourHandle->handleMutex);
+
     // LOG_TRACE("Handle received from the game: {:X}", (uint64_t) InFeatureHandle);
 
-    return provider->VULKAN_EvaluateFeature(InCmdList, InFeatureHandle, InParameters, InCallback);
+    return provider->VULKAN_EvaluateFeature(InCmdList, ourHandle->nativeHandle, InParameters, InCallback);
 }
 
 NVSDK_NGX_Result Nvngx_FG::VULKAN_PopulateParameters_Impl(NVSDK_NGX_Parameter* InParameters)
