@@ -263,6 +263,33 @@ void RenderMenu(Config* config, float menuResScale)
                        "\nstored setting and stays put once the menu is closed."
                        "\n\nNeither needs the menu open to keep working. A hairline marks the join.");
 
+        if (compare != 0)
+        {
+            bool swap = config->DlssNrCompareSwap.value_or_default();
+            if (ImGui::Checkbox("Swap sides", &swap))
+                config->DlssNrCompareSwap = swap;
+
+            HelpMarker("Puts the edited frame on the other side."
+                           "\n\nWorth doing once you have decided which you prefer: the eye is not"
+                           "\neven-handed about left and right, and a difference can read as an"
+                           "\nimprovement purely from where it sits. If the same side still wins after"
+                           "\nswapping, it is the pass you are seeing and not the placement.");
+        }
+
+        if (compare == 1)
+        {
+            float zoom = config->DlssNrCompareZoom.value_or_default();
+            if (ImGui::SliderFloat("Zoom", &zoom, 1.0f, 2.0f, "%.2f"))
+                config->DlssNrCompareZoom = std::clamp(zoom, 1.0f, 2.0f);
+
+            HelpMarker("How much of the frame each half shows."
+                           "\n\nA half is half as wide as the frame and just as tall, so the frame"
+                           "\ncannot fill it and keep its shape."
+                           "\n\nAt 1 the whole frame is there at its right proportions, with bars above"
+                           "\nand below. At 2 the half is filled and the sides are cropped away"
+                           "\ninstead. Anything between trades one for the other.");
+        }
+
         if (compare == 2)
         {
             float split = config->DlssNrCompareSplit.value_or_default();

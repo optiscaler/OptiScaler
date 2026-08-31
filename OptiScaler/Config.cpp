@@ -324,6 +324,8 @@ bool Config::Reload(std::filesystem::path iniPath)
             DlssNrDebugView.set_from_config(readUInt("DlssNr", "DebugView"));
             DlssNrCompare.set_from_config(readUInt("DlssNr", "Compare"));
             DlssNrCompareSplit.set_from_config(readFloat("DlssNr", "CompareSplit"));
+            DlssNrCompareZoom.set_from_config(readFloat("DlssNr", "CompareZoom"));
+            DlssNrCompareSwap.set_from_config(readBool("DlssNr", "CompareSwap"));
             DlssNrWorkingScale.set_from_config(readFloat("DlssNr", "WorkingScale"));
             DlssNrProxyProbe.set_from_config(readBool("DlssNr", "ProxyProbe"));
             DlssNrUseProxy.set_from_config(readBool("DlssNr", "UseProxy"));
@@ -1179,6 +1181,10 @@ bool Config::SaveIni()
     ini.SetValue("DlssNr", "Compare", GetIntValue(Instance()->DlssNrCompare.value_for_config()).c_str());
     ini.SetValue("DlssNr", "CompareSplit",
                  GetFloatValue(Instance()->DlssNrCompareSplit.value_for_config()).c_str());
+    ini.SetValue("DlssNr", "CompareZoom",
+                 GetFloatValue(Instance()->DlssNrCompareZoom.value_for_config()).c_str());
+    ini.SetValue("DlssNr", "CompareSwap",
+                 GetBoolValue(Instance()->DlssNrCompareSwap.value_for_config()).c_str());
     ini.SetValue("DlssNr", "WorkingScale", GetFloatValue(Instance()->DlssNrWorkingScale.value_for_config()).c_str());
     ini.SetValue("DlssNr", "AutoCapture", GetBoolValue(Instance()->DlssNrAutoCapture.value_for_config()).c_str());
     ini.SetValue("DlssNr", "WhitePointScale",

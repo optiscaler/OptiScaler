@@ -68,6 +68,14 @@ struct alignas(256) DlssNrConstants
     // edited. Comparing them anywhere else would mean keeping a second copy of one of them.
     uint32_t CompareMode;
     float CompareSplit;
+
+    // How much of the frame side by side shows. 1 fits the whole thing at its right shape and
+    // letterboxes what is left over; 2 fills the half and crops to the middle instead.
+    float CompareZoom;
+
+    // Which side the edited frame is on. Swapping matters because the eye is not even-handed about
+    // left and right, so a difference can look like an improvement purely from where it sits.
+    uint32_t CompareSwap;
 };
 
 class DlssNr_Common

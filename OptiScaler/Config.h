@@ -293,6 +293,13 @@ class Config
     CustomOptional<uint32_t> DlssNrCompare { 0 };
     CustomOptional<float> DlssNrCompareSplit { 0.5f };
 
+    // Side by side only. 1 fits the whole frame at its right shape and accepts the bars; 2 fills
+    // the half and crops the sides off instead.
+    CustomOptional<float> DlssNrCompareZoom { 1.0f };
+
+    // Which side the edited frame sits on, in both comparison modes.
+    CustomOptional<bool> DlssNrCompareSwap { false };
+
     // The fraction of the frame's resolution the model works at. The frame itself is never reduced --
     // only the model's contribution is computed small and enlarged, so the picture underneath is
     // untouched whatever this is set to. 1.0 is full resolution and behaves exactly as before.

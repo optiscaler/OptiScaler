@@ -1137,6 +1137,8 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
         resolveParams.Passthrough = isHdrBuffer ? 0u : 1u;
         resolveParams.CompareMode = cfg.DlssNrCompare.value_or_default();
         resolveParams.CompareSplit = cfg.DlssNrCompareSplit.value_or_default();
+        resolveParams.CompareZoom = std::max(1.0f, cfg.DlssNrCompareZoom.value_or_default());
+        resolveParams.CompareSwap = cfg.DlssNrCompareSwap.value_or_default() ? 1u : 0u;
 
         Barrier(cmdList, g_nr.output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);

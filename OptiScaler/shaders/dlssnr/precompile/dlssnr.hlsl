@@ -16,6 +16,8 @@ cbuffer Params : register(b0)
     uint  gGuideHeight;
     uint  gCompareMode;  // 0 off, 1 side by side, 2 wipe
     float gCompareSplit; // where the wipe cuts, 0..1
+    float gCompareZoom;  // side by side: 1 fits the frame, 2 fills the half
+    uint  gCompareSwap;  // put the edited frame on the other side
 };
 
 // Colours outside the AP1 gamut are impossible on any display and read as sparkle where a bright
@@ -190,16 +192,28 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     float2 cmpUv = uv;
     bool showOriginal = false;
     bool onDivider = false;
+    bool outsideFrame = false;
 
     if (gCompareMode == 1)
     {
-        showOriginal = uv.x < 0.5;
-        cmpUv.x = showOriginal ? uv.x * 2.0 : (uv.x - 0.5) * 2.0;
+        showOriginal = (uv.x < 0.5) != (gCompareSwap != 0);
+
+        // Each half is half as wide as the frame and just as tall, so the frame cannot fill it and
+        // keep its shape. Stretching it to fit is what made both sides look squashed. Fitting it
+        // properly leaves the halves letterboxed, which is the honest way round: a comparison that
+        // changes the shape of what it is comparing is not showing you the picture.
+        //
+        // Zoom decides which is given up. At 1 the whole frame is there at its right proportions
+        // with bars above and below; at 2 the half is filled and the sides are cropped away.
+        float2 half2 = float2(uv.x < 0.5 ? uv.x * 2.0 : (uv.x - 0.5) * 2.0, uv.y) - 0.5;
+        cmpUv = float2(0.5 + half2.x / gCompareZoom, 0.5 + half2.y * 2.0 / gCompareZoom);
+
+        outsideFrame = cmpUv.x < 0.0 || cmpUv.x > 1.0 || cmpUv.y < 0.0 || cmpUv.y > 1.0;
         onDivider = abs(uv.x - 0.5) < (1.0 / max(gWidth, 1u));
     }
     else if (gCompareMode == 2)
     {
-        showOriginal = uv.x < gCompareSplit;
+        showOriginal = (uv.x < gCompareSplit) != (gCompareSwap != 0);
         onDivider = abs(uv.x - gCompareSplit) < (1.0 / max(gWidth, 1u));
     }
 
@@ -317,6 +331,11 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     // The side being shown untouched takes the frame as it arrived, past every step above.
     if (showOriginal)
         result = originalSample.rgb;
+
+    // The letterbox. The sampler clamps rather than wrapping, so without this the bars would be the
+    // frame's edge row smeared down the screen.
+    if (outsideFrame)
+        result = float3(0.0, 0.0, 0.0);
 
     // A hairline so the two sides are never mistaken for one picture.
     if (onDivider)
