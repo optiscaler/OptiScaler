@@ -326,6 +326,22 @@ class Config
     // same conclusion independently.
     CustomOptional<uint32_t> DlssNrDepthMode { 0 };
 
+    // Multipliers on the motion vector scale handed to the model. 1.0 changes nothing.
+    //
+    // The game states how its vectors are encoded and that answer is passed through, but it describes
+    // what the upscaler expects rather than what this model does. Vectors read at the wrong scale mean
+    // the model cannot find where anything was last frame, so its edit stops tracking what is under it
+    // -- detail that slides off a moving face and boils in place rather than sitting on it.
+    //
+    // A thousandfold error is the usual one: normalised vectors read as pixels, or the reverse. If
+    // that is what is happening, 1/1920 and 1/1080 are the interesting values rather than anything
+    // near 1.
+    //
+    // RenoDX's own addon exposes the same two multipliers, next to the depth override and under the
+    // same warning about leaving them alone unless diagnostics require them.
+    CustomOptional<float> DlssNrMvScaleX { 1.0f };
+    CustomOptional<float> DlssNrMvScaleY { 1.0f };
+
     // Writes one set of matched before/after frames per session, without anyone having to ask. The
     // folder is cleared at the start of each run, so it holds one session's worth and never grows.
     CustomOptional<bool> DlssNrAutoCapture { true };

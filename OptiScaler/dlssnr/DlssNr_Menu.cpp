@@ -266,6 +266,24 @@ void RenderMenu(Config* config, float menuResScale)
                        "\n\nLeave it on the game's flag unless the picture is unstable; then try the"
                        "\nother two and keep whichever settles.");
 
+        float mvScaleX = config->DlssNrMvScaleX.value_or_default();
+        if (ImGui::SliderFloat("Motion scale X", &mvScaleX, 0.0f, 2.0f, "%.4f"))
+            config->DlssNrMvScaleX = mvScaleX;
+
+        float mvScaleY = config->DlssNrMvScaleY.value_or_default();
+        if (ImGui::SliderFloat("Motion scale Y", &mvScaleY, 0.0f, 2.0f, "%.4f"))
+            config->DlssNrMvScaleY = mvScaleY;
+
+        HelpMarker("Multipliers on the motion vector scale handed to the model. 1.0 changes nothing."
+                       "\n\nThe game states how its vectors are encoded and that is passed through, but"
+                       "\nit describes what the upscaler expects rather than what this model does. Read"
+                       "\nat the wrong scale the model cannot find where anything was last frame, so its"
+                       "\nedit stops tracking what is underneath it -- detail that slides off a moving"
+                       "\nface and boils in place rather than sitting on it."
+                       "\n\nA thousandfold error is the usual one: normalised vectors read as pixels, or"
+                       "\nthe reverse. If that is what is happening the interesting values are tiny --"
+                       "\n1/1920 is 0.0005 -- rather than anything near 1.");
+
         static const char* debugNames[] = { "Off", "Proxy (what the model sees)", "Model output (raw)",
                                             "Difference (amplified)" };
         int debugView = (int) config->DlssNrDebugView.value_or_default();

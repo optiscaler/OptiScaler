@@ -789,8 +789,10 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
     // exactly where this was first tested.
     const float upscaleX = guideWidth != 0 ? (float) width / (float) guideWidth : 1.0f;
     const float upscaleY = guideHeight != 0 ? (float) height / (float) guideHeight : 1.0f;
-    g_nr.guideMvScaleX = mvScaleX * upscaleX;
-    g_nr.guideMvScaleY = mvScaleY * upscaleY;
+    // The game's own encoding, times the resolution ratio, times whatever has had to be corrected by
+    // hand. The last of those is 1.0 unless somebody is diagnosing.
+    g_nr.guideMvScaleX = mvScaleX * upscaleX * cfg.DlssNrMvScaleX.value_or_default();
+    g_nr.guideMvScaleY = mvScaleY * upscaleY * cfg.DlssNrMvScaleY.value_or_default();
 
     static bool reportedGuides = false;
 

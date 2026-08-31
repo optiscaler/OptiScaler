@@ -326,6 +326,8 @@ bool Config::Reload(std::filesystem::path iniPath)
             DlssNrProxyProbe.set_from_config(readBool("DlssNr", "ProxyProbe"));
             DlssNrUseProxy.set_from_config(readBool("DlssNr", "UseProxy"));
             DlssNrDepthMode.set_from_config(readInt("DlssNr", "DepthMode"));
+            DlssNrMvScaleX.set_from_config(readFloat("DlssNr", "MvScaleX"));
+            DlssNrMvScaleY.set_from_config(readFloat("DlssNr", "MvScaleY"));
             DlssNrAutoCapture.set_from_config(readBool("DlssNr", "AutoCapture"));
             DlssNrWhitePointScale.set_from_config(readFloat("DlssNr", "WhitePointScale"));
             DlssNrPreset.set_from_config(readUInt("DlssNr", "Preset"));
@@ -1188,6 +1190,9 @@ bool Config::SaveIni()
     ini.SetValue("DlssNr", "SkinStructure",
                  GetFloatValue(Instance()->DlssNrSkinStructure.value_for_config()).c_str());
     ini.SetValue("DlssNr", "AutoMask", GetBoolValue(Instance()->DlssNrAutoMask.value_for_config()).c_str());
+    ini.SetValue("DlssNr", "DepthMode", GetIntValue(Instance()->DlssNrDepthMode.value_for_config()).c_str());
+    ini.SetValue("DlssNr", "MvScaleX", GetFloatValue(Instance()->DlssNrMvScaleX.value_for_config()).c_str());
+    ini.SetValue("DlssNr", "MvScaleY", GetFloatValue(Instance()->DlssNrMvScaleY.value_for_config()).c_str());
         ini.SetValue("DLSS", "RenderPresetOverride",
                      GetBoolValue(Instance()->RenderPresetOverride.value_for_config()).c_str());
         ini.SetValue("DLSS", "RenderPresetForAll",
