@@ -35,14 +35,17 @@ DlssNrCompose_Dx12::DlssNrCompose_Dx12(std::string InName, ID3D12Device* InDevic
     D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(DlssNrConstants));
     auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 
-    auto result = InDevice->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
-                                                    D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                    IID_PPV_ARGS(&_constantBuffer));
-
-    if (result != S_OK)
+    for (uint32_t i = 0; i < DLSSNR_NUM_OF_HEAPS; ++i)
     {
-        LOG_ERROR("[{0}] CreateCommittedResource error {1:x}", _name, (unsigned int) result);
-        return;
+        auto result = InDevice->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
+                                                        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                                                        IID_PPV_ARGS(&_constantBuffers[i]));
+
+        if (result != S_OK)
+        {
+            LOG_ERROR("[{0}] CreateCommittedResource error {1:x}", _name, (unsigned int) result);
+            return;
+        }
     }
 
     // Precompiled, with no source fallback. The shader used to be compiled at runtime from a string,
@@ -66,8 +69,10 @@ bool DlssNrCompose_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, const Dl
     if (!_init || InCmdList == nullptr || _device == nullptr || InSource == nullptr || OutTarget == nullptr)
         return false;
 
-    FrameDescriptorHeap& currentHeap = _frameHeaps[_heapIndex];
+    const uint32_t slot = _heapIndex;
     _heapIndex = (_heapIndex + 1) % DLSSNR_NUM_OF_HEAPS;
+
+    FrameDescriptorHeap& currentHeap = _frameHeaps[slot];
 
     // Every slot in the table gets a view, whether the mode reads it or not. An unbound descriptor is
     // not an empty read; it is a read from nothing, and the source stands in wherever a mode has
@@ -91,7 +96,7 @@ bool DlssNrCompose_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, const Dl
     for (uint32_t i = 0; i < kUavCount; ++i)
         CreateUnorderedAccessView(_device, uavs[i], currentHeap.GetUavCPU(i), 0);
 
-    if (!CreateConstantsBuffer(_device, _constantBuffer, InConstants, currentHeap.GetCbvCPU(0)))
+    if (!CreateConstantsBuffer(_device, _constantBuffers[slot], InConstants, currentHeap.GetCbvCPU(0)))
     {
         LOG_ERROR("[{0}] Failed to create a constants buffer", _name);
         return false;
@@ -110,4 +115,16 @@ bool DlssNrCompose_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, const Dl
     InCmdList->Dispatch(dispatchWidth, dispatchHeight, 1);
 
     return true;
+}
+
+DlssNrCompose_Dx12::~DlssNrCompose_Dx12()
+{
+    for (auto& buffer : _constantBuffers)
+    {
+        if (buffer != nullptr)
+        {
+            buffer->Release();
+            buffer = nullptr;
+        }
+    }
 }

@@ -26,7 +26,11 @@ enum DlssNrMode : uint32_t
 // The model does not replace the frame. It is shown a tone-mapped proxy of the picture, and its
 // answer is transferred back onto the real frame -- so most of these describe how much of that answer
 // to take, not what the model should do.
-struct DlssNrConstants
+// Aligned to 256 because a constant buffer view's size must be a multiple of it. Without this the
+// buffer is created at the struct's natural size, the view is invalid, and the device is removed a
+// few milliseconds later -- with nothing in any log to say why. Every other shader here does the
+// same thing; it is not optional.
+struct alignas(256) DlssNrConstants
 {
     uint32_t Mode;
     float WhitePoint;

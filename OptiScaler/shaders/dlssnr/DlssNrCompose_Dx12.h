@@ -24,14 +24,24 @@
 #include <shaders/Shader_Dx12.h>
 #include <shaders/Shader_Dx12Utils.h>
 
-// Encode, down and resolve are recorded back to back on one command list, so each needs descriptors
-// that outlive the others within a frame.
-#define DLSSNR_NUM_OF_HEAPS 4
+// Three dispatches are recorded per frame and several frames can be in flight at once, more so with
+// frame generation. Each dispatch needs descriptors and constants the GPU is not still reading, so
+// there has to be enough for three passes times the deepest pipeline we might sit behind.
+#define DLSSNR_NUM_OF_HEAPS 16
 
 class DlssNrCompose_Dx12 : public Shader_Dx12, public DlssNr_Common
 {
   private:
     FrameDescriptorHeap _frameHeaps[DLSSNR_NUM_OF_HEAPS];
+
+    // One constant buffer per heap, not one for the class.
+    //
+    // The shared buffer in the base class suits a shader that dispatches once a frame. Three
+    // dispatches recorded onto one command list all map and overwrite the same upload buffer before
+    // any of them executes, so every pass ends up reading whichever constants were written last --
+    // encode and downsample would run with the resolve's parameters.
+    ID3D12Resource* _constantBuffers[DLSSNR_NUM_OF_HEAPS] = {};
+
     uint32_t _heapIndex = 0;
 
     // The shader reads five inputs and writes two, and not every mode uses all of them. Unused slots
@@ -45,6 +55,7 @@ class DlssNrCompose_Dx12 : public Shader_Dx12, public DlssNr_Common
 
   public:
     DlssNrCompose_Dx12(std::string InName, ID3D12Device* InDevice);
+    ~DlssNrCompose_Dx12();
 
     // Records one pass. Resources that a given mode does not read may be null; a stand-in is bound in
     // their place so every descriptor in the table is valid.
