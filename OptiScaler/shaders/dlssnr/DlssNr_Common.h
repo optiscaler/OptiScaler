@@ -60,6 +60,14 @@ struct alignas(256) DlssNrConstants
     // while colour and output are at display resolution.
     uint32_t GuideWidth;
     uint32_t GuideHeight;
+
+    // Showing the pass against itself. 0 off, 1 side by side, 2 a wipe.
+    //
+    // Both are drawn by the resolve rather than by a pass of their own, because the resolve is the
+    // one place that already holds the frame as the upscaler produced it and the frame the model
+    // edited. Comparing them anywhere else would mean keeping a second copy of one of them.
+    uint32_t CompareMode;
+    float CompareSplit;
 };
 
 class DlssNr_Common

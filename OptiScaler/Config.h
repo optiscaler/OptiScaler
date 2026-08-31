@@ -284,6 +284,15 @@ class Config
     // 0 off, 1 the picture the model was shown, 2 its raw answer, 3 what it changed, amplified.
     CustomOptional<uint32_t> DlssNrDebugView { 0 };
 
+    // Showing the pass against itself, without having to toggle it and remember what the last frame
+    // looked like. 0 off, 1 side by side, 2 a wipe.
+    //
+    // Side by side squeezes the whole frame into each half, so it is a comparison rather than
+    // something to play in. The wipe cuts one frame and resamples nothing, so it is; the split is a
+    // stored setting and stays where it was put once the menu closes.
+    CustomOptional<uint32_t> DlssNrCompare { 0 };
+    CustomOptional<float> DlssNrCompareSplit { 0.5f };
+
     // The fraction of the frame's resolution the model works at. The frame itself is never reduced --
     // only the model's contribution is computed small and enlarged, so the picture underneath is
     // untouched whatever this is set to. 1.0 is full resolution and behaves exactly as before.

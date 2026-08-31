@@ -248,6 +248,31 @@ void RenderMenu(Config* config, float menuResScale)
                        "\n\nRaw, into a dlssnr-capture folder beside OptiScaler. Bounded to eight frames,"
                        "\nand each run overwrites the last.");
 
+        static const char* compareNames[] = { "Off", "Side by side", "Wipe" };
+        int compare = (int) config->DlssNrCompare.value_or_default();
+        if (ImGui::Combo("Compare", &compare, compareNames, IM_ARRAYSIZE(compareNames)))
+            config->DlssNrCompare = (uint32_t) compare;
+
+        HelpMarker("Shows the pass against itself, so the two can be seen at once rather than"
+                       "\ntoggled and remembered."
+                       "\n\nSide by side puts the whole frame in each half, untouched on the left and"
+                       "\nedited on the right. Both halves are squeezed horizontally to fit, so it is"
+                       "\nfor looking at rather than playing in."
+                       "\n\nWipe cuts a single frame at the split and resamples nothing, so the picture"
+                       "\nis the right shape and can be played normally. Drag the split below; it is a"
+                       "\nstored setting and stays put once the menu is closed."
+                       "\n\nNeither needs the menu open to keep working. A hairline marks the join.");
+
+        if (compare == 2)
+        {
+            float split = config->DlssNrCompareSplit.value_or_default();
+            if (ImGui::SliderFloat("Split", &split, 0.0f, 1.0f, "%.2f"))
+                config->DlssNrCompareSplit = std::clamp(split, 0.0f, 1.0f);
+
+            HelpMarker("Where the wipe cuts. Left of it is the frame as the upscaler produced it,"
+                           "\nright of it is the frame the model edited.");
+        }
+
         static const char* debugNames[] = { "Off", "Proxy (what the model sees)", "Model output (raw)",
                                             "Difference (amplified)" };
         int debugView = (int) config->DlssNrDebugView.value_or_default();

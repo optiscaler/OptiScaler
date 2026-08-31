@@ -14,6 +14,8 @@ cbuffer Params : register(b0)
     float gMvScaleY;
     uint  gGuideWidth;   // the motion texture's valid region
     uint  gGuideHeight;
+    uint  gCompareMode;  // 0 off, 1 side by side, 2 wipe
+    float gCompareSplit; // where the wipe cuts, 0..1
 };
 
 // Colours outside the AP1 gamut are impossible on any display and read as sparkle where a bright
@@ -177,15 +179,40 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         return;
     }
 
+    // Comparison, decided before anything is read, because side by side changes which part of the
+    // frame this pixel is showing rather than just which version of it.
+    //
+    //   1  side by side  each half carries the whole frame, so both are squeezed horizontally
+    //   2  wipe          one frame cut at the split, nothing resampled
+    //
+    // Neither needs the menu open to stay up. The wipe's split is a setting like any other; the menu
+    // is only how you drag it.
+    float2 cmpUv = uv;
+    bool showOriginal = false;
+    bool onDivider = false;
+
+    if (gCompareMode == 1)
+    {
+        showOriginal = uv.x < 0.5;
+        cmpUv.x = showOriginal ? uv.x * 2.0 : (uv.x - 0.5) * 2.0;
+        onDivider = abs(uv.x - 0.5) < (1.0 / max(gWidth, 1u));
+    }
+    else if (gCompareMode == 2)
+    {
+        showOriginal = uv.x < gCompareSplit;
+        onDivider = abs(uv.x - gCompareSplit) < (1.0 / max(gWidth, 1u));
+    }
+
     // Sampled rather than loaded: when the model ran at a reduced resolution these are smaller than the
     // frame, and its edit is enlarged here while the frame underneath stays untouched.
-    float4 proxySample = gSource.SampleLevel(gLinear, uv, 0);
-    float4 modelSample = gModel.SampleLevel(gLinear, uv, 0);
+    float4 proxySample = gSource.SampleLevel(gLinear, cmpUv, 0);
+    float4 modelSample = gModel.SampleLevel(gLinear, cmpUv, 0);
 
     // Nothing was encoded on the way in, so nothing is decoded here either.
     float3 proxy = gPassthrough != 0 ? proxySample.rgb : SrgbToLinear(proxySample.rgb);
     float3 model = gPassthrough != 0 ? modelSample.rgb : SrgbToLinear(modelSample.rgb);
-    float4 originalSample = gOriginal.Load(int3(id.xy, 0));
+    float4 originalSample = gCompareMode == 1 ? gOriginal.SampleLevel(gLinear, cmpUv, 0)
+                                              : gOriginal.Load(int3(id.xy, 0));
 
     // All three pictures have to share a scale before their luminances can be compared. The proxy and
     // the model come back from an sRGB decode, so they sit in 0..1 where 1 is the white point; the
@@ -286,6 +313,14 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     // Back out of the normalised space the composition worked in.
     result *= normScale;
+
+    // The side being shown untouched takes the frame as it arrived, past every step above.
+    if (showOriginal)
+        result = originalSample.rgb;
+
+    // A hairline so the two sides are never mistaken for one picture.
+    if (onDivider)
+        result = float3(gWhitePoint, gWhitePoint, gWhitePoint);
 
     gTarget[id.xy] = float4(max(result, float3(0.0, 0.0, 0.0)), originalSample.a);
 }
