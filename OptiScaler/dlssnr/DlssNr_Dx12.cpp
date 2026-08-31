@@ -21,6 +21,125 @@
 
 namespace
 {
+// NGX result codes, by name.
+//
+// A user's log recently read "init 0x-452FFFFF", which is an int formatted as hex and is
+// undiagnosable by anyone. It was 0xBAD00001, FeatureNotSupported -- a complete answer, printed as
+// noise. Names cost nothing and turn a bug report into a diagnosis.
+const char* NgxResultName(unsigned int r)
+{
+    switch (r)
+    {
+    case 0x1: return "Success";
+    case 0xBAD00001: return "FAIL_FeatureNotSupported";
+    case 0xBAD00002: return "FAIL_PlatformError";
+    case 0xBAD00003: return "FAIL_FeatureAlreadyExists";
+    case 0xBAD00004: return "FAIL_FeatureNotFound";
+    case 0xBAD00005: return "FAIL_InvalidParameter";
+    case 0xBAD00006: return "FAIL_ScratchBufferTooSmall";
+    case 0xBAD00007: return "FAIL_NotInitialized";
+    case 0xBAD00008: return "FAIL_UnsupportedInputFormat";
+    case 0xBAD00009: return "FAIL_RWFlagMissing";
+    case 0xBAD0000A: return "FAIL_MissingInput";
+    case 0xBAD0000B: return "FAIL_UnableToInitializeFeature";
+    case 0xBAD0000C: return "FAIL_OutOfDate";
+    case 0xBAD0000D: return "FAIL_OutOfGPUMemory";
+    case 0xBAD0000E: return "FAIL_UnsupportedFormat";
+    case 0xBAD0000F: return "FAIL_UnableToWriteToAppDataPath";
+    case 0xBAD00010: return "FAIL_UnsupportedParameter";
+    case 0xBAD00011: return "FAIL_Denied";
+    case 0xBAD00012: return "FAIL_NotImplemented";
+    default: return "unknown";
+    }
+}
+
+// Does the driver's own nvngx.dll dispatch Neural Rendering?
+//
+// The trick is that correct parameters are not needed to find out, because the KIND of failure is
+// the answer. A dispatcher that has never heard of feature 18 rejects it before looking at anything:
+//
+//   FeatureNotFound / FeatureNotSupported / NotImplemented -- the driver does not route it, and the
+//       forwarder is necessary rather than merely tolerated.
+//   MissingInput / InvalidParameter / UnsupportedParameter -- the driver DOES route it. It reached
+//       the feature, which then complained about the arguments. That is the win: it means the whole
+//       forwarder, and the per-game copy of the model, can go.
+//   Success -- better still, though not expected from an empty parameter block.
+//
+// Once per session, and only when asked for.
+void ProbeProxyDispatch(ID3D12GraphicsCommandList* cmdList)
+{
+    static bool done = false;
+
+    if (done)
+        return;
+
+    done = true;
+
+    if (!NVNGXProxy::IsDx12Inited())
+    {
+        LOG_INFO("DLSS-NR proxy probe: the driver's nvngx is not initialised here, nothing to ask");
+        return;
+    }
+
+    const auto allocate = NVNGXProxy::D3D12_AllocateParameters();
+    const auto destroy = NVNGXProxy::D3D12_DestroyParameters();
+    const auto create = NVNGXProxy::D3D12_CreateFeature();
+    const auto release = NVNGXProxy::D3D12_ReleaseFeature();
+
+    if (allocate == nullptr || create == nullptr)
+    {
+        LOG_INFO("DLSS-NR proxy probe: the driver's nvngx does not export what the probe needs");
+        return;
+    }
+
+    NVSDK_NGX_Parameter* params = nullptr;
+
+    if (allocate(&params) != NVSDK_NGX_Result_Success || params == nullptr)
+    {
+        LOG_INFO("DLSS-NR proxy probe: could not allocate a parameter block");
+        return;
+    }
+
+    // Feature 18, and a feature that certainly does not exist, asked the same way.
+    //
+    // A single result cannot answer this. "UnableToInitializeFeature" for 18 looks like the
+    // dispatcher having found the feature and failed to start it on an empty parameter block -- but
+    // it might equally be what this dispatcher says about anything it cannot set up. The control
+    // settles it: if a nonsense id comes back differently, the difference is knowledge of feature
+    // 18. If both come back the same, the first result meant nothing.
+    NVSDK_NGX_Handle* handle = nullptr;
+    const auto result = (unsigned int) create(cmdList, (NVSDK_NGX_Feature) 18, params, &handle);
+
+    if (handle != nullptr && release != nullptr)
+        release(handle);
+
+    NVSDK_NGX_Handle* controlHandle = nullptr;
+    const auto control =
+        (unsigned int) create(cmdList, (NVSDK_NGX_Feature) 200, params, &controlHandle);
+
+    if (controlHandle != nullptr && release != nullptr)
+        release(controlHandle);
+
+    LOG_INFO("DLSS-NR proxy probe: feature 18 -> 0x{:X} ({}), control feature 200 -> 0x{:X} ({})",
+             result, NgxResultName(result), control, NgxResultName(control));
+
+    const bool rejectedOutright =
+        result == 0xBAD00004 || result == 0xBAD00001 || result == 0xBAD00012;
+
+    if (result == control)
+        LOG_INFO("DLSS-NR proxy probe: both answers identical, so this says nothing about feature 18 "
+                 "-- the driver treats it exactly as it treats a feature that does not exist");
+    else if (rejectedOutright)
+        LOG_INFO("DLSS-NR proxy probe: feature 18 is rejected outright -- the driver does not route "
+                 "it and the forwarder is required");
+    else
+        LOG_INFO("DLSS-NR proxy probe: feature 18 answers differently from a nonexistent one, so the "
+                 "driver knows it -- the forwarder and the per-game model copy could both go");
+
+    if (destroy != nullptr)
+        destroy(params);
+}
+
 // Everything the model is reached through. The snippet refuses callers whose module path does not
 // contain "nvngx.dll", so the calls are made from a small library named for exactly that reason and
 // shipped beside OptiScaler; see nvngx.dll_dlssnr.dll.
@@ -667,6 +786,9 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
                  g_nr.guideMvScaleY, mvScaleX, mvScaleY, upscaleX, upscaleY);
     }
 
+    if (cfg.DlssNrProxyProbe.value_or_default())
+        ProbeProxyDispatch(cmdList);
+
     if (!EnsureForwarder() || !EnsureCapabilityParams(device))
     {
         g_nr.failed = true;
@@ -745,9 +867,13 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
         {
             g_nr.failed = true;
             g_nr.reason = "the model would not initialise";
-            LOG_ERROR("DLSS-NR create failed: init 0x{:X}, create 0x{:X}",
-                      g_nr.lastInit != nullptr ? *g_nr.lastInit : 0,
-                      g_nr.lastCreate != nullptr ? *g_nr.lastCreate : 0);
+            const auto initResult = (unsigned int) (g_nr.lastInit != nullptr ? *g_nr.lastInit : 0);
+            const auto createResult = (unsigned int) (g_nr.lastCreate != nullptr ? *g_nr.lastCreate : 0);
+
+            // Cast before formatting. These are ints, and "0x{:X}" on a negative int prints
+            // 0x-452FFFFF, which no one can decode back to 0xBAD00001.
+            LOG_ERROR("DLSS-NR create failed: init 0x{:X} ({}), create 0x{:X} ({})", initResult,
+                      NgxResultName(initResult), createResult, NgxResultName(createResult));
             device->Release();
             return;
         }
@@ -987,7 +1113,8 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
     {
         g_nr.failed = true;
         g_nr.reason = "the model refused to run";
-        LOG_ERROR("DLSS-NR evaluate returned 0x{:X}, disabling for this session", (uint32_t) result);
+        LOG_ERROR("DLSS-NR evaluate returned 0x{:X} ({}), disabling for this session", (uint32_t) result,
+                  NgxResultName((unsigned int) result));
     }
 
     Barrier(cmdList, g_nr.hdrCopy, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,

@@ -291,6 +291,17 @@ class Config
     // untouched whatever this is set to. 1.0 is full resolution and behaves exactly as before.
     CustomOptional<float> DlssNrWorkingScale { 1.0f };
 
+    // Ask the driver's own nvngx.dll whether it will dispatch Neural Rendering, once per session.
+    //
+    // Everything here drives the model's DLL directly through a forwarder, because the model refuses
+    // callers whose module path does not contain "nvngx.dll". But the model ships inside the driver
+    // store, and NVIDIA does not ship a feature DLL that no dispatcher can reach -- so the driver's
+    // nvngx.dll may well know feature 18 already. If it does, the forwarder is unnecessary, the
+    // signature question disappears, and users stop needing a 165 MB copy in every game folder.
+    //
+    // Off by default: it is a diagnostic, not a feature.
+    CustomOptional<bool> DlssNrProxyProbe { false };
+
     // Writes one set of matched before/after frames per session, without anyone having to ask. The
     // folder is cleared at the start of each run, so it holds one session's worth and never grows.
     CustomOptional<bool> DlssNrAutoCapture { true };

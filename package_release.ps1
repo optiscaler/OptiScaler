@@ -67,6 +67,25 @@ foreach ($d in @("Licenses", "OptiScaler")) {
 
 Copy-Item $forwarder "$stage\nvngx.dll_dlssnr.dll" -Force
 
+# Logging on, in the release only.
+#
+# Upstream ships LogToFile=auto, which resolves to false, and the source ini is theirs -- changing it
+# in the repo would put a log-behaviour change into a PR that is about neural rendering. But this is
+# an experimental build whose notes ask people to attach OptiScaler.log, and the first release shipped
+# asking for a file that was never written.
+#
+# Info rather than Trace: every line explaining why the pass did not start is Info or worse, so it
+# answers the common report at almost no cost. Crash reports need Trace and synchronous writes, and
+# the notes say so rather than everyone paying for it.
+$iniPath = "$stage\OptiScaler.ini"
+$ini = Get-Content $iniPath -Raw
+$ini = $ini -replace '(?m)^LogToFile=auto', 'LogToFile=true'
+$ini = $ini -replace '(?m)^LogLevel=auto', 'LogLevel=2'
+Set-Content $iniPath $ini -Encoding utf8 -NoNewline
+
+$check = Select-String -Path $iniPath -Pattern '^LogToFile=|^LogLevel=' | ForEach-Object { $_.Line }
+Write-Host "log settings: $($check -join ', ')"
+
 # Belt and braces: nothing that is a build artifact, and nothing from the abandoned warp work, may
 # survive into the zip regardless of how it got into the staging folder.
 Get-ChildItem $stage -Recurse -Include *.exp, *.lib, *.pdb, *.ilk, *latewarp* | Remove-Item -Force

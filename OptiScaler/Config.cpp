@@ -324,6 +324,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             DlssNrMaxRatio.set_from_config(readFloat("DlssNr", "MaxRatio"));
             DlssNrDebugView.set_from_config(readUInt("DlssNr", "DebugView"));
             DlssNrWorkingScale.set_from_config(readFloat("DlssNr", "WorkingScale"));
+            DlssNrProxyProbe.set_from_config(readBool("DlssNr", "ProxyProbe"));
             DlssNrAutoCapture.set_from_config(readBool("DlssNr", "AutoCapture"));
             DlssNrWhitePointScale.set_from_config(readFloat("DlssNr", "WhitePointScale"));
             DlssNrPreset.set_from_config(readUInt("DlssNr", "Preset"));
