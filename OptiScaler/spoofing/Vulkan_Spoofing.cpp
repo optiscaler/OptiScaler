@@ -617,7 +617,7 @@ inline static VkResult hkvkEnumerateDeviceExtensionProperties(VkPhysicalDevice p
         return result;
     }
 
-    if (Config::Instance()->VulkanSpoofing.value_or_default() && !SkipVulkanSpoofing())
+    if (Config::Instance()->VulkanExtensionSpoofing.value_or_default() && !SkipVulkanSpoofing())
     {
         // Count query, modify and add 5 to final count
         if (pProperties == nullptr && pPropertyCount != nullptr && count == 0)
@@ -688,7 +688,7 @@ inline static VkResult hkvkEnumerateDeviceExtensionProperties(VkPhysicalDevice p
         {
             LOG_DEBUG("  {}", pProperties[i].extensionName);
 
-            if (Config::Instance()->VulkanSpoofing.value_or_default() && !SkipVulkanSpoofing() &&
+            if (Config::Instance()->VulkanExtensionSpoofing.value_or_default() && !SkipVulkanSpoofing() &&
                 i < (*pPropertyCount - minusCount))
             {
                 vkDeviceExtensions.insert_or_assign(std::string(pProperties[i].extensionName), true);
@@ -719,7 +719,7 @@ inline static VkResult hkvkEnumerateInstanceExtensionProperties(const char* pLay
         return result;
     }
 
-    if (Config::Instance()->VulkanSpoofing.value_or_default() && !SkipVulkanSpoofing())
+    if (Config::Instance()->VulkanExtensionSpoofing.value_or_default() && !SkipVulkanSpoofing())
     {
         if (pLayerName == nullptr && pProperties == nullptr && count == 0)
         {
