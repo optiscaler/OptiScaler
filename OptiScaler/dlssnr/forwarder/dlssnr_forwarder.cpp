@@ -118,7 +118,10 @@ __declspec(dllexport) void *dlssnr_call_create(const wchar_t *snippetPath, const
         return nullptr;
     }
     if (!g_snip.initialised && g_snip.init) {
-        dlssnr_call_last_init = g_snip.init(0x4350324Bull, dataPath, device, 0x0000015, capabilityParams);
+        // OptiScaler's own generic application id, the one it already hands DLSS when a game's id is
+        // not wanted. What was here before was 0x4350324B -- "CP2K" -- so every game that ever loaded
+        // this announced itself to the driver as Cyberpunk 2077.
+        dlssnr_call_last_init = g_snip.init(0x24480451ull, dataPath, device, 0x0000015, capabilityParams);
         g_snip.initialised = (dlssnr_call_last_init == 1);
         if (!g_snip.initialised) {
             return nullptr;

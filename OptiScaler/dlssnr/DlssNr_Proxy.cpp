@@ -207,7 +207,7 @@ unsigned int Run(ID3D12GraphicsCommandList* cmdList, ID3D12Device* device, ID3D1
             NVNGXProxy::GetFeatureCommonInfo(&fcInfo);
 
             const auto initResult = NVNGXProxy::D3D12_Init_Ext()(
-                0x4350324Bull, State::Instance().NVNGX_ApplicationDataPath.c_str(), device,
+                app_id_override, State::Instance().NVNGX_ApplicationDataPath.c_str(), device,
                 (NVSDK_NGX_Version) 0x0000015, &fcInfo);
 
             // Success here means very little. NGX init is idempotent: a second call on an already
