@@ -20,9 +20,6 @@
 //
 // What this path gains, beyond deleting the forwarder:
 //
-//   * Its own parameter block. The forwarder writes into the block the game's DLSS is using, which
-//     the game overwrites between frames -- the reason every value has to be set again at evaluate.
-//     A block allocated for this feature belongs to this feature.
 //   * The SDK's typed setters. The slot hunting in the forwarder (floats at vtable slot 6, not the
 //     header's 1) was a consequence of driving the model's own block by hand. A block from the
 //     driver is an ordinary NGX parameter block.
