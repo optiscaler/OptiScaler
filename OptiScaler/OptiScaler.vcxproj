@@ -821,8 +821,8 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="Logger.cpp" />
     <ClCompile Include="inputs\NVNGX.cpp" />
     <ClCompile Include="inputs\NVNGX_DLSS_Dx11.cpp" />
-    <ClCompile Include="dlssnr\DlssNr_Dx12.cpp" />
-    <ClCompile Include="shaders\dlssnr\DlssNrCompose_Dx12.cpp" />
+    <ClCompile Include="dlssnr\DlssNrFeature_Dx12.cpp" />
+    <ClCompile Include="shaders\dlssnr\DlssNr_Dx12.cpp" />
     <ClCompile Include="dlssnr\DlssNr_Proxy.cpp" />
     <ClCompile Include="dlssnr\DlssNr_Menu.cpp" />
     <ClCompile Include="inputs\NVNGX_DLSS_Dx12.cpp" />

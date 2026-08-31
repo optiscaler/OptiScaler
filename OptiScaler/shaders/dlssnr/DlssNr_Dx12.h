@@ -29,7 +29,7 @@
 // there has to be enough for three passes times the deepest pipeline we might sit behind.
 #define DLSSNR_NUM_OF_HEAPS 16
 
-class DlssNrCompose_Dx12 : public Shader_Dx12, public DlssNr_Common
+class DlssNr_Dx12 : public Shader_Dx12, public DlssNr_Common
 {
   private:
     FrameDescriptorHeap _frameHeaps[DLSSNR_NUM_OF_HEAPS];
@@ -54,8 +54,8 @@ class DlssNrCompose_Dx12 : public Shader_Dx12, public DlssNr_Common
     uint32_t _numThreadsY = 8;
 
   public:
-    DlssNrCompose_Dx12(std::string InName, ID3D12Device* InDevice);
-    ~DlssNrCompose_Dx12();
+    DlssNr_Dx12(std::string InName, ID3D12Device* InDevice);
+    ~DlssNr_Dx12();
 
     // Records one pass. Resources that a given mode does not read may be null; a stand-in is bound in
     // their place so every descriptor in the table is valid.

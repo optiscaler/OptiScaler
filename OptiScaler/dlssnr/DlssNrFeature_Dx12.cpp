@@ -8,7 +8,7 @@
 #include "DlssNr_Capture.h"
 #include "DlssNr_Proxy.h"
 
-#include <shaders/dlssnr/DlssNrCompose_Dx12.h>
+#include <shaders/dlssnr/DlssNr_Dx12.h>
 
 #include <Config.h>
 #include <State.h>
@@ -227,7 +227,7 @@ struct NrState
 };
 
 NrState g_nr;
-std::unique_ptr<DlssNrCompose_Dx12> g_compose;
+std::unique_ptr<DlssNr_Dx12> g_compose;
 
 // What the pass costs on the GPU, for the breakdown in the overlay.
 std::unique_ptr<GpuTime_Dx12> g_gpuTime;
@@ -949,7 +949,7 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
     }
 
     if (g_compose == nullptr)
-        g_compose = std::make_unique<DlssNrCompose_Dx12>("Neural Rendering", device);
+        g_compose = std::make_unique<DlssNr_Dx12>("Neural Rendering", device);
 
     const bool haveCodec = g_compose->IsInit();
 

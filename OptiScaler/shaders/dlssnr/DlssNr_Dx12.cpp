@@ -1,9 +1,9 @@
 #include "pch.h"
-#include "DlssNrCompose_Dx12.h"
+#include "DlssNr_Dx12.h"
 
 #include "precompile/DlssNr_Shader.h"
 
-DlssNrCompose_Dx12::DlssNrCompose_Dx12(std::string InName, ID3D12Device* InDevice)
+DlssNr_Dx12::DlssNr_Dx12(std::string InName, ID3D12Device* InDevice)
     : Shader_Dx12(InName, InDevice)
 {
     if (InDevice == nullptr)
@@ -60,7 +60,7 @@ DlssNrCompose_Dx12::DlssNrCompose_Dx12(std::string InName, ID3D12Device* InDevic
     _init = InitHeaps(InDevice, _frameHeaps, DLSSNR_NUM_OF_HEAPS);
 }
 
-bool DlssNrCompose_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, const DlssNrConstants& InConstants,
+bool DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, const DlssNrConstants& InConstants,
                                   ID3D12Resource* InSource, ID3D12Resource* InModel,
                                   ID3D12Resource* InOriginal, ID3D12Resource* InMotion,
                                   ID3D12Resource* InPrevEdit, ID3D12Resource* OutTarget,
@@ -117,7 +117,7 @@ bool DlssNrCompose_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, const Dl
     return true;
 }
 
-DlssNrCompose_Dx12::~DlssNrCompose_Dx12()
+DlssNr_Dx12::~DlssNr_Dx12()
 {
     for (auto& buffer : _constantBuffers)
     {
