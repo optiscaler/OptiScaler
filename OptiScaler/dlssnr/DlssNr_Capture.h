@@ -59,9 +59,29 @@ class FrameCapture
         if (!active_ || before == nullptr || after == nullptr)
             return;
 
+        // Recording stops the moment the run is complete, and does not resume until write() has
+        // released everything.
+        //
+        // ready_ is set here but acted on eight frames later, because the caller has to let the GPU
+        // finish with these copies before mapping them. Without this guard those eight frames each
+        // recorded another one: captured_ walked past the end of a vector sized to exactly wanted_,
+        // and the garbage read back as a Shot had its pointer handed to CopyTextureRegion. The device
+        // was removed and the game went down with nothing in the log -- every single time anyone
+        // pressed the button.
+        if (ready_ || captured_ >= wanted_)
+            return;
+
         if (!ensure(device, before, after))
         {
             active_ = false;
+            return;
+        }
+
+        // ensure() sizes the vectors to wanted_. Belt and braces: an index into them is never taken
+        // on trust again.
+        if (captured_ >= beforeShots_.size() || captured_ >= afterShots_.size())
+        {
+            ready_ = true;
             return;
         }
 
