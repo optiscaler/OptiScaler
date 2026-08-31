@@ -825,18 +825,30 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
 
     ReleaseSurfacesIfFormatChanged(desc.Format);
 
-    if (g_nr.feature != nullptr &&
-        (g_nr.width != width || g_nr.height != height || g_nr.workWidth != workWidth ||
-         g_nr.workHeight != workHeight))
+    const bool resolutionChanged = g_nr.width != width || g_nr.height != height ||
+                                   g_nr.workWidth != workWidth || g_nr.workHeight != workHeight;
+
+    // The model reads its tuning once, while the feature is built, so a changed setting only takes
+    // effect when the feature is rebuilt. TuningMatchesFeature was written to notice that and then
+    // never called, which is why every one of these controls appeared to do nothing until something
+    // else -- a resolution change -- happened to force a rebuild by accident.
+    const bool tuningChanged = !TuningMatchesFeature(cfg);
+
+    if (g_nr.feature != nullptr && (resolutionChanged || tuningChanged))
     {
-        // A resolution change invalidates the model and the scratch textures. Everything is parked,
-        // not released: with frame generation the GPU can still be several frames deep in work that
-        // references all of it.
+        // Parked rather than released: with frame generation the GPU can still be several frames
+        // deep in work that references all of it.
         ParkNrFeature(g_nr.feature);
-        ParkNrResource(g_nr.output);
-        ParkNrResource(g_nr.colorCopy);
-        ParkNrResource(g_nr.hdrCopy);
-        ParkNrResource(g_nr.colorSmall);
+
+        // Only a resolution change invalidates the scratch textures. Tuning does not, and throwing
+        // them away for it would mean a reallocation every time a slider moves.
+        if (resolutionChanged)
+        {
+            ParkNrResource(g_nr.output);
+            ParkNrResource(g_nr.colorCopy);
+            ParkNrResource(g_nr.hdrCopy);
+            ParkNrResource(g_nr.colorSmall);
+        }
     }
 
     if (g_nr.output == nullptr)
