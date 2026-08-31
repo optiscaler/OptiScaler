@@ -269,7 +269,16 @@ RawSanitizeAction GetRawKeyboardSanitizeActionLocked(const RAWKEYBOARD& keyboard
 
     if (!released)
     {
-        _state.RawKeyboardBlockedDown[vk] = true;
+        // The same trap as the window-message path: a held key repeats, and a repeat arriving while
+        // the menu is open must not be recorded as a blocked press. The game already saw the real
+        // press, so it is owed the release -- marking it here would suppress that release and leave
+        // the key held with no way to clear it.
+        //
+        // _state.Keys[vk].Down still holds the state from before this event, which is exactly the
+        // question: was this key already down, making this a repeat rather than a press?
+        if (!_state.Keys[vk].Down)
+            _state.RawKeyboardBlockedDown[vk] = true;
+
         return RawSanitizeAction::SanitizeAll;
     }
 

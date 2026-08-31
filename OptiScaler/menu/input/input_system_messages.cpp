@@ -218,13 +218,23 @@ void SetKeyDown(int vk, DWORD messageTime, bool blocked)
     {
         key.Pressed = true;
         _state.LastPressedKey = vk;
+
+        // Only a real press can be a blocked press.
+        //
+        // Windows repeats WM_KEYDOWN while a key is held. If the menu opens mid-hold, those repeats
+        // arrive blocked and used to set BlockedDown on a key whose original press the game had
+        // already seen. The release is then suppressed as if the game had never heard the press --
+        // so the key stays held, and closing the menu does not clear it, because the release has
+        // already been thrown away.
+        //
+        // Recording it here, inside the transition, means BlockedDown answers the question it is
+        // actually asked: did the game miss the press this release belongs to?
+        if (blocked)
+            key.BlockedDown = true;
     }
 
     key.Down = true;
     key.LastMessageTime = messageTime;
-
-    if (blocked)
-        key.BlockedDown = true;
 
     SyncAggregateModifierStateLocked();
 }
@@ -572,6 +582,11 @@ bool HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Inpu
         // If the game saw the key down before the menu opened,
         // let it see the matching key up to avoid stuck movement/actions.
         shouldBlock = wasBlockedDown;
+
+        if (_state.MenuVisible)
+            LOG_INFO("[keydiag] WM_KEYUP vk:{} wasBlockedDown:{} -> {}", vk, wasBlockedDown ? 1 : 0,
+                     shouldBlock ? "BLOCKED" : "passed to game");
+
         break;
     }
 
@@ -612,7 +627,15 @@ bool HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Inpu
         if (shouldParseRawInput)
             HandleRawInputLocked(reinterpret_cast<HRAWINPUT>(lParam));
 
+        // Note what this costs: the sanitiser above decides per key whether a release should
+        // reach the game, and then this line throws the whole message away regardless. For a game
+        // whose keyboard arrives as raw input, a key held when the menu opened can never be
+        // released -- the decision to pass it is made and then discarded.
         shouldBlock = _state.BlockMouse || _state.BlockKeyboard;
+
+        if (_state.MenuVisible)
+            LOG_INFO("[keydiag] WM_INPUT while menu open -> {}", shouldBlock ? "BLOCKED whole message" : "passed");
+
         break;
     }
 
@@ -622,6 +645,10 @@ bool HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Inpu
             shouldBlock = _state.BlockMouse;
         else if (IsKeyboardMessage(msg))
             shouldBlock = _state.BlockKeyboard;
+
+        if (_state.MenuVisible && IsKeyboardMessage(msg))
+            LOG_INFO("[keydiag] keyboard msg {} while menu open -> {}", WindowMessageName(msg),
+                     shouldBlock ? "BLOCKED" : "passed");
 
         break;
     }
