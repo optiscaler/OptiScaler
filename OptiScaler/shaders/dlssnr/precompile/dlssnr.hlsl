@@ -268,7 +268,20 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     // decides whether its colour comes with it. At 0 the frame keeps the game's own hue exactly and
     // only its light carries the model's verdict; at 1 the model's colour arrives as well.
     float upgradedLuma = dot(upgraded, kLuma);
-    float lumaRatio = originalLuma > 1e-6 ? clamp(upgradedLuma / originalLuma, 0.0, gMaxRatio) : 1.0;
+
+    // A ratio against a dark pixel is unbounded, and clamping it is not the same as taming it.
+    //
+    // In linear light divided by paper white a shadowed pixel sits around a thousandth, so a tiny
+    // absolute edit from the model becomes an enormous ratio, hits the clamp, and doubles that
+    // pixel's brightness. The next frame it lands slightly differently and the pixel drops back.
+    // That is the boiling: patches of lighter colour crawling over otherwise still geometry, worst
+    // where the picture is darkest.
+    //
+    // Adding the same floor above and below leaves bright pixels alone -- where luminance is far
+    // larger than the floor the term vanishes -- while making the ratio fall smoothly to one as
+    // luminance approaches zero. No edit at all is the right answer for a pixel with no light in it.
+    const float kRatioFloor = 1.0 / 512.0;
+    float lumaRatio = clamp((upgradedLuma + kRatioFloor) / (originalLuma + kRatioFloor), 0.0, gMaxRatio);
     float3 result = lerp(original * lumaRatio, upgraded, gColourStrength);
 
     // Back out of the normalised space the composition worked in.
