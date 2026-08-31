@@ -624,17 +624,17 @@ bool HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Inpu
         const bool shouldParseRawInput =
             source == InputMessageSource::WndProc || _state.BlockMouse || _state.BlockKeyboard;
 
+        bool mustReachGame = false;
+
         if (shouldParseRawInput)
-            HandleRawInputLocked(reinterpret_cast<HRAWINPUT>(lParam));
+            mustReachGame = HandleRawInputLocked(reinterpret_cast<HRAWINPUT>(lParam));
 
-        // Note what this costs: the sanitiser above decides per key whether a release should
-        // reach the game, and then this line throws the whole message away regardless. For a game
-        // whose keyboard arrives as raw input, a key held when the menu opened can never be
-        // released -- the decision to pass it is made and then discarded.
-        shouldBlock = _state.BlockMouse || _state.BlockKeyboard;
-
-        if (_state.MenuVisible)
-            LOG_INFO("[keydiag] WM_INPUT while menu open -> {}", shouldBlock ? "BLOCKED whole message" : "passed");
+        // Withhold the message, unless it carries a key release the game is owed.
+        //
+        // Content is neutralised in the GetRawInputData hook, per key, by the same decision taken
+        // above -- so letting one of these through does not leak input. What it does is give the
+        // game the chance to ask, which it never had while the whole message was being discarded.
+        shouldBlock = (_state.BlockMouse || _state.BlockKeyboard) && !mustReachGame;
 
         break;
     }

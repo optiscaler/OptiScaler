@@ -578,7 +578,9 @@ void SanitizeRawMouseAllLocked(RAWINPUT& input);
 void SanitizeRawMouseKeepAllowedButtonUpsLocked(RAWINPUT& input, USHORT allowedButtonUpFlags);
 void SanitizeRawKeyboardLocked(RAWINPUT& input);
 int NormalizeRawKeyboardVirtualKey(const RAWKEYBOARD& keyboard);
-void HandleRawInputLocked(HRAWINPUT rawInputHandle);
+// Returns true when this packet must still reach the game -- a key release it is owed, because it
+// saw the matching press before the menu opened. Everything else returns false and may be withheld.
+bool HandleRawInputLocked(HRAWINPUT rawInputHandle);
 
 // Win32 hook tracking
 bool IsTrackedWindowsHookType(int hookType);

@@ -7,6 +7,7 @@
 #include "DlssNr_Codec.h"
 #include "DlssNr_Probe.h"
 #include "DlssNr_Capture.h"
+#include "DlssNr_Proxy.h"
 
 #include <Config.h>
 #include <State.h>
@@ -1019,6 +1020,32 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
     const float mvToWork = width != 0 ? (float) workWidth / (float) width : 1.0f;
 
     SetExtras(cfg, nullptr, nullptr, 0, 0, 0, 0);
+
+    // The proxy path, when asked for. Same inputs, same model -- the difference is who calls it.
+    //
+    // Nothing falls back automatically. A silent fallback would mean never finding out the proxy
+    // path was broken: the picture would look right either way, because the forwarder would be
+    // quietly doing the work.
+    if (cfg.DlssNrUseProxy.value_or_default())
+    {
+        const unsigned int proxyResult = DlssNr::Proxy::Run(
+            cmdList, device, modelInput, depthIn, motionIn, g_nr.output, workWidth, workHeight,
+            guideWidth, guideHeight, g_nr.guideDepthInverted, g_nr.reset,
+            g_nr.guideMvScaleX * mvToWork, g_nr.guideMvScaleY * mvToWork);
+
+        g_nr.reset = false;
+
+        if (proxyResult != 1)
+        {
+            g_nr.failed = true;
+            g_nr.reason = "the proxy path could not run the model";
+            LOG_ERROR("DLSS-NR (proxy): evaluate returned 0x{:X} ({}), disabling for this session",
+                      proxyResult, NgxResultName(proxyResult));
+        }
+
+        device->Release();
+        return;
+    }
 
     const int result = g_nr.evaluate(
         cmdList, g_nr.feature, g_nr.capabilityParams, modelInput, depthIn, motionIn, g_nr.output,

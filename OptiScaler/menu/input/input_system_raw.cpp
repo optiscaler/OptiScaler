@@ -661,10 +661,10 @@ void UpdateStateFromRawInputLocked(const RAWINPUT& input)
     }
 }
 
-void HandleRawInputLocked(HRAWINPUT rawInputHandle)
+bool HandleRawInputLocked(HRAWINPUT rawInputHandle)
 {
     if (rawInputHandle == nullptr)
-        return;
+        return false;
 
     UINT size = 0;
 
@@ -674,11 +674,11 @@ void HandleRawInputLocked(HRAWINPUT rawInputHandle)
         const UINT queryResult = o_GetRawInputData(rawInputHandle, RID_INPUT, nullptr, &size, sizeof(RAWINPUTHEADER));
 
         if (queryResult != 0)
-            return;
+            return false;
     }
 
     if (size == 0)
-        return;
+        return false;
 
     std::vector<BYTE> buffer(size);
 
@@ -691,15 +691,29 @@ void HandleRawInputLocked(HRAWINPUT rawInputHandle)
             o_GetRawInputData(rawInputHandle, RID_INPUT, buffer.data(), &readSize, sizeof(RAWINPUTHEADER));
 
         if (readResult == static_cast<UINT>(-1))
-            return;
+            return false;
 
         if (readResult != size)
-            return;
+            return false;
     }
 
     const RAWINPUT* input = reinterpret_cast<const RAWINPUT*>(buffer.data());
 
+    // Ask the sanitiser what should happen to this packet before the state update consumes the
+    // blocked-down flag it depends on. The decision is cached against the handle, so the hook in
+    // GetRawInputData reuses this same answer rather than computing a second, different one.
+    //
+    // This is what the wholesale block was throwing away. A game that reads its keyboard through raw
+    // input never calls GetRawInputData if the message never arrives, so the sanitiser's careful
+    // per-key verdict -- pass this release, the game is owed it -- was decided and then discarded
+    // one line later. The key stayed held with no way to clear it.
+    const bool mustReachGame = input->header.dwType == RIM_TYPEKEYBOARD &&
+                               GetRawInputSanitizeDecisionLocked(rawInputHandle, *input).Action ==
+                                   RawSanitizeAction::Pass;
+
     UpdateStateFromRawInputLocked(*input);
+
+    return mustReachGame;
 }
 
 void ApplyRawInputSanitizeActionLocked(RAWINPUT& input, RawSanitizeAction action, USHORT allowedMouseButtonUpFlags)

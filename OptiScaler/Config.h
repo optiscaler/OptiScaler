@@ -302,6 +302,17 @@ class Config
     // Off by default: it is a diagnostic, not a feature.
     CustomOptional<bool> DlssNrProxyProbe { false };
 
+    // Run Neural Rendering through the driver's own nvngx.dll rather than through the forwarder.
+    //
+    // This is how DLSS itself is called. The forwarder exists only because driving the model
+    // directly trips its caller check, and a probe showed the driver dispatches feature 18 already:
+    // asking for 18 answers differently from asking for a feature that does not exist. OptiScaler
+    // also already tells the driver where to look, since NVNGX_FeatureInfo_Paths carries the game
+    // and OptiScaler folders into Init_Ext.
+    //
+    // Off until it is shown to produce the same picture. If it does, the forwarder can go.
+    CustomOptional<bool> DlssNrUseProxy { false };
+
     // Writes one set of matched before/after frames per session, without anyone having to ask. The
     // folder is cleared at the start of each run, so it holds one session's worth and never grows.
     CustomOptional<bool> DlssNrAutoCapture { true };

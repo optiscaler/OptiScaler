@@ -12,7 +12,7 @@ PATH = r'D:\Games\cyberpunk-2077-optiscaler\bin\x64\OptiScaler.ini'
 
 # (section, key, value). A section of None means the key is matched anywhere, for keys that are unique.
 WANTED = [
-    ('DlssNr', 'Enabled', 'false'),
+    ('DlssNr', 'Enabled', 'true'),
     ('DlssNr', 'ProxyProbe', 'true'),
     ('Log', 'LogToFile', 'true'),
     ('Log', 'LogLevel', '2'),
