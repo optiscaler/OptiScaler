@@ -9,6 +9,8 @@
 #include "DlssNr_Capture.h"
 #include "DlssNr_Proxy.h"
 
+#include <shaders/dlssnr/DlssNrCompose_Dx12.h>
+
 #include <Config.h>
 #include <State.h>
 #include <Util.h>
@@ -226,7 +228,7 @@ struct NrState
 };
 
 NrState g_nr;
-codec::Codec g_codec;
+std::unique_ptr<DlssNrCompose_Dx12> g_compose;
 
 // What the pass costs on the GPU, for the breakdown in the overlay.
 std::unique_ptr<GpuTime_Dx12> g_gpuTime;
@@ -918,7 +920,10 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
                  isHdrBuffer ? "on" : "off");
     }
 
-    const bool haveCodec = g_codec.ensure(device);
+    if (g_compose == nullptr)
+        g_compose = std::make_unique<DlssNrCompose_Dx12>("Neural Rendering", device);
+
+    const bool haveCodec = g_compose->IsInit();
 
     if (!haveCodec)
     {
@@ -965,20 +970,21 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
     if (g_gpuTime != nullptr)
         g_gpuTime->Start(cmdList);
 
-    codec::Params encodeParams {};
-    encodeParams.mode = codec::MODE_ENCODE;
+    DlssNrConstants encodeParams {};
+    encodeParams.Mode = DlssNrMode_Encode;
     // A frame that is already display-referred is handed over untouched: the encode becomes a copy and
     // the resolve adds the model's edit back at full scale.
-    encodeParams.passthrough = isHdrBuffer ? 0u : 1u;
-    encodeParams.whitePoint = whitePoint;
+    encodeParams.Passthrough = isHdrBuffer ? 0u : 1u;
+    encodeParams.WhitePoint = whitePoint;
     // Match only takes effect once a fit exists; until then the table is empty and the shader would
     // read a curve of zeros, so it falls back to the plain proxy.
-    encodeParams.width = width;
-    encodeParams.height = height;
+    encodeParams.Width = width;
+    encodeParams.Height = height;
 
     Barrier(cmdList, target, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
             D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    g_codec.dispatch(cmdList, encodeParams, target, nullptr, nullptr, g_nr.colorCopy, g_nr.hdrCopy);
+    g_compose->Dispatch(cmdList, encodeParams, target, nullptr, nullptr, nullptr, nullptr,
+                        g_nr.colorCopy, g_nr.hdrCopy);
 
     Barrier(cmdList, target, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -994,11 +1000,12 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
 
     if (reduced && g_nr.colorSmall != nullptr)
     {
-        codec::Params down {};
-        down.mode = codec::MODE_DOWNSAMPLE;
-        down.width = workWidth;
-        down.height = workHeight;
-        g_codec.dispatch(cmdList, down, modelInput, nullptr, nullptr, g_nr.colorSmall, nullptr);
+        DlssNrConstants down {};
+        down.Mode = DlssNrMode_Downsample;
+        down.Width = workWidth;
+        down.Height = workHeight;
+        g_compose->Dispatch(cmdList, down, modelInput, nullptr, nullptr, nullptr, nullptr,
+                            g_nr.colorSmall, nullptr);
         Barrier(cmdList, g_nr.colorSmall, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         modelInput = g_nr.colorSmall;
@@ -1104,21 +1111,21 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
         // Resolve takes the difference between what the model returned and what it was shown, and adds
         // that back to the frame. At strength zero the result is what the upscaler produced, exactly, and
         // anything the model left alone is untouched rather than round-tripped through the curve.
-        codec::Params resolveParams {};
-        resolveParams.mode = codec::MODE_RESOLVE;
-        resolveParams.whitePoint = whitePoint;
-        resolveParams.width = width;
-        resolveParams.height = height;
-        resolveParams.transferStrength = cfg.DlssNrTransferStrength.value_or_default();
-        resolveParams.colourStrength = cfg.DlssNrColourStrength.value_or_default();
-        resolveParams.debugView = cfg.DlssNrDebugView.value_or_default();
-        resolveParams.maxRatio = cfg.DlssNrMaxRatio.value_or_default();
-        resolveParams.passthrough = isHdrBuffer ? 0u : 1u;
+        DlssNrConstants resolveParams {};
+        resolveParams.Mode = DlssNrMode_Resolve;
+        resolveParams.WhitePoint = whitePoint;
+        resolveParams.Width = width;
+        resolveParams.Height = height;
+        resolveParams.TransferStrength = cfg.DlssNrTransferStrength.value_or_default();
+        resolveParams.ColourStrength = cfg.DlssNrColourStrength.value_or_default();
+        resolveParams.DebugView = cfg.DlssNrDebugView.value_or_default();
+        resolveParams.MaxRatio = cfg.DlssNrMaxRatio.value_or_default();
+        resolveParams.Passthrough = isHdrBuffer ? 0u : 1u;
 
         Barrier(cmdList, g_nr.output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        g_codec.dispatch(cmdList, resolveParams, modelInput, g_nr.output, g_nr.hdrCopy, target,
-                         nullptr, motionIn, nullptr);
+        g_compose->Dispatch(cmdList, resolveParams, modelInput, g_nr.output, g_nr.hdrCopy, motionIn,
+                            nullptr, target, nullptr);
         Barrier(cmdList, g_nr.output, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
@@ -1255,7 +1262,7 @@ void Shutdown()
     g_gpuTime.reset();
     g_lastGpuTime.reset();
 
-    g_codec.destroy();
+    g_compose.reset();
     g_reducer.destroy();
     g_reader.destroy();
 }

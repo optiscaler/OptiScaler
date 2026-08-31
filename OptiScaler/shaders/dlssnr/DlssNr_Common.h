@@ -12,6 +12,15 @@
 
 #include <cstdint>
 
+// Which of the three passes a dispatch is. One shader, because all three read and write the same set
+// of resources and differ only in what they compute.
+enum DlssNrMode : uint32_t
+{
+    DlssNrMode_Encode = 0,    // the frame -> a tone-mapped proxy, plus an untouched copy
+    DlssNrMode_Resolve = 1,   // proxy + the model's answer + the untouched copy -> the edited frame
+    DlssNrMode_Downsample = 2 // the proxy -> a smaller proxy, when the model works below full size
+};
+
 // What the composition shader reads.
 //
 // The model does not replace the frame. It is shown a tone-mapped proxy of the picture, and its
