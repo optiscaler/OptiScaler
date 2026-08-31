@@ -40,3 +40,4 @@ class SkipSpoof
 };
 
 bool SkipSpoofing();
+bool SkipVulkanSpoofing();

@@ -63,3 +63,22 @@ bool SkipSpoofing()
 
     return skip;
 }
+
+bool SkipVulkanSpoofing()
+{
+    const bool vulkanSpoofing = Config::Instance()->VulkanSpoofing.value_or_default();
+    bool skip = false;
+
+    if (vulkanSpoofing)
+        skip = SkipSpoof::ShouldSkip();
+
+    if (skip)
+    {
+        if (vulkanSpoofing)
+            LOG_TRACE("VulkanSpoofing: {}, skipSpoofing: {}, skipping spoofing", vulkanSpoofing, skip);
+        else
+            LOG_TRACE("VulkanSpoofing: {}, skipping spoofing", vulkanSpoofing);
+    }
+
+    return skip;
+}

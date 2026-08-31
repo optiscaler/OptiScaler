@@ -264,8 +264,11 @@ void LoadAsiPlugins()
                         if (!Config::Instance()->DxgiSpoofing.has_value())
                             Config::Instance()->DxgiSpoofing.set_volatile_value(false);
 
-                        if (!Config::Instance()->VulkanSpoofing.has_value())
+                        if (!Config::Instance()->VulkanSpoofing.has_value() ||
+                            !Config::Instance()->VulkanSpoofing.value_for_config())
+                        {
                             Config::Instance()->VulkanSpoofing.set_volatile_value(false);
+                        }
 
                         if (!Config::Instance()->VulkanExtensionSpoofing.has_value())
                             Config::Instance()->VulkanExtensionSpoofing.set_volatile_value(false);
@@ -320,8 +323,11 @@ void LoadAsiPlugins()
                                             if (!Config::Instance()->DxgiSpoofing.has_value())
                                                 Config::Instance()->DxgiSpoofing.set_volatile_value(false);
 
-                                            if (!Config::Instance()->VulkanSpoofing.has_value())
+                                            if (!Config::Instance()->VulkanSpoofing.has_value() ||
+                                                !Config::Instance()->VulkanSpoofing.value_for_config())
+                                            {
                                                 Config::Instance()->VulkanSpoofing.set_volatile_value(false);
+                                            }
 
                                             if (!Config::Instance()->VulkanExtensionSpoofing.has_value())
                                                 Config::Instance()->VulkanExtensionSpoofing.set_volatile_value(false);
