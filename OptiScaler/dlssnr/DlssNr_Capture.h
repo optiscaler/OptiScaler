@@ -136,6 +136,8 @@ class FrameCapture
         afterShots_.resize(wanted_);
         beforeDesc_ = before->GetDesc();
         afterDesc_ = after->GetDesc();
+        beforeDesc_.Format = TypedForCopy(beforeDesc_.Format);
+        afterDesc_.Format = TypedForCopy(afterDesc_.Format);
 
         for (unsigned int i = 0; i < wanted_; ++i)
         {
@@ -146,11 +148,40 @@ class FrameCapture
         return true;
     }
 
+    // A copy needs a fully typed format, and the buffer the upscaler writes is occasionally declared
+    // typeless. A placed footprint carrying a typeless format makes CopyTextureRegion invalid, and an
+    // invalid copy removes the device -- which is what capturing did: it crashed the game every time
+    // the output happened to be one of these.
+    static DXGI_FORMAT TypedForCopy(DXGI_FORMAT f)
+    {
+        switch (f)
+        {
+        case DXGI_FORMAT_R16G16B16A16_TYPELESS:
+            return DXGI_FORMAT_R16G16B16A16_FLOAT;
+        case DXGI_FORMAT_R32G32B32A32_TYPELESS:
+            return DXGI_FORMAT_R32G32B32A32_FLOAT;
+        case DXGI_FORMAT_R10G10B10A2_TYPELESS:
+            return DXGI_FORMAT_R10G10B10A2_UNORM;
+        case DXGI_FORMAT_R8G8B8A8_TYPELESS:
+            return DXGI_FORMAT_R8G8B8A8_UNORM;
+        case DXGI_FORMAT_B8G8R8A8_TYPELESS:
+            return DXGI_FORMAT_B8G8R8A8_UNORM;
+        default:
+            return f;
+        }
+    }
+
     static bool alloc(ID3D12Device* device, const D3D12_RESOURCE_DESC& desc, Shot& shot)
     {
+        D3D12_RESOURCE_DESC typed = desc;
+        typed.Format = TypedForCopy(desc.Format);
+
         unsigned long long total = 0;
-        device->GetCopyableFootprints(&desc, 0, 1, 0, &shot.layout, nullptr, nullptr, &total);
+        device->GetCopyableFootprints(&typed, 0, 1, 0, &shot.layout, nullptr, nullptr, &total);
         shot.bytes = total;
+
+        if (total == 0)
+            return false;
 
         D3D12_HEAP_PROPERTIES heap = {};
         heap.Type = D3D12_HEAP_TYPE_READBACK;
