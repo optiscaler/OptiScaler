@@ -313,6 +313,21 @@ class Config
     // Off until it is shown to produce the same picture. If it does, the forwarder can go.
     CustomOptional<bool> DlssNrUseProxy { false };
 
+    // Which depth convention the model is told the guide uses.
+    //
+    //   0  what the game's own DLSS feature was created with, which is what it means for the upscaler
+    //   1  force normal
+    //   2  force inverted
+    //
+    // The game's flag is correct about the upscaler and need not be correct about this model. Reading
+    // depth the wrong way round inverts its sense of near and far, and the reported symptom is
+    // exactly what that looks like: detail that boils and crawls rather than sitting still.
+    //
+    // RenoDX's own DLSS 5 addon ships the same three-way override, filed under "guide overrides,
+    // leave at defaults unless diagnostics require them", which is a working integration reaching the
+    // same conclusion independently.
+    CustomOptional<uint32_t> DlssNrDepthMode { 0 };
+
     // Writes one set of matched before/after frames per session, without anyone having to ask. The
     // folder is cleared at the start of each run, so it holds one session's worth and never grows.
     CustomOptional<bool> DlssNrAutoCapture { true };

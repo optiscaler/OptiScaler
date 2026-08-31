@@ -254,6 +254,19 @@ void RenderMenu(Config* config, float menuResScale)
                        "\n\nRaw, into a dlssnr-capture folder beside OptiScaler. Bounded to eight frames,"
                        "\nand each run overwrites the last.");
 
+        static const char* depthNames[] = { "Use the game's flag", "Force normal", "Force inverted" };
+        int depthMode = (int) config->DlssNrDepthMode.value_or_default();
+        if (ImGui::Combo("Depth convention", &depthMode, depthNames, IM_ARRAYSIZE(depthNames)))
+            config->DlssNrDepthMode = (uint32_t) depthMode;
+
+        HelpMarker("Which way round the model is told depth runs."
+                       "\n\nThe game states this when it creates its own upscaler, and that answer is"
+                       "\ncorrect about the upscaler -- it is not a promise about this model. Read the"
+                       "\nwrong way round the model has near and far reversed, and the symptom is detail"
+                       "\nthat boils and crawls rather than sitting still."
+                       "\n\nLeave it on the game's flag unless the picture is unstable; then try the"
+                       "\nother two and keep whichever settles.");
+
         static const char* debugNames[] = { "Off", "Proxy (what the model sees)", "Model output (raw)",
                                             "Difference (amplified)" };
         int debugView = (int) config->DlssNrDebugView.value_or_default();
