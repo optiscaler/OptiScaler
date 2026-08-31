@@ -757,20 +757,7 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
     params->Get(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags, &createFlags);
     const bool gameSaysInverted = (createFlags & NVSDK_NGX_DLSS_Feature_Flags_DepthInverted) != 0;
 
-    // The game's flag says what the upscaler expects, which is not a promise about this model. When
-    // the two disagree the model reads near for far, and the picture boils instead of resolving.
-    switch (cfg.DlssNrDepthMode.value_or_default())
-    {
-    case 1:
-        g_nr.guideDepthInverted = false;
-        break;
-    case 2:
-        g_nr.guideDepthInverted = true;
-        break;
-    default:
-        g_nr.guideDepthInverted = gameSaysInverted;
-        break;
-    }
+    g_nr.guideDepthInverted = gameSaysInverted;
 
     // And it states how its motion vectors are encoded. Inventing a resolution ratio here meant handing
     // the model vectors it could not interpret.
@@ -789,10 +776,9 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
     // exactly where this was first tested.
     const float upscaleX = guideWidth != 0 ? (float) width / (float) guideWidth : 1.0f;
     const float upscaleY = guideHeight != 0 ? (float) height / (float) guideHeight : 1.0f;
-    // The game's own encoding, times the resolution ratio, times whatever has had to be corrected by
-    // hand. The last of those is 1.0 unless somebody is diagnosing.
-    g_nr.guideMvScaleX = mvScaleX * upscaleX * cfg.DlssNrMvScaleX.value_or_default();
-    g_nr.guideMvScaleY = mvScaleY * upscaleY * cfg.DlssNrMvScaleY.value_or_default();
+    // The game's own encoding, times the resolution ratio.
+    g_nr.guideMvScaleX = mvScaleX * upscaleX;
+    g_nr.guideMvScaleY = mvScaleY * upscaleY;
 
     static bool reportedGuides = false;
 

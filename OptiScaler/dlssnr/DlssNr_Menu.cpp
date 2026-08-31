@@ -89,17 +89,12 @@ void RenderMenu(Config* config, float menuResScale)
 
         ImGui::SeparatorText("Cost");
 
-        static const char* scaleNames[] = { "Full resolution", "75%", "50%", "33%" };
-        static const float scaleValues[] = { 1.0f, 0.75f, 0.5f, 0.3333f };
-        const float currentScale = config->DlssNrWorkingScale.value_or_default();
-        int scaleIndex = 0;
-        for (int i = 0; i < IM_ARRAYSIZE(scaleValues); ++i)
-        {
-            if (currentScale <= scaleValues[i] + 0.01f)
-                scaleIndex = i;
-        }
-        if (ImGui::Combo("Model resolution", &scaleIndex, scaleNames, IM_ARRAYSIZE(scaleNames)))
-            config->DlssNrWorkingScale = scaleValues[scaleIndex];
+        // Any percentage, rather than a handful of steps somebody chose in advance. The lower bound
+        // is 25%: below that the model is working on so little of the picture that its answer no
+        // longer survives being enlarged onto it.
+        int scalePercent = (int) lroundf(config->DlssNrWorkingScale.value_or_default() * 100.0f);
+        if (ImGui::SliderInt("Model resolution", &scalePercent, 25, 100, "%d%%"))
+            config->DlssNrWorkingScale = std::clamp(scalePercent, 25, 100) / 100.0f;
 
         HelpMarker("What fraction of the frame the model works at. Cost falls with the square of"
                        "\nthis, so half resolution is roughly a quarter of the time."
@@ -252,37 +247,6 @@ void RenderMenu(Config* config, float menuResScale)
                        "\nbetween that discards exactly the fine temporal detail in question."
                        "\n\nRaw, into a dlssnr-capture folder beside OptiScaler. Bounded to eight frames,"
                        "\nand each run overwrites the last.");
-
-        static const char* depthNames[] = { "Use the game's flag", "Force normal", "Force inverted" };
-        int depthMode = (int) config->DlssNrDepthMode.value_or_default();
-        if (ImGui::Combo("Depth convention", &depthMode, depthNames, IM_ARRAYSIZE(depthNames)))
-            config->DlssNrDepthMode = (uint32_t) depthMode;
-
-        HelpMarker("Which way round the model is told depth runs."
-                       "\n\nThe game states this when it creates its own upscaler, and that answer is"
-                       "\ncorrect about the upscaler -- it is not a promise about this model. Read the"
-                       "\nwrong way round the model has near and far reversed, and the symptom is detail"
-                       "\nthat boils and crawls rather than sitting still."
-                       "\n\nLeave it on the game's flag unless the picture is unstable; then try the"
-                       "\nother two and keep whichever settles.");
-
-        float mvScaleX = config->DlssNrMvScaleX.value_or_default();
-        if (ImGui::SliderFloat("Motion scale X", &mvScaleX, 0.0f, 2.0f, "%.4f"))
-            config->DlssNrMvScaleX = mvScaleX;
-
-        float mvScaleY = config->DlssNrMvScaleY.value_or_default();
-        if (ImGui::SliderFloat("Motion scale Y", &mvScaleY, 0.0f, 2.0f, "%.4f"))
-            config->DlssNrMvScaleY = mvScaleY;
-
-        HelpMarker("Multipliers on the motion vector scale handed to the model. 1.0 changes nothing."
-                       "\n\nThe game states how its vectors are encoded and that is passed through, but"
-                       "\nit describes what the upscaler expects rather than what this model does. Read"
-                       "\nat the wrong scale the model cannot find where anything was last frame, so its"
-                       "\nedit stops tracking what is underneath it -- detail that slides off a moving"
-                       "\nface and boils in place rather than sitting on it."
-                       "\n\nA thousandfold error is the usual one: normalised vectors read as pixels, or"
-                       "\nthe reverse. If that is what is happening the interesting values are tiny --"
-                       "\n1/1920 is 0.0005 -- rather than anything near 1.");
 
         static const char* debugNames[] = { "Off", "Proxy (what the model sees)", "Model output (raw)",
                                             "Difference (amplified)" };
