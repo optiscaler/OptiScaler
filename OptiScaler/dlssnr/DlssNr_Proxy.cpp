@@ -1,7 +1,6 @@
 #include "pch.h"
 #include "DlssNr_Proxy.h"
 
-#if OPTI_DLSSNR
 
 #include <Config.h>
 #include <Logger.h>
@@ -297,4 +296,3 @@ unsigned int Run(ID3D12GraphicsCommandList* cmdList, ID3D12Device* device, ID3D1
 } // namespace Proxy
 } // namespace DlssNr
 
-#endif // OPTI_DLSSNR

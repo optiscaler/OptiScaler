@@ -27,9 +27,7 @@
 //
 // Off by default until it has been shown to produce the same picture as the forwarder path.
 
-#include "DlssNr_Switch.h"
 
-#if OPTI_DLSSNR
 
 #include <d3d12.h>
 
@@ -53,4 +51,3 @@ void Release();
 } // namespace Proxy
 } // namespace DlssNr
 
-#endif // OPTI_DLSSNR

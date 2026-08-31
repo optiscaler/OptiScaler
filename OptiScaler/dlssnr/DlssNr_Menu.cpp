@@ -2,7 +2,6 @@
 
 #include "DlssNr.h"
 
-#if OPTI_DLSSNR
 
 #include <Config.h>
 #include <menu/menu_common.h>
@@ -284,4 +283,3 @@ void RenderMenu(Config* config, float menuResScale)
 
 } // namespace DlssNr
 
-#endif // OPTI_DLSSNR

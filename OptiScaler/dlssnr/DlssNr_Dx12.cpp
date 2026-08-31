@@ -2,7 +2,6 @@
 
 #include "DlssNr.h"
 
-#if OPTI_DLSSNR
 
 #include "DlssNr_Codec.h"
 #include "DlssNr_Probe.h"
@@ -1295,4 +1294,3 @@ void Shutdown()
 }
 } // namespace DlssNr
 
-#endif // OPTI_DLSSNR

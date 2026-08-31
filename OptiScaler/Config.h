@@ -1,6 +1,5 @@
 #pragma once
 
-#include "dlssnr/DlssNr_Switch.h"
 #include "SysUtils.h"
 #include "State.h"
 
@@ -254,7 +253,6 @@ class Config
     CustomOptional<int32_t> NetworkModel { 0 };
     CustomOptional<bool> CreateHeaps { true };
 
-#if OPTI_DLSSNR
     // --- DLSS 5 Neural Rendering (OptiScaler/dlssnr) --- removable as one block -----------------
     // DLSS Neural Rendering: a detail-synthesis pass over the upscaler's output. Off by default -- it is
     // an undocumented feature driven directly through its snippet, not something NVIDIA exposes.
@@ -344,7 +342,6 @@ class Config
 
 
 
-#endif // OPTI_DLSSNR
     // --- end DLSS 5 Neural Rendering -------------------------------------------------------------
 
     // DLSS
