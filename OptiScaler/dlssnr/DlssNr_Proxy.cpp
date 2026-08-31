@@ -211,7 +211,14 @@ unsigned int Run(ID3D12GraphicsCommandList* cmdList, ID3D12Device* device, ID3D1
                 0x4350324Bull, State::Instance().NVNGX_ApplicationDataPath.c_str(), device,
                 (NVSDK_NGX_Version) 0x0000015, &fcInfo);
 
-            LOG_INFO("DLSS-NR (proxy): re-init at SDK 0x15 returned 0x{:X}", (unsigned int) initResult);
+            // Success here means very little. NGX init is idempotent: a second call on an already
+            // initialised core returns success and changes nothing, which the driver's own log
+            // confirms -- it reports the app id it was first initialised with, not the one passed
+            // here. So this does not test the SDK version or the application id, and cannot without
+            // shutting NGX down underneath the game's own DLSS.
+            LOG_INFO("DLSS-NR (proxy): re-init at SDK 0x15 returned 0x{:X} (idempotent -- this does "
+                     "not change the app id or SDK version the core is running with)",
+                     (unsigned int) initResult);
         }
 
         DiscoverFloatSlot(g_proxy.params);
