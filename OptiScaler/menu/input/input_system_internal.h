@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "input_system.h"
 
@@ -18,7 +18,7 @@
 #include <dinput.h>
 
 #ifndef OPTIINPUT_VERBOSE_LOGGING
-#define OPTIINPUT_VERBOSE_LOGGING 0
+#define OPTIINPUT_VERBOSE_LOGGING 1
 #endif
 
 #if OPTIINPUT_VERBOSE_LOGGING

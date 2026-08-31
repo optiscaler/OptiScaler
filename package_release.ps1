@@ -90,6 +90,22 @@ Write-Host "log settings: $($check -join ', ')"
 # survive into the zip regardless of how it got into the staging folder.
 Get-ChildItem $stage -Recurse -Include *.exp, *.lib, *.pdb, *.ilk, *latewarp* | Remove-Item -Force
 
+# No feature may ship switched on by accident.
+#
+# A global regex on "^Enabled=auto" once turned on five sections at once -- output scaling,
+# sharpening, the magnifier and two more -- while trying to enable one, because the ini has six keys
+# called Enabled in six different sections. That was in a test install rather than a release, and
+# only because nothing was checking. This checks.
+$on = Select-String -Path "$stage\OptiScaler.ini" -Pattern '^Enabled=true'
+
+if ($on) {
+    Write-Host "REFUSING: the packaged ini has features switched on:"
+    $on | ForEach-Object { "  line $($_.LineNumber): $($_.Line)" }
+    exit 1
+}
+
+Write-Host "ini verified: nothing switched on by default"
+
 if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path "$stage\*" -DestinationPath $zip -CompressionLevel Optimal
 

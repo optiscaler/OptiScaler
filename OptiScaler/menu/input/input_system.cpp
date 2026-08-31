@@ -688,59 +688,6 @@ void PollInputFallbackLocked()
     RefreshInputAcquisitionModeLocked();
 }
 
-// Tell the game to let go of everything that was held when the menu opened.
-//
-// Opening the menu sets BlockKeyboard, and from that instant the game stops receiving key messages.
-// A key that was already down therefore never gets its key-up, so the game goes on believing it is
-// held -- you walk into a wall until you press and release the key again. The same applies to mouse
-// buttons, which is worse, because a stuck mouse button keeps firing.
-//
-// So synthesise the releases the game is about to stop hearing. Posted through the original
-// PostMessage rather than the hooked one, since the hook is precisely what would swallow them.
-//
-// If the key is still physically down when the menu closes, the game learns that from the next
-// auto-repeat or the next press. Needing to press a key again is a much smaller problem than a key
-// that never comes up.
-void ReleaseHeldInputToGameLocked()
-{
-    HWND target = _state.TargetHwnd != nullptr ? _state.TargetHwnd : _state.InputHwnd;
-
-    if (target == nullptr || o_PostMessageW == nullptr)
-        return;
-
-    int released = 0;
-
-    for (int vk = 0; vk < 256; ++vk)
-    {
-        if (!_state.Keys[vk].Down)
-            continue;
-
-        // lParam for a key release: repeat count 1, the scan code, and the transition and previous
-        // state bits both set, which is what a real WM_KEYUP carries.
-        const UINT scan = MapVirtualKeyW((UINT) vk, MAPVK_VK_TO_VSC);
-        const LPARAM lParam = (LPARAM) (1 | (scan << 16) | (1 << 30) | (1 << 31));
-
-        o_PostMessageW(target, WM_KEYUP, (WPARAM) vk, lParam);
-        ++released;
-    }
-
-    struct { int vk; UINT message; } buttons[] = {
-        { VK_LBUTTON, WM_LBUTTONUP }, { VK_RBUTTON, WM_RBUTTONUP }, { VK_MBUTTON, WM_MBUTTONUP },
-    };
-
-    for (const auto& b : buttons)
-    {
-        if (b.vk < 256 && _state.Keys[b.vk].Down)
-        {
-            o_PostMessageW(target, b.message, 0, 0);
-            ++released;
-        }
-    }
-
-    if (released > 0)
-        LOG_DEBUG("released {} held input(s) to the game as the menu opened", released);
-}
-
 void ApplyMenuVisibilityChangeLocked(bool visible)
 {
     const bool wasMenuVisible = _state.MenuVisible;
@@ -763,10 +710,6 @@ void ApplyMenuVisibilityChangeLocked(bool visible)
 
     if (!wasMenuVisible && visible)
     {
-        // Before anything else: the game is about to stop hearing from the keyboard, so let it hear
-        // the releases first.
-        ReleaseHeldInputToGameLocked();
-
         POINT blockedCursorPos {};
         if (o_GetCursorPos != nullptr && o_GetCursorPos(&blockedCursorPos))
             _state.BlockedCursorScreenPos = blockedCursorPos;
