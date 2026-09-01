@@ -856,8 +856,18 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
     const float upscaleX = guideWidth != 0 ? (float) width / (float) guideWidth : 1.0f;
     const float upscaleY = guideHeight != 0 ? (float) height / (float) guideHeight : 1.0f;
     // The game's own encoding, times the resolution ratio.
-    g_nr.guideMvScaleX = mvScaleX * upscaleX;
-    g_nr.guideMvScaleY = mvScaleY * upscaleY;
+    // The game's own encoding, and nothing else.
+    //
+    // Multiplying by the upscale ratio was reasoning, not measurement, and it was only ever exercised
+    // at native resolution where the ratio is 1 and the mistake is invisible. Every resource already
+    // carries its own subrect -- MVecSubrectWidth and Height say the motion texture is render sized --
+    // so the model is told the size twice and scales for it twice. Vectors come out half again too
+    // long and the model warps its history past where the surface actually went, which smears the
+    // frame along the direction of motion.
+    g_nr.guideMvScaleX = mvScaleX;
+    g_nr.guideMvScaleY = mvScaleY;
+    (void) upscaleX;
+    (void) upscaleY;
 
     static bool reportedGuides = false;
 

@@ -43,6 +43,11 @@ void setFloat(void *params, const char *name, float v) {
     reinterpret_cast<PFN_SetFloat>(vt[g_floatSlot])(params, name, v);
 }
 
+void setResourcePtr(void *params, const char *name, void *v) {
+    void **vt = *reinterpret_cast<void ***>(params);
+    reinterpret_cast<PFN_SetULL>(vt[VT_SET_ULL])(params, name, (unsigned long long) v);
+}
+
 void setResource(void *params, const char *name, ID3D12Resource *v) {
     void **vt = *reinterpret_cast<void ***>(params);
     reinterpret_cast<PFN_SetULL>(vt[VT_SET_ULL])(params, name, (unsigned long long) v);
@@ -61,6 +66,7 @@ struct Snippet {
     PFN_NrEvaluate evaluate = nullptr;
     PFN_NrRelease release = nullptr;
     bool initialised = false;
+
 };
 
 Snippet g_snip;
@@ -77,8 +83,11 @@ bool loadSnippet(const wchar_t *path) {
     g_snip.create = (PFN_NrCreate) GetProcAddress(g_snip.module, "NVSDK_NGX_D3D12_CreateFeature");
     g_snip.evaluate = (PFN_NrEvaluate) GetProcAddress(g_snip.module, "NVSDK_NGX_D3D12_EvaluateFeature");
     g_snip.release = (PFN_NrRelease) GetProcAddress(g_snip.module, "NVSDK_NGX_D3D12_ReleaseFeature");
+
+
     return g_snip.create != nullptr && g_snip.evaluate != nullptr;
 }
+
 
 } // namespace
 

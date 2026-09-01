@@ -47,6 +47,10 @@ void RenderMenu(Config* config, float menuResScale)
                        "\n  nvngx.dll_dlssnr.dll   the forwarder (~13 KB) -- ships in this package"
                        "\nUndocumented and driven directly, so none of this is officially supported.");
 
+        // The toggle can be bound to a key, and nobody would think to look for it under Keybinds
+        // unless told. Dimmed, because it is a note rather than a setting.
+        ImGui::TextDisabled("Can be toggled with a key -- bind it under Keybinds, \"Neural Rendering\".");
+
         if (!DlssNr::IsRunning())
         {
             const char* reason = DlssNr::FailureReason();
