@@ -194,6 +194,12 @@ std::vector<GpuInformation> IdentifyGpu::checkGpuInfo()
 
 void IdentifyGpu::queryNvapi(GpuInformation& gpuInfo)
 {
+    // Prevent recursion: NvAPI_Initialize (dxvk-nvapi) internally creates a DXGI factory
+    // and enumerates adapters, which re-enters our hooked EnumAdapters/EnumAdapters1 and
+    // calls getAllGpus() again while is_fetching is already set (returns empty list).
+    // Skip the DXGI load checks so nvapi sees the real adapters, allowing init to succeed.
+    ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
+
     auto nvapiModule = NtdllProxy::LoadLibraryExW_Ldr(L"nvapi64.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
 
     // No nvapi, should not be nvidia, possibly external spoofing
