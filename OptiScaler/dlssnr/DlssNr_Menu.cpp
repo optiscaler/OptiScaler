@@ -256,18 +256,29 @@ void RenderMenu(Config* config, float menuResScale)
                             "already tone-mapped is passed over untouched and none of this applies.");
 
         {
+        // Logarithmic, because the useful range is not linear: a quarter to sixty-four, and the
+        // interesting part of it in one game spanned 1 to 100. A linear slider spends nine tenths of
+        // its travel on values nobody needs and cannot reach the ones they do.
         float wpScale = config->DlssNrWhitePointScale.value_or_default();
-        if (ImGui::SliderFloat("Paper white", &wpScale, 0.25f, 4.0f, "%.2fx"))
+        if (ImGui::SliderFloat("Paper white", &wpScale, 0.25f, 64.0f, "%.2fx",
+                               ImGuiSliderFlags_Logarithmic))
             config->DlssNrWhitePointScale = wpScale;
 
         HelpMarker("What the frame is divided by before the model sees it. There is no other white"
                        "\npoint; this is the whole of it."
                        "\n\nThe model was trained on finished frames where white sits at 1. The"
                        "\nupscaler's output is linear and open-ended, so something has to say where"
-                       "\nwhite is, and 1.0 is right for most games."
-                       "\n\nAbove 1 the picture handed over is darker, so highlights sit lower on the"
-                       "\ncurve and the model treats them as less extreme; below 1, the opposite. If a"
-                       "\ngame looks washed out or flat, this is the first thing to move."
+                       "\nwhite is -- and where the game's DLSS buffer is linear HDR, that number is"
+                       "\nrarely anywhere near 1. Measured in Monster Hunter Wilds it takes 16 or more"
+                       "\nbefore the model's detail reaches the frame at all, and the value that suits"
+                       "\na shaded camp is still too small for the same game out in daylight."
+                       "\n\nToo low and almost every pixel trips the soft knee: the model is shown a"
+                       "\nflat near-white picture, its answer is scaled away, and only its hue"
+                       "\nsurvives -- which reads as a colour cast rather than as lost detail. Too"
+                       "\nhigh and it is shown an underexposed one, its answer degrades, and this same"
+                       "\nnumber multiplies that error on the way out."
+                       "\n\nRaise it until the picture stops improving. Past that point it does not"
+                       "\nplateau, it gets worse in the other direction."
                        "\n\nThis was once a multiplier on a measured white point. The measurement is"
                        "\ngone: it read scene brightness rather than where white belongs, handed the"
                        "\nmodel a picture three times too dark, and left the highlight path nothing to"
@@ -278,12 +289,19 @@ void RenderMenu(Config* config, float menuResScale)
         if (ImGui::SliderFloat("Highlight guard", &maxRatio, 1.0f, 8.0f, "%.1fx"))
             config->DlssNrMaxRatio = maxRatio;
 
-        HelpMarker("The most the pass may brighten any pixel, as a multiple of what it already"
-                       "\nwas. Darkening is not capped by this -- only growth is."
+        HelpMarker("The most the pass may move any pixel, as a multiple of what it already was --"
+                       "\nin both directions. A pixel may not be brightened past this, nor darkened"
+                       "\npast its reciprocal."
                        "\n\nLights are where the model has least to say and where rescaling its answer"
                        "\ninto the frame does the most damage: an early version turned every strip light"
                        "\nin the scene into a string of coloured cells. 2x leaves detail intact while"
-                       "\nmaking that failure impossible. Raise it only if bright areas look clipped.");
+                       "\nmaking that failure impossible. Raise it only if bright areas look clipped."
+                       "\n\nDarkening was once left uncapped, and the guard itself only bound the"
+                       "\ncolour-strength-zero end of the blend -- so at the default strength it bound"
+                       "\nnothing at all. Nioh 3 is why both are fixed: in a scene dark enough that the"
+                       "\nsoft knee never fires, the composition reduces to the model's own picture,"
+                       "\nand it collapsed the frame's red by more than half, once per frame, while an"
+                       "\nupward-only guard on an unreachable branch watched it happen.");
 
         }
 
