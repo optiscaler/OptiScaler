@@ -33,17 +33,6 @@ namespace DlssNr
 void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Parameter* params,
                           ID3D12CommandQueue* timingQueue = nullptr);
 
-// The pass itself, with the resources handed to it.
-//
-// This is the entry a caller uses when it already has the resources and there is no NGX parameter
-// block to read -- a reprojection stage, a frame generation path, anything that is not the upscaler
-// seam. Sizes come from the resources; everything the pass cannot work out for itself is in
-// DlssNrFrameInfo, and everything the user chose stays in Config.
-//
-// The caller guarantees the resources are valid. colour and output may be the same resource.
-void RunPass(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* colour, ID3D12Resource* depth,
-             ID3D12Resource* motion, ID3D12Resource* output, const DlssNrFrameInfo& frame,
-             ID3D12CommandQueue* timingQueue = nullptr);
 
 
 // Frame generation titles tag their UI layer through Streamline; a copy of it makes the HUD mask

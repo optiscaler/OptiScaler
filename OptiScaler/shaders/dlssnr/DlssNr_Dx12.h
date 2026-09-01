@@ -57,9 +57,23 @@ class DlssNr_Dx12 : public Shader_Dx12, public DlssNr_Common
     DlssNr_Dx12(std::string InName, ID3D12Device* InDevice);
     ~DlssNr_Dx12();
 
+    // The pass. Resources in, and nothing read from anywhere the caller cannot see.
+    //
+    // This is the whole filter: it brings the model up if it is not already, builds the feature and
+    // rebuilds it when the tuning or the resolution changes, evaluates it, and runs the compute passes
+    // that show it the frame and bring its answer back. One call, like any other shader here.
+    //
+    // Sizes come from the resources. Everything the pass cannot work out for itself is in
+    // DlssNrFrameInfo; everything the user chose stays in Config. colour and output may be the same
+    // resource. timingQueue is the queue this list will be executed on, when the caller knows it.
+    void Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* colour, ID3D12Resource* depth,
+                  ID3D12Resource* motion, ID3D12Resource* output, const DlssNrFrameInfo& frame,
+                  ID3D12CommandQueue* timingQueue = nullptr);
+
     // Records one pass. Resources that a given mode does not read may be null; a stand-in is bound in
     // their place so every descriptor in the table is valid.
-    bool Dispatch(ID3D12GraphicsCommandList* InCmdList, const DlssNrConstants& InConstants,
+    // One compute pass. The public entry below drives three of these plus the model.
+    bool DispatchPass(ID3D12GraphicsCommandList* InCmdList, const DlssNrConstants& InConstants,
                   ID3D12Resource* InSource, ID3D12Resource* InModel, ID3D12Resource* InOriginal,
                   ID3D12Resource* InMotion, ID3D12Resource* InPrevEdit, ID3D12Resource* OutTarget,
                   ID3D12Resource* OutKeep);
