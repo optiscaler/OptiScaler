@@ -1,5 +1,7 @@
 #include "pch.h"
 
+#include <set>
+
 #include "DlssNr.h"
 
 
@@ -639,6 +641,30 @@ ID3D12Resource* ReadableGuide(ID3D12Device* device, ID3D12GraphicsCommandList* c
 
 // The upscaler's own names differ between super resolution and ray reconstruction, and only one set is
 // present on any given block.
+// Whether a surface can physically hold linear HDR.
+//
+// Only a float format can: linear light is open-ended and runs far past 1.0, which a normalised
+// integer surface cannot represent. An 8-bit UNORM frame is finished, display-referred output, and
+// so is a 10-bit one -- HDR10 is PQ-encoded, which is display-referred too.
+//
+// The game's IsHDR flag is a statement of intent that is not always true, and believing it over a
+// format that cannot hold linear light means encoding an already-encoded frame a second time.
+bool FormatCanHoldLinearHdr(DXGI_FORMAT format)
+{
+    switch (format)
+    {
+    case DXGI_FORMAT_R16G16B16A16_FLOAT:
+    case DXGI_FORMAT_R16G16B16A16_TYPELESS:
+    case DXGI_FORMAT_R32G32B32A32_FLOAT:
+    case DXGI_FORMAT_R32G32B32A32_TYPELESS:
+    case DXGI_FORMAT_R32G32B32_FLOAT:
+    case DXGI_FORMAT_R11G11B10_FLOAT:
+        return true;
+    default:
+        return false;
+    }
+}
+
 ID3D12Resource* GetResource(NVSDK_NGX_Parameter* params, const char* a, const char* b)
 {
     ID3D12Resource* res = nullptr;
@@ -648,8 +674,30 @@ ID3D12Resource* GetResource(NVSDK_NGX_Parameter* params, const char* a, const ch
 
     res = nullptr;
 
-    if (params->Get(b, &res) == NVSDK_NGX_Result_Success)
+    if (params->Get(b, &res) == NVSDK_NGX_Result_Success && res != nullptr)
         return res;
+
+    // The same key again, as a plain pointer.
+    //
+    // NVSDK_NGX_Parameter has a typed setter per resource kind and an untyped one, and on a real NGX
+    // parameter block those are separate slots: what goes in through Set(name, void*) does not come
+    // back out of Get(name, ID3D12Resource**). A game running its own D3D12 upscaler sets these
+    // typed, so the typed read above is enough and always was.
+    //
+    // Both of OptiScaler's bridges write them untyped. IFeature_Dx11wDx12 and IFeature_VkwDx12 turn
+    // the game's D3D11 textures or Vulkan images into D3D12 resources and hand them over with
+    // Set(name, (void*) resource) -- so the typed read came back null a few lines after the resource
+    // had been written, and the pass quietly did nothing. That is the whole reason this never ran in
+    // a DirectX 11 or Vulkan game.
+    void* untyped = nullptr;
+
+    if (params->Get(a, &untyped) == NVSDK_NGX_Result_Success && untyped != nullptr)
+        return static_cast<ID3D12Resource*>(untyped);
+
+    untyped = nullptr;
+
+    if (params->Get(b, &untyped) == NVSDK_NGX_Result_Success && untyped != nullptr)
+        return static_cast<ID3D12Resource*>(untyped);
 
     return nullptr;
 }
@@ -711,13 +759,36 @@ void RetryAfterFailure()
 
 }
 
+// Every way out of the pass before it does anything is silent on purpose -- an evaluate that carries
+// no depth is normal and would otherwise print every frame forever. That silence is fine until the
+// pass does nothing at all and the log has no opinion about why.
+//
+// So each distinct reason is reported once. Once, not once per frame.
+void ReportSkipOnce(const char* reason)
+{
+    static std::set<std::string> seen;
+
+    if (seen.insert(reason).second)
+        LOG_INFO("DLSS-NR did not run: {}", reason);
+}
+
 void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Parameter* params)
 {
     std::lock_guard<std::mutex> nrLock(g_nrMutex);
     const Config& cfg = *Config::Instance();
 
-    if (!cfg.DlssNrEnabled.value_or_default() || g_nr.failed || cmdList == nullptr || params == nullptr)
+    if (!cfg.DlssNrEnabled.value_or_default())
+    {
+        ReportSkipOnce("it is switched off");
         return;
+    }
+
+    if (g_nr.failed || cmdList == nullptr || params == nullptr)
+    {
+        ReportSkipOnce(g_nr.failed ? "it already failed this session"
+                                   : "no command list or no parameter block");
+        return;
+    }
 
     ID3D12Resource* target = GetResource(params, NVSDK_NGX_Parameter_Output, "DLSSD.Output");
     ID3D12Resource* depth = GetResource(params, NVSDK_NGX_Parameter_Depth, "DLSSD.Depth");
@@ -726,12 +797,20 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
     // Without all three there is nothing to run on. This is not a failure -- some evaluates legitimately
     // carry none of it -- so it stays quiet and tries again next frame.
     if (target == nullptr || depth == nullptr || motion == nullptr)
+    {
+        ReportSkipOnce(target == nullptr    ? "the parameters carried no output texture"
+                       : depth == nullptr   ? "the parameters carried no depth"
+                                            : "the parameters carried no motion vectors");
         return;
+    }
 
     ID3D12Device* device = nullptr;
 
     if (FAILED(target->GetDevice(IID_PPV_ARGS(&device))) || device == nullptr)
+    {
+        ReportSkipOnce("the output texture belongs to no D3D12 device");
         return;
+    }
 
     const D3D12_RESOURCE_DESC desc = target->GetDesc();
     const auto width = (unsigned int) desc.Width;
@@ -922,7 +1001,10 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
     // skipping it on one that has not leaves the model reading ordinary values as enormously bright.
     unsigned int dlssFlags = 0;
     params->Get(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags, &dlssFlags);
-    const bool isHdrBuffer = (dlssFlags & NVSDK_NGX_DLSS_Feature_Flags_IsHDR) != 0;
+    // Both have to agree: the flag says what the game intends, the format says what the surface can
+    // actually hold.
+    const bool gameSaysHdr = (dlssFlags & NVSDK_NGX_DLSS_Feature_Flags_IsHDR) != 0;
+    const bool isHdrBuffer = gameSaysHdr && FormatCanHoldLinearHdr(desc.Format);
 
     static bool reportedHdr = false;
 
