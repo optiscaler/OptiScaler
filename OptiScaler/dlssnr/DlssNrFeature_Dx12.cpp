@@ -763,22 +763,23 @@ void ReportSkipOnce(const char* reason)
         LOG_INFO("DLSS-NR did not run: {}", reason);
 }
 
+// Reads the game's parameter block and runs the pass on what it finds.
+//
+// This is the call site's job, not the pass's. A caller that has the resources in hand -- a
+// reprojection stage, a frame generation path, anything that is not the upscaler seam -- calls
+// RunPass directly and never touches an NGX parameter block.
 void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Parameter* params,
                           ID3D12CommandQueue* timingQueue)
 {
-    std::lock_guard<std::mutex> nrLock(g_nrMutex);
-    const Config& cfg = *Config::Instance();
-
-    if (!cfg.DlssNrEnabled.value_or_default())
+    if (!Config::Instance()->DlssNrEnabled.value_or_default())
     {
         ReportSkipOnce("it is switched off");
         return;
     }
 
-    if (g_nr.failed || cmdList == nullptr || params == nullptr)
+    if (cmdList == nullptr || params == nullptr)
     {
-        ReportSkipOnce(g_nr.failed ? "it already failed this session"
-                                   : "no command list or no parameter block");
+        ReportSkipOnce("no command list or no parameter block");
         return;
     }
 
@@ -796,6 +797,42 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
         return;
     }
 
+    unsigned int createFlags = 0;
+    params->Get(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags, &createFlags);
+
+    DlssNrFrameInfo frame {};
+    frame.DepthInverted = (createFlags & NVSDK_NGX_DLSS_Feature_Flags_DepthInverted) != 0;
+    frame.ColourIsLinearHdr = (createFlags & NVSDK_NGX_DLSS_Feature_Flags_IsHDR) != 0;
+
+    if (params->Get(NVSDK_NGX_Parameter_MV_Scale_X, &frame.MvScaleX) != NVSDK_NGX_Result_Success)
+        frame.MvScaleX = 1.0f;
+
+    if (params->Get(NVSDK_NGX_Parameter_MV_Scale_Y, &frame.MvScaleY) != NVSDK_NGX_Result_Success)
+        frame.MvScaleY = 1.0f;
+
+    // The upscaler's inputs are at render resolution while colour and output are at display
+    // resolution; the model takes that as a subrect per resource, which the pass reads from the
+    // resources themselves.
+    RunPass(cmdList, target, depth, motion, target, frame, timingQueue);
+}
+
+// The pass. Resources in, nothing read from anywhere the caller cannot see.
+void RunPass(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* colour, ID3D12Resource* depth,
+             ID3D12Resource* motion, ID3D12Resource* output, const DlssNrFrameInfo& frame,
+             ID3D12CommandQueue* timingQueue)
+{
+    std::lock_guard<std::mutex> nrLock(g_nrMutex);
+    const Config& cfg = *Config::Instance();
+
+    if (g_nr.failed || cmdList == nullptr || colour == nullptr || depth == nullptr ||
+        motion == nullptr || output == nullptr)
+    {
+        ReportSkipOnce(g_nr.failed ? "it already failed this session" : "a resource was missing");
+        return;
+    }
+
+    ID3D12Resource* target = output;
+
     ID3D12Device* device = nullptr;
 
     if (FAILED(target->GetDevice(IID_PPV_ARGS(&device))) || device == nullptr)
@@ -811,10 +848,13 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
     // Depth and motion vectors are the upscaler's inputs and so are at render resolution, while colour
     // and output are at display resolution. The model takes that as a subrect per resource rather than
     // needing them resampled, which is why nothing here rescales anything.
-    unsigned int guideWidth = 0;
-    unsigned int guideHeight = 0;
-    params->Get(NVSDK_NGX_Parameter_Width, &guideWidth);
-    params->Get(NVSDK_NGX_Parameter_Height, &guideHeight);
+    // The guides are the upscaler's inputs and so are at render resolution, while colour and output
+    // are at display resolution. Their sizes come from the resources rather than from the caller:
+    // one less thing a call site can get wrong, and the model takes the difference as a subrect per
+    // resource rather than needing anything resampled.
+    const D3D12_RESOURCE_DESC guideDesc = depth->GetDesc();
+    unsigned int guideWidth = (unsigned int) guideDesc.Width;
+    unsigned int guideHeight = guideDesc.Height;
 
     if (guideWidth == 0 || guideHeight == 0)
     {
@@ -822,54 +862,27 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
         guideHeight = height;
     }
 
-    // The game states its depth convention in the flags it created its own feature with, so there is no
-    // reason to assume one.
-    unsigned int createFlags = 0;
-    params->Get(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags, &createFlags);
-    const bool gameSaysInverted = (createFlags & NVSDK_NGX_DLSS_Feature_Flags_DepthInverted) != 0;
+    g_nr.guideWidth = guideWidth;
+    g_nr.guideHeight = guideHeight;
+    g_nr.guideDepthInverted = frame.DepthInverted;
 
-    g_nr.guideDepthInverted = gameSaysInverted;
+    // The game's own encoding, passed through. Every resource already carries a subrect saying how
+    // big it is, so scaling by the resolution ratio on top of that counts it twice -- vectors come
+    // out too long and the model warps its history past where the surface went.
+    g_nr.guideMvScaleX = frame.MvScaleX;
+    g_nr.guideMvScaleY = frame.MvScaleY;
 
-    // And it states how its motion vectors are encoded. Inventing a resolution ratio here meant handing
-    // the model vectors it could not interpret.
-    float mvScaleX = 1.0f;
-    float mvScaleY = 1.0f;
-
-    if (params->Get(NVSDK_NGX_Parameter_MV_Scale_X, &mvScaleX) != NVSDK_NGX_Result_Success)
-        mvScaleX = 1.0f;
-
-    if (params->Get(NVSDK_NGX_Parameter_MV_Scale_Y, &mvScaleY) != NVSDK_NGX_Result_Success)
-        mvScaleY = 1.0f;
-
-    // Two factors, and both are needed. The game's own scale turns its vectors into render pixels --
-    // Cyberpunk reports 1920 x 1080, so its vectors are normalised. The upscale ratio then carries
-    // render pixels onto a display-resolution image. They coincide only at native resolution, which is
-    // exactly where this was first tested.
-    const float upscaleX = guideWidth != 0 ? (float) width / (float) guideWidth : 1.0f;
-    const float upscaleY = guideHeight != 0 ? (float) height / (float) guideHeight : 1.0f;
-    // The game's own encoding, times the resolution ratio.
-    // The game's own encoding, and nothing else.
-    //
-    // Multiplying by the upscale ratio was reasoning, not measurement, and it was only ever exercised
-    // at native resolution where the ratio is 1 and the mistake is invisible. Every resource already
-    // carries its own subrect -- MVecSubrectWidth and Height say the motion texture is render sized --
-    // so the model is told the size twice and scales for it twice. Vectors come out half again too
-    // long and the model warps its history past where the surface actually went, which smears the
-    // frame along the direction of motion.
-    g_nr.guideMvScaleX = mvScaleX;
-    g_nr.guideMvScaleY = mvScaleY;
-    (void) upscaleX;
-    (void) upscaleY;
+    if (frame.Reset)
+        g_nr.reset = true;
 
     static bool reportedGuides = false;
 
     if (!reportedGuides)
     {
         reportedGuides = true;
-        LOG_INFO("DLSS-NR guides: depth {}, motion vector scale {} x {} (the game says {} x {}, times "
-                 "the {}x{} upscale ratio)",
+        LOG_INFO("DLSS-NR guides: depth {}, motion vector scale {} x {}, guides {}x{} for a {}x{} frame",
                  g_nr.guideDepthInverted ? "inverted" : "not inverted", g_nr.guideMvScaleX,
-                 g_nr.guideMvScaleY, mvScaleX, mvScaleY, upscaleX, upscaleY);
+                 g_nr.guideMvScaleY, guideWidth, guideHeight, width, height);
     }
 
     if (cfg.DlssNrProxyProbe.value_or_default())
@@ -1001,11 +1014,10 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
     // something to assume: the game says so, in the flags it created its own DLSS feature with. Running
     // the colour transform over a frame that has already been through a tonemapper is pure damage, and
     // skipping it on one that has not leaves the model reading ordinary values as enormously bright.
-    unsigned int dlssFlags = 0;
-    params->Get(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags, &dlssFlags);
-    // Both have to agree: the flag says what the game intends, the format says what the surface can
-    // actually hold.
-    const bool gameSaysHdr = (dlssFlags & NVSDK_NGX_DLSS_Feature_Flags_IsHDR) != 0;
+    // Both have to agree: the caller says what the game intends, the format says what the surface can
+    // actually hold. A game that claims HDR while rendering into eight bits gets its frame encoded
+    // twice otherwise.
+    const bool gameSaysHdr = frame.ColourIsLinearHdr;
     const bool isHdrBuffer = gameSaysHdr && FormatCanHoldLinearHdr(desc.Format);
 
     static bool reportedHdr = false;
@@ -1013,8 +1025,8 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
     if (!reportedHdr)
     {
         reportedHdr = true;
-        LOG_INFO("DLSS-NR: the game's DLSS buffer is {} (create flags 0x{:X}), so the colour transform is {}",
-                 isHdrBuffer ? "linear HDR" : "already tone-mapped", dlssFlags,
+        LOG_INFO("DLSS-NR: the game's DLSS buffer is {} so the colour transform is {}",
+                 isHdrBuffer ? "linear HDR" : "already tone-mapped",
                  isHdrBuffer ? "on" : "off");
     }
 

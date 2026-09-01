@@ -230,11 +230,18 @@ void RenderMenu(Config* config, float menuResScale)
         if (ImGui::SliderFloat("Paper white", &wpScale, 0.25f, 4.0f, "%.2fx"))
             config->DlssNrWhitePointScale = wpScale;
 
-        HelpMarker("Multiplies the white point above -- automatic or manual -- before the model"
-                       "\nsees the frame. This is the paper-white control."
+        HelpMarker("What the frame is divided by before the model sees it. There is no other white"
+                       "\npoint; this is the whole of it."
+                       "\n\nThe model was trained on finished frames where white sits at 1. The"
+                       "\nupscaler's output is linear and open-ended, so something has to say where"
+                       "\nwhite is, and 1.0 is right for most games."
                        "\n\nAbove 1 the picture handed over is darker, so highlights sit lower on the"
-                       "\ncurve and the model treats them as less extreme; below 1, the opposite. It"
-                       "\nis the quickest way to change how strongly the model reads a bright scene."
+                       "\ncurve and the model treats them as less extreme; below 1, the opposite. If a"
+                       "\ngame looks washed out or flat, this is the first thing to move."
+                       "\n\nThis was once a multiplier on a measured white point. The measurement is"
+                       "\ngone: it read scene brightness rather than where white belongs, handed the"
+                       "\nmodel a picture three times too dark, and left the highlight path nothing to"
+                       "\ngive back."
                        "\n\nAt strength zero the frame is still bit-identical whatever this says.");
 
         float maxRatio = config->DlssNrMaxRatio.value_or_default();

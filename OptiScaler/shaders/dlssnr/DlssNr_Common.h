@@ -30,6 +30,34 @@ enum DlssNrMode : uint32_t
 // buffer is created at the struct's natural size, the view is invalid, and the device is removed a
 // few milliseconds later -- with nothing in any log to say why. Every other shader here does the
 // same thing; it is not optional.
+// What the caller knows about the frame, and the pass cannot work out for itself.
+//
+// Everything here is a property of how the game encodes its buffers, not a setting: the user's
+// choices -- preset, intensity, strengths, paper white -- stay in Config, so a caller placing this
+// pass in a new pipeline does not have to plumb a dozen sliders through it.
+//
+// Sizes are deliberately absent. The output's dimensions come from its own descriptor and the guide
+// sizes from theirs, so there is one less thing for a call site to get wrong.
+struct DlssNrFrameInfo
+{
+    // Which way round depth runs. The game states this when it creates its own upscaler.
+    bool DepthInverted = false;
+
+    // How the game encodes its motion vectors, as the game itself reports it. Passed through: every
+    // resource already carries a subrect saying how big it is, so scaling by the resolution ratio on
+    // top of that counts it twice.
+    float MvScaleX = 1.0f;
+    float MvScaleY = 1.0f;
+
+    // Throw away the model's history. Set it on a cut, a teleport, or the first frame of a feature.
+    bool Reset = false;
+
+    // Whether the colour buffer holds linear, open-ended light or a frame that has already been
+    // through a tonemapper. Getting this wrong encodes an encoded frame a second time, which looks
+    // washed out and banded.
+    bool ColourIsLinearHdr = true;
+};
+
 struct alignas(256) DlssNrConstants
 {
     uint32_t Mode;
