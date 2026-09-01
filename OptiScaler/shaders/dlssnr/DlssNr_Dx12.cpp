@@ -974,11 +974,37 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
     if (frame.Reset)
         g_nr.reset = true;
 
-    static bool reportedGuides = false;
-
-    if (!reportedGuides)
+    // Logged whenever it changes, not once per session.
+    //
+    // A guide size change does not rebuild the feature -- the guides are handed over as subrects and
+    // the output size is what the model is built for -- so a once-only line goes stale the moment the
+    // player moves the quality slider, and every later line in the log is then read against numbers
+    // that stopped being true. In Nioh 3 the session opened at DLAA, moved to 66% and ended at 33%,
+    // and the log claimed 1920x1080 guides throughout.
+    struct GuideReport
     {
-        reportedGuides = true;
+        bool valid;
+        bool depthInverted;
+        float mvScaleX;
+        float mvScaleY;
+        unsigned int guideW;
+        unsigned int guideH;
+        unsigned int frameW;
+        unsigned int frameH;
+    };
+
+    static GuideReport loggedGuides {};
+
+    const GuideReport guidesNow { true,       g_nr.guideDepthInverted, g_nr.guideMvScaleX,
+                                  g_nr.guideMvScaleY, guideWidth,      guideHeight,
+                                  width,      (unsigned int) height };
+
+    if (!loggedGuides.valid || loggedGuides.depthInverted != guidesNow.depthInverted ||
+        loggedGuides.mvScaleX != guidesNow.mvScaleX || loggedGuides.mvScaleY != guidesNow.mvScaleY ||
+        loggedGuides.guideW != guidesNow.guideW || loggedGuides.guideH != guidesNow.guideH ||
+        loggedGuides.frameW != guidesNow.frameW || loggedGuides.frameH != guidesNow.frameH)
+    {
+        loggedGuides = guidesNow;
         LOG_INFO("DLSS-NR guides: depth {}, motion vector scale {} x {}, guides {}x{} for a {}x{} frame",
                  g_nr.guideDepthInverted ? "inverted" : "not inverted", g_nr.guideMvScaleX,
                  g_nr.guideMvScaleY, guideWidth, guideHeight, width, height);
@@ -1349,6 +1375,52 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
         resolveParams.CompareSplit = cfg.DlssNrCompareSplit.value_or_default();
         resolveParams.CompareZoom = std::max(1.0f, cfg.DlssNrCompareZoom.value_or_default());
         resolveParams.CompareSwap = cfg.DlssNrCompareSwap.value_or_default() ? 1u : 0u;
+
+        // The numbers the composition actually ran with, logged when any of them changes.
+        //
+        // A colour report without these cannot be read. Paper white alone decides whether the model
+        // was shown a sensible picture or a blown one, and it was absent from every log in the first
+        // round of reports -- one tester's "much better at 16" had to be taken on trust because
+        // nothing in the file said what the value was. Debug view and compare mode are here for the
+        // same reason from the other direction: both change what is on screen, and a screenshot with
+        // one left on is indistinguishable from a bug.
+        struct ComposeReport
+        {
+            bool valid;
+            float whitePoint;
+            float transfer;
+            float colour;
+            float maxRatio;
+            unsigned int passthrough;
+            unsigned int debugView;
+            unsigned int compareMode;
+        };
+
+        static ComposeReport loggedCompose {};
+
+        const ComposeReport composeNow { true,
+                                         resolveParams.WhitePoint,
+                                         resolveParams.TransferStrength,
+                                         resolveParams.ColourStrength,
+                                         resolveParams.MaxRatio,
+                                         resolveParams.Passthrough,
+                                         resolveParams.DebugView,
+                                         resolveParams.CompareMode };
+
+        if (!loggedCompose.valid || loggedCompose.whitePoint != composeNow.whitePoint ||
+            loggedCompose.transfer != composeNow.transfer || loggedCompose.colour != composeNow.colour ||
+            loggedCompose.maxRatio != composeNow.maxRatio ||
+            loggedCompose.passthrough != composeNow.passthrough ||
+            loggedCompose.debugView != composeNow.debugView ||
+            loggedCompose.compareMode != composeNow.compareMode)
+        {
+            loggedCompose = composeNow;
+            LOG_INFO("DLSS-NR composition: paper white {:.2f}x, detail {:.2f}, colour {:.2f}, guard "
+                     "{:.1f}x, colour transform {}, debug view {}, compare {}",
+                     composeNow.whitePoint, composeNow.transfer, composeNow.colour, composeNow.maxRatio,
+                     composeNow.passthrough != 0 ? "off (frame already tone mapped)" : "on (linear HDR)",
+                     composeNow.debugView, composeNow.compareMode);
+        }
 
         Barrier(cmdList, g_nr.output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
