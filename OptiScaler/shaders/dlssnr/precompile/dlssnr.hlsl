@@ -322,8 +322,35 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     // larger than the floor the term vanishes -- while making the ratio fall smoothly to one as
     // luminance approaches zero. No edit at all is the right answer for a pixel with no light in it.
     const float kRatioFloor = 1.0 / 512.0;
-    float lumaRatio = clamp((upgradedLuma + kRatioFloor) / (originalLuma + kRatioFloor), 0.0, gMaxRatio);
-    float3 result = lerp(original * lumaRatio, upgraded, gColourStrength);
+    float lumaRatio = (upgradedLuma + kRatioFloor) / (originalLuma + kRatioFloor);
+
+    // The guard binds the composed picture, not only the luminance-only end of the blend below.
+    //
+    // It used to bind `original * lumaRatio` and nothing else -- the colour-strength-zero end. At
+    // colour strength 1, which is the default, that end is never reached, so the guard did nothing
+    // at all and whatever the model returned was handed back unbounded. Where the soft knee fires
+    // that stays hidden, because the headroom term above makes the frame's own brightness dominate
+    // the result. Where the knee does not fire -- any dark scene -- the ratio degenerates to one,
+    // the composition reduces to the model's own picture, and every frame the model re-decided
+    // arrived whole. That is the flicker reported in Nioh 3, and it worsened with paper white
+    // because the model's answer is multiplied by it on the way out.
+    //
+    // Two-sided, because the failure measured there was a collapse and not a runaway: red fell 57%
+    // while an upward-only bound sat watching it. The control's own help text said darkening was
+    // deliberately uncapped; that was decided before there was a case against it.
+    //
+    // One scalar, taken from luminance, applied to the whole triple. A per-channel bound is a hue
+    // distorter -- on a saturated pixel the smallest channel reaches the bound first, so an
+    // achromatic edit lands as a colour shift.
+    const float guard = max(gMaxRatio, 1.0);
+    float boundedRatio = clamp(lumaRatio, 1.0 / guard, guard);
+
+    // Exactly one while the ratio is already inside the guard, so a frame that never needed bounding
+    // is untouched rather than rounded, and strength zero stays bit-identical.
+    upgraded *= boundedRatio / max(lumaRatio, 1e-6);
+
+    // Both ends of the blend now sit inside the same guard, so neither needs a second clamp.
+    float3 result = lerp(original * boundedRatio, upgraded, gColourStrength);
 
     // Back out of the normalised space the composition worked in.
     result *= normScale;
