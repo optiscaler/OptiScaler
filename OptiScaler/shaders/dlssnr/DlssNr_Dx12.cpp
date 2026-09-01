@@ -16,6 +16,7 @@
 #include <Util.h>
 
 #include <proxies/NVNGX_Proxy.h>
+#include <hooks/D3D12_Hooks.h>
 #include <gpu_time/GpuTime_Dx12.h>
 
 #include <mutex>
@@ -739,6 +740,36 @@ void RecordBuiltTuning(const Config& cfg)
 // cost is a CPU-side lock on a path that already records command lists.
 std::mutex g_nrMutex;
 
+// Runs the pass inside the same state envelope every other OptiScaler compute pass runs in.
+//
+// The upscaler's own evaluate is wrapped like this by TryEvaluateOptiFeature: root-signature tracking
+// off so the hooks do not record the pass's binds as the game's, heap capture skipped, and RestoreRoot
+// afterwards to put the game's compute state back. Neural Rendering ran outside that envelope -- after
+// the upscaler had already restored and re-armed -- so it left its own root signature and descriptor
+// heaps bound and captured. On an ordinary engine the game rebinds and never notices. On a bindless
+// engine (007 First Light, Monster Hunter Wilds, and the rest of the RestoreComputeSig* quirks) the
+// game resumes off the pass's bindings and the device is removed.
+//
+// As RAII so every early return from the pass is covered. RestoreRoot is gated internally on the
+// RestoreComputeSignature / RestoreGraphicSignature config, so this is a no-op on games that do not
+// ask for it and only acts where it is needed.
+struct ScopedNrStateEnvelope
+{
+    ID3D12GraphicsCommandList* cmd;
+    ScopedSkipHeapCapture skipHeap;
+
+    explicit ScopedNrStateEnvelope(ID3D12GraphicsCommandList* c) : cmd(c)
+    {
+        D3D12Hooks::SetRootSignatureTracking(false);
+    }
+
+    ~ScopedNrStateEnvelope()
+    {
+        D3D12Hooks::RestoreRoot(cmd);
+        D3D12Hooks::SetRootSignatureTracking(true);
+    }
+};
+
 // Every way out of the pass before it does anything is silent on purpose -- an evaluate that carries
 // no depth is normal and would otherwise print every frame forever. That silence is fine until the
 // pass does nothing at all and the log has no opinion about why.
@@ -1138,6 +1169,24 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
     // represent -- it exists precisely because the proxy is meant to clip. Normalising the highlights
     // away first leaves it nothing to give back.
     const float whitePoint = cfg.DlssNrWhitePointScale.value_or_default();
+
+    // On an engine that needs its compute state put back -- the bindless quirks -- the envelope can
+    // only restore what was captured. If nothing was captured for this list, the upscaler decided
+    // touching state was unsafe this frame, and binding the pass now would leave state the envelope
+    // cannot clean up. So on those games, skip the frame rather than corrupt it. Ordinary games do
+    // not require restore, so they are unaffected and the pass runs as before.
+    const bool restoreRequired = cfg.RestoreComputeSignature.value_or_default() ||
+                                 cfg.RestoreGraphicSignature.value_or_default();
+
+    if (restoreRequired && !D3D12Hooks::CanRestoreRootSignature(cmdList))
+    {
+        ReportSkipOnce("the upscaler could not restore state this frame");
+        return;
+    }
+
+    // From here on the pass binds its own root signature, heaps and pipeline. Everything below runs
+    // inside the envelope so the game's compute state is restored no matter which way this returns.
+    ScopedNrStateEnvelope stateEnvelope(cmdList);
 
     if (g_gpuTime == nullptr)
         g_gpuTime = std::make_unique<GpuTime_Dx12>(device);
