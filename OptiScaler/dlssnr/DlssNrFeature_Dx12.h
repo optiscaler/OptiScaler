@@ -25,7 +25,11 @@ namespace DlssNr
 //
 // Safe to call every frame; it builds what it needs on first use and disables itself for the session if
 // anything fails, rather than retrying into a crash.
-void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Parameter* params);
+// timingQueue is the queue this command list will be executed on, when the caller knows it.
+// State::currentCommandQueue only exists once a D3D12 swapchain has been created, which a Vulkan
+// game never does -- so without this the pass runs and never reports what it cost.
+void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Parameter* params,
+                          ID3D12CommandQueue* timingQueue = nullptr);
 
 
 // Frame generation titles tag their UI layer through Streamline; a copy of it makes the HUD mask

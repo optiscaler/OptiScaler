@@ -418,7 +418,7 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
         }
 
         if (dx12EvalResult && Config::Instance()->DlssNrEnabled.value_or_default())
-            DlssNr::EvaluateAfterUpscale(cmdList, InParameters);
+            DlssNr::EvaluateAfterUpscale(cmdList, InParameters, Dx12CommandQueue);
 
     } while (false);
 

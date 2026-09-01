@@ -6,7 +6,6 @@
 
 
 #include "DlssNr_Codec.h"
-#include "DlssNr_Probe.h"
 #include "DlssNr_Capture.h"
 #include "DlssNr_Proxy.h"
 
@@ -234,14 +233,6 @@ std::unique_ptr<DlssNr_Dx12> g_compose;
 // What the pass costs on the GPU, for the breakdown in the overlay.
 std::unique_ptr<GpuTime_Dx12> g_gpuTime;
 std::optional<double> g_lastGpuTime;
-
-// Exposure measurement, and the white point derived from it.
-probe::FrameReducer g_reducer;
-probe::BlockReader g_reader;
-
-// The finished-frame path measures its own white point: an scRGB backbuffer lives in display-referred
-// linear (paper white sits well above 1.0), a different world from the game's internal buffer.
-probe::BlockReader g_presentReader;
 
 // Writes matched before/after frames on request, so comparisons stop depending on video.
 capture::FrameCapture g_capture;
@@ -772,7 +763,8 @@ void ReportSkipOnce(const char* reason)
         LOG_INFO("DLSS-NR did not run: {}", reason);
 }
 
-void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Parameter* params)
+void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Parameter* params,
+                          ID3D12CommandQueue* timingQueue)
 {
     std::lock_guard<std::mutex> nrLock(g_nrMutex);
     const Config& cfg = *Config::Instance();
@@ -1268,12 +1260,17 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
     {
         g_gpuTime->End(cmdList);
 
-        // This path records into the game's own list, so there is no queue of ours to read from. The
-        // one the upscaler was invoked on serves.
-        if (State::Instance().currentCommandQueue != nullptr)
+        // This path records into the game's own list, so there is no queue of ours to read from.
+        // A caller that knows which queue the list goes to says so; otherwise the one the upscaler was
+        // invoked on serves. The bridges have to say, because they run on a queue of their own that
+        // State never learns about -- a Vulkan game creates no D3D12 swapchain, so nothing ever sets
+        // currentCommandQueue and the cost went unreported.
+        auto* queue = timingQueue != nullptr ? timingQueue
+                                             : (ID3D12CommandQueue*) State::Instance().currentCommandQueue;
+
+        if (queue != nullptr)
         {
-            if (auto ms = g_gpuTime->ReadGpuTime((ID3D12CommandQueue*) State::Instance().currentCommandQueue);
-                ms.has_value())
+            if (auto ms = g_gpuTime->ReadGpuTime(queue); ms.has_value())
                 g_lastGpuTime = ms;
         }
     }
@@ -1373,8 +1370,6 @@ void Shutdown()
     g_lastGpuTime.reset();
 
     g_compose.reset();
-    g_reducer.destroy();
-    g_reader.destroy();
 }
 } // namespace DlssNr
 

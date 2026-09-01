@@ -96,9 +96,26 @@ void RenderMenu(Config* config, float menuResScale)
         // Any percentage, rather than a handful of steps somebody chose in advance. The lower bound
         // is 25%: below that the model is working on so little of the picture that its answer no
         // longer survives being enlarged onto it.
-        int scalePercent = (int) lroundf(config->DlssNrWorkingScale.value_or_default() * 100.0f);
+        // Applied when the handle is let go, not while it is moving.
+        //
+        // Every distinct value here is a different working size, and a different working size tears
+        // down the scratch textures and rebuilds the model. Writing it on each pixel of a drag meant
+        // dozens of rebuilds in a second, which is felt as the whole frame hitching. The slider still
+        // reads live; only the commit waits.
+        static int pendingScale = -1;
+
+        int scalePercent = pendingScale >= 0
+                               ? pendingScale
+                               : (int) lroundf(config->DlssNrWorkingScale.value_or_default() * 100.0f);
+
         if (ImGui::SliderInt("Model resolution", &scalePercent, 25, 100, "%d%%"))
-            config->DlssNrWorkingScale = std::clamp(scalePercent, 25, 100) / 100.0f;
+            pendingScale = scalePercent;
+
+        if (ImGui::IsItemDeactivatedAfterEdit() && pendingScale >= 0)
+        {
+            config->DlssNrWorkingScale = std::clamp(pendingScale, 25, 100) / 100.0f;
+            pendingScale = -1;
+        }
 
         HelpMarker("What fraction of the frame the model works at. Cost falls with the square of"
                        "\nthis, so half resolution is roughly a quarter of the time."

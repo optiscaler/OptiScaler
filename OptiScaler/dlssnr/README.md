@@ -39,7 +39,6 @@ Scaling chain, so the bug stayed invisible until something else called it.
 | `DlssNr_Dx12.h/.cpp` | the model: forwarder loading, feature lifetime, the single evaluate path, encode/resolve orchestration, white point metering, capture |
 | `DlssNr_Menu.cpp` | the settings panel |
 | `DlssNr_Codec.h` | the compute shader: encode (scale and sRGB-encode with a soft knee), resolve (RenoDX's two-branch composition, OkLab hue correction, AP1 clamp), downsample |
-| `DlssNr_Probe.h` | frame reduction and readback for the white point meter |
 | `DlssNr_Capture.h` | matched before/after frame dumps |
 | `forwarder/` | the caller-gate shim, built by `dlssnr_forwarder.vcxproj` into the release layout |
 

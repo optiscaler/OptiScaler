@@ -1642,6 +1642,7 @@ void MenuCommon::UpdateFrameTimeAverages(RenderMenuContext& ctx)
 
 void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
 {
+
     auto& state = ctx.state;
     auto config = ctx.config;
     auto& io = ctx.io;
