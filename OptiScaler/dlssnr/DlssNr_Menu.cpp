@@ -8,6 +8,10 @@
 
 #include <imgui/imgui.h>
 
+#include <string>
+#include <unordered_map>
+#include <algorithm>
+
 namespace DlssNr
 {
 
@@ -25,6 +29,40 @@ static void HelpMarker(const char* tip)
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
     }
+}
+
+// A slider that only writes its value when the handle is released.
+//
+// Some controls -- intensity, the structure and tone strengths -- are read by the model once, when
+// the feature is built, so changing one rebuilds the whole feature. Writing on every pixel of a drag
+// meant a rebuild per frame, felt as the picture hitching while you scrub. The slider still tracks
+// live under the cursor; only the commit that triggers the rebuild waits for release. Cheap controls
+// that are just shader constants (detail, colour, paper white) do not use this -- they can afford to
+// apply live.
+static bool DeferredSlider(const char* label, CustomOptional<float>* opt, float mn, float mx,
+                           const char* fmt = "%.2f")
+{
+    static std::unordered_map<std::string, float> pending;
+
+    auto it = pending.find(label);
+    float value = it != pending.end() ? it->second : opt->value_or_default();
+
+    if (ImGui::SliderFloat(label, &value, mn, mx, fmt))
+        pending[label] = value;
+
+    if (ImGui::IsItemDeactivatedAfterEdit())
+    {
+        auto committed = pending.find(label);
+
+        if (committed != pending.end())
+        {
+            *opt = std::clamp(committed->second, mn, mx);
+            pending.erase(committed);
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void RenderMenu(Config* config, float menuResScale)
@@ -189,25 +227,17 @@ void RenderMenu(Config* config, float menuResScale)
                    "\n\nRead when the model is built, so a change rebuilds it after a moment. The"
                    "\nnames come from community testing; NVIDIA ships no names in the binaries.");
 
-        float intensity = config->DlssNrIntensity.value_or_default();
-        if (ImGui::SliderFloat("Intensity", &intensity, 0.0f, 2.0f, "%.2f"))
-            config->DlssNrIntensity = intensity;
+        DeferredSlider("Intensity", &config->DlssNrIntensity, 0.0f, 2.0f);
 
         HelpMarker("The model's own strength control, applied inside it. Distinct from detail"
                        "\nstrength above, which scales the result afterwards.");
 
-        float localStructure = config->DlssNrLocalStructure.value_or_default();
-        if (ImGui::SliderFloat("Local structure", &localStructure, 0.0f, 2.0f, "%.2f"))
-            config->DlssNrLocalStructure = localStructure;
+        DeferredSlider("Local structure", &config->DlssNrLocalStructure, 0.0f, 2.0f);
 
-        float localTone = config->DlssNrLocalTone.value_or_default();
-        if (ImGui::SliderFloat("Local tone", &localTone, 0.0f, 2.0f, "%.2f"))
-            config->DlssNrLocalTone = localTone;
+        DeferredSlider("Local tone", &config->DlssNrLocalTone, 0.0f, 2.0f);
 
 
-        float skin = config->DlssNrSkinStructure.value_or_default();
-        if (ImGui::SliderFloat("Skin structure", &skin, -1.0f, 2.0f, "%.2f"))
-            config->DlssNrSkinStructure = skin;
+        DeferredSlider("Skin structure", &config->DlssNrSkinStructure, -1.0f, 2.0f);
 
         HelpMarker("-1 means follow local structure, and is the model's own default -- it is not a"
                        "\nstrength of zero. 0 and above set skin independently of the rest of the frame.");
@@ -296,6 +326,23 @@ void RenderMenu(Config* config, float menuResScale)
             bool swap = config->DlssNrCompareSwap.value_or_default();
             if (ImGui::Checkbox("Swap sides", &swap))
                 config->DlssNrCompareSwap = swap;
+
+            bool tags = config->DlssNrCompareTags.value_or_default();
+            if (ImGui::Checkbox("Label the sides", &tags))
+                config->DlssNrCompareTags = tags;
+
+            HelpMarker("Writes which side is which onto the frame itself, so a screenshot still"
+                           "\nsays so after it has left this machine. Drawn into the picture's own"
+                           "\nplane: in the wipe the split reveals and hides the label exactly as it"
+                           "\ndoes the images, and there is nothing to drag. Swap sides moves the"
+                           "\nlabels with their pictures.");
+
+            if (tags)
+            {
+                float tagScale = config->DlssNrTagScale.value_or_default();
+                if (ImGui::SliderFloat("Label size", &tagScale, 0.5f, 5.0f, "%.1fx"))
+                    config->DlssNrTagScale = std::clamp(tagScale, 0.5f, 5.0f);
+            }
 
             HelpMarker("Puts the edited frame on the other side."
                            "\n\nWorth doing once you have decided which you prefer: the eye is not"

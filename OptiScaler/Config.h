@@ -300,6 +300,12 @@ class Config
     // Which side the edited frame sits on, in both comparison modes.
     CustomOptional<bool> DlssNrCompareSwap { false };
 
+    // Labels drawn onto the two sides of a comparison, so a screenshot still says which is which.
+    // Drawn into the frame's own plane with a clip per side: in the wipe they are revealed and hidden
+    // by the split exactly as the images are, and there is nothing to drag.
+    CustomOptional<bool> DlssNrCompareTags { false };
+    CustomOptional<float> DlssNrTagScale { 1.5f };
+
     // The fraction of the frame's resolution the model works at. The frame itself is never reduced --
     // only the model's contribution is computed small and enlarged, so the picture underneath is
     // untouched whatever this is set to. 1.0 is full resolution and behaves exactly as before.
