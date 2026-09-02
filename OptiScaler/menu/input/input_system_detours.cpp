@@ -448,12 +448,12 @@ bool InstallHooks()
 
 #ifdef USE_HID_HOOKS
     const bool hidReady = State::Instance().isRunningOnLinux || hidHooks;
-#else
-    const bool hidReady = false;
-#endif // USE_HID_HOOKS
-
     _state.HooksInstalled = messageHooks && keyStateHooks && getPosHooks && clipCursorHooks && message2Hooks &&
                             hidReady && rawHooks && windowsHooks && (positionHooks || positionIATHooks);
+#else
+    _state.HooksInstalled = messageHooks && keyStateHooks && getPosHooks && clipCursorHooks && message2Hooks &&
+                            rawHooks && windowsHooks && (positionHooks || positionIATHooks);
+#endif // USE_HID_HOOKS
 
     return _state.HooksInstalled;
 }
