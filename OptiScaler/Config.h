@@ -281,6 +281,10 @@ class Config
     // light source, whatever the model returns.
     CustomOptional<float> DlssNrMaxRatio { 2.0f };
 
+    // How a model that worked below the frame's size is brought back. 0 classic, 1 matched
+    // residual. Only has an effect when Model resolution is under 100%.
+    CustomOptional<uint32_t> DlssNrTransfer { 1 };
+
     // 0 off, 1 the picture the model was shown, 2 its raw answer, 3 what it changed, amplified.
     CustomOptional<uint32_t> DlssNrDebugView { 0 };
 

@@ -104,6 +104,18 @@ struct alignas(256) DlssNrConstants
     // Which side the edited frame is on. Swapping matters because the eye is not even-handed about
     // left and right, so a difference can look like an improvement purely from where it sits.
     uint32_t CompareSwap;
+
+    // How a model that worked below the frame's size is brought back. 0 classic, 1 matched residual.
+    //
+    // Classic composes the model's own low-resolution picture against the full-resolution frame, so
+    // the two disagree by the blur the downsample introduced as well as by the edit -- and the
+    // composition reads that disagreement as headroom the frame has and the model never saw. Matched
+    // residual takes only the model's *difference* from low resolution and lays it on the frame's own
+    // full-resolution proxy, so the two pictures being compared are at the same scale and the only
+    // thing carried up from small is the edit itself.
+    //
+    // The idea and the cube-scaled residual are hhkbble's, from the multi-pass PR against this fork.
+    uint32_t Transfer;
 };
 
 class DlssNr_Common

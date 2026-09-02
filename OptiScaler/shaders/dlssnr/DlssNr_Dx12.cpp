@@ -1370,6 +1370,7 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
         resolveParams.ColourStrength = cfg.DlssNrColourStrength.value_or_default();
         resolveParams.DebugView = cfg.DlssNrDebugView.value_or_default();
         resolveParams.MaxRatio = cfg.DlssNrMaxRatio.value_or_default();
+        resolveParams.Transfer = cfg.DlssNrTransfer.value_or_default();
         resolveParams.Passthrough = isHdrBuffer ? 0u : 1u;
         resolveParams.CompareMode = cfg.DlssNrCompare.value_or_default();
         resolveParams.CompareSplit = cfg.DlssNrCompareSplit.value_or_default();
@@ -1394,6 +1395,7 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
             unsigned int passthrough;
             unsigned int debugView;
             unsigned int compareMode;
+            unsigned int residual;
         };
 
         static ComposeReport loggedCompose {};
@@ -1405,21 +1407,24 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
                                          resolveParams.MaxRatio,
                                          resolveParams.Passthrough,
                                          resolveParams.DebugView,
-                                         resolveParams.CompareMode };
+                                         resolveParams.CompareMode,
+                                         resolveParams.Transfer };
 
         if (!loggedCompose.valid || loggedCompose.whitePoint != composeNow.whitePoint ||
             loggedCompose.transfer != composeNow.transfer || loggedCompose.colour != composeNow.colour ||
             loggedCompose.maxRatio != composeNow.maxRatio ||
             loggedCompose.passthrough != composeNow.passthrough ||
             loggedCompose.debugView != composeNow.debugView ||
-            loggedCompose.compareMode != composeNow.compareMode)
+            loggedCompose.compareMode != composeNow.compareMode ||
+            loggedCompose.residual != composeNow.residual)
         {
             loggedCompose = composeNow;
             LOG_INFO("DLSS-NR composition: paper white {:.2f}x, detail {:.2f}, colour {:.2f}, guard "
-                     "{:.1f}x, colour transform {}, debug view {}, compare {}",
+                     "{:.1f}x, colour transform {}, transfer {}, debug view {}, compare {}",
                      composeNow.whitePoint, composeNow.transfer, composeNow.colour, composeNow.maxRatio,
                      composeNow.passthrough != 0 ? "off (frame already tone mapped)" : "on (linear HDR)",
-                     composeNow.debugView, composeNow.compareMode);
+                     composeNow.residual == 1 ? "matched residual" : "classic", composeNow.debugView,
+                     composeNow.compareMode);
         }
 
         Barrier(cmdList, g_nr.output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,

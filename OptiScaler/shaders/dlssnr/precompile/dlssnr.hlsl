@@ -18,6 +18,7 @@ cbuffer Params : register(b0)
     float gCompareSplit; // where the wipe cuts, 0..1
     float gCompareZoom;  // side by side: 1 fits the frame, 2 fills the half
     uint  gCompareSwap;  // put the edited frame on the other side
+    uint  gTransfer;     // 0 classic, 1 matched residual -- how a below-size model comes back
 };
 
 // Colours outside the AP1 gamut are impossible on any display and read as sparkle where a bright
@@ -123,6 +124,55 @@ float3 EditAt(float2 uvq)
 }
 
 
+// The soft knee, shared by the encode and the resolve.
+//
+// The encode applies it on the way in; the resolve has to be able to reproduce it, because the
+// matched-residual path needs the frame's own proxy at full resolution and the encode only ever
+// wrote a reduced one. It is a pure function of the pixel, so recomputing costs less than the
+// texture read it replaces.
+float3 SoftKnee(float3 display)
+{
+    if (gPassthrough != 0)
+        return display;
+
+    float displayLuma = dot(display, kLuma);
+
+    if (displayLuma > 0.75)
+    {
+        float rolled = 0.75 + 0.25 * (1.0 - exp(-(displayLuma - 0.75) / 0.25));
+        display *= rolled / displayLuma;
+    }
+
+    return display;
+}
+
+// Scale a residual so the result cannot leave the unit cube, without changing its direction.
+//
+// The model's edit is carried up from a smaller raster and laid on the frame's own proxy, so nothing
+// guarantees the sum is still a colour. Clamping per channel would bend the hue -- the channel that
+// hits the wall first decides the colour of the rest -- so the whole residual is scaled by the
+// largest factor that keeps every channel inside, and the direction survives.
+//
+// hhkbble's, from the multi-pass PR against this fork.
+float3 CubeScaleResidual(float3 P, float3 T)
+{
+    if (gPassthrough != 0)
+        return T;
+
+    float3 d = T - P;
+    float alpha = 1.0;
+
+    [unroll] for (int c = 0; c < 3; ++c)
+    {
+        if (d[c] > 1e-6)
+            alpha = min(alpha, (1.0 - P[c]) / d[c]);
+        else if (d[c] < -1e-6)
+            alpha = min(alpha, (0.0 - P[c]) / d[c]);
+    }
+
+    return P + saturate(alpha) * d;
+}
+
 [numthreads(8, 8, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
@@ -134,7 +184,61 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     if (gMode == 2)
     {
-        gTarget[id.xy] = gSource.SampleLevel(gLinear, uv, 0);
+        uint srcW, srcH;
+        gSource.GetDimensions(srcW, srcH);
+
+        // Nothing to do when the sizes already agree.
+        if (srcW == gWidth && srcH == gHeight)
+        {
+            gTarget[id.xy] = gSource.Load(int3(id.xy, 0));
+            return;
+        }
+
+        // An exact area average rather than a bilinear tap.
+        //
+        // A bilinear sample of a shrinking image reads four texels and ignores the rest, so most of
+        // the picture never reaches the model and what does is weighted by where the sample landed
+        // rather than by how much of the pixel it covers. That is aliasing on the way in: the model
+        // is shown a picture with detail that was never there and misses detail that was, and its
+        // answer changes with sub-pixel motion for no reason in the scene.
+        //
+        // This integrates the source over the exact footprint of the destination pixel, which is the
+        // correct box resample and costs a handful of loads at these ratios.
+        //
+        // hhkbble's, from the multi-pass PR against this fork.
+        const float x0 = ((float) id.x * (float) srcW) / (float) gWidth;
+        const float x1 = ((float) (id.x + 1) * (float) srcW) / (float) gWidth;
+        const float y0 = ((float) id.y * (float) srcH) / (float) gHeight;
+        const float y1 = ((float) (id.y + 1) * (float) srcH) / (float) gHeight;
+        const float area = (x1 - x0) * (y1 - y0);
+
+        const int i0 = (int) floor(x0);
+        const int i1 = (int) ceil(x1) - 1;
+        const int j0 = (int) floor(y0);
+        const int j1 = (int) ceil(y1) - 1;
+
+        float3 acc = 0.0;
+
+        for (int j = j0; j <= j1; ++j)
+        {
+            const int jj = clamp(j, 0, (int) srcH - 1);
+            const float aY = max(y0, (float) j);
+            const float bY = min(y1, (float) j + 1.0);
+            const float wy = max(bY - aY, 0.0);
+
+            for (int i = i0; i <= i1; ++i)
+            {
+                const int ii = clamp(i, 0, (int) srcW - 1);
+                const float aX = max(x0, (float) i);
+                const float bX = min(x1, (float) i + 1.0);
+                acc += gSource.Load(int3(ii, jj, 0)).rgb * (max(bX - aX, 0.0) * wy);
+            }
+        }
+
+        const int acx = clamp((int) floor(((float) id.x + 0.5) * (float) srcW / (float) gWidth), 0, (int) srcW - 1);
+        const int acy = clamp((int) floor(((float) id.y + 0.5) * (float) srcH / (float) gHeight), 0, (int) srcH - 1);
+
+        gTarget[id.xy] = float4(acc / area, gSource.Load(int3(acx, acy, 0)).a);
         return;
     }
 
@@ -162,20 +266,11 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         // and nothing like the finished frame it was trained on. The model then synthesised weakly,
         // judged tone on a picture that does not exist, and its answer had to be un-crushed on the way
         // back. Mode 0 keeps that old curve, mode 1 the fitted one.
-        float luma = dot(frame, kLuma);
-        float3 display = frame / max(gWhitePoint, 1e-4);
-
-        // A soft knee instead of a hard ceiling. Anything the curve leaves above 0.75 is rolled off
-        // rather than clipped, so the model is never shown a field of flat white whose blown pixels
-        // flip between frames -- unstable input is unstable output, and this is where a bright scene
-        // would produce it.
-        float displayLuma = dot(display, kLuma);
-
-        if (displayLuma > 0.75)
-        {
-            float rolled = 0.75 + 0.25 * (1.0 - exp(-(displayLuma - 0.75) / 0.25));
-            display *= rolled / displayLuma;
-        }
+        // A soft knee instead of a hard ceiling. Anything above 0.75 is rolled off rather than
+        // clipped, so the model is never shown a field of flat white whose blown pixels flip between
+        // frames -- unstable input is unstable output, and this is where a bright scene would produce
+        // it. The resolve reproduces this exactly, so the two agree on what the frame's own proxy is.
+        float3 display = SoftKnee(frame / max(gWhitePoint, 1e-4));
 
         gTarget[id.xy] = float4(LinearToSrgb(display), source.a);
         return;
@@ -270,6 +365,31 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     // frame even on a static scene; blending each frame's edit with its own reprojected history keeps
     // the consistent part -- the detail -- and cancels the part that re-randomises. NVIDIA's own
     // motion vectors carry the history to where the surface is now.
+
+    // Matched residual: put the two pictures being compared at the same resolution first.
+    //
+    // Classic hands the composition below a low-resolution `proxy` and a low-resolution `model`
+    // against a full-resolution `original`. Those disagree by the downsample's blur as well as by the
+    // model's edit, and the composition cannot tell the two apart -- it reads the blur as headroom
+    // the frame has and the model never saw, which is a term that grows as the model's raster
+    // shrinks. That is the resolution-dependent colour shift measured at 50%.
+    //
+    // Here the frame's own proxy is rebuilt at full resolution -- the encode is a pure function, so
+    // SoftKnee reproduces it exactly -- and only the model's *difference* is carried up from small.
+    // Both pictures handed to the composition are then full resolution and the only thing that came
+    // from the reduced raster is the edit itself, which is what was wanted from it.
+    //
+    // The residual and its cube scaling are hhkbble's, from the multi-pass PR against this fork.
+    if (gTransfer == 1)
+    {
+        float3 fullProxy = SoftKnee(original);
+        proxy = fullProxy;
+        proxyLuma = dot(proxy, kLuma);
+
+        // At the same rate there is no residual to carry: the model's own picture is already at the
+        // frame's resolution, and P + (m - p) collapses to m exactly.
+        model = CubeScaleResidual(fullProxy, fullProxy + edit);
+    }
 
     // The composition. The model's answer is not treated as a difference to add onto the frame -- it
     // is a complete picture in its own right, and it is brought back by rescaling it to sit where the

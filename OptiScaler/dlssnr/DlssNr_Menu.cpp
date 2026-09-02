@@ -165,6 +165,36 @@ void RenderMenu(Config* config, float menuResScale)
                        "\n\nThe frame itself stays at full detail whatever this says -- only the"
                        "\nmodel's own work is done small.");
 
+        // Only meaningful below 100%: at the same rate the residual collapses to the model's own
+        // picture and the two modes are identical, so the control says so by going grey.
+        {
+            const bool reduced = config->DlssNrWorkingScale.value_or_default() < 0.999f;
+
+            if (!reduced)
+                ImGui::BeginDisabled();
+
+            static const char* enlargeNames[] = { "Classic", "Matched residual" };
+            int enlarge = config->DlssNrTransfer.value_or_default() == 1 ? 1 : 0;
+
+            if (ImGui::Combo("Enlargement", &enlarge, enlargeNames, IM_ARRAYSIZE(enlargeNames)))
+                config->DlssNrTransfer = (uint32_t) enlarge;
+
+            if (!reduced)
+                ImGui::EndDisabled();
+
+            HelpMarker("How the model's work is brought back up when it ran below the frame's size."
+                       "\n\nClassic composes the model's small picture directly against the full-size"
+                       "\nframe. Those two disagree by the shrink's blur as well as by the model's edit,"
+                       "\nand the composition cannot tell them apart -- it reads the blur as brightness"
+                       "\nthe frame has and the model never saw. The lower the model resolution the"
+                       "\nlarger that error, and it is the colour shift that shows up at 50%."
+                       "\n\nMatched residual carries up only the model's difference and lays it on the"
+                       "\nframe's own proxy, so both pictures being compared are full size and the only"
+                       "\nthing that came from the small raster is the edit itself."
+                       "\n\nNo effect at 100%: there is no residual to carry and the two are identical."
+                       "\n\nFrom hhkbble's multi-pass work on this fork.");
+        }
+
         ImGui::SeparatorText("How much of it lands");
 
         float transfer = config->DlssNrTransferStrength.value_or_default();
