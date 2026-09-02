@@ -1,4 +1,5 @@
 #include "pch.h"
+#include <dlssnr/DlssNrFeature_Vk.h>
 #include "Util.h"
 #include "Config.h"
 #include "resource.h"
@@ -1025,6 +1026,13 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_EvaluateFeature(VkCommandBuffer 
             LOG_DEBUG("VULKAN_EvaluateFeature for ({0})", handleId);
             auto result = NVNGXProxy::VULKAN_EvaluateFeature()(InCmdList, InFeatureHandle, InParameters, InCallback);
             LOG_INFO("VULKAN_EvaluateFeature result for ({0}): {1:X}", handleId, (UINT) result);
+
+            // Neural Rendering over what the upscaler just wrote, on the same command buffer -- the
+            // same placement as the D3D12 path, so frame generation interpolates from enhanced frames
+            // and the model still costs one run per rendered frame.
+            if (result == NVSDK_NGX_Result_Success)
+                DlssNr::EvaluateAfterUpscaleVk(InCmdList, InParameters, vkInstance, vkPD, vkDevice);
+
             return result;
         }
         else
@@ -1079,6 +1087,12 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_EvaluateFeature(VkCommandBuffer 
     }
 
     UpscalerTimeVk::UpscaleEnd(InCmdList);
+
+    // Same pass, for OptiScaler's own upscalers rather than native DLSS. Natively on Vulkan now: the
+    // model exports a complete Vulkan surface and OptiScaler's vkCreateDevice hook already adds the
+    // two NVX extensions NGX needs, so there is nothing left for the D3D12 bridge to do here.
+    if (upscaleResult)
+        DlssNr::EvaluateAfterUpscaleVk(InCmdList, InParameters, vkInstance, vkPD, vkDevice);
 
     return upscaleResult ? NVSDK_NGX_Result_Success : NVSDK_NGX_Result_Fail;
 }
