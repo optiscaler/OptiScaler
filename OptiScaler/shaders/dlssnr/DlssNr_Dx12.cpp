@@ -1605,19 +1605,26 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
             unsigned int debugView;
             unsigned int compareMode;
             unsigned int residual;
+            unsigned int workW;
+            unsigned int workH;
         };
 
         static ComposeReport loggedCompose {};
 
+        // Quantised to the precision it is printed at. Comparing raw floats logged 2376 lines in one
+        // Enshrouded session, because a measured white point drifts continuously and every drift was a
+        // change. A line per meaningful change is the point; a line per frame is a different problem.
         const ComposeReport composeNow { true,
-                                         resolveParams.WhitePoint,
+                                         std::round(resolveParams.WhitePoint * 100.0f) / 100.0f,
                                          resolveParams.TransferStrength,
                                          resolveParams.ColourStrength,
                                          resolveParams.MaxRatio,
                                          resolveParams.Passthrough,
                                          resolveParams.DebugView,
                                          resolveParams.CompareMode,
-                                         resolveParams.Transfer };
+                                         resolveParams.Transfer,
+                                         g_nr.workWidth,
+                                         g_nr.workHeight };
 
         if (!loggedCompose.valid || loggedCompose.whitePoint != composeNow.whitePoint ||
             loggedCompose.transfer != composeNow.transfer || loggedCompose.colour != composeNow.colour ||
@@ -1625,15 +1632,16 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
             loggedCompose.passthrough != composeNow.passthrough ||
             loggedCompose.debugView != composeNow.debugView ||
             loggedCompose.compareMode != composeNow.compareMode ||
-            loggedCompose.residual != composeNow.residual)
+            loggedCompose.residual != composeNow.residual || loggedCompose.workW != composeNow.workW ||
+            loggedCompose.workH != composeNow.workH)
         {
             loggedCompose = composeNow;
             LOG_INFO("DLSS-NR composition: paper white {:.2f}x, detail {:.2f}, colour {:.2f}, guard "
-                     "{:.1f}x, colour transform {}, transfer {}, debug view {}, compare {}",
+                     "{:.1f}x, colour transform {}, transfer {}, model {}x{}, debug view {}, compare {}",
                      composeNow.whitePoint, composeNow.transfer, composeNow.colour, composeNow.maxRatio,
                      composeNow.passthrough != 0 ? "off (frame already tone mapped)" : "on (linear HDR)",
-                     composeNow.residual == 1 ? "matched residual" : "classic", composeNow.debugView,
-                     composeNow.compareMode);
+                     composeNow.residual == 1 ? "matched residual" : "classic", composeNow.workW,
+                     composeNow.workH, composeNow.debugView, composeNow.compareMode);
         }
 
         Barrier(cmdList, g_nr.output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,

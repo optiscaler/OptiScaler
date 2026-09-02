@@ -58,6 +58,31 @@ hands us in one input the things currently faked downstream or written off:
 look. Do this before anything architectural, because a working ControlMask changes what the amortiser
 and the subrect ideas should even be.
 
+### 1b. Measured: model resolution is a weaker lever than it looks
+
+Enshrouded, 1920x1080, same scene and camera, Vulkan through the bridge:
+
+| model resolution | NR cost |
+|---|---|
+| 100% | 4.10 ms |
+| 50%  | 2.24 ms |
+
+Four times fewer model pixels bought **1.83x**, not 4x. Fitting `cost = fixed + k x pixels` to those two
+points gives roughly **1.6 ms of fixed cost per evaluate** and 2.5 ms that scales -- so about 40% of the
+pass at full resolution is barriers, descriptors, staging copies and cubin launch, none of which care
+how big the picture is.
+
+Two consequences:
+
+- **Model resolution saturates.** 25% would be about 1.8 ms, barely better than 50%'s 2.24 -- while the
+  Swin grid gets twice as coarse. Past halfway the trade stops paying.
+- **Skipping evaluates dominates shrinking them.** A skipped frame removes the fixed cost too, which
+  shrinking never does. This is the argument for temporal amortisation over the subrect ideas, and it is
+  now measured rather than reasoned.
+
+It also caps what any of this can do for pre-Blackwell cards running a rebuilt binary: resolution alone
+is at best a ~2.3x lever, not the ~4x a pixel count suggests.
+
 ### 2. Measure churn as a function of motion
 
 The 22%-re-decided-per-frame figure is real but it was measured on a **static** scene, and every
