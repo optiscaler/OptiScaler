@@ -598,13 +598,35 @@ float ConsumeMeterReadback()
 
     const float* src = (const float*) mapped;
 
+    // The brightest tile, which sets what counts as lit in this frame.
+    float brightest = 0.0f;
+
     for (unsigned int i = 0; i < kDlssNrMeterGrid * kDlssNrMeterGrid; ++i)
     {
         const float v = src[i];
 
-        // A tile with no light in it says nothing about where white is, and a frame that is mostly
-        // sky or mostly shadow would otherwise have its percentile decided by the empty half.
-        if (v > 1e-5f && std::isfinite(v))
+        if (std::isfinite(v) && v > brightest)
+            brightest = v;
+    }
+
+    // Lit means "within six stops of the brightest thing in the frame", not "above a fixed epsilon".
+    //
+    // The absolute threshold was the bug. In a dark interior nearly every tile sits just above it, so
+    // they all counted as lit, and the 95th percentile of a mostly-black frame is itself nearly black
+    // -- the meter walked down to 0.01 in Enshrouded's temple and took the exposure with it. White is
+    // not "a bit brighter than the average of the dark"; it is where the light in the picture is, and
+    // a frame that is nine tenths shadow with a fire in it has its white point at the fire.
+    //
+    // Relative to the frame's own maximum, that holds whatever the game's units are -- which matters,
+    // because there is no absolute scale here: a linear HDR buffer can put white at 0.3 or at 300 and
+    // both are ordinary.
+    const float litFloor = brightest / 64.0f;
+
+    for (unsigned int i = 0; i < kDlssNrMeterGrid * kDlssNrMeterGrid; ++i)
+    {
+        const float v = src[i];
+
+        if (std::isfinite(v) && v >= litFloor && v > 1e-6f)
             tiles.push_back(v);
     }
 
@@ -614,8 +636,8 @@ float ConsumeMeterReadback()
     if (tiles.size() < 16)
         return 0.0f;
 
-    // The 95th percentile of lit tiles. High enough that it sits among the brightest of the picture,
-    // and far enough from the maximum that a lamp, a muzzle flash or the sun cannot be it on its own.
+    // The 95th percentile of lit tiles. High enough to sit among the brightest of the picture, far
+    // enough from the maximum that a lamp, a muzzle flash or the sun cannot be it on its own.
     const size_t nth = (size_t) ((float) (tiles.size() - 1) * 0.95f);
     std::nth_element(tiles.begin(), tiles.begin() + nth, tiles.end());
 
@@ -646,7 +668,19 @@ float ResolveWhitePoint(const Config& cfg, float measured, bool isHdrBuffer)
             const float ratio = measured / g_nr.smoothedWhite;
 
             if (ratio > 1.06f || ratio < 0.94f)
-                g_nr.smoothedWhite += (measured - g_nr.smoothedWhite) * 0.05f;
+            {
+                // Rate limited as well as smoothed. The exponential alone bounds where the exposure
+                // ends up but not how fast it gets there, and a hard cut -- a door opening onto
+                // daylight, a cutscene -- moves the target far enough in one frame that five percent
+                // of the gap is still a visible step. Capped at two percent per frame it takes about
+                // a second and a half to cross a factor of two, which reads as an eye adjusting
+                // rather than as the picture changing.
+                const float target = g_nr.smoothedWhite + (measured - g_nr.smoothedWhite) * 0.05f;
+                const float ceiling = g_nr.smoothedWhite * 1.02f;
+                const float floor = g_nr.smoothedWhite * 0.98f;
+
+                g_nr.smoothedWhite = std::clamp(target, floor, ceiling);
+            }
         }
     }
 
