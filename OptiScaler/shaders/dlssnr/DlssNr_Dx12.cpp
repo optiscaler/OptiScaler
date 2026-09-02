@@ -645,7 +645,17 @@ float ConsumeMeterReadback()
 }
 
 // Turns what the meter saw into the divisor the encode uses, or falls back to the slider.
-float ResolveWhitePoint(const Config& cfg, float measured, bool isHdrBuffer)
+//
+// `cut` says the exposure may jump rather than drift, and it is the difference between this working
+// and not. GTA V's character switch pulls the camera up through the sky: a linear HDR buffer's sky is
+// tens of times brighter than the ground, the proxy clips to flat white, and the frame blows out until
+// the camera comes back down. Easing across that at two percent a frame takes three and a half
+// seconds, which is longer than the transition -- so a meter that only eases would lag through the
+// whole thing and fix nothing.
+//
+// So a cut snaps and a drift eases. Walking out of a cave is a drift; a camera cut is not, and
+// pretending otherwise to avoid pumping just moves the failure somewhere more visible.
+float ResolveWhitePoint(const Config& cfg, float measured, bool isHdrBuffer, bool cut)
 {
     const float slider = cfg.DlssNrWhitePointScale.value_or_default();
 
@@ -661,11 +671,19 @@ float ResolveWhitePoint(const Config& cfg, float measured, bool isHdrBuffer)
         // Followed slowly, and only when it has moved enough to matter. An exposure that tracks every
         // frame is an exposure that pumps, and pumping looks exactly like the flicker the guard was
         // added to stop. Walking out of a cave should take a moment; a muzzle flash should take none.
-        if (g_nr.smoothedWhite <= 1e-5f)
+        const float jump = g_nr.smoothedWhite > 1e-5f ? measured / g_nr.smoothedWhite : 1.0f;
+
+        // A cut, or a change too large to be anything else. The game raises Reset on a teleport or a
+        // camera cut and that is the reliable signal, but not every game raises it for a scripted
+        // camera move -- so a fourfold change in one frame counts too. Real exposure does not do that
+        // by walking.
+        const bool snap = cut || jump > 4.0f || jump < 0.25f;
+
+        if (g_nr.smoothedWhite <= 1e-5f || snap)
             g_nr.smoothedWhite = measured;
         else
         {
-            const float ratio = measured / g_nr.smoothedWhite;
+            const float ratio = jump;
 
             if (ratio > 1.06f || ratio < 0.94f)
             {
@@ -1461,7 +1479,7 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
         measuredScale = ConsumeMeterReadback();
     }
 
-    const float whitePoint = ResolveWhitePoint(cfg, measuredScale, isHdrBuffer);
+    const float whitePoint = ResolveWhitePoint(cfg, measuredScale, isHdrBuffer, frame.Reset);
 
     DlssNrConstants encodeParams {};
     encodeParams.Mode = DlssNrMode_Encode;
