@@ -57,6 +57,11 @@ unsigned long long FramesVk();
 // A timestamp pair either side of the whole pass, read three frames later so the query is retired.
 std::optional<double> LastGpuTimeVk();
 
+// Whether the game offers an exposure texture on this path. Observed only: it is not read, because
+// binding the game's image means naming a layout this side cannot know. For the menu, and to settle
+// whether reading it is worth the risk on any real Vulkan game.
+bool ExposureOfferedVk();
+
 void ShutdownVk();
 
 } // namespace DlssNr

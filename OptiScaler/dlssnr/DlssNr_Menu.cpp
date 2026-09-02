@@ -330,7 +330,9 @@ void RenderMenu(Config* config, float menuResScale)
                 // counterpart to. Saying so beats "waiting for a frame" forever over a pass that is
                 // running and is never going to read one.
                 ImGui::TextColored(ImVec4(0.85f, 0.65f, 0.25f, 1.0f),
-                                   "Not read on the native Vulkan path. Paper white below is in use.");
+                                   DlssNr::ExposureOfferedVk()
+                                       ? "This game offers one, but it is not read on Vulkan yet. Paper white is in use."
+                                       : "This game supplies no exposure. Paper white below is in use.");
             }
             else if (ex.seenFrames == 0)
             {

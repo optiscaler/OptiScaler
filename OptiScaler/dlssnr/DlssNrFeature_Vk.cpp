@@ -85,6 +85,9 @@ struct VkState
     float timestampPeriod = 0.0f;
     unsigned long long timedFrames = 0;
     std::optional<double> lastGpuTime;
+
+    // Whether the game hands over an exposure texture. Observed, not consumed -- see where it is set.
+    bool exposureOffered = false;
 };
 
 // Four frames of pairs. Three would do, four keeps the modulo cheap and the slot being written well
@@ -357,6 +360,8 @@ const char* FailureReasonVk() { return g_vk.failed ? g_vk.reason : ""; }
 
 unsigned long long FramesVk() { return g_vk.frames; }
 
+bool ExposureOfferedVk() { return g_vk.exposureOffered; }
+
 std::optional<double> LastGpuTimeVk() { return g_vk.lastGpuTime; }
 
 void EvaluateAfterUpscaleVk(VkCommandBuffer cmdBuffer, NVSDK_NGX_Parameter* params, VkInstance instance,
@@ -385,6 +390,36 @@ void EvaluateAfterUpscaleVk(VkCommandBuffer cmdBuffer, NVSDK_NGX_Parameter* para
     params->Get(NVSDK_NGX_Parameter_Output, (void**) &colour);
     params->Get(NVSDK_NGX_Parameter_Depth, (void**) &depth);
     params->Get(NVSDK_NGX_Parameter_MotionVectors, (void**) &motion);
+
+    // Whether the game supplies an exposure, reported but deliberately not read.
+    //
+    // Reading it means binding the game's own image in a descriptor, and a descriptor names the
+    // layout the image will be in when the shader runs. That layout is the game's business, NVIDIA's
+    // Vulkan header does not state what NGX leaves its inputs in, and naming the wrong one is
+    // undefined behaviour rather than a failure that can be caught and backed out of. Transitioning
+    // it is no safer: a barrier needs the layout it is coming from, and the one value that is always
+    // legal to claim -- UNDEFINED -- is defined to discard the contents, which are the whole point.
+    //
+    // So this answers the question that decides whether any of that is worth doing: does a Vulkan
+    // game supply one at all? The D3D12 path found only one game in six that did.
+    NVSDK_NGX_Resource_VK* exposure = nullptr;
+    float preExposure = 1.0f;
+    const bool havePre =
+        params->Get(NVSDK_NGX_Parameter_DLSS_Pre_Exposure, &preExposure) == NVSDK_NGX_Result_Success;
+
+    params->Get(NVSDK_NGX_Parameter_ExposureTexture, (void**) &exposure);
+
+    static bool saidExposure = false;
+
+    if (!saidExposure)
+    {
+        saidExposure = true;
+        LOG_INFO("DLSS-NR Vulkan: exposure from the game: DLSS.Pre.Exposure {}, ExposureTexture {}",
+                 havePre ? std::to_string(preExposure) : std::string("not supplied"),
+                 exposure != nullptr ? "supplied" : "not supplied");
+    }
+
+    g_vk.exposureOffered = exposure != nullptr;
 
     if (colour == nullptr || depth == nullptr || motion == nullptr)
     {
