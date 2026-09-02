@@ -86,6 +86,14 @@ enum class SwapchainInteropApi : uint32_t
     Dx11wDx12,
 };
 
+enum class ColorEncoding : uint32_t
+{
+    SDR,
+    ScRGB,
+    PQ,
+    HLG
+};
+
 typedef struct CapturedHudlessInfo
 {
     UINT64 usageCount = 1;
@@ -303,7 +311,8 @@ class State
 
     // HDR
     std::vector<IUnknown*> scBuffers;
-    bool isHdrActive = false;
+    ColorEncoding swapchainEncoding = ColorEncoding::SDR;
+    bool hdrOutputActive = false;
 
     std::optional<ApiUpscalerInput> setInputApiName;
     ApiUpscalerInput currentInputApiName;

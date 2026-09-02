@@ -35,6 +35,15 @@
 #include <hooks/Xell_Hooks.h>
 #include <low_latency/input/input_common.h>
 
+enum class UiTargetMode
+{
+    SDR,
+    LinearHDR,
+    ScRGB,
+    PQ,
+    HLG
+};
+
 #define MARK_ALL_BACKENDS_CHANGED()                                                                                    \
     for (auto& singleChangeBackend : State::Instance().changeBackend)                                                  \
         singleChangeBackend.second = true;
@@ -826,68 +835,162 @@ void MenuCommon::PopulateCombo(const std::string& name, TStorage& currentValue,
     }
 }
 
-static ImVec4 toneMapColor(const ImVec4& color)
+static UiTargetMode getUiTargetMode()
 {
-    if (State::Instance().isHdrActive ||
-        (!Config::Instance()->OverlayMenu.value_or_default() && State::Instance().currentFeature != nullptr &&
-         State::Instance().currentFeature->IsHdr()))
+    const auto& state = State::Instance();
+
+    const bool fallback = !Config::Instance()->OverlayMenu.value_or_default();
+
+    if (fallback)
     {
-        // Controls how strongly HDR/UI colors are pushed into the tone mapper before compression.
-        // Higher values make colors brighter before mapping; lower values make the result dimmer.
-        constexpr float exposure = 1.0f;
+        // We have no swapchain information here.
+        // Only classify the upscaled working image.
+        if (state.currentFeature && state.currentFeature->IsHdr())
+            return UiTargetMode::LinearHDR;
 
-        // Blends between original color and fully tone-mapped color.
-        // 0.0 = no tone mapping, 1.0 = full Reinhard compression.
-        constexpr float strength = 1.0f;
-
-        float peak = std::max(color.x, std::max(color.y, color.z));
-
-        if (peak <= 0.0f)
-            return color;
-
-        float exposedPeak = peak * exposure;
-        float mappedPeak = exposedPeak / (1.0f + exposedPeak);
-
-        float reinhardScale = mappedPeak / peak;
-        float scale = 1.0f + (reinhardScale - 1.0f) * strength;
-
-        return ImVec4(color.x * scale, color.y * scale, color.z * scale, color.w);
+        return UiTargetMode::SDR;
     }
 
-    return color;
+    // Normal overlay path: actual swapchain encoding is known.
+    switch (state.swapchainEncoding)
+    {
+    case ColorEncoding::ScRGB:
+        return UiTargetMode::ScRGB;
+
+    case ColorEncoding::PQ:
+        return UiTargetMode::PQ;
+
+    case ColorEncoding::HLG:
+        return UiTargetMode::HLG;
+
+    case ColorEncoding::SDR:
+    default:
+        return UiTargetMode::SDR;
+    }
+}
+
+static float srgbToLinear(float x)
+{
+    x = std::clamp(x, 0.0f, 1.0f);
+
+    if (x <= 0.04045f)
+        return x / 12.92f;
+
+    return std::pow((x + 0.055f) / 1.055f, 2.4f);
+}
+
+static float linearToPQ(float nits)
+{
+    // SMPTE ST.2084
+    constexpr float m1 = 2610.0f / 16384.0f;
+    constexpr float m2 = 2523.0f / 32.0f;
+    constexpr float c1 = 3424.0f / 4096.0f;
+    constexpr float c2 = 2413.0f / 128.0f;
+    constexpr float c3 = 2392.0f / 128.0f;
+
+    float y = std::clamp(nits / 10000.0f, 0.0f, 1.0f);
+
+    float ym1 = std::pow(y, m1);
+
+    return std::pow((c1 + c2 * ym1) / (1.0f + c3 * ym1), m2);
+}
+
+static float linearToHLG(float x)
+{
+    // BT.2100 HLG OETF
+    constexpr float a = 0.17883277f;
+    constexpr float b = 0.28466892f;
+    constexpr float c = 0.55991073f;
+
+    x = std::max(x, 0.0f);
+
+    if (x <= (1.0f / 12.0f))
+        return std::sqrt(3.0f * x);
+
+    return a * std::log(12.0f * x - b) + c;
+}
+
+static ImVec4 toneMapColor(const ImVec4& color)
+{
+    const auto mode = getUiTargetMode();
+
+    switch (mode)
+    {
+    case UiTargetMode::SDR:
+        // Standard ImGui colors are already authored for SDR/sRGB.
+        return color;
+
+    case UiTargetMode::LinearHDR:
+    {
+        // Fallback mode: rendering directly into the upscaled HDR image.
+        //
+        // We don't know the final swapchain encoding here, so do NOT apply
+        // PQ/HLG encoding. Just convert ImGui's sRGB colors to linear.
+        //
+        // If we later determine that the upscaled image is pre-exposed,
+        // this is where the pre-exposure scale should be applied.
+        constexpr float workingSpaceScale = 1.0f;
+
+        return ImVec4(srgbToLinear(color.x) * workingSpaceScale, srgbToLinear(color.y) * workingSpaceScale,
+                      srgbToLinear(color.z) * workingSpaceScale, color.w);
+    }
+
+    case UiTargetMode::ScRGB:
+    {
+        // scRGB is linear and uses ~80 nits for value 1.0.
+        constexpr float scRgbReferenceWhiteNits = 80.0f;
+        constexpr float hdrUiWhiteNits = 203.0f;
+
+        // On SDR output keep ordinary SDR white at scRGB 1.0.
+        // When HDR output is active, raise UI reference white.
+        const float uiWhiteNits = State::Instance().hdrOutputActive ? hdrUiWhiteNits : scRgbReferenceWhiteNits;
+
+        const float scale = uiWhiteNits / scRgbReferenceWhiteNits;
+
+        return ImVec4(srgbToLinear(color.x) * scale, srgbToLinear(color.y) * scale, srgbToLinear(color.z) * scale,
+                      color.w);
+    }
+
+    case UiTargetMode::PQ:
+    {
+        // HDR10 / ST.2084.
+        //
+        // ImGui colors are interpreted as SDR-relative colors where
+        // 1.0 corresponds to our chosen HDR UI reference white.
+        constexpr float uiWhiteNits = 203.0f;
+
+        return ImVec4(linearToPQ(srgbToLinear(color.x) * uiWhiteNits), linearToPQ(srgbToLinear(color.y) * uiWhiteNits),
+                      linearToPQ(srgbToLinear(color.z) * uiWhiteNits), color.w);
+    }
+
+    case UiTargetMode::HLG:
+    {
+        // HLG is relative rather than absolute-nits based.
+        return ImVec4(linearToHLG(srgbToLinear(color.x)), linearToHLG(srgbToLinear(color.y)),
+                      linearToHLG(srgbToLinear(color.z)), color.w);
+    }
+
+    default:
+        return color;
+    }
 }
 
 static void MenuHdrCheck(ImGuiIO io)
 {
-    // If game is using HDR, apply tone mapping to the ImGui style
-    if (State::Instance().isHdrActive ||
-        (!Config::Instance()->OverlayMenu.value_or_default() && State::Instance().currentFeature != nullptr &&
-         State::Instance().currentFeature->IsHdr()))
+    if (!_hdrTonemapApplied)
     {
-        if (!_hdrTonemapApplied)
+        ImGuiStyle& style = ImGui::GetStyle();
+
+        CopyMemory(SdrColors, style.Colors, sizeof(style.Colors));
+
+        // Apply tone mapping to the ImGui style
+        for (int i = 0; i < ImGuiCol_COUNT; ++i)
         {
-            ImGuiStyle& style = ImGui::GetStyle();
-
-            CopyMemory(SdrColors, style.Colors, sizeof(style.Colors));
-
-            // Apply tone mapping to the ImGui style
-            for (int i = 0; i < ImGuiCol_COUNT; ++i)
-            {
-                ImVec4 color = style.Colors[i];
-                style.Colors[i] = toneMapColor(color);
-            }
-
-            _hdrTonemapApplied = true;
+            ImVec4 color = style.Colors[i];
+            style.Colors[i] = toneMapColor(color);
         }
-    }
-    else
-    {
-        if (_hdrTonemapApplied)
-        {
-            ImGuiStyle& style = ImGui::GetStyle();
-            CopyMemory(style.Colors, SdrColors, sizeof(style.Colors));
-            _hdrTonemapApplied = false;
-        }
+
+        _hdrTonemapApplied = true;
     }
 }
 
@@ -1552,9 +1655,10 @@ void MenuCommon::RenderNotifications(RenderMenuContext& ctx)
     auto& io = ctx.io;
 
     // Notifications
-    bool tonemapRequired = State::Instance().isHdrActive ||
-                           (!Config::Instance()->OverlayMenu.value_or_default() &&
-                            State::Instance().currentFeature != nullptr && State::Instance().currentFeature->IsHdr());
+    bool tonemapRequired =
+        (State::Instance().hdrOutputActive && State::Instance().swapchainEncoding != ColorEncoding::SDR) ||
+        (!Config::Instance()->OverlayMenu.value_or_default() && State::Instance().currentFeature != nullptr &&
+         State::Instance().currentFeature->IsHdr());
 
     float screenHeight = State::Instance().screenHeight;
     if (io.DisplaySize.y != 0)
@@ -3812,7 +3916,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)), "Borderless display mode required!");
             }
 
-            if (!ignoreChecks && state.isHdrActive)
+            if (!ignoreChecks && (state.hdrOutputActive && state.swapchainEncoding != ColorEncoding::SDR))
             {
                 if (state.currentSwapchainDesc.BufferDesc.Format >= DXGI_FORMAT_R32G32B32A32_TYPELESS &&
                     state.currentSwapchainDesc.BufferDesc.Format <= DXGI_FORMAT_R16G16B16A16_SINT)
@@ -3977,7 +4081,8 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
     {
         ImGui::SeparatorText("Frame Generation (DLSSG)");
 
-        if (state.activeFgNvngx == FGNvngxReplacement::None && state.isHdrActive)
+        if (state.activeFgNvngx == FGNvngxReplacement::None &&
+            (state.hdrOutputActive && state.swapchainEncoding != ColorEncoding::SDR))
         {
             if (state.currentSwapchainDesc.BufferDesc.Format >= DXGI_FORMAT_R32G32B32A32_TYPELESS &&
                 state.currentSwapchainDesc.BufferDesc.Format <= DXGI_FORMAT_R16G16B16A16_SINT)
