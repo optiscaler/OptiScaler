@@ -181,7 +181,11 @@ class DlssNr_Common
     static constexpr const char* kStyle = "DLSSNR.Style";
     static constexpr const char* kLocalStructure = "DLSSNR.LocalStructureStrength";
     static constexpr const char* kLocalTone = "DLSSNR.LocalToneStrength";
-    static constexpr const char* kGlobalTone = "DLSSNR.GlobalToneStrength";
+    // Not a parameter of this model. Kept named so nobody re-adds it: a scan of nvngx_dlssnr.dll for
+    // DLSSNR.* yields 61 names and this is absent from them, while every other name here is present.
+    // Writing it was harmless -- the block is string-keyed -- but it made a control look real when
+    // nothing was listening, which is worse than not having one.
+    // static constexpr const char* kGlobalTone = "DLSSNR.GlobalToneStrength";
 
     // Despite the name, this is the automatic *skin* mask, not an interface mask.
     static constexpr const char* kAutoMask = "DLSSNR.UseAutoMask";

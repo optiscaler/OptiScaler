@@ -448,7 +448,12 @@ __declspec(dllexport) void dlssnr_call_set_extras(void *capabilityParams, float 
     if (!capabilityParams) {
         return;
     }
-    setFloat(capabilityParams, "DLSSNR.GlobalToneStrength", globalTone);
+    // DLSSNR.GlobalToneStrength is deliberately not written. The string does not appear anywhere in
+    // nvngx_dlssnr.dll -- the model's own vocabulary is 61 DLSSNR.* names and this is not one of them,
+    // so every write went into a map nothing reads. It exists in Streamline's sl.dlss_nr.dll, which is
+    // presumably where it was copied from. Left as a parameter here so the signature does not churn.
+    (void) globalTone;
+
     setResource(capabilityParams, "DLSSNR.UI", ui);
     setResource(capabilityParams, "DLSSNR.UIAlpha", uiAlpha);
     setResource(capabilityParams, "DLSSNR.Backbuffer", backbuffer);

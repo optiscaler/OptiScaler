@@ -276,6 +276,20 @@ std::unique_ptr<DlssNr_Dx12> g_compose;
 
 // What the pass costs on the GPU, for the breakdown in the overlay.
 std::unique_ptr<GpuTime_Dx12> g_gpuTime;
+
+// A second timer, around the model's evaluate and nothing else.
+//
+// The first one brackets the whole pass, which is the number the menu shows and the right one for
+// "what does this feature cost". It is the wrong number for deciding what to optimise: the 4.10 ms at
+// full model resolution and 2.24 ms at half were both whole-pass, and both included this pass's own
+// encode and resolve at DISPLAY resolution plus the guide copies, none of which move when the model's
+// resolution does. Fitting a fixed term to those two points therefore attributes our own unchanging
+// work to NGX overhead.
+//
+// Splitting them says how much of the pass is the model and how much is ours -- and ours is the half
+// we can actually do something about.
+std::unique_ptr<GpuTime_Dx12> g_ngxTime;
+std::optional<double> g_lastNgxTime;
 std::optional<double> g_lastGpuTime;
 
 // Writes matched before/after frames on request, so comparisons stop depending on video.
@@ -1411,6 +1425,11 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
     if (restoreRequired && !D3D12Hooks::CanRestoreRootSignature(cmdList))
     {
         ReportSkipOnce("the upscaler could not restore state this frame");
+
+        // The device reference taken at the top of this function is released on every other path out.
+        // It was not released here, and this is the one path a bindless game takes every single frame
+        // -- so the game that most needed this skip was also leaking a device reference per frame.
+        device->Release();
         return;
     }
 
@@ -1420,6 +1439,9 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
 
     if (g_gpuTime == nullptr)
         g_gpuTime = std::make_unique<GpuTime_Dx12>(device);
+
+    if (g_ngxTime == nullptr)
+        g_ngxTime = std::make_unique<GpuTime_Dx12>(device);
 
     if (g_gpuTime != nullptr)
         g_gpuTime->Start(cmdList);
@@ -1543,6 +1565,9 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
         return;
     }
 
+    if (g_ngxTime != nullptr)
+        g_ngxTime->Start(cmdList);
+
     const int result = g_nr.evaluate(
         cmdList, g_nr.feature, g_nr.capabilityParams, modelInput, depthIn, motionIn, g_nr.output,
         workWidth, workHeight, guideWidth, guideHeight, g_nr.guideDepthInverted ? 1 : 0,
@@ -1551,6 +1576,9 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
         cfg.DlssNrLocalTone.value_or_default(), cfg.DlssNrSkinStructure.value_or_default(),
         cfg.DlssNrAutoMask.value_or_default() ? 1 : 0, g_nr.guideMvScaleX * mvToWork,
         g_nr.guideMvScaleY * mvToWork);
+
+    if (g_ngxTime != nullptr)
+        g_ngxTime->End(cmdList);
 
     g_nr.reset = false;
 
@@ -1723,6 +1751,25 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
         {
             if (auto ms = g_gpuTime->ReadGpuTime(queue); ms.has_value())
                 g_lastGpuTime = ms;
+
+            if (g_ngxTime != nullptr)
+            {
+                if (auto ngx = g_ngxTime->ReadGpuTime(queue); ngx.has_value())
+                    g_lastNgxTime = ngx;
+            }
+
+            // The split, once every few hundred frames. What is worth reading is not the total but the
+            // remainder: the model's cost is NVIDIA's to set, and everything else is ours.
+            static unsigned long long lastSplitLog = 0;
+
+            if (g_lastGpuTime.has_value() && g_lastNgxTime.has_value() && g_frames - lastSplitLog > 600)
+            {
+                lastSplitLog = g_frames;
+                const double total = g_lastGpuTime.value();
+                const double ngx = g_lastNgxTime.value();
+                LOG_INFO("DLSS-NR cost: {:.2f} ms total = {:.2f} ms model + {:.2f} ms ours ({:.0f}% ours)",
+                         total, ngx, total - ngx, total > 0.0 ? 100.0 * (total - ngx) / total : 0.0);
+            }
         }
     }
 
@@ -2007,6 +2054,8 @@ void Shutdown()
 
     g_capture.release();
     g_gpuTime.reset();
+    g_ngxTime.reset();
+    g_lastNgxTime.reset();
     g_lastGpuTime.reset();
 
     g_compose.reset();

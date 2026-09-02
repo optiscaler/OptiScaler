@@ -27,7 +27,18 @@
 // Three dispatches are recorded per frame and several frames can be in flight at once, more so with
 // frame generation. Each dispatch needs descriptors and constants the GPU is not still reading, so
 // there has to be enough for three passes times the deepest pipeline we might sit behind.
-#define DLSSNR_NUM_OF_HEAPS 16
+// Descriptor and constant slots, consumed one per dispatch and reused round-robin with no fence.
+//
+// The pass records four dispatches per frame -- meter, encode, downsample, resolve -- so sixteen slots
+// is four frames of coverage before a slot is rewritten. The comment this replaces said "three passes
+// times the deepest pipeline we might sit behind", and the pass count has since grown to four while
+// the ring did not.
+//
+// Four frames is not enough. Frame generation deliberately runs the GPU several frames behind the CPU,
+// and the constants live in an UPLOAD heap written at record time -- so a wrap while the GPU is still
+// reading a slot rewrites descriptors and constants underneath it. Thirty-two gives eight frames at
+// today's dispatch count, and six if a fifth is ever added.
+#define DLSSNR_NUM_OF_HEAPS 32
 
 class DlssNr_Dx12 : public Shader_Dx12, public DlssNr_Common
 {
