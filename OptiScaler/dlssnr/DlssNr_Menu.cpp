@@ -292,6 +292,20 @@ void RenderMenu(Config* config, float menuResScale)
         // given game needs to go is a property of that game's exposure, not of anything we can bound.
         // One tester was still improving at 100. A linear slider over that span would spend nine
         // tenths of its travel on values nobody needs and never reach the ones they do.
+        bool fromExposure = config->DlssNrWhitePointFromExposure.value_or_default();
+        if (ImGui::Checkbox("Take the white point from the game", &fromExposure))
+            config->DlssNrWhitePointFromExposure = fromExposure;
+
+        HelpMarker("Use the exposure the game hands DLSS, instead of measuring or guessing."
+                       "\n\nExposure is how a renderer makes a cave and a field comparable: it works in"
+                       "\narbitrary units and multiplies by this before tone mapping. That is exactly why"
+                       "\none fixed paper white cannot serve both, and why the game's own number is the"
+                       "\nright source -- it is decided upstream and cannot be moved by anything this pass"
+                       "\ndoes, which is what went wrong with measuring it from the frame."
+                       "\n\nNot every game supplies it, and some supply it only on some frames; the last"
+                       "\ngood value is held across the gaps. Paper white below stays a multiplier on top."
+                       "\n\nOff by default until it has been seen to work in more than one game.");
+
         bool autoWp = config->DlssNrAutoWhitePoint.value_or_default();
         if (ImGui::Checkbox("Measure the white point", &autoWp))
             config->DlssNrAutoWhitePoint = autoWp;

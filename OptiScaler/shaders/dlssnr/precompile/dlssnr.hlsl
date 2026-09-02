@@ -193,6 +193,20 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     // one specular hit decides.
     if (gMode == 3)
     {
+        // Tile (0,0) carries the game's own exposure rather than a tile mean.
+        //
+        // The exposure is a 1x1 texture the game owns, in a resource state this pass did not set and
+        // must not assume. Copying it would mean transitioning someone else's resource on a guess,
+        // which is how a device is lost. Reading it as an SRV in a pass that is already running costs
+        // nothing and touches no state -- and it rides back on the readback that already exists.
+        //
+        // The motion slot is free here: the meter has no use for motion vectors.
+        if (id.x == 0 && id.y == 0)
+        {
+            gTarget[id.xy] = float4(gMotion.Load(int3(0, 0, 0)).r, 0.0, 0.0, 1.0);
+            return;
+        }
+
         uint fullW, fullH;
         gSource.GetDimensions(fullW, fullH);
 

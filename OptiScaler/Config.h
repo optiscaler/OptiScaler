@@ -298,6 +298,10 @@ class Config
     // behaviour can still be looked at.
     CustomOptional<bool> DlssNrAutoWhitePoint { false };
 
+    // Take the white point from the game's own exposure texture instead of measuring or guessing.
+    // Off by default until it has been seen to work in more than one game.
+    CustomOptional<bool> DlssNrWhitePointFromExposure { false };
+
     // 0 off, 1 the picture the model was shown, 2 its raw answer, 3 what it changed, amplified.
     CustomOptional<uint32_t> DlssNrDebugView { 0 };
 

@@ -214,6 +214,12 @@ struct NrState
     float measuredWhite = 0.0f;
     float smoothedWhite = 0.0f;
 
+    // The game's exposure, as last read back, and the pre-exposure that goes with it. Held rather
+    // than defaulted: the texture comes and goes between frames and a fallback to 1.0 on the gaps
+    // would be a flicker source.
+    float gameExposure = 0.0f;
+    float gamePreExposure = 1.0f;
+
     // Cloned unconditionally when running at present, and only for typeless formats otherwise.
     ID3D12Resource* depthClone = nullptr;
     ID3D12Resource* motionClone = nullptr;
@@ -598,10 +604,15 @@ float ConsumeMeterReadback()
 
     const float* src = (const float*) mapped;
 
+    // Tile 0 is the game's exposure, written by the shader instead of a tile mean. Taken here and
+    // excluded from everything below, or the white point statistic would be voting on it.
+    if (std::isfinite(src[0]) && src[0] > 0.0f)
+        g_nr.gameExposure = src[0];
+
     // The brightest tile, which sets what counts as lit in this frame.
     float brightest = 0.0f;
 
-    for (unsigned int i = 0; i < kDlssNrMeterGrid * kDlssNrMeterGrid; ++i)
+    for (unsigned int i = 1; i < kDlssNrMeterGrid * kDlssNrMeterGrid; ++i)
     {
         const float v = src[i];
 
@@ -622,7 +633,7 @@ float ConsumeMeterReadback()
     // both are ordinary.
     const float litFloor = brightest / 64.0f;
 
-    for (unsigned int i = 0; i < kDlssNrMeterGrid * kDlssNrMeterGrid; ++i)
+    for (unsigned int i = 1; i < kDlssNrMeterGrid * kDlssNrMeterGrid; ++i)
     {
         const float v = src[i];
 
@@ -661,7 +672,26 @@ float ResolveWhitePoint(const Config& cfg, float measured, bool isHdrBuffer, boo
 
     // A frame the game already tone mapped is display-referred: white is at 1 by definition and there
     // is nothing to measure. The slider stays available as a manual exposure on that path.
-    if (!isHdrBuffer || !cfg.DlssNrAutoWhitePoint.value_or_default())
+    if (!isHdrBuffer)
+        return slider;
+
+    // The game's own exposure, where it supplies one.
+    //
+    // Exposure is the step that makes a cave and a field comparable: the renderer works in arbitrary
+    // scene-referred units and multiplies by this before tone mapping, which is precisely why one
+    // fixed paper white cannot serve both. FSR spells the relationship out -- frame / preExposure *
+    // exposure -- so undoing it gives the divisor this pass wants, and paper white becomes a constant
+    // on top rather than a value chasing the scene.
+    //
+    // Unlike anything measured off the frame this cannot be moved by what the pass writes, which is
+    // what killed the statistical meter. It is the game's number, decided upstream.
+    //
+    // Held across the frames where the texture is absent -- GTA V dropped it three times in one
+    // session -- because falling back to a default on those frames is a flicker, not a fallback.
+    if (cfg.DlssNrWhitePointFromExposure.value_or_default() && g_nr.gameExposure > 1e-6f)
+        return std::clamp(g_nr.gamePreExposure / g_nr.gameExposure * slider, 0.01f, 4096.0f);
+
+    if (!cfg.DlssNrAutoWhitePoint.value_or_default())
         return slider;
 
     if (measured > 1e-5f)
@@ -1471,13 +1501,16 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
 
         Barrier(cmdList, target, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        DispatchPass(cmdList, meterParams, target, nullptr, nullptr, nullptr, nullptr, g_nr.meter, nullptr);
+        DispatchPass(cmdList, meterParams, target, nullptr, nullptr,
+                     (ID3D12Resource*) frame.ExposureTexture, nullptr, g_nr.meter, nullptr);
         Barrier(cmdList, target, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
         CopyMeterToReadback(cmdList, device);
         measuredScale = ConsumeMeterReadback();
     }
+
+    g_nr.gamePreExposure = frame.PreExposure;
 
     const float whitePoint = ResolveWhitePoint(cfg, measuredScale, isHdrBuffer, frame.Reset);
 
@@ -1849,6 +1882,9 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
         void* exposureTex = nullptr;
         params->Get(NVSDK_NGX_Parameter_ExposureTexture, &exposureTex);
 
+        frame.ExposureTexture = exposureTex;
+        frame.PreExposure = havePre && preExposure > 1e-6f ? preExposure : 1.0f;
+
         const bool autoExposureFlag = (createFlags & NVSDK_NGX_DLSS_Feature_Flags_AutoExposure) != 0;
 
         struct ExposureReport
@@ -1873,6 +1909,19 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
                      "auto-exposure flag {}",
                      now.havePre ? std::to_string(now.pre) : std::string("not supplied"),
                      now.haveTexture ? "supplied" : "not supplied", now.autoFlag ? "set" : "clear");
+        }
+
+        // The value itself, once it has come back off the GPU. Separate from the line above because
+        // that one says what the game offers and this one says what it actually reads -- and because
+        // the reading arrives three frames after the offer.
+        static float loggedExposure = -1.0f;
+
+        if (g_nr.gameExposure > 1e-6f &&
+            std::abs(loggedExposure - g_nr.gameExposure) > std::max(0.02f * g_nr.gameExposure, 1e-5f))
+        {
+            loggedExposure = g_nr.gameExposure;
+            LOG_INFO("DLSS-NR game exposure {:.5f} (pre-exposure {:.3f}) -> white point would be {:.2f}",
+                     g_nr.gameExposure, g_nr.gamePreExposure, g_nr.gamePreExposure / g_nr.gameExposure);
         }
     }
 

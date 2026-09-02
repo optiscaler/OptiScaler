@@ -323,6 +323,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             DlssNrMaxRatio.set_from_config(readFloat("DlssNr", "MaxRatio"));
             DlssNrTransfer.set_from_config(readUInt("DlssNr", "Transfer"));
             DlssNrAutoWhitePoint.set_from_config(readBool("DlssNr", "AutoWhitePoint"));
+            DlssNrWhitePointFromExposure.set_from_config(readBool("DlssNr", "WhitePointFromExposure"));
             DlssNrDebugView.set_from_config(readUInt("DlssNr", "DebugView"));
             DlssNrCompare.set_from_config(readUInt("DlssNr", "Compare"));
             DlssNrCompareSplit.set_from_config(readFloat("DlssNr", "CompareSplit"));
@@ -1184,6 +1185,8 @@ bool Config::SaveIni()
     ini.SetValue("DlssNr", "Transfer", GetIntValue(Instance()->DlssNrTransfer.value_for_config()).c_str());
     ini.SetValue("DlssNr", "AutoWhitePoint",
                  GetBoolValue(Instance()->DlssNrAutoWhitePoint.value_for_config()).c_str());
+    ini.SetValue("DlssNr", "WhitePointFromExposure",
+                 GetBoolValue(Instance()->DlssNrWhitePointFromExposure.value_for_config()).c_str());
     ini.SetValue("DlssNr", "DebugView", GetIntValue(Instance()->DlssNrDebugView.value_for_config()).c_str());
     ini.SetValue("DlssNr", "Compare", GetIntValue(Instance()->DlssNrCompare.value_for_config()).c_str());
     ini.SetValue("DlssNr", "CompareSplit",

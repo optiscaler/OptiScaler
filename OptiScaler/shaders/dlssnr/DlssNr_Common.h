@@ -68,6 +68,20 @@ struct DlssNrFrameInfo
     // through a tonemapper. Getting this wrong encodes an encoded frame a second time, which looks
     // washed out and banded.
     bool ColourIsLinearHdr = true;
+
+    // The game's own exposure: a 1x1 texture holding, in the SDK's words, "the final exposure scale".
+    //
+    // This is the number that makes a cave and a field comparable, and it is the reason a fixed paper
+    // white cannot serve both. It comes from the game, decided before anything here runs, so unlike a
+    // statistic measured off the frame it cannot be pulled around by what this pass writes.
+    //
+    // May be null on any given frame -- GTA V supplied it, then did not, three times in one session --
+    // so whoever consumes it holds the last good value rather than falling back to a default.
+    void* ExposureTexture = nullptr;
+
+    // The scale the game multiplied its buffer by for float precision, which DLSS is told so it can
+    // undo it. Usually 1. Divided out before the exposure is applied, exactly as FSR's PrepareRgb does.
+    float PreExposure = 1.0f;
 };
 
 struct alignas(256) DlssNrConstants
