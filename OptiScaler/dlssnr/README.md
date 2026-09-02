@@ -6,24 +6,30 @@ NVIDIA; the model ships in driver packages and is not redistributed here.
 
 ## For maintainers: how to remove it
 
-**Set `OPTI_DLSSNR` to `0` in `dlssnr/DlssNr_Switch.h`.** That is the whole procedure. The switch
-lives in a header containing nothing but the macro, so `Config.h` can test it without pulling in
-D3D12.
+There is no compile switch. There used to be one, `OPTI_DLSSNR`, and it was removed on purpose: once
+the composition became an ordinary shader class beside the others, code behind an `#if` was code
+nobody compiled and therefore nobody tested, and thirty-two guard lines across nine files made every
+future refactor riskier for whoever maintains this next. The call sites are now what they always
+claimed to be — one line each — so deleting them is the removal.
 
-With it at `0`: the guarded call sites vanish, the three module sources become empty translation
-units, the settings panel loses its section, and the `[DlssNr]` config entries are not even
-declared. Verified by building it both ways — the resulting `OptiScaler.dll` contains **zero**
-occurrences of `DlssNr`, `dlssnr` or `Neural Rendering`, and is 117 KB smaller.
+**The procedure, in full:**
 
-To remove the *source* as well: delete this directory, drop `dlssnr_forwarder.vcxproj` from the
-solution, and delete the eight `#if OPTI_DLSSNR` blocks listed below. Nothing else refers to it.
+1. Delete `OptiScaler/dlssnr/` and `OptiScaler/shaders/dlssnr/`.
+2. Drop `dlssnr_forwarder.vcxproj` from the solution.
+3. Delete the six call sites below, and the `[DlssNr]` block in `Config.h` / `Config.cpp`.
 
-| File | Blocks | What the calls do |
+Nothing else refers to it.
+
+| File | Sites | What the calls do |
 |---|---|---|
 | `inputs/NVNGX_DLSS_Dx12.cpp` | 2 | the pass after an upscale, on each of the two evaluate routes |
 | `menu/menu_common.cpp` | 2 | the settings panel, and the cost row in the timing table |
 | `upscalers/IFeature_Dx11wDx12.cpp` | 1 | the pass inside the D3D11-on-D3D12 bridge |
+| `upscalers/IFeature_VkwDx12.cpp` | 1 | the pass inside the Vulkan-on-D3D12 bridge |
 | `Config.h` / `Config.cpp` | 3 | the `[DlssNr]` declarations and their read/write runs |
+
+The config block is contiguous and marked `removable as one block` at both ends, so it lifts out
+whole rather than needing to be picked apart.
 
 One change outside the module is **a genuine upstream fix, separable on its own and worth taking
 regardless of this feature**: `shaders/output_scaling/OS_Dx12.cpp` sized its dispatch from the global
@@ -32,15 +38,36 @@ Scaling chain, so the bug stayed invisible until something else called it.
 
 ## Files
 
+The pass itself lives under `shaders/dlssnr/`, dispatched like every other shader here. What stays in
+`dlssnr/` is the parts that are not the shader: the menu, the capture, the forwarder, the proxy
+experiment.
+
 | File | Role |
 |---|---|
-| `DlssNr_Switch.h` | the `OPTI_DLSSNR` macro, and nothing else |
 | `DlssNr.h` | umbrella header; documents the call sites |
-| `DlssNr_Dx12.h/.cpp` | the model: forwarder loading, feature lifetime, the single evaluate path, encode/resolve orchestration, white point metering, capture |
+| `DlssNrFeature_Dx12.h` | the namespace-level API the menu and the call sites use |
 | `DlssNr_Menu.cpp` | the settings panel |
-| `DlssNr_Codec.h` | the compute shader: encode (scale and sRGB-encode with a soft knee), resolve (RenoDX's two-branch composition, OkLab hue correction, AP1 clamp), downsample |
 | `DlssNr_Capture.h` | matched before/after frame dumps |
+| `DlssNr_Proxy.h/.cpp` | the experiment in reaching the model through the driver core instead of the forwarder; see `FORWARDER_INVESTIGATION.md` |
 | `forwarder/` | the caller-gate shim, built by `dlssnr_forwarder.vcxproj` into the release layout |
+| `shaders/dlssnr/DlssNr_Dx12.h/.cpp` | the pass: forwarder loading, feature lifetime, the evaluate path, encode/resolve orchestration, capture |
+| `shaders/dlssnr/DlssNr_Common.h` | the constant buffer, shared by the host and the shader |
+| `shaders/dlssnr/precompile/dlssnr.hlsl` | **the live shader**: encode (scale and sRGB-encode with a soft knee), area downsample, resolve (RenoDX's two-branch composition, OkLab hue correction, AP1 clamp, the guard) |
+| `shaders/dlssnr/precompile/DlssNr_Shader.h` | that shader compiled, as bytes |
+
+### Editing the shader
+
+`dlssnr.hlsl` is **precompiled**; editing it alone changes nothing. Rebuild the header:
+
+```
+cd OptiScaler/shaders/dlssnr/precompile
+../../shader_tools/fxc.exe -T cs_5_0 -E CSMain -O3 dlssnr.hlsl -Fo DlssNr_Shader.cso
+python ../../shader_tools/create_header.py DlssNr_Shader.cso DlssNr_Shader.h DlssNr_cso
+```
+
+**fxc `cs_5_0`, not the dxc in `build_precompiled_shader.bat` next to it.** Only fxc reproduces the
+committed header byte for byte; dxc emits DXIL and would silently change what the pass runs on.
+Verified by recompiling the unmodified shader both ways and diffing.
 
 ## Attribution
 
