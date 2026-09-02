@@ -7,8 +7,8 @@ Source:   https://github.com/clshortfuse/renodx
 What is derived from it
 -----------------------
 
-The colour composition in OptiScaler/dlssnr/DlssNr_Codec.h is taken from RenoDX's
-DLSS 5 Neural Rendering addon. Specifically:
+The colour composition in OptiScaler/shaders/dlssnr/precompile/dlssnr.hlsl is taken
+from RenoDX's DLSS 5 Neural Rendering addon. Specifically:
 
   * UpgradeToneMap -- the two-branch luminance ratio: below the proxy's luminance
     the original's own luminance is the target, and above it the difference is
@@ -21,6 +21,14 @@ DLSS 5 Neural Rendering addon. Specifically:
 
   * The final blend between a luminance-only result (the original's hue, the
     model's light) and the fully upgraded colour.
+
+  * The reversible neutral-axis gamut compression: the D65 adaptation state
+    carried in a Hunt-Pointer-Estevez LMS basis, the largest scale toward the
+    neutral colour of equal luminance that leaves no channel negative, and the
+    compression itself. Ours previously clamped per channel in AP1, which bends
+    the hue of exactly the saturated pixels most likely to breach; theirs scales
+    the whole colour by one factor so only saturation gives way, and is the
+    identity when nothing is out of gamut.
 
 This is their design. It was reimplemented here with different names and
 comments, which does not make it original work, and it is credited as theirs.

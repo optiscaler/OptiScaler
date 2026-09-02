@@ -22,17 +22,104 @@ cbuffer Params : register(b0)
     float gDebugScale;   // what the debug views are scaled by, held still while the meter moves
 };
 
-// Colours outside the AP1 gamut are impossible on any display and read as sparkle where a bright
-// saturated pixel is pushed further. Clamping inside AP1 and coming back keeps everything reachable.
+// Bringing an impossible colour back into a possible one.
+//
+// A colour with a negative component is not a colour any display can show, and the composition can
+// produce one: the model's answer is rescaled by a ratio and its chroma rebuilt, and either step can
+// push a saturated pixel past the edge of the gamut.
+//
+// This used to be a hard clamp -- convert to AP1, max() every channel against zero, convert back --
+// which is a per-channel operation on exactly the pixels most likely to breach, and per-channel
+// operations on saturated pixels are the hue distorter this file warns about everywhere else. The
+// channel that hits the wall first decides the colour of the rest.
+//
+// Instead the whole colour is scaled toward the neutral axis by one factor, so its hue survives and
+// only its saturation gives way. And it is exactly nothing when nothing is out of gamut: with every
+// component non-negative the scale is 1 and the colour comes back bit-for-bit.
+//
+// Taken from RenoDX's DLSS 5 addon by clshortfuse (https://github.com/clshortfuse/renodx), whose
+// implementation this is -- the D65 adaptation state, the reversible scale and the LMS basis are
+// theirs. See Licenses/RenoDX_ATTRIBUTION.txt.
+
+float SanitizeFinite(float v, float fallback) { return isfinite(v) ? v : fallback; }
+
+float3 SanitizeFinite3(float3 v, float3 fallback)
+{
+    return float3(SanitizeFinite(v.x, fallback.x), SanitizeFinite(v.y, fallback.y),
+                  SanitizeFinite(v.z, fallback.z));
+}
+
+float SafeDivide(float numerator, float denominator, float fallback)
+{
+    return abs(denominator) > 1e-8 ? numerator / denominator : fallback;
+}
+
+// Hunt-Pointer-Estevez LMS over linear BT.709, carrying the fixed D65 adaptation state the
+// compression is defined against. The signal itself never leaves BT.709.
+float3 LMSToBT709(float3 color)
+{
+    const float3x3 m = { 5.62059812, -4.57145756, 0.15577924,
+                         -1.15555585, 2.25800438, -0.15415806,
+                         0.03059913, -0.19018011, 1.06820532 };
+    return mul(m, color);
+}
+
+float3 BT709ToLMS(float3 color)
+{
+    const float3x3 m = { 0.30569589, 0.62271286, 0.04528636,
+                         0.15776262, 0.76968599, 0.08807030,
+                         0.01933082, 0.11919478, 0.95053215 };
+    return mul(m, color);
+}
+
+// The neutral colour of the same luminance as what is being compressed -- the point everything is
+// pulled toward, so that pulling changes saturation and not hue.
+float3 D65NeutralBT709(float3 adaptiveStateLms, float luminance)
+{
+    float3 d65 = LMSToBT709(max(adaptiveStateLms, 1e-8));
+    float d65Y = max(dot(d65, float3(0.2126, 0.7152, 0.0722)), 1e-8);
+    return d65 * (luminance / d65Y);
+}
+
+// The largest scale toward the neutral axis that leaves no channel negative. One for a colour that
+// was already representable, which is why this is safe to run on every pixel.
+float GamutCompressionScale(float3 color, float3 adaptiveStateLms)
+{
+    color = SanitizeFinite3(color, float3(0.0, 0.0, 0.0));
+
+    const float y = dot(color, float3(0.2126, 0.7152, 0.0722));
+
+    if (!(y > 1e-8))
+        return 1.0;
+
+    const float3 neutral = D65NeutralBT709(adaptiveStateLms, y);
+    float scale = 1.0;
+
+    if (color.r < 0.0 && neutral.r > color.r)
+        scale = min(scale, SafeDivide(neutral.r, neutral.r - color.r, 1.0));
+
+    if (color.g < 0.0 && neutral.g > color.g)
+        scale = min(scale, SafeDivide(neutral.g, neutral.g - color.g, 1.0));
+
+    if (color.b < 0.0 && neutral.b > color.b)
+        scale = min(scale, SafeDivide(neutral.b, neutral.b - color.b, 1.0));
+
+    return saturate(SanitizeFinite(scale, 1.0));
+}
+
 float3 ClampAp1(float3 color)
 {
-    const float3x3 bt709_to_ap1 = { 0.613097, 0.339523, 0.047379,
-                                    0.070194, 0.916354, 0.013452,
-                                    0.020616, 0.109570, 0.869815 };
-    const float3x3 ap1_to_bt709 = { 1.705051, -0.621792, -0.083259,
-                                    -0.130256, 1.140805, -0.010548,
-                                    -0.024003, -0.128969, 1.152972 };
-    return mul(ap1_to_bt709, max(mul(bt709_to_ap1, color), float3(0.0, 0.0, 0.0)));
+    const float3 adaptiveStateLms = BT709ToLMS(float3(0.18, 0.18, 0.18));
+    const float scale = GamutCompressionScale(color, adaptiveStateLms);
+
+    // Nothing was out of gamut. Leave the colour exactly as it arrived.
+    if (scale >= 1.0)
+        return color;
+
+    const float y = dot(color, float3(0.2126, 0.7152, 0.0722));
+    const float3 neutral = D65NeutralBT709(adaptiveStateLms, y);
+
+    return SanitizeFinite3(neutral + (color - neutral) * scale, max(neutral, 0.0));
 }
 
 // ---------------------------------------------------------------------------------------------
