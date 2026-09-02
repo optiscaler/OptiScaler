@@ -205,6 +205,18 @@ struct NrState
     // raw.
     ID3D12Resource* meter = nullptr;
     ID3D12Resource* meterReadback[4] = {};
+
+    // Whether the frame that filled each readback slot actually had an exposure texture bound.
+    //
+    // The meter writes tile 0 from whatever sits in the exposure slot, and DispatchPass substitutes
+    // the source picture when nothing is bound -- so without this the "exposure" read back is the red
+    // channel of the frame's top-left pixel. In Cyberpunk, which supplies no exposure texture, that
+    // pixel is scene content: it moved by up to 272x between consecutive frames and drove the white
+    // point from 0.18 to 74. That is the whole frame flashing in luminance.
+    //
+    // The grid is read three frames after it is written, so the flag has to travel with the slot
+    // rather than being asked of the current frame.
+    bool meterExposureValid[4] = {};
     unsigned int meterSlot = 0;
     unsigned long long meterFrames = 0;
 
@@ -551,12 +563,16 @@ constexpr unsigned int kMeterRowBytes = kDlssNrMeterGrid * sizeof(float);
 constexpr unsigned int kMeterBytes = kMeterRowBytes * kDlssNrMeterGrid;
 
 // Records the copy of this frame's grid into whichever readback buffer is furthest from being read.
-void CopyMeterToReadback(ID3D12GraphicsCommandList* cmdList, ID3D12Device* device)
+void CopyMeterToReadback(ID3D12GraphicsCommandList* cmdList, ID3D12Device* device,
+                         bool exposureBound)
 {
     const unsigned int slot = (unsigned int) (g_nr.meterFrames % 4);
 
     if (g_nr.meterReadback[slot] == nullptr)
         return;
+
+    // Travels with the grid: read back three frames from now, alongside the tiles it describes.
+    g_nr.meterExposureValid[slot] = exposureBound;
 
     D3D12_TEXTURE_COPY_LOCATION src {};
     src.pResource = g_nr.meter;
@@ -606,7 +622,13 @@ float ConsumeMeterReadback()
 
     // Tile 0 is the game's exposure, written by the shader instead of a tile mean. Taken here and
     // excluded from everything below, or the white point statistic would be voting on it.
-    if (std::isfinite(src[0]) && src[0] > 0.0f)
+    //
+    // Only believed when the frame that wrote this grid actually had an exposure texture bound. With
+    // nothing bound the shader reads the source picture instead and tile 0 is a scene pixel, not an
+    // exposure -- believing it made the white point follow the top-left corner of the screen. When it
+    // is not believed gameExposure keeps its last good value, or stays 0 and lets ResolveWhitePoint
+    // fall back to the slider, which is what a game that never supplies one should get.
+    if (g_nr.meterExposureValid[slot] && std::isfinite(src[0]) && src[0] > 0.0f)
         g_nr.gameExposure = src[0];
 
     // The brightest tile, which sets what counts as lit in this frame.
@@ -1506,7 +1528,7 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
         Barrier(cmdList, target, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-        CopyMeterToReadback(cmdList, device);
+        CopyMeterToReadback(cmdList, device, frame.ExposureTexture != nullptr);
         measuredScale = ConsumeMeterReadback();
     }
 
