@@ -89,7 +89,7 @@ Texture2D<float4>   gModel    : register(t1);  // resolve: what the model return
 Texture2D<float4>   gOriginal : register(t2);  // resolve: the untouched frame.
 Texture2D<float4>   gMotion   : register(t3);  // resolve, accumulating: the game's motion vectors.
 RWTexture2D<float4> gTarget   : register(u0);  // encode: the proxy. resolve: the frame.
-RWTexture2D<float4> gKeep     : register(u1);  // encode: the untouched copy. resolve: the edit history.
+RWTexture2D<float4> gKeep     : register(u1);  // encode: the untouched copy. unused by the resolve.
 SamplerState        gLinear   : register(s0);  // so the edit can be read at a different size
 
 static const float3 kLuma = float3(0.2126, 0.7152, 0.0722);
@@ -401,10 +401,17 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         return;
     }
 
-    // The edit, averaged over time. The model re-decides a measurable fraction of its answer every
-    // frame even on a static scene; blending each frame's edit with its own reprojected history keeps
-    // the consistent part -- the detail -- and cancels the part that re-randomises. NVIDIA's own
-    // motion vectors carry the history to where the surface is now.
+    // There is no accumulator here, and this is where one used to be.
+    //
+    // The edit was averaged over time -- blended with its own reprojected history to keep the part
+    // that stays and cancel the part that re-randomises. It was measured as a dead end twice, once
+    // with a trained DLAA pass, for the same reason both times: the model re-decides its detail with
+    // the framing, so an old answer does not belong to a new frame and reprojecting it only moves
+    // where the disagreement lands. The composition is re-anchored to the model every frame instead,
+    // which is what makes it steady.
+    //
+    // Said plainly because the comment that survived the removal did not say it, and a later reader
+    // took it for a description of live code and planned on top of machinery that is not here.
 
     // Matched residual: put the two pictures being compared at the same resolution first.
     //
