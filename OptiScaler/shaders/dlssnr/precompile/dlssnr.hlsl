@@ -441,7 +441,21 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     if (gTransfer == 1 && modelRanSmall)
     {
-        float3 fullProxy = SoftKnee(original);
+        // Saturated, because that is what the encode does and this has to reproduce it exactly.
+        //
+        // The encode writes LinearToSrgb(SoftKnee(frame / paperwhite)), and LinearToSrgb saturates
+        // before it does anything else -- so the proxy the Classic path reads back is always inside
+        // the unit cube. SoftKnee alone is not: it rolls luminance off above 0.75 but leaves a
+        // channel free to sit above 1, and with a measured white point of 0.1 in a dark red interior
+        // the red channel of anything lit is far above 1.
+        //
+        // CubeScaleResidual then computes (1 - P) / d to find how far the residual may travel before
+        // leaving the cube. With P above 1 that numerator is negative, alpha comes out negative,
+        // saturate(alpha) is zero, and the entire edit is discarded -- leaving the knee'd proxy as
+        // the answer, which is darker than the frame everywhere the knee fired. That is the darker,
+        // redder 50% picture: not the working scale, and not the residual idea, just a proxy that was
+        // never clamped the way the one it stands in for is.
+        float3 fullProxy = saturate(SoftKnee(original));
         proxy = fullProxy;
         proxyLuma = dot(proxy, kLuma);
 
