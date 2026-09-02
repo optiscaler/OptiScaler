@@ -1825,6 +1825,57 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
     if (params->Get(NVSDK_NGX_Parameter_MV_Scale_Y, &frame.MvScaleY) != NVSDK_NGX_Result_Success)
         frame.MvScaleY = 1.0f;
 
+    // What the game says about its own exposure. Logged, used for nothing yet.
+    //
+    // The white point measured from the frame turned out to be a control loop rather than a
+    // measurement: the pass writes into the buffer it reads, most games adapt their exposure to the
+    // finished frame, and the two chase each other -- 0.01 to 97.9 in one Enshrouded session. Any
+    // statistic taken from a frame we modify has that problem.
+    //
+    // These do not. DLSS.Pre.Exposure is the scale the game applied before handing the buffer over,
+    // and ExposureTexture is a 1x1 the game fills with the exposure it is using; both are the game's
+    // own numbers, decided upstream of anything here. Whether either is close to the divisor the model
+    // actually wants is unknown, which is why this only prints them.
+    //
+    // The auto-exposure flag decides whether the texture means anything: with it set the game is
+    // telling DLSS to work exposure out for itself and may supply nothing. OptiScaler forces that flag
+    // on for eighteen games, so it is logged too -- reading a value whose flag has been overridden is
+    // how the debug views lied earlier tonight.
+    {
+        float preExposure = 0.0f;
+        const bool havePre =
+            params->Get(NVSDK_NGX_Parameter_DLSS_Pre_Exposure, &preExposure) == NVSDK_NGX_Result_Success;
+
+        void* exposureTex = nullptr;
+        params->Get(NVSDK_NGX_Parameter_ExposureTexture, &exposureTex);
+
+        const bool autoExposureFlag = (createFlags & NVSDK_NGX_DLSS_Feature_Flags_AutoExposure) != 0;
+
+        struct ExposureReport
+        {
+            bool valid;
+            float pre;
+            bool havePre;
+            bool haveTexture;
+            bool autoFlag;
+        };
+
+        static ExposureReport logged {};
+        const ExposureReport now { true, havePre ? preExposure : 0.0f, havePre, exposureTex != nullptr,
+                                   autoExposureFlag };
+
+        if (!logged.valid || logged.havePre != now.havePre || logged.haveTexture != now.haveTexture ||
+            logged.autoFlag != now.autoFlag ||
+            std::abs(logged.pre - now.pre) > std::max(0.01f * std::abs(now.pre), 1e-4f))
+        {
+            logged = now;
+            LOG_INFO("DLSS-NR exposure from the game: DLSS.Pre.Exposure {}, ExposureTexture {}, "
+                     "auto-exposure flag {}",
+                     now.havePre ? std::to_string(now.pre) : std::string("not supplied"),
+                     now.haveTexture ? "supplied" : "not supplied", now.autoFlag ? "set" : "clear");
+        }
+    }
+
     // The upscaler's inputs are at render resolution while colour and output are at display
     // resolution; the model takes that as a subrect per resource, which the pass reads from the
     // resources themselves.
