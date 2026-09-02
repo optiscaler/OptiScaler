@@ -1,5 +1,10 @@
 
+#ifdef VK_MODE
+[[vk::binding(0, 0)]]
+cbuffer Params : register(b0, space0)
+#else
 cbuffer Params : register(b0)
+#endif
 {
     uint  gMode;
     float gWhitePoint;
@@ -172,12 +177,37 @@ float3 HueOkLab(float3 incorrect, float3 correct)
     return ClampAp1(FromOkLab(incorrectLab));
 }
 
+// Bindings are stated for SPIR-V rather than inferred. D3D keeps b, t, u and s in separate register
+// files, so b0 and t0 do not collide; Vulkan has one number line per descriptor set, and dxc's default
+// mapping would put both at binding 0. The numbers below are the order the pass binds them in, and
+// DlssNr_Vk's descriptor set layout has to agree with them entry for entry.
+#ifdef VK_MODE
+[[vk::binding(1, 0)]]
+#endif
 Texture2D<float4>   gSource   : register(t0);  // encode: the frame. resolve: the proxy.
+#ifdef VK_MODE
+[[vk::binding(2, 0)]]
+#endif
 Texture2D<float4>   gModel    : register(t1);  // resolve: what the model returned.
+#ifdef VK_MODE
+[[vk::binding(3, 0)]]
+#endif
 Texture2D<float4>   gOriginal : register(t2);  // resolve: the untouched frame.
+#ifdef VK_MODE
+[[vk::binding(4, 0)]]
+#endif
 Texture2D<float4>   gMotion   : register(t3);  // resolve, accumulating: the game's motion vectors.
+#ifdef VK_MODE
+[[vk::binding(5, 0)]]
+#endif
 RWTexture2D<float4> gTarget   : register(u0);  // encode: the proxy. resolve: the frame.
+#ifdef VK_MODE
+[[vk::binding(6, 0)]]
+#endif
 RWTexture2D<float4> gKeep     : register(u1);  // encode: the untouched copy. unused by the resolve.
+#ifdef VK_MODE
+[[vk::binding(7, 0)]]
+#endif
 SamplerState        gLinear   : register(s0);  // so the edit can be read at a different size
 
 static const float3 kLuma = float3(0.2126, 0.7152, 0.0722);
