@@ -12,14 +12,26 @@
 
 #include <cstdint>
 
-// Which of the three passes a dispatch is. One shader, because all three read and write the same set
-// of resources and differ only in what they compute.
+// Which of the passes a dispatch is. One shader, because they read and write the same set of
+// resources and differ only in what they compute.
 enum DlssNrMode : uint32_t
 {
-    DlssNrMode_Encode = 0,    // the frame -> a tone-mapped proxy, plus an untouched copy
-    DlssNrMode_Resolve = 1,   // proxy + the model's answer + the untouched copy -> the edited frame
-    DlssNrMode_Downsample = 2 // the proxy -> a smaller proxy, when the model works below full size
+    DlssNrMode_Encode = 0,     // the frame -> a tone-mapped proxy, plus an untouched copy
+    DlssNrMode_Resolve = 1,    // proxy + the model's answer + the untouched copy -> the edited frame
+    DlssNrMode_Downsample = 2, // the proxy -> a smaller proxy, when the model works below full size
+    DlssNrMode_Meter = 3       // the frame -> a small grid of tile luminances, for the white point
 };
+
+// The meter's grid. 64 x 64 tiles over the whole frame, whatever its size.
+//
+// Tiles rather than pixels because the number wanted is where white sits, not how bright the
+// brightest pixel is: a single specular hit or a sky pixel is not the white point, and a frame's
+// maximum is exactly the statistic that would be dominated by one. Averaging each tile first means
+// anything smaller than a four-thousandth of the frame cannot decide the answer on its own.
+//
+// 4096 values is also small enough to read back and take a real percentile of on the CPU, rather
+// than approximating one on the GPU.
+constexpr uint32_t kDlssNrMeterGrid = 64;
 
 // What the composition shader reads.
 //

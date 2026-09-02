@@ -193,6 +193,27 @@ struct NrState
     unsigned int workWidth = 0;
     unsigned int workHeight = 0;
 
+    // The white point meter.
+    //
+    // A 64x64 grid of tile luminances, copied to a readback buffer and looked at a few frames later.
+    // Four buffers deep rather than one: the copy is recorded into the game's own command list and
+    // there is no fence here to wait on, so the only thing making a read safe is that the frame it
+    // came from is long retired. Three frames of distance is what the meter this replaces used.
+    //
+    // A stale read costs a slightly wrong float that the average below absorbs. A read of a buffer
+    // still being written would cost the same, which is why the value is smoothed rather than used
+    // raw.
+    ID3D12Resource* meter = nullptr;
+    ID3D12Resource* meterReadback[4] = {};
+    unsigned int meterSlot = 0;
+    unsigned long long meterFrames = 0;
+
+    // What the meter last said, and what is actually being used. Separate because the second follows
+    // the first slowly: a divisor that moves every frame is an exposure that pumps, and pumping is
+    // the flicker this pass spent a day removing.
+    float measuredWhite = 0.0f;
+    float smoothedWhite = 0.0f;
+
     // Cloned unconditionally when running at present, and only for typeless formats otherwise.
     ID3D12Resource* depthClone = nullptr;
     ID3D12Resource* motionClone = nullptr;
@@ -513,6 +534,129 @@ void ReleaseSurfacesIfFormatChanged(DXGI_FORMAT needed)
         ParkNrResource(*r);
 
     g_nr.reset = true;
+}
+
+void Barrier(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* res, D3D12_RESOURCE_STATES from,
+             D3D12_RESOURCE_STATES to);
+
+// The meter's grid is R32_FLOAT, which makes a row exactly 64 * 4 = 256 bytes -- the alignment a
+// texture-to-buffer copy demands, met without padding, so the readback is a flat array of floats.
+constexpr unsigned int kMeterRowBytes = kDlssNrMeterGrid * sizeof(float);
+constexpr unsigned int kMeterBytes = kMeterRowBytes * kDlssNrMeterGrid;
+
+// Records the copy of this frame's grid into whichever readback buffer is furthest from being read.
+void CopyMeterToReadback(ID3D12GraphicsCommandList* cmdList, ID3D12Device* device)
+{
+    const unsigned int slot = (unsigned int) (g_nr.meterFrames % 4);
+
+    if (g_nr.meterReadback[slot] == nullptr)
+        return;
+
+    D3D12_TEXTURE_COPY_LOCATION src {};
+    src.pResource = g_nr.meter;
+    src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    src.SubresourceIndex = 0;
+
+    D3D12_TEXTURE_COPY_LOCATION dst {};
+    dst.pResource = g_nr.meterReadback[slot];
+    dst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    dst.PlacedFootprint.Offset = 0;
+    dst.PlacedFootprint.Footprint.Format = DXGI_FORMAT_R32_FLOAT;
+    dst.PlacedFootprint.Footprint.Width = kDlssNrMeterGrid;
+    dst.PlacedFootprint.Footprint.Height = kDlssNrMeterGrid;
+    dst.PlacedFootprint.Footprint.Depth = 1;
+    dst.PlacedFootprint.Footprint.RowPitch = kMeterRowBytes;
+
+    Barrier(cmdList, g_nr.meter, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    cmdList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+    Barrier(cmdList, g_nr.meter, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+    g_nr.meterFrames++;
+}
+
+// Reads the grid recorded three frames ago and returns where white sits in it, or 0 if there is not
+// yet anything old enough to be safe to read.
+float ConsumeMeterReadback()
+{
+    if (g_nr.meterFrames < 4)
+        return 0.0f;
+
+    const unsigned int slot = (unsigned int) (g_nr.meterFrames % 4);
+    ID3D12Resource* buffer = g_nr.meterReadback[slot];
+
+    if (buffer == nullptr)
+        return 0.0f;
+
+    void* mapped = nullptr;
+    D3D12_RANGE range { 0, kMeterBytes };
+
+    if (FAILED(buffer->Map(0, &range, &mapped)) || mapped == nullptr)
+        return 0.0f;
+
+    std::vector<float> tiles;
+    tiles.reserve(kDlssNrMeterGrid * kDlssNrMeterGrid);
+
+    const float* src = (const float*) mapped;
+
+    for (unsigned int i = 0; i < kDlssNrMeterGrid * kDlssNrMeterGrid; ++i)
+    {
+        const float v = src[i];
+
+        // A tile with no light in it says nothing about where white is, and a frame that is mostly
+        // sky or mostly shadow would otherwise have its percentile decided by the empty half.
+        if (v > 1e-5f && std::isfinite(v))
+            tiles.push_back(v);
+    }
+
+    D3D12_RANGE nothingWritten { 0, 0 };
+    buffer->Unmap(0, &nothingWritten);
+
+    if (tiles.size() < 16)
+        return 0.0f;
+
+    // The 95th percentile of lit tiles. High enough that it sits among the brightest of the picture,
+    // and far enough from the maximum that a lamp, a muzzle flash or the sun cannot be it on its own.
+    const size_t nth = (size_t) ((float) (tiles.size() - 1) * 0.95f);
+    std::nth_element(tiles.begin(), tiles.begin() + nth, tiles.end());
+
+    return tiles[nth];
+}
+
+// Turns what the meter saw into the divisor the encode uses, or falls back to the slider.
+float ResolveWhitePoint(const Config& cfg, float measured, bool isHdrBuffer)
+{
+    const float slider = cfg.DlssNrWhitePointScale.value_or_default();
+
+    // A frame the game already tone mapped is display-referred: white is at 1 by definition and there
+    // is nothing to measure. The slider stays available as a manual exposure on that path.
+    if (!isHdrBuffer || !cfg.DlssNrAutoWhitePoint.value_or_default())
+        return slider;
+
+    if (measured > 1e-5f)
+    {
+        g_nr.measuredWhite = measured;
+
+        // Followed slowly, and only when it has moved enough to matter. An exposure that tracks every
+        // frame is an exposure that pumps, and pumping looks exactly like the flicker the guard was
+        // added to stop. Walking out of a cave should take a moment; a muzzle flash should take none.
+        if (g_nr.smoothedWhite <= 1e-5f)
+            g_nr.smoothedWhite = measured;
+        else
+        {
+            const float ratio = measured / g_nr.smoothedWhite;
+
+            if (ratio > 1.06f || ratio < 0.94f)
+                g_nr.smoothedWhite += (measured - g_nr.smoothedWhite) * 0.05f;
+        }
+    }
+
+    if (g_nr.smoothedWhite <= 1e-5f)
+        return slider;
+
+    // The slider becomes a multiplier on what was measured, so it keeps meaning something: a user who
+    // wants the model shown a darker or brighter picture than the scene suggests still can, and 1.0
+    // means "whatever the frame says".
+    return std::clamp(g_nr.smoothedWhite * slider, 0.01f, 4096.0f);
 }
 
 ID3D12Resource* CreateScratch(ID3D12Device* device, DXGI_FORMAT format, unsigned int width,
@@ -1068,6 +1212,41 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
     if (reduced && g_nr.colorSmall == nullptr)
         g_nr.colorSmall = CreateScratch(device, desc.Format, workWidth, workHeight);
 
+    // The meter's grid and the buffers it is read back through. Independent of the frame's size, so
+    // they are built once and survive every resolution change.
+    if (g_nr.meter == nullptr)
+    {
+        g_nr.meter = CreateScratch(device, DXGI_FORMAT_R32_FLOAT, kDlssNrMeterGrid, kDlssNrMeterGrid);
+
+        D3D12_HEAP_PROPERTIES readback {};
+        readback.Type = D3D12_HEAP_TYPE_READBACK;
+
+        D3D12_RESOURCE_DESC bufferDesc {};
+        bufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+        bufferDesc.Width = kMeterBytes;
+        bufferDesc.Height = 1;
+        bufferDesc.DepthOrArraySize = 1;
+        bufferDesc.MipLevels = 1;
+        bufferDesc.Format = DXGI_FORMAT_UNKNOWN;
+        bufferDesc.SampleDesc.Count = 1;
+        bufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+        for (auto& rb : g_nr.meterReadback)
+        {
+            if (FAILED(device->CreateCommittedResource(&readback, D3D12_HEAP_FLAG_NONE, &bufferDesc,
+                                                       D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+                                                       IID_PPV_ARGS(&rb))))
+            {
+                rb = nullptr;
+                LOG_WARN("DLSS-NR: the white point meter could not allocate its readback; falling back "
+                         "to the paper white slider");
+            }
+        }
+
+        if (g_nr.meter != nullptr)
+            LOG_INFO("DLSS-NR: white point meter up, {}x{} tiles", kDlssNrMeterGrid, kDlssNrMeterGrid);
+    }
+
     if (g_nr.feature == nullptr && g_nr.output != nullptr && g_nr.colorCopy != nullptr &&
         g_nr.hdrCopy != nullptr)
     {
@@ -1193,7 +1372,6 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
     // defeated. That branch hands back `originalLuma - proxyLuma`, the headroom the proxy could not
     // represent -- it exists precisely because the proxy is meant to clip. Normalising the highlights
     // away first leaves it nothing to give back.
-    const float whitePoint = cfg.DlssNrWhitePointScale.value_or_default();
 
     // On an engine that needs its compute state put back -- the bindless quirks -- the envelope can
     // only restore what was captured. If nothing was captured for this list, the upscaler decided
@@ -1218,6 +1396,38 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
 
     if (g_gpuTime != nullptr)
         g_gpuTime->Start(cmdList);
+
+    // The white point, measured rather than guessed.
+    //
+    // What this number has to be is where white sits in the frame the upscaler just produced. That is
+    // a property of the game's exposure and it moves with the scene: one tester found 16 correct in a
+    // shaded camp and still too small for the same game in daylight, which is the whole argument for
+    // measuring. A slider cannot follow a value that changes when you walk outside.
+    //
+    // The meter this replaces was removed for reading the frame's MEAN, which is scene brightness and
+    // not white -- it handed the model a picture three times too dark and left the highlight path
+    // nothing to give back. This takes a high percentile of tile luminances instead: bright enough to
+    // be white, common enough not to be one specular hit.
+    float measuredScale = 0.0f;
+
+    if (g_nr.meter != nullptr)
+    {
+        DlssNrConstants meterParams {};
+        meterParams.Mode = DlssNrMode_Meter;
+        meterParams.Width = kDlssNrMeterGrid;
+        meterParams.Height = kDlssNrMeterGrid;
+
+        Barrier(cmdList, target, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        DispatchPass(cmdList, meterParams, target, nullptr, nullptr, nullptr, nullptr, g_nr.meter, nullptr);
+        Barrier(cmdList, target, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+        CopyMeterToReadback(cmdList, device);
+        measuredScale = ConsumeMeterReadback();
+    }
+
+    const float whitePoint = ResolveWhitePoint(cfg, measuredScale, isHdrBuffer);
 
     DlssNrConstants encodeParams {};
     encodeParams.Mode = DlssNrMode_Encode;
@@ -1588,6 +1798,8 @@ const char* FailureReason() { return g_nr.failed ? g_nr.reason : ""; }
 
 std::optional<double> LastGpuTime() { return g_lastGpuTime; }
 
+float MeasuredWhitePoint() { return g_nr.smoothedWhite; }
+
 void RequestCapture(unsigned int frames)
 {
     ClearCaptureDirectory();
@@ -1639,6 +1851,25 @@ void Shutdown()
         g_nr.colorSmall->Release();
         g_nr.colorSmall = nullptr;
     }
+
+    if (g_nr.meter != nullptr)
+    {
+        g_nr.meter->Release();
+        g_nr.meter = nullptr;
+    }
+
+    for (auto& rb : g_nr.meterReadback)
+    {
+        if (rb != nullptr)
+        {
+            rb->Release();
+            rb = nullptr;
+        }
+    }
+
+    g_nr.meterFrames = 0;
+    g_nr.measuredWhite = 0.0f;
+    g_nr.smoothedWhite = 0.0f;
 
     if (g_nr.depthClone != nullptr)
     {

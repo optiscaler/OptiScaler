@@ -292,9 +292,38 @@ void RenderMenu(Config* config, float menuResScale)
         // given game needs to go is a property of that game's exposure, not of anything we can bound.
         // One tester was still improving at 100. A linear slider over that span would spend nine
         // tenths of its travel on values nobody needs and never reach the ones they do.
+        bool autoWp = config->DlssNrAutoWhitePoint.value_or_default();
+        if (ImGui::Checkbox("Measure the white point", &autoWp))
+            config->DlssNrAutoWhitePoint = autoWp;
+
+        HelpMarker("Read where white sits in each frame instead of being told."
+                       "\n\nThe right divisor is a property of the game's exposure and it moves with the"
+                       "\nscene: 16 was correct in one game's shaded camp and still too small for the same"
+                       "\ngame in daylight. No slider position follows that."
+                       "\n\nTaken as a high percentile of a 64x64 grid of tile luminances -- bright enough"
+                       "\nto be white, common enough that one lamp or muzzle flash is not it. Followed"
+                       "\nslowly and only once it has moved appreciably, because an exposure that tracks"
+                       "\nevery frame pumps, and pumping is flicker."
+                       "\n\nA frame the game already tone mapped has white at 1 by definition; there is"
+                       "\nnothing to measure and this does nothing."
+                       "\n\nThe measurement this replaces was removed for reading the frame's mean, which"
+                       "\nis scene brightness rather than white -- it handed the model a picture three"
+                       "\ntimes too dark. This deliberately does not use the mean.");
+
+        if (autoWp)
+        {
+            const float measured = DlssNr::MeasuredWhitePoint();
+
+            if (measured > 0.0f)
+                ImGui::TextDisabled("Measured: %.2f  ->  in use: %.2f", measured,
+                                    measured * config->DlssNrWhitePointScale.value_or_default());
+            else
+                ImGui::TextDisabled("Measured: waiting for a frame...");
+        }
+
         float wpScale = config->DlssNrWhitePointScale.value_or_default();
-        if (ImGui::SliderFloat("Paper white", &wpScale, 0.25f, 240.0f, "%.2fx",
-                               ImGuiSliderFlags_Logarithmic))
+        if (ImGui::SliderFloat(autoWp ? "Paper white (x measured)" : "Paper white", &wpScale, 0.25f, 240.0f,
+                               "%.2fx", ImGuiSliderFlags_Logarithmic))
             config->DlssNrWhitePointScale = wpScale;
 
         HelpMarker("What the frame is divided by before the model sees it. There is no other white"
