@@ -61,7 +61,7 @@ const char* FailureReason();
 std::optional<double> LastGpuTime();
 
 // What the white point meter last settled on, or 0 when it is not running. For the menu.
-float MeasuredWhitePoint();
+
 
 // Writes a run of consecutive frames, each as the upscaler produced it and again after the model's edit.
 // The pair is a control: same frames, same run, one variable.

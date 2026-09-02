@@ -220,12 +220,6 @@ struct NrState
     unsigned int meterSlot = 0;
     unsigned long long meterFrames = 0;
 
-    // What the meter last said, and what is actually being used. Separate because the second follows
-    // the first slowly: a divisor that moves every frame is an exposure that pumps, and pumping is
-    // the flicker this pass spent a day removing.
-    float measuredWhite = 0.0f;
-    float smoothedWhite = 0.0f;
-
     // The game's exposure, as last read back, and the pre-exposure that goes with it. Held rather
     // than defaulted: the texture comes and goes between frames and a fallback to 1.0 on the gaps
     // would be a flicker source.
@@ -596,85 +590,43 @@ void CopyMeterToReadback(ID3D12GraphicsCommandList* cmdList, ID3D12Device* devic
     g_nr.meterFrames++;
 }
 
-// Reads the grid recorded three frames ago and returns where white sits in it, or 0 if there is not
-// yet anything old enough to be safe to read.
-float ConsumeMeterReadback()
+// Takes the game's exposure out of tile 0 of the grid recorded three frames ago.
+//
+// Only tile 0 is written now. The frame-statistics meter this served was removed: a divisor measured
+// off a frame this pass writes is a feedback loop rather than a measurement. What is left is a
+// courier -- the game's exposure is a 1x1 texture in a resource state this pass did not set and must
+// not transition, so the shader reads it as an SRV and it rides home on a readback that exists.
+void ConsumeMeterReadback()
 {
     if (g_nr.meterFrames < 4)
-        return 0.0f;
+        return;
 
     const unsigned int slot = (unsigned int) (g_nr.meterFrames % 4);
     ID3D12Resource* buffer = g_nr.meterReadback[slot];
 
     if (buffer == nullptr)
-        return 0.0f;
+        return;
 
     void* mapped = nullptr;
-    D3D12_RANGE range { 0, kMeterBytes };
+    D3D12_RANGE range { 0, sizeof(float) };
 
     if (FAILED(buffer->Map(0, &range, &mapped)) || mapped == nullptr)
-        return 0.0f;
-
-    std::vector<float> tiles;
-    tiles.reserve(kDlssNrMeterGrid * kDlssNrMeterGrid);
+        return;
 
     const float* src = (const float*) mapped;
 
-    // Tile 0 is the game's exposure, written by the shader instead of a tile mean. Taken here and
-    // excluded from everything below, or the white point statistic would be voting on it.
-    //
     // Only believed when the frame that wrote this grid actually had an exposure texture bound. With
-    // nothing bound the shader reads the source picture instead and tile 0 is a scene pixel, not an
-    // exposure -- believing it made the white point follow the top-left corner of the screen. When it
-    // is not believed gameExposure keeps its last good value, or stays 0 and lets ResolveWhitePoint
-    // fall back to the slider, which is what a game that never supplies one should get.
+    // nothing bound DispatchPass substitutes the source picture, and tile 0 is then a scene pixel
+    // rather than an exposure -- believing it made the white point follow the top-left corner of the
+    // screen, which in Cyberpunk moved by up to 272x between frames and flashed the whole picture.
+    //
+    // When it is not believed gameExposure keeps its last good value, or stays 0 and lets
+    // ResolveWhitePoint fall back to the slider, which is what a game supplying none should get.
     if (g_nr.meterExposureValid[slot] && std::isfinite(src[0]) && src[0] > 0.0f)
         g_nr.gameExposure = src[0];
 
-    // The brightest tile, which sets what counts as lit in this frame.
-    float brightest = 0.0f;
-
-    for (unsigned int i = 1; i < kDlssNrMeterGrid * kDlssNrMeterGrid; ++i)
-    {
-        const float v = src[i];
-
-        if (std::isfinite(v) && v > brightest)
-            brightest = v;
-    }
-
-    // Lit means "within six stops of the brightest thing in the frame", not "above a fixed epsilon".
-    //
-    // The absolute threshold was the bug. In a dark interior nearly every tile sits just above it, so
-    // they all counted as lit, and the 95th percentile of a mostly-black frame is itself nearly black
-    // -- the meter walked down to 0.01 in Enshrouded's temple and took the exposure with it. White is
-    // not "a bit brighter than the average of the dark"; it is where the light in the picture is, and
-    // a frame that is nine tenths shadow with a fire in it has its white point at the fire.
-    //
-    // Relative to the frame's own maximum, that holds whatever the game's units are -- which matters,
-    // because there is no absolute scale here: a linear HDR buffer can put white at 0.3 or at 300 and
-    // both are ordinary.
-    const float litFloor = brightest / 64.0f;
-
-    for (unsigned int i = 1; i < kDlssNrMeterGrid * kDlssNrMeterGrid; ++i)
-    {
-        const float v = src[i];
-
-        if (std::isfinite(v) && v >= litFloor && v > 1e-6f)
-            tiles.push_back(v);
-    }
-
     D3D12_RANGE nothingWritten { 0, 0 };
     buffer->Unmap(0, &nothingWritten);
-
-    if (tiles.size() < 16)
-        return 0.0f;
-
-    // The 95th percentile of lit tiles. High enough to sit among the brightest of the picture, far
-    // enough from the maximum that a lamp, a muzzle flash or the sun cannot be it on its own.
-    const size_t nth = (size_t) ((float) (tiles.size() - 1) * 0.95f);
-    std::nth_element(tiles.begin(), tiles.begin() + nth, tiles.end());
-
-    return tiles[nth];
 }
 
 // Turns what the meter saw into the divisor the encode uses, or falls back to the slider.
@@ -688,7 +640,7 @@ float ConsumeMeterReadback()
 //
 // So a cut snaps and a drift eases. Walking out of a cave is a drift; a camera cut is not, and
 // pretending otherwise to avoid pumping just moves the failure somewhere more visible.
-float ResolveWhitePoint(const Config& cfg, float measured, bool isHdrBuffer, bool cut)
+float ResolveWhitePoint(const Config& cfg, bool isHdrBuffer)
 {
     const float slider = cfg.DlssNrWhitePointScale.value_or_default();
 
@@ -713,54 +665,15 @@ float ResolveWhitePoint(const Config& cfg, float measured, bool isHdrBuffer, boo
     if (cfg.DlssNrWhitePointFromExposure.value_or_default() && g_nr.gameExposure > 1e-6f)
         return std::clamp(g_nr.gamePreExposure / g_nr.gameExposure * slider, 0.01f, 4096.0f);
 
-    if (!cfg.DlssNrAutoWhitePoint.value_or_default())
-        return slider;
-
-    if (measured > 1e-5f)
-    {
-        g_nr.measuredWhite = measured;
-
-        // Followed slowly, and only when it has moved enough to matter. An exposure that tracks every
-        // frame is an exposure that pumps, and pumping looks exactly like the flicker the guard was
-        // added to stop. Walking out of a cave should take a moment; a muzzle flash should take none.
-        const float jump = g_nr.smoothedWhite > 1e-5f ? measured / g_nr.smoothedWhite : 1.0f;
-
-        // A cut, or a change too large to be anything else. The game raises Reset on a teleport or a
-        // camera cut and that is the reliable signal, but not every game raises it for a scripted
-        // camera move -- so a fourfold change in one frame counts too. Real exposure does not do that
-        // by walking.
-        const bool snap = cut || jump > 4.0f || jump < 0.25f;
-
-        if (g_nr.smoothedWhite <= 1e-5f || snap)
-            g_nr.smoothedWhite = measured;
-        else
-        {
-            const float ratio = jump;
-
-            if (ratio > 1.06f || ratio < 0.94f)
-            {
-                // Rate limited as well as smoothed. The exponential alone bounds where the exposure
-                // ends up but not how fast it gets there, and a hard cut -- a door opening onto
-                // daylight, a cutscene -- moves the target far enough in one frame that five percent
-                // of the gap is still a visible step. Capped at two percent per frame it takes about
-                // a second and a half to cross a factor of two, which reads as an eye adjusting
-                // rather than as the picture changing.
-                const float target = g_nr.smoothedWhite + (measured - g_nr.smoothedWhite) * 0.05f;
-                const float ceiling = g_nr.smoothedWhite * 1.02f;
-                const float floor = g_nr.smoothedWhite * 0.98f;
-
-                g_nr.smoothedWhite = std::clamp(target, floor, ceiling);
-            }
-        }
-    }
-
-    if (g_nr.smoothedWhite <= 1e-5f)
-        return slider;
-
-    // The slider becomes a multiplier on what was measured, so it keeps meaning something: a user who
-    // wants the model shown a darker or brighter picture than the scene suggests still can, and 1.0
-    // means "whatever the frame says".
-    return std::clamp(g_nr.smoothedWhite * slider, 0.01f, 4096.0f);
+    // Otherwise the slider, and only the slider.
+    //
+    // Measuring white from the frame was tried and removed. It could not be made to work because the
+    // pass writes the frame it measures: in Enshrouded one session walked the divisor from 0.010 to
+    // 97.910, and toggling NR at a fixed spot read 41.31 off and 0.46 on. Two attempts to damp it --
+    // a relative lit threshold, then a rate limit with a cut snap -- both treated a coupled system as
+    // a noisy one and neither held. A constant cannot do that, which is the whole argument for it,
+    // and is what RenoDX has always done.
+    return slider;
 }
 
 ID3D12Resource* CreateScratch(ID3D12Device* device, DXGI_FORMAT format, unsigned int width,
@@ -1501,25 +1414,25 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
     if (g_gpuTime != nullptr)
         g_gpuTime->Start(cmdList);
 
-    // The white point, measured rather than guessed.
+    // Fetch the game's exposure, where the game supplies one and the user asked for it.
     //
-    // What this number has to be is where white sits in the frame the upscaler just produced. That is
-    // a property of the game's exposure and it moves with the scene: one tester found 16 correct in a
-    // shaded camp and still too small for the same game in daylight, which is the whole argument for
-    // measuring. A slider cannot follow a value that changes when you walk outside.
-    //
-    // The meter this replaces was removed for reading the frame's MEAN, which is scene brightness and
-    // not white -- it handed the model a picture three times too dark and left the highlight path
-    // nothing to give back. This takes a high percentile of tile luminances instead: bright enough to
-    // be white, common enough not to be one specular hit.
-    float measuredScale = 0.0f;
+    // This used to measure the white point off the frame as well, over a 64x64 grid of tile
+    // luminances. That is gone: the pass writes the frame it was measuring, so the divisor chased its
+    // own output -- one Enshrouded session walked it from 0.010 to 97.910, and toggling NR at a fixed
+    // spot read 41.31 off against 0.46 on. What remains dispatches a single thread to copy the game's
+    // 1x1 exposure texture into tile 0. That is a courier, not a measurement, and cannot feed back.
+    const bool wantExposure = cfg.DlssNrWhitePointFromExposure.value_or_default() &&
+                              frame.ExposureTexture != nullptr;
 
-    if (g_nr.meter != nullptr)
+    if (g_nr.meter != nullptr && wantExposure)
     {
         DlssNrConstants meterParams {};
         meterParams.Mode = DlssNrMode_Meter;
-        meterParams.Width = kDlssNrMeterGrid;
-        meterParams.Height = kDlssNrMeterGrid;
+
+        // One pixel. Only tile (0,0) is read back, and the tile-mean branch below it in the shader is
+        // dead code the dispatch simply never reaches.
+        meterParams.Width = 1;
+        meterParams.Height = 1;
 
         Barrier(cmdList, target, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -1528,13 +1441,13 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
         Barrier(cmdList, target, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-        CopyMeterToReadback(cmdList, device, frame.ExposureTexture != nullptr);
-        measuredScale = ConsumeMeterReadback();
+        CopyMeterToReadback(cmdList, device, true);
+        ConsumeMeterReadback();
     }
 
     g_nr.gamePreExposure = frame.PreExposure;
 
-    const float whitePoint = ResolveWhitePoint(cfg, measuredScale, isHdrBuffer, frame.Reset);
+    const float whitePoint = ResolveWhitePoint(cfg, isHdrBuffer);
 
     DlssNrConstants encodeParams {};
     encodeParams.Mode = DlssNrMode_Encode;
@@ -1981,7 +1894,7 @@ const char* FailureReason() { return g_nr.failed ? g_nr.reason : ""; }
 
 std::optional<double> LastGpuTime() { return g_lastGpuTime; }
 
-float MeasuredWhitePoint() { return g_nr.smoothedWhite; }
+
 
 void RequestCapture(unsigned int frames)
 {
@@ -2051,8 +1964,7 @@ void Shutdown()
     }
 
     g_nr.meterFrames = 0;
-    g_nr.measuredWhite = 0.0f;
-    g_nr.smoothedWhite = 0.0f;
+
 
     if (g_nr.depthClone != nullptr)
     {

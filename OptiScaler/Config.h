@@ -296,7 +296,7 @@ class Config
     //
     // The slider is the supported control until the loop is broken. This stays as an opt-in so the
     // behaviour can still be looked at.
-    CustomOptional<bool> DlssNrAutoWhitePoint { false };
+
 
     // Take the white point from the game's own exposure texture instead of measuring or guessing.
     // Off by default until it has been seen to work in more than one game.
