@@ -3,6 +3,8 @@
 #include <vulkan/vulkan.h>
 
 #include <shaders/dlssnr/DlssNr_Common.h>
+
+#include <optional>
 #include <nvsdk_ngx.h>
 #include <nvsdk_ngx_vk.h>
 #include <nvsdk_ngx_helpers_vk.h>
@@ -50,6 +52,10 @@ const char* FailureReasonVk();
 // How many frames it has actually composed. The menu needs this to tell "up but nothing has come
 // through yet" apart from "running", and the D3D12 counters say nothing about this path.
 unsigned long long FramesVk();
+
+// What the pass last cost on the GPU, in milliseconds, or nothing if it has not been measured yet.
+// A timestamp pair either side of the whole pass, read three frames later so the query is retired.
+std::optional<double> LastGpuTimeVk();
 
 void ShutdownVk();
 

@@ -627,7 +627,16 @@ void CSMain(uint3 id : SV_DispatchThreadID)
             ratio = (modelLuma + max(0.0, originalLuma - proxyLuma)) / modelLuma;
         }
 
-        upgraded = lerp(original, HueOkLab(model * ratio, model), gTransferStrength);
+        // Saturated deliberately. lerp past 1 extrapolates -- it walks beyond the target instead
+        // of towards it -- and the target is the only well-formed picture in the pair, so the
+        // guarantee stated above holds on [0,1] and nowhere else. Past it the channels spread apart
+        // faster than luminance does, and the guard below cannot pull them back: it scales the whole
+        // triple by one scalar, which corrects luminance while preserving the spread. A lit face at
+        // strength 2 clips to white, and it starts to show just past 1.
+        //
+        // Strength above 1 is carried below instead, as an amplification of the luminance ratio,
+        // which the guard does bound.
+        upgraded = lerp(original, HueOkLab(model * ratio, model), saturate(gTransferStrength));
     }
 
     // Detail strength decides how much of the model's picture is reached at all; colour strength
@@ -649,6 +658,19 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     const float kRatioFloor = 1.0 / 512.0;
     float lumaRatio = (upgradedLuma + kRatioFloor) / (originalLuma + kRatioFloor);
 
+    // Where detail strength above 1 goes.
+    //
+    // Raising the ratio to a power rather than extending the blend keeps every property that
+    // matters: it cannot go negative, it leaves a pixel the model did not change alone -- one to any
+    // power is one -- and it moves brightening and darkening by the same factor in opposite
+    // directions, so it does not favour either. Most importantly the result is still a ratio, so the
+    // guard below binds it, which is exactly what the extrapolated blend escaped.
+    //
+    // The correction further down divides by the unamplified ratio, so the composed picture ends up
+    // at the original's luminance times the bounded ratio either way. Strength 1 leaves this the
+    // identity and the pass bit-identical to before.
+    const float amplified = pow(max(lumaRatio, 1e-6), 1.0 + max(gTransferStrength - 1.0, 0.0));
+
     // The guard binds the composed picture, not only the luminance-only end of the blend below.
     //
     // It used to bind `original * lumaRatio` and nothing else -- the colour-strength-zero end. At
@@ -668,7 +690,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     // distorter -- on a saturated pixel the smallest channel reaches the bound first, so an
     // achromatic edit lands as a colour shift.
     const float guard = max(gMaxRatio, 1.0);
-    float boundedRatio = clamp(lumaRatio, 1.0 / guard, guard);
+    float boundedRatio = clamp(amplified, 1.0 / guard, guard);
 
     // Exactly one while the ratio is already inside the guard, so a frame that never needed bounding
     // is untouched rather than rounded, and strength zero stays bit-identical.

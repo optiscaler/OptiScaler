@@ -77,7 +77,19 @@ struct VkState
     uint32_t height = 0;
     bool reset = true;
     unsigned long long frames = 0;
+
+    // Timing. A pair of timestamps per frame across a ring, read back three frames later: a query
+    // read the frame it was written stalls the CPU on the GPU, which would cost more than the pass
+    // it is measuring. Vulkan reports ticks, and timestampPeriod is how many nanoseconds a tick is.
+    VkQueryPool queryPool = VK_NULL_HANDLE;
+    float timestampPeriod = 0.0f;
+    unsigned long long timedFrames = 0;
+    std::optional<double> lastGpuTime;
 };
+
+// Four frames of pairs. Three would do, four keeps the modulo cheap and the slot being written well
+// clear of the slot being read.
+constexpr uint32_t kTimingSlots = 4;
 
 VkState g_vk;
 std::mutex g_vkMutex;
@@ -345,6 +357,8 @@ const char* FailureReasonVk() { return g_vk.failed ? g_vk.reason : ""; }
 
 unsigned long long FramesVk() { return g_vk.frames; }
 
+std::optional<double> LastGpuTimeVk() { return g_vk.lastGpuTime; }
+
 void EvaluateAfterUpscaleVk(VkCommandBuffer cmdBuffer, NVSDK_NGX_Parameter* params, VkInstance instance,
                             VkPhysicalDevice physicalDevice, VkDevice device)
 {
@@ -457,6 +471,31 @@ void EvaluateAfterUpscaleVk(VkCommandBuffer cmdBuffer, NVSDK_NGX_Parameter* para
         }
     }
 
+    if (g_vk.queryPool == VK_NULL_HANDLE)
+    {
+        VkPhysicalDeviceProperties props {};
+        vkGetPhysicalDeviceProperties(physicalDevice, &props);
+
+        // A period of zero means the device does not support timestamps on this queue. The pass runs
+        // regardless; it simply reports no cost, which is what the D3D12 path does when its heap is
+        // unavailable.
+        g_vk.timestampPeriod = props.limits.timestampPeriod;
+
+        if (g_vk.timestampPeriod > 0.0f)
+        {
+            VkQueryPoolCreateInfo info {};
+            info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+            info.queryType = VK_QUERY_TYPE_TIMESTAMP;
+            info.queryCount = kTimingSlots * 2;
+
+            if (vkCreateQueryPool(device, &info, nullptr, &g_vk.queryPool) != VK_SUCCESS)
+            {
+                g_vk.queryPool = VK_NULL_HANDLE;
+                LOG_INFO("DLSS-NR Vulkan: no timestamp pool, the pass will not report its cost");
+            }
+        }
+    }
+
     if (g_vk.pass == nullptr)
     {
         g_vk.pass = std::make_unique<DlssNr_Vk>("Neural Rendering", device, physicalDevice);
@@ -553,6 +592,16 @@ void EvaluateAfterUpscaleVk(VkCommandBuffer cmdBuffer, NVSDK_NGX_Parameter* para
 
     const VkImageSubresourceRange colourRange = colour->Resource.ImageViewInfo.SubresourceRange;
 
+    // Open the measurement. Reset immediately before writing: a query pool slot must be reset before
+    // it is written again, and doing it here rather than at the end keeps the two in one place.
+    const uint32_t timingSlot = (uint32_t) (g_vk.timedFrames % kTimingSlots);
+
+    if (g_vk.queryPool != VK_NULL_HANDLE)
+    {
+        vkCmdResetQueryPool(cmdBuffer, g_vk.queryPool, timingSlot * 2, 2);
+        vkCmdWriteTimestamp(cmdBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, g_vk.queryPool, timingSlot * 2);
+    }
+
     // The game's colour is read here and written at the end. Its layout on arrival is GENERAL, which
     // is what NGX requires of a resource it is handed, so it is left alone.
     Transition(cmdBuffer, g_vk.proxy, VK_IMAGE_LAYOUT_GENERAL);
@@ -606,6 +655,33 @@ void EvaluateAfterUpscaleVk(VkCommandBuffer cmdBuffer, NVSDK_NGX_Parameter* para
         return;
     }
 
+    // Close it, and read the pair from three frames ago -- retired by now, so the read does not wait.
+    if (g_vk.queryPool != VK_NULL_HANDLE)
+    {
+        vkCmdWriteTimestamp(cmdBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, g_vk.queryPool, timingSlot * 2 + 1);
+        g_vk.timedFrames++;
+
+        if (g_vk.timedFrames > kTimingSlots)
+        {
+            const uint32_t readSlot = (uint32_t) (g_vk.timedFrames % kTimingSlots);
+            uint64_t ticks[2] = {};
+
+            // Without WAIT: a slot this old is retired, and if it somehow is not, NOT_READY is the
+            // right answer rather than a stall.
+            if (vkGetQueryPoolResults(device, g_vk.queryPool, readSlot * 2, 2, sizeof(ticks), ticks, sizeof(uint64_t),
+                                      VK_QUERY_RESULT_64_BIT) == VK_SUCCESS &&
+                ticks[1] > ticks[0])
+            {
+                const double ms = (double) (ticks[1] - ticks[0]) * (double) g_vk.timestampPeriod / 1e6;
+
+                // A pass that appears to have taken over a second did not; the queue was reset under
+                // it or the pair straddled a device change.
+                if (ms > 0.0 && ms < 1000.0)
+                    g_vk.lastGpuTime = ms;
+            }
+        }
+    }
+
     static bool reported = false;
 
     if (!reported && g_vk.frames > 2)
@@ -633,6 +709,15 @@ void ShutdownVk()
         NVSDK_NGX_VULKAN_DestroyParameters(g_vk.capabilityParams);
         g_vk.capabilityParams = nullptr;
     }
+
+    if (g_vk.queryPool != VK_NULL_HANDLE && g_vk.device != VK_NULL_HANDLE)
+    {
+        vkDestroyQueryPool(g_vk.device, g_vk.queryPool, nullptr);
+        g_vk.queryPool = VK_NULL_HANDLE;
+    }
+
+    g_vk.timedFrames = 0;
+    g_vk.lastGpuTime.reset();
 
     g_vk.device = VK_NULL_HANDLE;
     g_vk.width = 0;

@@ -115,14 +115,15 @@ void RenderMenu(Config* config, float menuResScale)
             // The cost belongs here rather than only in the upscaler's breakdown: that tooltip needs
             // OptiScaler's own upscaler to have run, and with native DLSS passing through there is
             // nothing in it to hang this off.
-            const auto ms = DlssNr::LastGpuTime();
+            // Either backend's timer. They measure the same thing by different means, and only one
+            // of them is running.
+            const auto ms = vulkan ? DlssNr::LastGpuTimeVk() : DlssNr::LastGpuTime();
 
             if (ms.has_value())
-                ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.5f, 1.0f), "Running - %.2f ms per frame",
-                                   ms.value());
+                ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.5f, 1.0f), "Running%s - %.2f ms per frame",
+                                   vulkan ? " natively on Vulkan" : "", ms.value());
             else if (vulkan)
-                // No timing on this path yet: the cost is read through a D3D12 query heap that has no
-                // counterpart here. Saying which backend is running is still worth more than "Running."
+                // Measured but not yet read: the first few frames are still in the query ring.
                 ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.5f, 1.0f), "Running natively on Vulkan - %llu frames",
                                    DlssNr::FramesVk());
             else
