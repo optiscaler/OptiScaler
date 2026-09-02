@@ -287,7 +287,16 @@ class Config
 
     // Measure the white point from the frame instead of taking it from the slider. On a frame the
     // game already tone mapped there is nothing to measure and this has no effect.
-    CustomOptional<bool> DlssNrAutoWhitePoint { true };
+    //
+    // Off by default, because it is not finished. The pass writes its result back into the same buffer
+    // the meter reads, so with the pass running the meter is partly measuring its own output and the
+    // two chase each other: Enshrouded, one session, 1545 samples spanning 0.01 to 97.9 with 57 jumps
+    // beyond 1.5x in a single frame. Measured in the same spot seconds apart, 41.31 with the pass off
+    // against 0.46 with it on. That is visible as the picture pumping and occasionally flickering.
+    //
+    // The slider is the supported control until the loop is broken. This stays as an opt-in so the
+    // behaviour can still be looked at.
+    CustomOptional<bool> DlssNrAutoWhitePoint { false };
 
     // 0 off, 1 the picture the model was shown, 2 its raw answer, 3 what it changed, amplified.
     CustomOptional<uint32_t> DlssNrDebugView { 0 };
