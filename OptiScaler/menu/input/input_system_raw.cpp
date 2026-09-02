@@ -269,7 +269,11 @@ RawSanitizeAction GetRawKeyboardSanitizeActionLocked(const RAWKEYBOARD& keyboard
 
     if (!released)
     {
-        _state.RawKeyboardBlockedDown[vk] = true;
+        // A repeat arriving after the menu opens is not a blocked press if the key was already held.
+        // In that case the game saw the original press and must still receive the matching release.
+        if (!_state.Keys[vk].Down)
+            _state.RawKeyboardBlockedDown[vk] = true;
+
         return RawSanitizeAction::SanitizeAll;
     }
 
@@ -652,10 +656,10 @@ void UpdateStateFromRawInputLocked(const RAWINPUT& input)
     }
 }
 
-void HandleRawInputLocked(HRAWINPUT rawInputHandle)
+bool HandleRawInputLocked(HRAWINPUT rawInputHandle)
 {
     if (rawInputHandle == nullptr)
-        return;
+        return false;
 
     UINT size = 0;
 
@@ -665,11 +669,11 @@ void HandleRawInputLocked(HRAWINPUT rawInputHandle)
         const UINT queryResult = o_GetRawInputData(rawInputHandle, RID_INPUT, nullptr, &size, sizeof(RAWINPUTHEADER));
 
         if (queryResult != 0)
-            return;
+            return false;
     }
 
     if (size == 0)
-        return;
+        return false;
 
     std::vector<BYTE> buffer(size);
 
@@ -682,15 +686,29 @@ void HandleRawInputLocked(HRAWINPUT rawInputHandle)
             o_GetRawInputData(rawInputHandle, RID_INPUT, buffer.data(), &readSize, sizeof(RAWINPUTHEADER));
 
         if (readResult == static_cast<UINT>(-1))
-            return;
+            return false;
 
         if (readResult != size)
-            return;
+            return false;
     }
 
     const RAWINPUT* input = reinterpret_cast<const RAWINPUT*>(buffer.data());
 
+    // Decide before updating aggregate state: the blocked-down bookkeeping describes the state
+    // before this packet. The same decision is cached by HRAWINPUT and reused by GetRawInputData.
+    const RawInputSanitizeDecision decision = GetRawInputSanitizeDecisionLocked(rawInputHandle, *input);
+
+    // A fully-passed keyboard packet can contain an owed key-up. A partially-sanitized mouse packet
+    // can contain owed button-up(s) while movement/new presses are removed. In both cases WM_INPUT
+    // must reach the game so it gets a chance to call GetRawInputData and receive the sanitized data.
+    const bool mustReachGame =
+        (input->header.dwType == RIM_TYPEKEYBOARD && decision.Action == RawSanitizeAction::Pass) ||
+        (input->header.dwType == RIM_TYPEMOUSE &&
+         decision.Action == RawSanitizeAction::SanitizeMouseKeepAllowedButtonUps);
+
     UpdateStateFromRawInputLocked(*input);
+
+    return mustReachGame;
 }
 
 void ApplyRawInputSanitizeActionLocked(RAWINPUT& input, RawSanitizeAction action, USHORT allowedMouseButtonUpFlags)

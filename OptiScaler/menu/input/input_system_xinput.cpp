@@ -136,13 +136,13 @@ void UpdateXInputIntegrationLocked()
              _state.XInputSetStateHookInstalled ? 1 : 0);
 }
 
-void RemoveXInputHooksLocked()
+bool RemoveXInputHooksLocked()
 {
     if (!_state.XInputGetStateHookInstalled && !_state.XInputGetStateExHookInstalled &&
         !_state.XInputGetKeystrokeHookInstalled && !_state.XInputSetStateHookInstalled)
     {
         ClearXInputHookPointersLocked();
-        return;
+        return true;
     }
 
     DetourTransactionBegin();
@@ -163,9 +163,43 @@ void RemoveXInputHooksLocked()
     const LONG result = DetourTransactionCommit();
 
     if (result != NO_ERROR)
-        LOG_WARN("XInput hook removal completed with result:{}", result);
+    {
+        LOG_WARN("XInput hook removal failed result:{}; retaining trampoline pointers for a safe retry", result);
+        return false;
+    }
 
     ClearXInputHookPointersLocked();
+    return true;
+}
+
+void DrainXInputKeystrokesLocked()
+{
+    if (!_state.XInputGetKeystrokeHookInstalled || o_XInputGetKeystroke == nullptr)
+        return;
+
+    constexpr DWORD MaxDrainPerUser = 256;
+
+    for (DWORD userIndex = 0; userIndex < XUSER_MAX_COUNT; ++userIndex)
+    {
+        DWORD drained = 0;
+
+        for (; drained < MaxDrainPerUser; ++drained)
+        {
+            XINPUT_KEYSTROKE keystroke {};
+            DWORD result = ERROR_EMPTY;
+
+            {
+                ScopedHookBypass bypass;
+                result = o_XInputGetKeystroke(userIndex, 0, &keystroke);
+            }
+
+            if (result != ERROR_SUCCESS)
+                break;
+        }
+
+        if (drained == MaxDrainPerUser)
+            LOG_WARN("XInput keystroke drain reached safety limit userIndex:{}", userIndex);
+    }
 }
 
 DWORD WINAPI hkXInputGetState(DWORD userIndex, XINPUT_STATE* state)
@@ -286,28 +320,60 @@ DWORD WINAPI hkXInputGetStateEx(DWORD userIndex, XINPUT_STATE* state)
 
 DWORD WINAPI hkXInputGetKeystroke(DWORD userIndex, DWORD reserved, PXINPUT_KEYSTROKE keystroke)
 {
+    bool shouldBlock = false;
+
     {
         std::unique_lock lock(_state.Mutex);
         _state.XInputGetKeystrokeCallCount++;
+        shouldBlock = ShouldBlockXInputLocked();
 
-        if (ShouldBlockXInputLocked())
-        {
-            if (keystroke != nullptr)
-                *keystroke = {};
-
+        if (shouldBlock)
             _state.XInputGetKeystrokeBlockedCount++;
-            OPTIINPUT_LOG_VERBOSE("blocking XInputGetKeystroke userIndex:{}", userIndex);
-            return ERROR_EMPTY;
-        }
-
-        _state.XInputGetKeystrokePassedCount++;
+        else
+            _state.XInputGetKeystrokePassedCount++;
     }
 
     if (o_XInputGetKeystroke == nullptr)
+    {
+        if (keystroke != nullptr)
+            *keystroke = {};
         return ERROR_EMPTY;
+    }
 
-    ScopedHookBypass bypass;
-    return o_XInputGetKeystroke(userIndex, reserved, keystroke);
+    if (!shouldBlock)
+    {
+        ScopedHookBypass bypass;
+        return o_XInputGetKeystroke(userIndex, reserved, keystroke);
+    }
+
+    // XInputGetKeystroke is a destructive queue read. Consume all pending
+    // events for the requested index while the overlay owns input so they
+    // cannot replay after the menu closes.
+    constexpr DWORD MaxDrain = 256;
+    DWORD drained = 0;
+
+    for (; drained < MaxDrain; ++drained)
+    {
+        XINPUT_KEYSTROKE discarded {};
+        DWORD result = ERROR_EMPTY;
+
+        {
+            ScopedHookBypass bypass;
+            result = o_XInputGetKeystroke(userIndex, reserved, &discarded);
+        }
+
+        if (result != ERROR_SUCCESS)
+            break;
+    }
+
+    if (drained == MaxDrain)
+        LOG_WARN("XInputGetKeystroke drain reached safety limit userIndex:{}", userIndex);
+
+    if (keystroke != nullptr)
+        *keystroke = {};
+
+    OPTIINPUT_LOG_VERBOSE("blocking XInputGetKeystroke userIndex:{} drained:{}", userIndex, drained);
+    return ERROR_EMPTY;
 }
 
 DWORD WINAPI hkXInputSetState(DWORD userIndex, XINPUT_VIBRATION* vibration)

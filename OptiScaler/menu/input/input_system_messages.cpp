@@ -218,13 +218,15 @@ void SetKeyDown(int vk, DWORD messageTime, bool blocked)
     {
         key.Pressed = true;
         _state.LastPressedKey = vk;
+
+        // Only the real down transition can be a blocked press. Auto-repeat while the menu opens
+        // mid-hold must not steal the matching key-up from the game.
+        if (blocked)
+            key.BlockedDown = true;
     }
 
     key.Down = true;
     key.LastMessageTime = messageTime;
-
-    if (blocked)
-        key.BlockedDown = true;
 
     SyncAggregateModifierStateLocked();
 }
@@ -609,10 +611,14 @@ bool HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Inpu
         const bool shouldParseRawInput =
             source == InputMessageSource::WndProc || _state.BlockMouse || _state.BlockKeyboard;
 
-        if (shouldParseRawInput)
-            HandleRawInputLocked(reinterpret_cast<HRAWINPUT>(lParam));
+        bool mustReachGame = false;
 
-        shouldBlock = _state.BlockMouse || _state.BlockKeyboard;
+        if (shouldParseRawInput)
+            mustReachGame = HandleRawInputLocked(reinterpret_cast<HRAWINPUT>(lParam));
+
+        // The GetRawInputData hook uses the cached sanitize decision made above. Keep WM_INPUT
+        // reachable only when it carries an owed release; all other blocked packets stay hidden.
+        shouldBlock = (_state.BlockMouse || _state.BlockKeyboard) && !mustReachGame;
         break;
     }
 
@@ -726,7 +732,14 @@ LRESULT CALLBACK OptiInputWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPa
         return TRUE;
 
     if (handled)
+    {
+        // Foreground raw-input messages require DefWindowProc cleanup even when
+        // the application intentionally consumes the WM_INPUT.
+        if (msg == WM_INPUT && GET_RAWINPUT_CODE_WPARAM(wParam) == RIM_INPUT)
+            DefWindowProcW(hwnd, msg, wParam, lParam);
+
         return 0;
+    }
 
     if (originalWndProc != nullptr)
         return CallWindowProcW(originalWndProc, hwnd, msg, wParam, lParam);
@@ -769,6 +782,12 @@ bool ProcessRemovedMessage(MSG* msg)
 
     if (!handled)
         return false;
+
+    // Foreground raw-input messages require DefWindowProc cleanup. Since this
+    // queue message is being consumed before DispatchMessage, perform that
+    // cleanup here while the original WM_INPUT parameters are still intact.
+    if (msg->message == WM_INPUT && GET_RAWINPUT_CODE_WPARAM(msg->wParam) == RIM_INPUT)
+        DefWindowProcW(msg->hwnd, msg->message, msg->wParam, msg->lParam);
 
     // Important:
     // Let TranslateMessage generate WM_CHAR for ImGui text input before

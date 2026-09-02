@@ -727,6 +727,12 @@ void ApplyMenuVisibilityChangeLocked(bool visible)
     {
         EndCursorClipBlockLocked();
 
+        // Event-style controller APIs keep their own queues. Drain them before
+        // releasing the menu block so menu-time events cannot replay into the
+        // game on the first frame after closing.
+        DrainDirectInputBufferedDataLocked();
+        DrainXInputKeystrokesLocked();
+
         _state.HasBlockedCursorScreenPos = false;
         _state.BlockedCursorScreenPos = {};
 
@@ -763,12 +769,27 @@ bool Initialize(const InitializeOptions& options)
         if (options.InputHwnd != nullptr && options.InputHwnd != _state.InputHwnd)
             SetInputWindow(options.InputHwnd, options.UseWndProcSubclass, true);
 
-        LOG_DEBUG(
-            "Initialize re-entry state target:{} targetPid:{} input:{} inputPid:{} externalTarget:{} subclassed:{}",
-            static_cast<void*>(_state.TargetHwnd), _state.TargetProcessId, static_cast<void*>(_state.InputHwnd),
-            _state.InputProcessId, _state.ExternalTargetProcess ? 1 : 0, _state.WndProcSubclassed ? 1 : 0);
+        if (!_state.HooksInstalled)
+        {
+            LOG_WARN("Initialize re-entry retrying incomplete Win32 hook installation");
+            _state.HooksInstalled = InstallHooks();
 
-        return true;
+            if (_state.HooksInstalled)
+            {
+                UpdateGameInputIntegrationLocked();
+                UpdateXInputIntegrationLocked();
+                UpdateDirectInputIntegrationLocked();
+            }
+        }
+
+        LOG_DEBUG(
+            "Initialize re-entry state target:{} targetPid:{} input:{} inputPid:{} externalTarget:{} subclassed:{} "
+            "hooksInstalled:{}",
+            static_cast<void*>(_state.TargetHwnd), _state.TargetProcessId, static_cast<void*>(_state.InputHwnd),
+            _state.InputProcessId, _state.ExternalTargetProcess ? 1 : 0, _state.WndProcSubclassed ? 1 : 0,
+            _state.HooksInstalled ? 1 : 0);
+
+        return _state.HooksInstalled;
     }
 
     _state.Initialized = true;
@@ -1050,14 +1071,32 @@ void Shutdown()
 {
     std::unique_lock lock(_state.Mutex);
 
-    RemoveWindowSubclass();
-    ReleaseTrackedWindowsHooksLocked();
+    // Restore cursor confinement and clear the blocking policy before any hook teardown
+    if (_state.MenuVisible)
+        ApplyMenuVisibilityChangeLocked(false);
+    else if (_state.CursorClipReleasedForMenu)
+        EndCursorClipBlockLocked();
+
+    const bool windowSubclassRemoved = RemoveWindowSubclass(true);
+    const bool trackedWindowsHooksRemoved = ReleaseTrackedWindowsHooksLocked();
     RemoveExternalRawInputSinkLocked();
-    RemoveExternalMouseHookLocked();
-    RemoveDirectInputHooksLocked();
-    RemoveXInputHooksLocked();
-    RemoveGameInputHooksLocked();
-    RemoveHooks();
+    const bool externalMouseHookRemoved = RemoveExternalMouseHookLocked();
+
+    const bool directInputRemoved = RemoveDirectInputHooksLocked();
+    const bool xInputRemoved = RemoveXInputHooksLocked();
+    const bool gameInputRemoved = RemoveGameInputHooksLocked();
+    const bool win32HooksRemoved = RemoveHooks();
+
+    if (!windowSubclassRemoved || !trackedWindowsHooksRemoved || !externalMouseHookRemoved || !directInputRemoved ||
+        !xInputRemoved || !gameInputRemoved || !win32HooksRemoved)
+    {
+        LOG_ERROR("OptiInput shutdown incomplete; retaining state/trampolines for safety wndProc:{} trackedHooks:{} "
+                  "externalMouse:{} dinput:{} xinput:{} gameInput:{} win32:{}",
+                  windowSubclassRemoved ? 1 : 0, trackedWindowsHooksRemoved ? 1 : 0, externalMouseHookRemoved ? 1 : 0,
+                  directInputRemoved ? 1 : 0, xInputRemoved ? 1 : 0, gameInputRemoved ? 1 : 0,
+                  win32HooksRemoved ? 1 : 0);
+        return;
+    }
 
     ResetStateAfterShutdown();
 }

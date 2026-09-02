@@ -323,7 +323,11 @@ bool ShouldBlockWindowsKeyboardHookCallbackLocked(WindowsHookSlot& slot, int cod
 
     if (!released)
     {
-        _state.WindowsHookKeyboardBlockedDown[vk] = true;
+        // Do not turn an auto-repeat from a key held before menu-open into a blocked press.
+        // The game hook already saw that original down and is therefore owed the matching up.
+        if (!_state.Keys[vk].Down)
+            _state.WindowsHookKeyboardBlockedDown[vk] = true;
+
         return true;
     }
 
@@ -389,6 +393,7 @@ LRESULT CALLBACK InvokeWindowsHookProxy(std::size_t slotIndex, int code, WPARAM 
 {
     HHOOK hook = nullptr;
     HOOKPROC originalProc = nullptr;
+    int hookType = 0;
     bool shouldBlock = false;
     bool keyboardHook = false;
     bool mouseHook = false;
@@ -406,6 +411,7 @@ LRESULT CALLBACK InvokeWindowsHookProxy(std::size_t slotIndex, int code, WPARAM 
 
         hook = slot.Hook;
         originalProc = slot.OriginalProc;
+        hookType = slot.HookType;
         keyboardHook = IsKeyboardWindowsHookType(slot.HookType);
         mouseHook = IsMouseWindowsHookType(slot.HookType);
         shouldBlock = ShouldBlockWindowsHookCallbackLocked(slot, code, wParam, lParam);
@@ -433,7 +439,16 @@ LRESULT CALLBACK InvokeWindowsHookProxy(std::size_t slotIndex, int code, WPARAM 
     }
 
     if (shouldBlock)
+    {
+        // Low-level hooks run before Windows processes the input. Returning non-zero from
+        // WH_MOUSE_LL/WH_KEYBOARD_LL would discard the event system-wide, including the
+        // physical cursor/keyboard state used by our own polling fallback. Keep the event
+        // moving through the system hook chain while still bypassing the intercepted proc.
+        if (hookType == WH_MOUSE_LL || hookType == WH_KEYBOARD_LL)
+            return CallNextHookEx(hook, code, wParam, lParam);
+
         return 1;
+    }
 
     if (originalProc == nullptr)
         return CallNextHookEx(hook, code, wParam, lParam);
@@ -582,31 +597,50 @@ void UpdateExternalMouseHookLocked()
              static_cast<void*>(_state.TargetHwnd), _state.TargetProcessId);
 }
 
-void RemoveExternalMouseHookLocked()
+bool RemoveExternalMouseHookLocked()
 {
     HHOOK hook = _state.ExternalLowLevelMouseHook;
+
+    if (hook == nullptr)
+    {
+        _state.ExternalLowLevelMouseHookInstalled = false;
+        _state.ExternalLastMouseHookScreenValid = false;
+        _state.ExternalPendingMouseDeltaX = 0;
+        _state.ExternalPendingMouseDeltaY = 0;
+        return true;
+    }
+
+    if (o_UnhookWindowsHookEx == nullptr)
+    {
+        LOG_WARN("external low-level mouse hook removal deferred because UnhookWindowsHookEx is unavailable hook:{}",
+                 static_cast<void*>(hook));
+        return false;
+    }
+
+    {
+        ScopedHookBypass bypass;
+        if (!o_UnhookWindowsHookEx(hook))
+        {
+            LOG_WARN("external low-level mouse hook removal failed hook:{} error:{}", static_cast<void*>(hook),
+                     GetLastError());
+            return false;
+        }
+    }
+
     _state.ExternalLowLevelMouseHook = nullptr;
     _state.ExternalLowLevelMouseHookInstalled = false;
     _state.ExternalLastMouseHookScreenValid = false;
     _state.ExternalPendingMouseDeltaX = 0;
     _state.ExternalPendingMouseDeltaY = 0;
 
-    if (hook == nullptr || o_UnhookWindowsHookEx == nullptr)
-        return;
-
-    ScopedHookBypass bypass;
-    if (!o_UnhookWindowsHookEx(hook))
-    {
-        LOG_WARN("external low-level mouse hook removal failed hook:{} error:{}", static_cast<void*>(hook),
-                 GetLastError());
-        return;
-    }
-
     LOG_INFO("external low-level mouse hook removed hook:{}", static_cast<void*>(hook));
+    return true;
 }
 
-void ReleaseTrackedWindowsHooksLocked()
+bool ReleaseTrackedWindowsHooksLocked()
 {
+    bool allRemoved = true;
+
     for (WindowsHookSlot& slot : _state.WindowsHookSlots)
     {
         if (!slot.InUse || slot.Hook == nullptr)
@@ -615,18 +649,34 @@ void ReleaseTrackedWindowsHooksLocked()
             continue;
         }
 
-        HHOOK hook = slot.Hook;
-        slot = {};
+        if (o_UnhookWindowsHookEx == nullptr)
+        {
+            allRemoved = false;
+            continue;
+        }
 
-        if (o_UnhookWindowsHookEx != nullptr)
+        const HHOOK hook = slot.Hook;
+        BOOL removed = FALSE;
+
         {
             ScopedHookBypass bypass;
-            o_UnhookWindowsHookEx(hook);
+            removed = o_UnhookWindowsHookEx(hook);
         }
+
+        if (!removed)
+        {
+            LOG_WARN("tracked windows hook removal failed hook:{} type:{} error:{}", static_cast<void*>(hook),
+                     slot.HookType, GetLastError());
+            allRemoved = false;
+            continue;
+        }
+
+        slot = {};
     }
 
     _state.WindowsHookKeyboardBlockedDown = {};
     _state.WindowsHookMouseBlockedDown = {};
+    return allRemoved;
 }
 
 HHOOK WINAPI hkSetWindowsHookExA(int hookType, HOOKPROC proc, HINSTANCE module, DWORD threadId)
