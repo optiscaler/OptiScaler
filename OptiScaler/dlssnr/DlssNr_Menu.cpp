@@ -256,11 +256,14 @@ void RenderMenu(Config* config, float menuResScale)
                             "already tone-mapped is passed over untouched and none of this applies.");
 
         {
-        // Logarithmic, because the useful range is not linear: a quarter to sixty-four, and the
-        // interesting part of it in one game spanned 1 to 100. A linear slider spends nine tenths of
-        // its travel on values nobody needs and cannot reach the ones they do.
+        // Logarithmic, because the useful range is not linear. A quarter to 240: the low end because
+        // a frame the game already tone mapped wants roughly 1, the high end because there is no
+        // principled ceiling -- this is a divisor on an open-ended linear buffer, and how far up a
+        // given game needs to go is a property of that game's exposure, not of anything we can bound.
+        // One tester was still improving at 100. A linear slider over that span would spend nine
+        // tenths of its travel on values nobody needs and never reach the ones they do.
         float wpScale = config->DlssNrWhitePointScale.value_or_default();
-        if (ImGui::SliderFloat("Paper white", &wpScale, 0.25f, 64.0f, "%.2fx",
+        if (ImGui::SliderFloat("Paper white", &wpScale, 0.25f, 240.0f, "%.2fx",
                                ImGuiSliderFlags_Logarithmic))
             config->DlssNrWhitePointScale = wpScale;
 
