@@ -23,6 +23,9 @@ CreateDXGIFactory1 = _CreateDXGIFactory1
 CreateDXGIFactory2 = _CreateDXGIFactory2 
 DXGIDeclareAdapterRemovalSupport = _DXGIDeclareAdapterRemovalSupport 
 DXGIGetDebugInterface1 = _DXGIGetDebugInterface1 
+ApplyCompatResolutionQuirking = _ApplyCompatResolutionQuirking
+CompatString = _CompatString
+CompatValue = _CompatValue
 
 EXPORTS
 AppCacheCheckManifest = _AppCacheCheckManifest
