@@ -167,13 +167,34 @@ float3 FromOkLab(float3 lab)
 // Takes the hue and the chroma direction from `correct`, and only the chroma magnitude from
 // `incorrect`. Scaling a colour by a luminance ratio changes how saturated it reads; this puts the
 // saturation back where the model meant it without letting the hue drift.
+// Takes the hue and chroma direction from `correct` and only the chroma magnitude from
+// `incorrect`, so a rescaled colour keeps the model's own hue rather than drifting toward whatever
+// the scaling did to its channels.
 float3 HueOkLab(float3 incorrect, float3 correct)
 {
     float3 incorrectLab = ToOkLab(incorrect);
     const float3 correctLab = ToOkLab(correct);
     const float incorrectChroma = length(incorrectLab.yz);
     const float correctChroma = length(correctLab.yz);
-    incorrectLab.yz = correctLab.yz * (correctChroma == 0.0 ? 1.0 : incorrectChroma / correctChroma);
+
+    // Normalise the direction before scaling it, rather than scaling by a ratio of magnitudes.
+    //
+    // The two are the same algebra -- correctLab.yz * (incorrectChroma / correctChroma) is
+    // (correctLab.yz / correctChroma) * incorrectChroma -- but only this order is bounded. The
+    // other divides by correctChroma while guarding it with `== 0.0`, which is an exact float
+    // comparison and so catches only a chroma that is precisely zero. A model pixel that is merely
+    // very close to grey has a chroma of about 1e-7, sails past that guard, and turns a hue
+    // direction with no meaningful magnitude into a multiplier of ten thousand. The result is a
+    // saturated colour pulled out of numerical noise.
+    //
+    // Written this way the direction is unit length by construction and the result cannot exceed
+    // incorrectChroma, whatever the model returned. Nioh 3 is where this showed: a night scene
+    // leaves most of the frame near-achromatic, so near-zero chroma is the common case rather than
+    // the edge, and the speckle it produced was reported as green noise.
+    const float2 hueDirection = correctChroma > 1e-5 ? correctLab.yz / correctChroma : float2(0.0, 0.0);
+
+    incorrectLab.yz = hueDirection * incorrectChroma;
+
     return ClampAp1(FromOkLab(incorrectLab));
 }
 
