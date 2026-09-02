@@ -358,6 +358,47 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
         State::Instance().screenWidth = static_cast<float>(pCreateInfo->imageExtent.width);
         State::Instance().screenHeight = static_cast<float>(pCreateInfo->imageExtent.height);
 
+        // The same question the DXGI side asks: what does one unit of this buffer mean?
+        //
+        // EXTENDED_SRGB_LINEAR is scRGB, 1.0 = 80 nits. HDR10_ST2084 is PQ, 1.0 = 10000 nits. Both
+        // are absolute, so in either the white point is arithmetic rather than a reading -- which
+        // matters most for the games that supply no exposure texture, since nothing else answers for
+        // them. Logged, not yet used.
+        {
+            static VkColorSpaceKHR lastSpace = (VkColorSpaceKHR) -1;
+
+            if (pCreateInfo->imageColorSpace != lastSpace)
+            {
+                lastSpace = pCreateInfo->imageColorSpace;
+
+                const char* name = "other";
+                const char* meaning = "relative -- no scale to be had";
+
+                switch (pCreateInfo->imageColorSpace)
+                {
+                case VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT:
+                    name = "scRGB (extended sRGB, linear)";
+                    meaning = "absolute: 1.0 = 80 nits, so 203-nit paper white = 2.5375";
+                    break;
+                case VK_COLOR_SPACE_HDR10_ST2084_EXT:
+                    name = "PQ / ST.2084 (HDR10)";
+                    meaning = "absolute: 1.0 = 10000 nits, so 203-nit paper white = 0.0203";
+                    break;
+                case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:
+                    name = "sRGB (SDR)";
+                    break;
+                case VK_COLOR_SPACE_HDR10_HLG_EXT:
+                    name = "HLG";
+                    break;
+                default:
+                    break;
+                }
+
+                LOG_INFO("DLSS-NR: swapchain colour space {} -- {} ({}), format {}",
+                         (int) pCreateInfo->imageColorSpace, name, meaning, (int) pCreateInfo->imageFormat);
+            }
+        }
+
         LOG_DEBUG("if (result == VK_SUCCESS && device != VK_NULL_HANDLE && pCreateInfo != nullptr && pSwapchain != "
                   "VK_NULL_HANDLE)");
 
