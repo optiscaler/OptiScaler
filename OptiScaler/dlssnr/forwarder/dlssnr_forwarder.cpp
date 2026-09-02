@@ -114,6 +114,131 @@ __declspec(dllexport) void dlssnr_call_probe_float(void *params, const char *nam
 __declspec(dllexport) int dlssnr_call_last_init = 0;
 __declspec(dllexport) int dlssnr_call_last_create = 0;
 
+// ---------------------------------------------------------------------------------------------
+// Vulkan.
+//
+// The model ships a complete native Vulkan surface -- fourteen entry points against D3D12's ten --
+// so a Vulkan game does not need the D3D12 bridge the pass currently reaches it through. It needs
+// this: the same caller gate, because the snippet checks its caller's module path whichever API is
+// being used, and only this DLL has a name that satisfies it.
+//
+// Handles are passed as void*. Every Vulkan handle this touches -- instance, physical device,
+// device, command buffer -- is a dispatchable handle, which is a pointer on every 64-bit platform,
+// and taking them opaquely keeps the forwarder free of a Vulkan dependency it would otherwise carry
+// only to name types it never dereferences.
+//
+// Resources are the caller's problem for the same reason: NGX wants a pointer to an
+// NVSDK_NGX_Resource_VK, the host builds it, and this passes the pointer through the same 64-bit
+// parameter setter the D3D12 path uses for ID3D12Resource*.
+// ---------------------------------------------------------------------------------------------
+
+using PFN_NrVkInitExt = int(__cdecl *)(unsigned long long, const wchar_t *, void *, void *, void *,
+                                       const void *, int);
+using PFN_NrVkCreate = int(__cdecl *)(void *, int, const void *, void **);
+using PFN_NrVkEvaluate = int(__cdecl *)(void *, const void *, const void *, void *);
+
+struct VkSnippet {
+    HMODULE module = nullptr;
+    PFN_NrVkInitExt init = nullptr;
+    PFN_NrVkCreate create = nullptr;
+    PFN_NrVkEvaluate evaluate = nullptr;
+    PFN_NrRelease release = nullptr;
+    bool initialised = false;
+};
+
+VkSnippet g_vk;
+
+bool loadVkSnippet(const wchar_t *path) {
+    if (g_vk.module) {
+        return g_vk.create != nullptr;
+    }
+
+    g_vk.module = LoadLibraryExW(path, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+
+    if (!g_vk.module) {
+        return false;
+    }
+
+    g_vk.init = (PFN_NrVkInitExt) GetProcAddress(g_vk.module, "NVSDK_NGX_VULKAN_Init_Ext");
+    g_vk.create = (PFN_NrVkCreate) GetProcAddress(g_vk.module, "NVSDK_NGX_VULKAN_CreateFeature");
+    g_vk.evaluate = (PFN_NrVkEvaluate) GetProcAddress(g_vk.module, "NVSDK_NGX_VULKAN_EvaluateFeature");
+    g_vk.release = (PFN_NrRelease) GetProcAddress(g_vk.module, "NVSDK_NGX_VULKAN_ReleaseFeature");
+
+    return g_vk.create != nullptr && g_vk.evaluate != nullptr;
+}
+
+__declspec(dllexport) int dlssnr_vk_last_init = 0;
+__declspec(dllexport) int dlssnr_vk_last_create = 0;
+
+// Which of the four entry points resolved, as a bit field: init 1, create 2, evaluate 4, release 8.
+// 15 means the model's Vulkan surface is entirely reachable from here. Answered without creating
+// anything, so the host can decide whether the native path exists before committing to it.
+__declspec(dllexport) int dlssnr_vk_probe(const wchar_t *snippetPath) {
+    loadVkSnippet(snippetPath);
+
+    int bits = 0;
+    bits |= g_vk.init != nullptr ? 1 : 0;
+    bits |= g_vk.create != nullptr ? 2 : 0;
+    bits |= g_vk.evaluate != nullptr ? 4 : 0;
+    bits |= g_vk.release != nullptr ? 8 : 0;
+
+    return bits;
+}
+
+__declspec(dllexport) int dlssnr_vk_init(const wchar_t *snippetPath, const wchar_t *dataPath,
+                                         void *instance, void *physicalDevice, void *device,
+                                         int sdkVersion) {
+    if (!loadVkSnippet(snippetPath) || g_vk.init == nullptr) {
+        return -1;
+    }
+
+    if (g_vk.initialised) {
+        return 1;
+    }
+
+    // Assigned rather than returned directly. A tail call becomes a jmp, and the snippet resolves its
+    // caller from the return address -- so tail calling hands it whoever called this instead of this
+    // module, and the caller gate rejects it before a single argument is read.
+    volatile int result = g_vk.init(0x0, dataPath, instance, physicalDevice, device, nullptr, sdkVersion);
+
+    dlssnr_vk_last_init = (int) result;
+    g_vk.initialised = result == 1;
+
+    return (int) result;
+}
+
+// Creates the feature on a Vulkan command buffer. Same contract as the D3D12 one: initialisation work
+// is recorded into the buffer, so the handle has to outlive its execution.
+__declspec(dllexport) void *dlssnr_vk_create(void *cmdBuffer, void *capabilityParams, int featureId) {
+    if (g_vk.create == nullptr || cmdBuffer == nullptr || capabilityParams == nullptr) {
+        return nullptr;
+    }
+
+    void *feature = nullptr;
+    volatile int result = g_vk.create(cmdBuffer, featureId, capabilityParams, &feature);
+
+    dlssnr_vk_last_create = (int) result;
+
+    return result == 1 ? feature : nullptr;
+}
+
+__declspec(dllexport) int dlssnr_vk_evaluate(void *cmdBuffer, void *feature, void *capabilityParams) {
+    if (g_vk.evaluate == nullptr || feature == nullptr) {
+        return -1;
+    }
+
+    volatile int result = g_vk.evaluate(cmdBuffer, feature, capabilityParams, nullptr);
+
+    return (int) result;
+}
+
+__declspec(dllexport) void dlssnr_vk_release(void *feature) {
+    if (g_vk.release != nullptr && feature != nullptr) {
+        volatile int ignored = g_vk.release(feature);
+        (void) ignored;
+    }
+}
+
 // Creates a persistent Neural Rendering feature. The handle records initialisation work into cmd, so it
 // must outlive that command list's execution; releasing it early loses the device.
 __declspec(dllexport) void *dlssnr_call_create(const wchar_t *snippetPath, const wchar_t *dataPath,
