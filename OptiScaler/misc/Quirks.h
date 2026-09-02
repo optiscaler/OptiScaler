@@ -114,6 +114,9 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY_UE(beastofreincarnation, GameQuirk::DisableFSR2Inputs, GameQuirk::DisableFSR3Inputs,
                    GameQuirk::AlwaysCaptureFSRFGSwapchain),
 
+    // Space Engineers 2
+    QUIRK_ENTRY("spaceengineers2.exe", GameQuirk::UseManualInputs),
+
     // Tainted Grail - Fall of Avalon
     QUIRK_ENTRY("fall of avalon.exe", GameQuirk::ForceAutoExposure),
 
