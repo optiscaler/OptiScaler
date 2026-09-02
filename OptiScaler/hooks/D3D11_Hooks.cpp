@@ -334,12 +334,10 @@ static HRESULT hkD3D11CreateDeviceAndSwapChain(IDXGIAdapter* pAdapter, D3D_DRIVE
         }
     }
 
+    static const D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_1 };
+
     if (!(State::Instance().gameQuirks & GameQuirk::SkipD3D11FeatureLevelElevation))
     {
-        static const D3D_FEATURE_LEVEL levels[] = {
-            D3D_FEATURE_LEVEL_11_1,
-        };
-
         D3D_FEATURE_LEVEL maxLevel = D3D_FEATURE_LEVEL_1_0_CORE;
 
         for (UINT i = 0; i < FeatureLevels; ++i)
