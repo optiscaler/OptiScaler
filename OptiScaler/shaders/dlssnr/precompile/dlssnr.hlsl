@@ -380,7 +380,19 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     // from the reduced raster is the edit itself, which is what was wanted from it.
     //
     // The residual and its cube scaling are hhkbble's, from the multi-pass PR against this fork.
-    if (gTransfer == 1)
+    //
+    // Taken only when the model actually worked below the frame. At the same rate the arithmetic
+    // collapses -- fullProxy + (model - proxy) is model, because proxy already is the frame's own
+    // full-resolution proxy -- but only in exact arithmetic. The one this pass reads has been through
+    // an sRGB encode, a texture, and a decode, while the one SoftKnee rebuilds has not, so the two
+    // agree to within the proxy surface's precision rather than exactly. Skipping the path when there
+    // is no residual to carry makes 100% bit-identical to Classic instead of nearly identical, which
+    // is what lets this default to on: the shipped configuration cannot be changed by it at all.
+    uint proxyW, proxyH;
+    gSource.GetDimensions(proxyW, proxyH);
+    const bool modelRanSmall = proxyW != gWidth || proxyH != gHeight;
+
+    if (gTransfer == 1 && modelRanSmall)
     {
         float3 fullProxy = SoftKnee(original);
         proxy = fullProxy;
