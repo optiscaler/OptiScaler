@@ -343,6 +343,8 @@ bool IsRunningVk() { return g_vk.feature != nullptr && !g_vk.failed; }
 
 const char* FailureReasonVk() { return g_vk.failed ? g_vk.reason : ""; }
 
+unsigned long long FramesVk() { return g_vk.frames; }
+
 void EvaluateAfterUpscaleVk(VkCommandBuffer cmdBuffer, NVSDK_NGX_Parameter* params, VkInstance instance,
                             VkPhysicalDevice physicalDevice, VkDevice device)
 {

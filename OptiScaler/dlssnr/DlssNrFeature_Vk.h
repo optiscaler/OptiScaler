@@ -47,6 +47,10 @@ void EvaluateAfterUpscaleVk(VkCommandBuffer cmdBuffer, NVSDK_NGX_Parameter* para
 bool IsRunningVk();
 const char* FailureReasonVk();
 
+// How many frames it has actually composed. The menu needs this to tell "up but nothing has come
+// through yet" apart from "running", and the D3D12 counters say nothing about this path.
+unsigned long long FramesVk();
+
 void ShutdownVk();
 
 } // namespace DlssNr

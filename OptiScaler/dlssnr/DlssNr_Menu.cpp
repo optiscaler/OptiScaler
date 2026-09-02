@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "DlssNrFeature_Vk.h"
 
 #include "DlssNr.h"
 
@@ -89,7 +90,12 @@ void RenderMenu(Config* config, float menuResScale)
         // unless told. Dimmed, because it is a note rather than a setting.
         ImGui::TextDisabled("Can be toggled with a key -- bind it under Keybinds, \"Neural Rendering\".");
 
-        if (!DlssNr::IsRunning())
+        // Either backend. The two keep separate state, and on a native Vulkan game the D3D12 side
+        // is never touched -- so asking only that one reports "waiting for the upscaler" over a pass
+        // that is demonstrably running.
+        const bool vulkan = DlssNr::IsRunningVk();
+
+        if (!DlssNr::IsRunning() && !vulkan)
         {
             const char* reason = DlssNr::FailureReason();
 
@@ -114,6 +120,11 @@ void RenderMenu(Config* config, float menuResScale)
             if (ms.has_value())
                 ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.5f, 1.0f), "Running - %.2f ms per frame",
                                    ms.value());
+            else if (vulkan)
+                // No timing on this path yet: the cost is read through a D3D12 query heap that has no
+                // counterpart here. Saying which backend is running is still worth more than "Running."
+                ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.5f, 1.0f), "Running natively on Vulkan - %llu frames",
+                                   DlssNr::FramesVk());
             else
                 ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.5f, 1.0f), "Running.");
 
@@ -312,7 +323,15 @@ void RenderMenu(Config* config, float menuResScale)
         {
             const auto ex = DlssNr::GameExposureStatus();
 
-            if (ex.seenFrames == 0)
+            if (DlssNr::IsRunningVk())
+            {
+                // The exposure is fetched by the D3D12 meter's readback, which this path has no
+                // counterpart to. Saying so beats "waiting for a frame" forever over a pass that is
+                // running and is never going to read one.
+                ImGui::TextColored(ImVec4(0.85f, 0.65f, 0.25f, 1.0f),
+                                   "Not read on the native Vulkan path. Paper white below is in use.");
+            }
+            else if (ex.seenFrames == 0)
             {
                 ImGui::TextDisabled("Waiting for a frame...");
             }
