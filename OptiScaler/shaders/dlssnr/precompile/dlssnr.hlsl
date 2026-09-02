@@ -19,6 +19,7 @@ cbuffer Params : register(b0)
     float gCompareZoom;  // side by side: 1 fits the frame, 2 fills the half
     uint  gCompareSwap;  // put the edited frame on the other side
     uint  gTransfer;     // 0 classic, 1 matched residual -- how a below-size model comes back
+    float gDebugScale;   // what the debug views are scaled by, held still while the meter moves
 };
 
 // Colours outside the AP1 gamut are impossible on any display and read as sparkle where a bright
@@ -378,13 +379,13 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     if (gDebugView == 1)
     {
-        gTarget[id.xy] = float4(proxy * gWhitePoint, originalSample.a);
+        gTarget[id.xy] = float4(proxy * gDebugScale, originalSample.a);
         return;
     }
 
     if (gDebugView == 2)
     {
-        gTarget[id.xy] = float4(model * gWhitePoint, originalSample.a);
+        gTarget[id.xy] = float4(model * gDebugScale, originalSample.a);
         return;
     }
 
@@ -397,7 +398,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     {
         // Amplified and centred on grey, so both directions of the edit are visible at once.
         float3 shown = saturate(0.5 + edit * 20.0);
-        gTarget[id.xy] = float4(SrgbToLinear(shown) * gWhitePoint, originalSample.a);
+        gTarget[id.xy] = float4(SrgbToLinear(shown) * gDebugScale, originalSample.a);
         return;
     }
 

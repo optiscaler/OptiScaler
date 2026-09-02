@@ -128,6 +128,14 @@ struct alignas(256) DlssNrConstants
     //
     // The idea and the cube-scaled residual are hhkbble's, from the multi-pass PR against this fork.
     uint32_t Transfer;
+
+    // What the debug views are multiplied by on their way out.
+    //
+    // They have to be scaled into the frame's units or the game's tonemapper shows them wrong, but
+    // scaling them by the live white point makes the instrument move with the thing being measured:
+    // two captures at different exposures then differ by the exposure, whatever the edit did. This
+    // is the user's own multiplier, which holds still while the meter works.
+    float DebugScale;
 };
 
 class DlssNr_Common
