@@ -316,7 +316,9 @@ void RenderMenu(Config* config, float menuResScale)
                        "\ndoes, which is what went wrong with measuring it from the frame."
                        "\n\nNot every game supplies it, and some supply it only on some frames; the last"
                        "\ngood value is held across the gaps. Paper white below stays a multiplier on top."
-                       "\n\nOff by default until it has been seen to work in more than one game.");
+                       "\n\nOn by default. A game that supplies no exposure is unaffected -- nothing is"
+                       "\nread, nothing is dispatched, and the paper white below is used exactly as it"
+                       "\nwould be with this off. Only a game that hands one over behaves differently.");
 
         // Whether this game supplies one at all, shown whether or not the box is ticked. Without this
         // the only way to find out was to read the log, and a game that supplies nothing looks exactly
