@@ -306,6 +306,48 @@ void RenderMenu(Config* config, float menuResScale)
                        "\ngood value is held across the gaps. Paper white below stays a multiplier on top."
                        "\n\nOff by default until it has been seen to work in more than one game.");
 
+        // Whether this game supplies one at all, shown whether or not the box is ticked. Without this
+        // the only way to find out was to read the log, and a game that supplies nothing looks exactly
+        // like a game where the option is doing its job quietly.
+        {
+            const auto ex = DlssNr::GameExposureStatus();
+
+            if (ex.seenFrames == 0)
+            {
+                ImGui::TextDisabled("Waiting for a frame...");
+            }
+            else if (!ex.everOffered)
+            {
+                ImGui::TextColored(ImVec4(0.85f, 0.65f, 0.25f, 1.0f),
+                                   "This game supplies no exposure. Paper white below is in use.");
+                HelpMarker("The game declined to hand DLSS an exposure texture, so there is nothing to"
+                               "\nread and this option will do nothing here."
+                               "\n\nThat is not a fault. A game can either hand over its exposure or apply"
+                               "\nit to the picture before the upscaler sees it, and both are correct."
+                               "\nCyberpunk 2077 does the second, which means the scene-to-scene variation"
+                               "\nthis option exists to cancel has already been cancelled upstream -- so one"
+                               "\nfixed paper white is the right answer there rather than a compromise.");
+            }
+            else if (!fromExposure)
+            {
+                ImGui::TextColored(ImVec4(0.45f, 0.8f, 0.45f, 1.0f),
+                                   "This game supplies an exposure. Tick above to use it.");
+            }
+            else if (ex.exposure > 1e-6f)
+            {
+                const float wp = ex.preExposure / ex.exposure *
+                                 config->DlssNrWhitePointScale.value_or_default();
+
+                ImGui::TextColored(ImVec4(0.45f, 0.8f, 0.45f, 1.0f),
+                                   "Game exposure %.4f  ->  white point %.2f%s", ex.exposure, wp,
+                                   ex.offeredNow ? "" : "  (held: absent this frame)");
+            }
+            else
+            {
+                ImGui::TextDisabled("Reading the exposure...");
+            }
+        }
+
 
 
 

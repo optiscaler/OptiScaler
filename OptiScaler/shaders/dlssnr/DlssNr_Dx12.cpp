@@ -226,6 +226,16 @@ struct NrState
     float gameExposure = 0.0f;
     float gamePreExposure = 1.0f;
 
+    // What the game OFFERS, as opposed to what has been read. Recorded from the parameter block every
+    // frame whether or not the setting is on, and deliberately so: the menu has to be able to answer
+    // "would this do anything here?" before the user turns it on, and reading a pointer for null costs
+    // nothing. Whether it was ever offered is kept separately from whether it was offered this frame,
+    // because games drop it on transitions -- GTA V dropped it three times in one session -- and one
+    // absent frame is not the same answer as never.
+    bool exposureOfferedNow = false;
+    bool exposureEverOffered = false;
+    unsigned long long exposureFrames = 0;
+
     // Cloned unconditionally when running at present, and only for typeless formats otherwise.
     ID3D12Resource* depthClone = nullptr;
     ID3D12Resource* motionClone = nullptr;
@@ -1820,6 +1830,10 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
         frame.ExposureTexture = exposureTex;
         frame.PreExposure = havePre && preExposure > 1e-6f ? preExposure : 1.0f;
 
+        g_nr.exposureOfferedNow = exposureTex != nullptr;
+        g_nr.exposureEverOffered = g_nr.exposureEverOffered || g_nr.exposureOfferedNow;
+        g_nr.exposureFrames++;
+
         const bool autoExposureFlag = (createFlags & NVSDK_NGX_DLSS_Feature_Flags_AutoExposure) != 0;
 
         struct ExposureReport
@@ -1891,6 +1905,19 @@ void EvaluateAfterUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramete
 bool IsRunning() { return g_nr.feature != nullptr && !g_nr.failed; }
 
 const char* FailureReason() { return g_nr.failed ? g_nr.reason : ""; }
+
+// What the game offers by way of exposure, and what has been read from it. For the menu, so a user
+// can see whether this game supplies one at all without having to read a log.
+ExposureStatus GameExposureStatus()
+{
+    ExposureStatus s {};
+    s.seenFrames = g_nr.exposureFrames;
+    s.offeredNow = g_nr.exposureOfferedNow;
+    s.everOffered = g_nr.exposureEverOffered;
+    s.exposure = g_nr.gameExposure;
+    s.preExposure = g_nr.gamePreExposure;
+    return s;
+}
 
 std::optional<double> LastGpuTime() { return g_lastGpuTime; }
 
