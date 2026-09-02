@@ -924,7 +924,7 @@ PFN_vkVoidFunction VulkanSpoofing::hkvkGetDeviceProcAddr(const PFN_vkVoidFunctio
 
 void VulkanSpoofing::HookForVulkanSpoofing(HMODULE vulkanModule)
 {
-    Vulkan_wDx12::Hook(vulkanModule);
+    //Vulkan_wDx12::Hook(vulkanModule);
 
     if (Config::Instance()->VulkanSpoofing.value_or_default() && o_vkGetPhysicalDeviceProperties == nullptr)
     {
