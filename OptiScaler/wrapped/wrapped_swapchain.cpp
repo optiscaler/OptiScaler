@@ -17,6 +17,8 @@
 #include <misc/IdentifyGpu.h>
 #include <hooks/Xell_Hooks.h>
 
+#include <magic_enum.hpp>
+
 #ifdef LOW_LATENCY_INPUTS
 #include <low_latency/input/input_antilag2.h>
 #endif
@@ -50,6 +52,126 @@ const GUID IID_IUnwrappedDXGISwapChain = {
 static ID3D12Fence* resizeFence = nullptr;
 static UINT64 resizeFenceValue = 0;
 static HANDLE resizeFenceEvent = nullptr;
+
+static void UpdateOutputColorSpace(DXGI_COLOR_SPACE_TYPE colorSpace)
+{
+    auto& state = State::Instance();
+
+    OutputColorSpace info {};
+    info.dxgiColorSpace = colorSpace;
+
+    switch (colorSpace)
+    {
+        // ------------------------------------------------------------
+        // SDR / Rec.709
+        // ------------------------------------------------------------
+
+    case DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709:
+        info.transfer = ColorTransfer::SRGB;
+        info.primaries = ColorPrimaries::Rec709;
+        info.range = ColorRange::Full;
+        info.model = ColorModel::RGB;
+        info.valid = true;
+
+        break;
+
+    case DXGI_COLOR_SPACE_RGB_STUDIO_G22_NONE_P709:
+        info.transfer = ColorTransfer::SRGB;
+        info.primaries = ColorPrimaries::Rec709;
+        info.range = ColorRange::Studio;
+        info.model = ColorModel::RGB;
+        info.valid = true;
+
+        break;
+
+        // ------------------------------------------------------------
+        // scRGB / linear Rec.709
+        // ------------------------------------------------------------
+
+    case DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709:
+        info.transfer = ColorTransfer::Linear;
+        info.primaries = ColorPrimaries::Rec709;
+        info.range = ColorRange::Full;
+        info.model = ColorModel::RGB;
+        info.valid = true;
+
+        break;
+
+        // ------------------------------------------------------------
+        // HDR10 / PQ / Rec.2020
+        // ------------------------------------------------------------
+
+    case DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020:
+        info.transfer = ColorTransfer::PQ;
+        info.primaries = ColorPrimaries::Rec2020;
+        info.range = ColorRange::Full;
+        info.model = ColorModel::RGB;
+        info.valid = true;
+
+        break;
+
+    case DXGI_COLOR_SPACE_RGB_STUDIO_G2084_NONE_P2020:
+        info.transfer = ColorTransfer::PQ;
+        info.primaries = ColorPrimaries::Rec2020;
+        info.range = ColorRange::Studio;
+        info.model = ColorModel::RGB;
+        info.valid = true;
+
+        break;
+
+    case DXGI_COLOR_SPACE_YCBCR_STUDIO_G2084_LEFT_P2020:
+    case DXGI_COLOR_SPACE_YCBCR_STUDIO_G2084_TOPLEFT_P2020:
+        info.transfer = ColorTransfer::PQ;
+        info.primaries = ColorPrimaries::Rec2020;
+        info.range = ColorRange::Studio;
+        info.model = ColorModel::YCbCr;
+        info.valid = true;
+
+        break;
+
+        // ------------------------------------------------------------
+        // HLG / Rec.2020
+        // ------------------------------------------------------------
+
+    case DXGI_COLOR_SPACE_YCBCR_FULL_GHLG_TOPLEFT_P2020:
+        info.transfer = ColorTransfer::HLG;
+        info.primaries = ColorPrimaries::Rec2020;
+        info.range = ColorRange::Full;
+        info.model = ColorModel::YCbCr;
+        info.valid = true;
+
+        break;
+
+    case DXGI_COLOR_SPACE_YCBCR_STUDIO_GHLG_TOPLEFT_P2020:
+        info.transfer = ColorTransfer::HLG;
+        info.primaries = ColorPrimaries::Rec2020;
+        info.range = ColorRange::Studio;
+        info.model = ColorModel::YCbCr;
+        info.valid = true;
+
+        break;
+
+        // ------------------------------------------------------------
+        // Unknown / unsupported
+        // ------------------------------------------------------------
+
+    default:
+        info.transfer = ColorTransfer::Unknown;
+        info.primaries = ColorPrimaries::Unknown;
+        info.range = ColorRange::Unknown;
+        info.model = ColorModel::Unknown;
+        info.valid = false;
+
+        break;
+    }
+
+    state.outputColorSpace = info;
+
+    LOG_INFO("Output color space updated: DXGI: {}, Transfer: {}, Primaries: {}, Range: {}, Model: {}, Valid: {}",
+             magic_enum::enum_name(info.dxgiColorSpace), magic_enum::enum_name(info.transfer),
+             magic_enum::enum_name(info.primaries), magic_enum::enum_name(info.range),
+             magic_enum::enum_name(info.model), info.valid);
+}
 
 static void WaitForGPUIdle(IUnknown* object)
 {
@@ -1105,32 +1227,20 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::CheckColorSpaceSupport(DXGI_CO
 
 HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::SetColorSpace1(DXGI_COLOR_SPACE_TYPE ColorSpace)
 {
-    if (ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020 ||
-        ColorSpace == DXGI_COLOR_SPACE_RGB_STUDIO_G2084_NONE_P2020 ||
-        ColorSpace == DXGI_COLOR_SPACE_YCBCR_STUDIO_G2084_LEFT_P2020 ||
-        ColorSpace == DXGI_COLOR_SPACE_YCBCR_STUDIO_G2084_TOPLEFT_P2020)
+    auto result = _real3->SetColorSpace1(ColorSpace);
+
+    if (SUCCEEDED(result))
     {
-        State::Instance().swapchainEncoding = ColorEncoding::PQ;
-    }
-    else if (ColorSpace == DXGI_COLOR_SPACE_YCBCR_FULL_GHLG_TOPLEFT_P2020 ||
-             ColorSpace == DXGI_COLOR_SPACE_YCBCR_STUDIO_GHLG_TOPLEFT_P2020)
-    {
-        State::Instance().swapchainEncoding = ColorEncoding::HLG;
-    }
-    else if (ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709)
-    {
-        State::Instance().swapchainEncoding = ColorEncoding::ScRGB;
-    }
-    else
-    {
-        State::Instance().swapchainEncoding = ColorEncoding::SDR;
+        UpdateOutputColorSpace(ColorSpace);
+
+        CheckForHdrOutput();
+
+        LOG_INFO("Output HDR Active: {}", State::Instance().hdrOutputActive);
+
+        MenuOverlayDx::ApplyThemeStyle();
     }
 
-    CheckForHdrOutput();
-
-    MenuOverlayDx::CleanupRenderTarget(true, _handle);
-
-    return _real3->SetColorSpace1(ColorSpace);
+    return result;
 }
 
 HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCount, UINT Width, UINT Height,

@@ -86,12 +86,46 @@ enum class SwapchainInteropApi : uint32_t
     Dx11wDx12,
 };
 
-enum class ColorEncoding : uint32_t
+enum class ColorTransfer : uint32_t
 {
-    SDR,
-    ScRGB,
+    Unknown,
+    SRGB,
+    Linear,
     PQ,
     HLG
+};
+
+enum class ColorPrimaries : uint32_t
+{
+    Unknown,
+    Rec709,
+    Rec2020
+};
+
+enum class ColorRange : uint32_t
+{
+    Unknown,
+    Full,
+    Studio
+};
+
+enum class ColorModel : uint32_t
+{
+    Unknown,
+    RGB,
+    YCbCr
+};
+
+struct OutputColorSpace
+{
+    DXGI_COLOR_SPACE_TYPE dxgiColorSpace = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
+
+    ColorTransfer transfer = ColorTransfer::SRGB;
+    ColorPrimaries primaries = ColorPrimaries::Rec709;
+    ColorRange range = ColorRange::Full;
+    ColorModel model = ColorModel::RGB;
+
+    bool valid = false;
 };
 
 typedef struct CapturedHudlessInfo
@@ -311,7 +345,7 @@ class State
 
     // HDR
     std::vector<IUnknown*> scBuffers;
-    ColorEncoding swapchainEncoding = ColorEncoding::SDR;
+    OutputColorSpace outputColorSpace {};
     bool hdrOutputActive = false;
 
     std::optional<ApiUpscalerInput> setInputApiName;

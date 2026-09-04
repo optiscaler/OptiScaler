@@ -62,7 +62,6 @@ class Vulkan_wDx12
     inline static std::mutex pendingSubmissionMutex;
     inline static std::unordered_map<VkCommandBuffer, PendingSubmission> pendingSubmissions;
 
-
 #pragma region Command Buffer Hooks
 
     static void hk_vkCmdBindPipeline(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipelineBindPoint,
