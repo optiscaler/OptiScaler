@@ -256,7 +256,7 @@ void ResetRawInputSanitizeCacheLocked()
 
 RawSanitizeAction GetRawKeyboardSanitizeActionLocked(const RAWKEYBOARD& keyboard)
 {
-    if (!_state.MenuVisible || !_state.BlockKeyboard)
+    if (!ShouldBlockKeyboardInputLocked())
         return RawSanitizeAction::Pass;
 
     const int vk = NormalizeRawKeyboardVirtualKey(keyboard);
@@ -312,7 +312,7 @@ RawMouseSanitizeResult GetRawMouseSanitizeActionLocked(const RAWMOUSE& mouse)
 {
     RawMouseSanitizeResult result {};
 
-    if (!_state.MenuVisible || !_state.BlockMouse)
+    if (!ShouldBlockMouseInputLocked())
         return result;
 
     const USHORT flags = mouse.usButtonFlags;
@@ -545,31 +545,31 @@ void UpdateStateFromRawMouseLocked(const RAWMOUSE& mouse)
     const DWORD time = GetTickCount();
 
     if (mouse.usButtonFlags & RI_MOUSE_LEFT_BUTTON_DOWN)
-        SetMouseDown(0, time, _state.BlockMouse);
+        SetMouseDown(0, time, ShouldBlockMouseInputLocked());
 
     if (mouse.usButtonFlags & RI_MOUSE_LEFT_BUTTON_UP)
         SetMouseUpStateOnly(0, time);
 
     if (mouse.usButtonFlags & RI_MOUSE_RIGHT_BUTTON_DOWN)
-        SetMouseDown(1, time, _state.BlockMouse);
+        SetMouseDown(1, time, ShouldBlockMouseInputLocked());
 
     if (mouse.usButtonFlags & RI_MOUSE_RIGHT_BUTTON_UP)
         SetMouseUpStateOnly(1, time);
 
     if (mouse.usButtonFlags & RI_MOUSE_MIDDLE_BUTTON_DOWN)
-        SetMouseDown(2, time, _state.BlockMouse);
+        SetMouseDown(2, time, ShouldBlockMouseInputLocked());
 
     if (mouse.usButtonFlags & RI_MOUSE_MIDDLE_BUTTON_UP)
         SetMouseUpStateOnly(2, time);
 
     if (mouse.usButtonFlags & RI_MOUSE_BUTTON_4_DOWN)
-        SetMouseDown(3, time, _state.BlockMouse);
+        SetMouseDown(3, time, ShouldBlockMouseInputLocked());
 
     if (mouse.usButtonFlags & RI_MOUSE_BUTTON_4_UP)
         SetMouseUpStateOnly(3, time);
 
     if (mouse.usButtonFlags & RI_MOUSE_BUTTON_5_DOWN)
-        SetMouseDown(4, time, _state.BlockMouse);
+        SetMouseDown(4, time, ShouldBlockMouseInputLocked());
 
     if (mouse.usButtonFlags & RI_MOUSE_BUTTON_5_UP)
         SetMouseUpStateOnly(4, time);
@@ -627,7 +627,7 @@ void UpdateStateFromRawKeyboardLocked(const RAWKEYBOARD& keyboard)
     if (released)
         SetKeyUpStateOnly(vk, GetTickCount());
     else
-        SetKeyDown(vk, GetTickCount(), _state.BlockKeyboard);
+        SetKeyDown(vk, GetTickCount(), ShouldBlockKeyboardInputLocked());
 }
 
 void UpdateStateFromRawInputLocked(const RAWINPUT& input)

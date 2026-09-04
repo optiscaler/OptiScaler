@@ -30,8 +30,8 @@ HMODULE FindLoadedXInputModule()
 
 bool ShouldBlockXInputLocked()
 {
-    return _state.Initialized && _state.Focused && ShouldApplyBlockingPolicyLocked() &&
-           (_state.BlockKeyboard || _state.BlockMouse);
+    return _state.Initialized &&
+           (ShouldBlockKeyboardInputLocked() || ShouldBlockMouseInputLocked());
 }
 
 void FillNeutralXInputState(XINPUT_STATE* state)

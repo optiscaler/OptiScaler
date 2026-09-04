@@ -461,6 +461,9 @@ bool HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Inpu
 
     const bool isInputMessage = IsInputMessage(msg);
 
+    const bool blockMouse = ShouldBlockMouseInputLocked();
+    const bool blockKeyboard = ShouldBlockKeyboardInputLocked();
+
     if (isInputMessage)
     {
         if (source == InputMessageSource::WndProc)
@@ -474,7 +477,7 @@ bool HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Inpu
                               "blockMouse:{} blockKeyboard:{}",
                               InputMessageSourceName(source), WindowMessageName(msg), static_cast<unsigned>(msg),
                               static_cast<void*>(hwnd), static_cast<UINT64>(wParam), static_cast<UINT64>(lParam),
-                              _state.MenuVisible ? 1 : 0, _state.BlockMouse ? 1 : 0, _state.BlockKeyboard ? 1 : 0);
+                              _state.MenuVisible ? 1 : 0, blockMouse ? 1 : 0, blockKeyboard ? 1 : 0);
     }
 
     bool shouldBlock = false;
@@ -483,20 +486,30 @@ bool HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Inpu
     {
     case WM_SETFOCUS:
     {
+        const bool wasFocused = _state.Focused;
         _state.Focused = true;
+
+        if (!wasFocused)
+            HandleBlockingFocusGainLocked();
+
         break;
     }
 
     case WM_KILLFOCUS:
     {
+        const bool wasFocused = _state.Focused;
         _state.Focused = false;
+
+        if (wasFocused)
+            HandleBlockingFocusLossLocked();
+
         break;
     }
 
     case WM_MOUSEMOVE:
     {
         UpdateMousePositionFromClient(hwnd, lParam);
-        shouldBlock = _state.BlockMouse;
+        shouldBlock = blockMouse;
         break;
     }
 
@@ -512,11 +525,11 @@ bool HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Inpu
         UpdateMousePositionFromClient(hwnd, lParam);
 
         const int button = MouseMessageToButton(msg, wParam);
-        SetMouseDown(button, GetMessageTime(), _state.BlockMouse);
-        OPTIINPUT_LOG_VERBOSE("mouse down button:{} blocked:{} pos=({}, {})", button, _state.BlockMouse ? 1 : 0,
+        SetMouseDown(button, GetMessageTime(), blockMouse);
+        OPTIINPUT_LOG_VERBOSE("mouse down button:{} blocked:{} pos=({}, {})", button, blockMouse ? 1 : 0,
                               _state.MouseClientPos.x, _state.MouseClientPos.y);
 
-        shouldBlock = _state.BlockMouse;
+        shouldBlock = blockMouse;
         break;
     }
 
@@ -543,13 +556,13 @@ bool HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Inpu
         const SHORT delta = GET_WHEEL_DELTA_WPARAM(wParam);
         _state.MouseWheel += static_cast<float>(delta) / static_cast<float>(WHEEL_DELTA);
 
-        shouldBlock = _state.BlockMouse;
+        shouldBlock = blockMouse;
         break;
     }
 
     case WM_MOUSEHWHEEL:
     {
-        shouldBlock = _state.BlockMouse;
+        shouldBlock = blockMouse;
         break;
     }
 
@@ -557,10 +570,10 @@ bool HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Inpu
     case WM_SYSKEYDOWN:
     {
         const int vk = NormalizeModifierVirtualKey(static_cast<int>(wParam), lParam);
-        SetKeyDown(vk, GetMessageTime(), _state.BlockKeyboard);
-        OPTIINPUT_LOG_VERBOSE("key down vk:{} blocked:{}", vk, _state.BlockKeyboard ? 1 : 0);
+        SetKeyDown(vk, GetMessageTime(), blockKeyboard);
+        OPTIINPUT_LOG_VERBOSE("key down vk:{} blocked:{}", vk, blockKeyboard ? 1 : 0);
 
-        shouldBlock = _state.BlockKeyboard;
+        shouldBlock = blockKeyboard;
         break;
     }
 
@@ -582,7 +595,7 @@ bool HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Inpu
         if (wParam >= 0x20 && wParam <= 0xFFFF)
             _state.TextInput.push_back(static_cast<wchar_t>(wParam));
 
-        shouldBlock = _state.BlockKeyboard;
+        shouldBlock = blockKeyboard;
         break;
     }
 
@@ -591,7 +604,7 @@ bool HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Inpu
         if (wParam != UNICODE_NOCHAR && wParam >= 0x20 && wParam <= 0xFFFF)
             _state.TextInput.push_back(static_cast<wchar_t>(wParam));
 
-        shouldBlock = wParam != UNICODE_NOCHAR && _state.BlockKeyboard;
+        shouldBlock = wParam != UNICODE_NOCHAR && blockKeyboard;
         break;
     }
 
@@ -608,8 +621,7 @@ bool HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Inpu
                 Otherwise the same message may later reach WndProc and be parsed twice.
         */
 
-        const bool shouldParseRawInput =
-            source == InputMessageSource::WndProc || _state.BlockMouse || _state.BlockKeyboard;
+        const bool shouldParseRawInput = source == InputMessageSource::WndProc || blockMouse || blockKeyboard;
 
         bool mustReachGame = false;
 
@@ -618,16 +630,16 @@ bool HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Inpu
 
         // The GetRawInputData hook uses the cached sanitize decision made above. Keep WM_INPUT
         // reachable only when it carries an owed release; all other blocked packets stay hidden.
-        shouldBlock = (_state.BlockMouse || _state.BlockKeyboard) && !mustReachGame;
+        shouldBlock = (blockMouse || blockKeyboard) && !mustReachGame;
         break;
     }
 
     default:
     {
         if (IsMouseMessage(msg))
-            shouldBlock = _state.BlockMouse;
+            shouldBlock = blockMouse;
         else if (IsKeyboardMessage(msg))
-            shouldBlock = _state.BlockKeyboard;
+            shouldBlock = blockKeyboard;
 
         break;
     }

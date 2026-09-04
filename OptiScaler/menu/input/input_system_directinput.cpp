@@ -68,8 +68,8 @@ bool ShouldBlockDirectInputMouseLocked()
 
 bool ShouldBlockDirectInputOtherLocked()
 {
-    return _state.Initialized && _state.Focused && ShouldApplyBlockingPolicyLocked() &&
-           (_state.BlockKeyboard || _state.BlockMouse);
+    return _state.Initialized &&
+           (ShouldBlockKeyboardInputLocked() || ShouldBlockMouseInputLocked());
 }
 
 bool ShouldBlockDirectInputDeviceLocked(DirectInputDeviceKind kind)
