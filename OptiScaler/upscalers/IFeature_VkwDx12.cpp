@@ -955,33 +955,51 @@ bool IFeature_VkwDx12::ProcessVulkanTextures(VkCommandBuffer InCmdList, const NV
     auto frame = _frameCount % VKDX12_BUFFER_COUNT;
     LOG_DEBUG("frame: {}", frame);
 
-    auto queueFamilyOpt = Vulkan_wDx12::cmdBufferStateTracker.GetCommandBufferQueueFamily(InCmdList);
-
-    if (queueFamilyOpt.has_value())
+    auto commandBufferLevel = Vulkan_wDx12::cmdBufferStateTracker.GetCommandBufferLevel(InCmdList);
+    if (!commandBufferLevel.has_value())
     {
-        uint32_t cmdBufferQueueFamily = queueFamilyOpt.value();
-        LOG_DEBUG("Command buffer {:X} belongs to queue family {}", (size_t) InCmdList, cmdBufferQueueFamily);
-
-        // Check if it matches your command pools
-        if (cmdBufferQueueFamily != ActiveQueueFamilyIndex)
-        {
-            LOG_WARN("Queue family mismatch detected! App uses family {}, we use family {}", cmdBufferQueueFamily,
-                     ActiveQueueFamilyIndex);
-
-            // Recreate command pools for the correct queue family
-            if (!CreateVulkanCommandBuffers(cmdBufferQueueFamily))
-            {
-                LOG_ERROR("Failed to create Vulkan command buffers for queue family {}", cmdBufferQueueFamily);
-                return false;
-            }
-
-            ActiveQueueFamilyIndex = cmdBufferQueueFamily;
-        }
+        LOG_ERROR("Could not determine command-buffer level for {:X}; refusing Vulkan w/Dx12 interop",
+                  (size_t) InCmdList);
+        return false;
     }
-    else
+
+    // This interop path splits execution at a queue-submit command-buffer boundary. A secondary command buffer
+    // executes inside its parent primary, so promoting it to the parent would move post-Evaluate work to the wrong
+    // execution point. Supporting secondary Evaluate requires parent command-stream splitting; fail closed for now.
+    if (*commandBufferLevel != VK_COMMAND_BUFFER_LEVEL_PRIMARY)
     {
-        LOG_WARN("Could not determine queue family for command buffer {:X}, using default {}", (size_t) InCmdList,
-                 ActiveQueueFamilyIndex);
+        LOG_ERROR("Vulkan w/Dx12 Evaluate on secondary command buffer {:X} is unsupported; refusing unsafe submit "
+                  "promotion",
+                  (size_t) InCmdList);
+        return false;
+    }
+
+    auto queueFamilyOpt = Vulkan_wDx12::cmdBufferStateTracker.GetCommandBufferQueueFamily(InCmdList);
+    if (!queueFamilyOpt.has_value())
+    {
+        LOG_ERROR("Could not determine queue family for command buffer {:X}; refusing Vulkan w/Dx12 interop",
+                  (size_t) InCmdList);
+        return false;
+    }
+
+    const uint32_t cmdBufferQueueFamily = *queueFamilyOpt;
+    LOG_DEBUG("Command buffer {:X} belongs to queue family {}", (size_t) InCmdList, cmdBufferQueueFamily);
+
+    if (cmdBufferQueueFamily != ActiveQueueFamilyIndex)
+    {
+        if (ActiveQueueFamilyIndex != UINT32_MAX)
+        {
+            LOG_WARN("Queue family changed from {} to {}; creating matching Vulkan w/Dx12 command buffers",
+                     ActiveQueueFamilyIndex, cmdBufferQueueFamily);
+        }
+
+        if (!CreateVulkanCommandBuffers(cmdBufferQueueFamily))
+        {
+            LOG_ERROR("Failed to create Vulkan command buffers for queue family {}", cmdBufferQueueFamily);
+            return false;
+        }
+
+        ActiveQueueFamilyIndex = cmdBufferQueueFamily;
     }
 
     LOG_DEBUG("Upscaling command buffer: {:X}, frame: {}", (size_t) InCmdList, frame);
@@ -997,8 +1015,6 @@ bool IFeature_VkwDx12::ProcessVulkanTextures(VkCommandBuffer InCmdList, const NV
 
     Dx12CommandAllocator[frame]->Reset();
     Dx12CommandList[frame]->Reset(Dx12CommandAllocator[frame], nullptr);
-
-    HRESULT result;
 
 #pragma region Extract Vulkan Resources
 
@@ -1249,34 +1265,16 @@ bool IFeature_VkwDx12::ProcessVulkanTextures(VkCommandBuffer InCmdList, const NV
 
 #pragma region Vulkan to D3D12 Synchronization
 
-    // Create shared fence/semaphore if needed
+    // Create shared fence/semaphore if needed. D3D12 queue waits are intentionally deferred until CopyBackOutput,
+    // after both the D3D12 and Vulkan copy-back command buffers have been recorded successfully.
     if (!CreateSharedFenceSemaphore())
     {
         LOG_ERROR("Failed to create shared fence/semaphore");
         return false;
     }
 
-    LOG_DEBUG("Vulkan Signal & D3D12 Wait for copy operations!");
-
-    // Will bu used to detect correct queue submit
-    // Increment fence value
-    _fenceValue++;
-    Vulkan_wDx12::signalValueResourceCopy = _fenceValue;
-
-    // Signal for D3D12 to wait on
-    Vulkan_wDx12::timelineInfoResourceCopy.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
-    Vulkan_wDx12::timelineInfoResourceCopy.signalSemaphoreValueCount = 1;
-    Vulkan_wDx12::timelineInfoResourceCopy.pSignalSemaphoreValues = &Vulkan_wDx12::signalValueResourceCopy;
-
-    // Copy resources submit info
-    Vulkan_wDx12::resourceCopySubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    Vulkan_wDx12::resourceCopySubmitInfo.pNext = &Vulkan_wDx12::timelineInfoResourceCopy;
-    Vulkan_wDx12::resourceCopySubmitInfo.commandBufferCount = 1;
-    Vulkan_wDx12::resourceCopySubmitInfo.pCommandBuffers = &InCmdList;
-    Vulkan_wDx12::resourceCopySubmitInfo.signalSemaphoreCount = 1;
-    Vulkan_wDx12::resourceCopySubmitInfo.pSignalSemaphores = &vkSemaphoreTextureCopy[frame];
-
-    LOG_DEBUG("Signaling Vulkan semaphore with value: {}", Vulkan_wDx12::signalValueResourceCopy);
+    pendingResourceCopyValue = ++_fenceValue;
+    LOG_DEBUG("Prepared Vulkan resource-copy signal value: {}", pendingResourceCopyValue);
 
     {
         if (!VulkanQueueCommandBuffers.contains(ActiveQueueFamilyIndex))
@@ -1308,10 +1306,13 @@ bool IFeature_VkwDx12::ProcessVulkanTextures(VkCommandBuffer InCmdList, const NV
             return false;
         }
 
-        // std::lock_guard<std::mutex> lock(Vulkan_wDx12::cmdBufferMutex);
-        Vulkan_wDx12::virtualCmdBuffer = b.VulkanBarrierCommandBuffer[frame];
+        if (!Vulkan_wDx12::RegisterVirtualCommandBuffer(InCmdList, b.VulkanBarrierCommandBuffer[frame]))
+        {
+            LOG_ERROR("Failed to register virtual command buffer for {:X}", (size_t) InCmdList);
+            vkEndCommandBuffer(b.VulkanBarrierCommandBuffer[frame]);
+            return false;
+        }
 
-        // Configure replay parameters
         vk_state::ReplayParams params {};
         params.ReplayGraphicsPipeline = true;
         params.ReplayComputeToo = false;
@@ -1322,7 +1323,6 @@ bool IFeature_VkwDx12::ProcessVulkanTextures(VkCommandBuffer InCmdList, const NV
         params.RequiredGraphicsSetMask = 0xFFFFFFFFu;
         params.OverrideGraphicsLayout = VK_NULL_HANDLE;
 
-        // Simple one-line call using cached function table
         if (!Vulkan_wDx12::cmdBufferStateTracker.CaptureAndReplay(InCmdList, b.VulkanBarrierCommandBuffer[frame],
                                                                   params))
         {
@@ -1350,14 +1350,6 @@ bool IFeature_VkwDx12::ProcessVulkanTextures(VkCommandBuffer InCmdList, const NV
 
         vkCmdPipelineBarrier(b.VulkanBarrierCommandBuffer[frame], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                              VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
-    }
-
-    // D3D12 wait on the shared fence signaled by Vulkan
-    result = Dx12CommandQueue->Wait(dx12FenceTextureCopy[frame], Vulkan_wDx12::signalValueResourceCopy);
-    if (result != S_OK)
-    {
-        LOG_ERROR("Dx12CommandQueue->Wait failed: {0:x}", result);
-        return false;
     }
 
 #pragma endregion
@@ -1395,11 +1387,10 @@ bool IFeature_VkwDx12::ProcessVulkanTextures(VkCommandBuffer InCmdList, const NV
 
 #pragma endregion
 
-    Vulkan_wDx12::lastCmdBuffer = InCmdList;
     return true;
 }
 
-bool IFeature_VkwDx12::CopyBackOutput()
+bool IFeature_VkwDx12::CopyBackOutput(VkCommandBuffer InCmdBuffer)
 {
     LOG_FUNC();
 
@@ -1423,7 +1414,6 @@ bool IFeature_VkwDx12::CopyBackOutput()
         }
     };
 
-    // Transition back to COMMON for Vulkan access
     AddBarrier(vkOut.Dx12Resource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON);
     AddBarrier(vkColor.Dx12Resource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
     AddBarrier(vkMv.Dx12Resource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
@@ -1431,11 +1421,214 @@ bool IFeature_VkwDx12::CopyBackOutput()
     AddBarrier(vkExp.Dx12Resource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
     AddBarrier(vkReactive.Dx12Resource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
 
-    // Batched transition
     if (!barriers.empty())
         Dx12CommandList[frame]->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
 
-    // Close and execute the command list
+    if (vkOut.VkSourceImage == VK_NULL_HANDLE || vkOut.VkSharedImage == VK_NULL_HANDLE)
+    {
+        LOG_ERROR("Output Vulkan images are not valid for copy-back");
+        return false;
+    }
+
+    if (!VulkanQueueCommandBuffers.contains(ActiveQueueFamilyIndex))
+    {
+        if (!CreateVulkanCommandBuffers(ActiveQueueFamilyIndex))
+        {
+            LOG_ERROR("Failed to create Vulkan command buffers for queue family {}", ActiveQueueFamilyIndex);
+            return false;
+        }
+    }
+
+    auto& b = VulkanQueueCommandBuffers[ActiveQueueFamilyIndex];
+
+    // Record every fallible Vulkan copy-back operation before placing a wait on the D3D12 queue. This makes
+    // Evaluate failures rollback-safe: an abandoned frame cannot leave the D3D12 queue permanently waiting.
+    VkResult vkResult = vkResetCommandBuffer(b.VulkanCopyCommandBuffer[frame], 0);
+    if (vkResult != VK_SUCCESS)
+    {
+        LOG_ERROR("vkResetCommandBuffer error: {0:x}", (int) vkResult);
+        return false;
+    }
+
+    VkCommandBufferBeginInfo beginInfo = {};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    vkResult = vkBeginCommandBuffer(b.VulkanCopyCommandBuffer[frame], &beginInfo);
+    if (vkResult != VK_SUCCESS)
+    {
+        LOG_ERROR("vkBeginCommandBuffer error: {0:x}", (int) vkResult);
+        return false;
+    }
+
+    std::vector<VkImageMemoryBarrier> imageBarriers;
+    imageBarriers.reserve(5);
+
+    auto AddVkBarrier = [&](VK_TEXTURE2D_RESOURCE_C* resource)
+    {
+        if (resource->VkSourceImage != VK_NULL_HANDLE)
+        {
+            VkImageMemoryBarrier imageBarrier {};
+            imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            imageBarrier.oldLayout = resource->VkSourceImageLayout;
+            imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            imageBarrier.image = resource->VkSharedImage;
+            imageBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            imageBarrier.subresourceRange.baseMipLevel = 0;
+            imageBarrier.subresourceRange.levelCount = 1;
+            imageBarrier.subresourceRange.baseArrayLayer = 0;
+            imageBarrier.subresourceRange.layerCount = 1;
+            imageBarrier.srcAccessMask = resource->VkSourceImageAccess;
+            imageBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            imageBarriers.push_back(imageBarrier);
+        }
+    };
+
+    AddVkBarrier(&vkColor);
+    AddVkBarrier(&vkDepth);
+    AddVkBarrier(&vkMv);
+    AddVkBarrier(&vkExp);
+    AddVkBarrier(&vkReactive);
+
+    if (!imageBarriers.empty())
+    {
+        vkCmdPipelineBarrier(b.VulkanCopyCommandBuffer[frame], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                             VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr,
+                             static_cast<uint32_t>(imageBarriers.size()), imageBarriers.data());
+    }
+
+    if (!Config::Instance()->VulkanUseCopyForOutput.value_or_default())
+    {
+        VkImageMemoryBarrier imageBarrier = {};
+        imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        imageBarrier.oldLayout = vkOut.VkSharedImageLayout;
+        imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        imageBarrier.image = vkOut.VkSharedImage;
+        imageBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageBarrier.subresourceRange.baseMipLevel = 0;
+        imageBarrier.subresourceRange.levelCount = 1;
+        imageBarrier.subresourceRange.baseArrayLayer = 0;
+        imageBarrier.subresourceRange.layerCount = 1;
+        imageBarrier.srcAccessMask = vkOut.VkSharedImageAccess;
+        imageBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+        vkOut.VkSharedImageLayout = imageBarrier.newLayout;
+        vkOut.VkSharedImageAccess = imageBarrier.dstAccessMask;
+
+        vkCmdPipelineBarrier(b.VulkanCopyCommandBuffer[frame], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
+
+        if (!OutCopy->CanRender())
+        {
+            LOG_ERROR("ResourceCopy_Vk not initialized!");
+            return false;
+        }
+
+        if (vkOut.VkSharedImageView == VK_NULL_HANDLE)
+        {
+            VkImageViewCreateInfo srcViewInfo = {};
+            srcViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            srcViewInfo.image = vkOut.VkSharedImage;
+            srcViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            srcViewInfo.format = vkOut.Format;
+            srcViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            srcViewInfo.subresourceRange.baseMipLevel = 0;
+            srcViewInfo.subresourceRange.levelCount = 1;
+            srcViewInfo.subresourceRange.baseArrayLayer = 0;
+            srcViewInfo.subresourceRange.layerCount = 1;
+
+            if (vkCreateImageView(VulkanDevice, &srcViewInfo, nullptr, &vkOut.VkSharedImageView) != VK_SUCCESS)
+            {
+                LOG_ERROR("Failed to create destination image view!");
+                return false;
+            }
+        }
+
+        VkExtent2D extent = { vkOut.Width, vkOut.Height };
+        if (!OutCopy->Dispatch(VulkanDevice, b.VulkanCopyCommandBuffer[frame], vkOut.VkSharedImageView,
+                               vkOut.VkSourceImageView, extent))
+        {
+            LOG_ERROR("Failed to dispatch resource copy!");
+            return false;
+        }
+    }
+    else
+    {
+        VkImageMemoryBarrier copyBarriers[2] = { {}, {} };
+
+        copyBarriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        copyBarriers[0].oldLayout = vkOut.VkSharedImageLayout;
+        copyBarriers[0].newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        copyBarriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        copyBarriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        copyBarriers[0].image = vkOut.VkSharedImage;
+        copyBarriers[0].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        copyBarriers[0].subresourceRange.baseMipLevel = 0;
+        copyBarriers[0].subresourceRange.levelCount = 1;
+        copyBarriers[0].subresourceRange.baseArrayLayer = 0;
+        copyBarriers[0].subresourceRange.layerCount = 1;
+        copyBarriers[0].srcAccessMask = vkOut.VkSharedImageAccess;
+        copyBarriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+        copyBarriers[1].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        copyBarriers[1].oldLayout = vkOut.VkSourceImageLayout;
+        copyBarriers[1].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        copyBarriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        copyBarriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        copyBarriers[1].image = vkOut.VkSourceImage;
+        copyBarriers[1].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        copyBarriers[1].subresourceRange.baseMipLevel = 0;
+        copyBarriers[1].subresourceRange.levelCount = 1;
+        copyBarriers[1].subresourceRange.baseArrayLayer = 0;
+        copyBarriers[1].subresourceRange.layerCount = 1;
+        copyBarriers[1].srcAccessMask = vkOut.VkSourceImageAccess;
+        copyBarriers[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+        vkCmdPipelineBarrier(b.VulkanCopyCommandBuffer[frame], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 2, copyBarriers);
+
+        VkExtent3D extent = { vkOut.Width, vkOut.Height, 1 };
+        VkImageCopy copyRegion = {};
+        copyRegion.extent = extent;
+        copyRegion.dstSubresource.aspectMask = copyBarriers[0].subresourceRange.aspectMask;
+        copyRegion.dstSubresource.mipLevel = copyBarriers[0].subresourceRange.baseMipLevel;
+        copyRegion.dstSubresource.baseArrayLayer = copyBarriers[0].subresourceRange.baseArrayLayer;
+        copyRegion.dstSubresource.layerCount = copyBarriers[0].subresourceRange.layerCount;
+        copyRegion.srcSubresource = copyRegion.dstSubresource;
+
+        vkCmdCopyImage(b.VulkanCopyCommandBuffer[frame], copyBarriers[0].image, copyBarriers[0].newLayout,
+                       copyBarriers[1].image, copyBarriers[1].newLayout, 1, &copyRegion);
+
+        copyBarriers[0].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        copyBarriers[0].newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        copyBarriers[0].srcAccessMask = copyBarriers[0].dstAccessMask;
+        copyBarriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+
+        copyBarriers[1].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        copyBarriers[1].newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        copyBarriers[1].srcAccessMask = copyBarriers[1].dstAccessMask;
+        copyBarriers[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+
+        vkCmdPipelineBarrier(b.VulkanCopyCommandBuffer[frame], VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 2, copyBarriers);
+
+        vkOut.VkSharedImageLayout = copyBarriers[0].newLayout;
+        vkOut.VkSharedImageAccess = copyBarriers[0].dstAccessMask;
+        vkOut.VkSourceImageLayout = copyBarriers[1].newLayout;
+        vkOut.VkSourceImageAccess = copyBarriers[1].dstAccessMask;
+    }
+
+    vkResult = vkEndCommandBuffer(b.VulkanCopyCommandBuffer[frame]);
+    if (vkResult != VK_SUCCESS)
+    {
+        LOG_ERROR("vkEndCommandBuffer error: {0:x}", (int) vkResult);
+        return false;
+    }
+
     HRESULT result = Dx12CommandList[frame]->Close();
     if (result != S_OK)
     {
@@ -1443,290 +1636,89 @@ bool IFeature_VkwDx12::CopyBackOutput()
         return false;
     }
 
-    ID3D12CommandList* ppCommandLists[] = { Dx12CommandList[frame] };
-    Dx12CommandQueue->ExecuteCommandLists(1, ppCommandLists);
+    const uint64_t d3d12CompleteValue = ++_fenceValue;
+    const uint64_t copyBackValue = ++_fenceValue;
 
-    // Signal shared fence after processing
-    _fenceValue++;
-    Vulkan_wDx12::signalValueD3D12 = _fenceValue;
+    Vulkan_wDx12::PendingSubmission submission {};
+    submission.submitCommandBuffer = InCmdBuffer;
+    submission.resourceCopySemaphore = vkSemaphoreTextureCopy[frame];
+    submission.resourceCopyFence = dx12FenceTextureCopy[frame];
+    submission.resourceCopyValue = pendingResourceCopyValue;
+    submission.copyBackSemaphore = vkSemaphoreCopyBack[frame];
+    submission.d3d12CompleteValue = d3d12CompleteValue;
+    submission.copyBackValue = copyBackValue;
+    submission.copyBackCommandBuffer = b.VulkanCopyCommandBuffer[frame];
+    submission.barrierCommandBuffer = b.VulkanBarrierCommandBuffer[frame];
 
-    result = Dx12CommandQueue->Signal(dx12FenceTextureCopy[frame], Vulkan_wDx12::signalValueD3D12);
-    if (result != S_OK)
+    if (!Vulkan_wDx12::RegisterPendingSubmission(submission))
     {
-        LOG_ERROR("Dx12CommandQueue->Signal (shared fence) failed: {0:x}", result);
+        LOG_ERROR("Failed to register Vulkan w/Dx12 pending submission");
         return false;
     }
 
-    // Signal for next frame
+    // Queue D3D12 work only after the complete Vulkan/D3D12 transaction has been prepared and registered.
+    result = Dx12CommandQueue->Wait(dx12FenceTextureCopy[frame], pendingResourceCopyValue);
+    if (result != S_OK)
+    {
+        Vulkan_wDx12::CancelPendingSubmission(InCmdBuffer);
+        LOG_ERROR("Dx12CommandQueue->Wait failed: {0:x}", result);
+        return false;
+    }
+
+    ID3D12CommandList* ppCommandLists[] = { Dx12CommandList[frame] };
+    Dx12CommandQueue->ExecuteCommandLists(1, ppCommandLists);
+
+    auto CancelAndDrainQueuedWait = [&]()
+    {
+        Vulkan_wDx12::CancelPendingSubmission(InCmdBuffer);
+
+        // The queue wait has already been accepted. If a later queue operation fails, removing the Vulkan-side
+        // transaction without releasing this wait would permanently strand the D3D12 queue. CPU-signaling the
+        // resource-copy fence is safe for the abort path: only OptiScaler's private shared-copy resources can be
+        // consumed by the queued D3D12 work, and no Vulkan copy-back submit will be injected afterwards.
+        HRESULT unblockResult = dx12FenceTextureCopy[frame]->Signal(pendingResourceCopyValue);
+        if (unblockResult != S_OK)
+        {
+            LOG_ERROR("Failed to release aborted Vulkan w/Dx12 queue wait: {0:x}", unblockResult);
+        }
+    };
+
+    result = Dx12CommandQueue->Signal(dx12FenceTextureCopy[frame], d3d12CompleteValue);
+    if (result != S_OK)
+    {
+        LOG_ERROR("Dx12CommandQueue->Signal (shared fence) failed: {0:x}", result);
+        CancelAndDrainQueuedWait();
+        return false;
+    }
+
     result = Dx12CommandQueue->Signal(Dx12Fence, _frameCount);
     if (result != S_OK)
     {
         LOG_ERROR("Dx12CommandQueue->Signal failed: {0:x}", result);
+        CancelAndDrainQueuedWait();
         return false;
     }
 
-    // D3D12 side is completed now copy back output to Vulkan image
-    if (vkOut.VkSourceImage != VK_NULL_HANDLE && vkOut.VkSharedImage != VK_NULL_HANDLE)
-    {
-        LOG_DEBUG("Copying output from shared image back to source image");
-
-        if (!VulkanQueueCommandBuffers.contains(ActiveQueueFamilyIndex))
-        {
-            if (!CreateVulkanCommandBuffers(ActiveQueueFamilyIndex))
-            {
-                LOG_ERROR("Failed to create Vulkan command buffers for queue family {}", ActiveQueueFamilyIndex);
-                return false;
-            }
-        }
-
-        auto& b = VulkanQueueCommandBuffers[ActiveQueueFamilyIndex];
-
-        VkResult vkResult = vkResetCommandBuffer(b.VulkanCopyCommandBuffer[frame], 0);
-        if (vkResult != VK_SUCCESS)
-        {
-            LOG_ERROR("vkResetCommandBuffer error: {0:x}", (int) vkResult);
-            return false;
-        }
-
-        VkCommandBufferBeginInfo beginInfo = {};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-        vkResult = vkBeginCommandBuffer(b.VulkanCopyCommandBuffer[frame], &beginInfo);
-        if (vkResult != VK_SUCCESS)
-        {
-            LOG_ERROR("vkBeginCommandBuffer error: {0:x}", (int) vkResult);
-            return false;
-        }
-
-        std::vector<VkImageMemoryBarrier> imageBarriers;
-        imageBarriers.reserve(5);
-
-        auto AddVkBarrier = [&](VK_TEXTURE2D_RESOURCE_C* resource)
-        {
-            if (resource->VkSourceImage != VK_NULL_HANDLE)
-            {
-                VkImageMemoryBarrier imageBarrier {};
-                imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                imageBarrier.oldLayout = resource->VkSourceImageLayout;
-                imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                imageBarrier.image = resource->VkSharedImage;
-                imageBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                imageBarrier.subresourceRange.baseMipLevel = 0;
-                imageBarrier.subresourceRange.levelCount = 1;
-                imageBarrier.subresourceRange.baseArrayLayer = 0;
-                imageBarrier.subresourceRange.layerCount = 1;
-                imageBarrier.srcAccessMask = resource->VkSourceImageAccess;
-                imageBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-                imageBarriers.push_back(imageBarrier);
-            }
-        };
-
-        AddVkBarrier(&vkColor);
-        AddVkBarrier(&vkDepth);
-        AddVkBarrier(&vkMv);
-        AddVkBarrier(&vkExp);
-        AddVkBarrier(&vkReactive);
-
-        vkCmdPipelineBarrier(b.VulkanCopyCommandBuffer[frame], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                             VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr,
-                             static_cast<uint32_t>(imageBarriers.size()), imageBarriers.data());
-
-        if (!Config::Instance()->VulkanUseCopyForOutput.value_or_default())
-        {
-            // Batch Vulkan barriers
-            VkImageMemoryBarrier imageBarrier = {};
-
-            // Transition shared image to transfer src
-            imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            imageBarrier.oldLayout = vkOut.VkSharedImageLayout;
-            imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            imageBarrier.image = vkOut.VkSharedImage;
-            imageBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            imageBarrier.subresourceRange.baseMipLevel = 0;
-            imageBarrier.subresourceRange.levelCount = 1;
-            imageBarrier.subresourceRange.baseArrayLayer = 0;
-            imageBarrier.subresourceRange.layerCount = 1;
-            imageBarrier.srcAccessMask = vkOut.VkSharedImageAccess;
-            imageBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-            vkOut.VkSharedImageLayout = imageBarrier.newLayout;
-            vkOut.VkSharedImageAccess = imageBarrier.dstAccessMask;
-
-            // Single batched barrier call for pre-copy transitions
-            vkCmdPipelineBarrier(b.VulkanCopyCommandBuffer[frame], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
-
-            if (!OutCopy->CanRender())
-            {
-                LOG_ERROR("ResourceCopy_Vk not initialized!");
-                return false;
-            }
-
-            // Create image views for depth transfer
-            if (vkOut.VkSharedImageView == VK_NULL_HANDLE)
-            {
-                VkImageViewCreateInfo srcViewInfo = {};
-                srcViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-                srcViewInfo.image = vkOut.VkSharedImage;
-                srcViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-                srcViewInfo.format = vkOut.Format;
-                srcViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                srcViewInfo.subresourceRange.baseMipLevel = 0;
-                srcViewInfo.subresourceRange.levelCount = 1;
-                srcViewInfo.subresourceRange.baseArrayLayer = 0;
-                srcViewInfo.subresourceRange.layerCount = 1;
-
-                if (vkCreateImageView(VulkanDevice, &srcViewInfo, nullptr, &vkOut.VkSharedImageView) != VK_SUCCESS)
-                {
-                    LOG_ERROR("Failed to create destination image view!");
-                    return false;
-                }
-            }
-
-            // Dispatch resource copy compute shader
-            VkExtent2D extent = { vkOut.Width, vkOut.Height };
-            if (!OutCopy->Dispatch(VulkanDevice, b.VulkanCopyCommandBuffer[frame], vkOut.VkSharedImageView,
-                                   vkOut.VkSourceImageView, extent))
-            {
-                LOG_ERROR("Failed to dispatch resource copy!");
-                return false;
-            }
-        }
-        else
-        {
-            VkImageMemoryBarrier imageBarriers[2] = { {}, {} };
-
-            // Shared
-            imageBarriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            imageBarriers[0].oldLayout = vkOut.VkSharedImageLayout;
-            imageBarriers[0].newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            imageBarriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            imageBarriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            imageBarriers[0].image = vkOut.VkSharedImage;
-            imageBarriers[0].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            imageBarriers[0].subresourceRange.baseMipLevel = 0;
-            imageBarriers[0].subresourceRange.levelCount = 1;
-            imageBarriers[0].subresourceRange.baseArrayLayer = 0;
-            imageBarriers[0].subresourceRange.layerCount = 1;
-            imageBarriers[0].srcAccessMask = vkOut.VkSharedImageAccess;
-            imageBarriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-
-            // Source
-            imageBarriers[1].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            imageBarriers[1].oldLayout = vkOut.VkSourceImageLayout;
-            imageBarriers[1].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-            imageBarriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            imageBarriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            imageBarriers[1].image = vkOut.VkSourceImage;
-            imageBarriers[1].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            imageBarriers[1].subresourceRange.baseMipLevel = 0;
-            imageBarriers[1].subresourceRange.levelCount = 1;
-            imageBarriers[1].subresourceRange.baseArrayLayer = 0;
-            imageBarriers[1].subresourceRange.layerCount = 1;
-            imageBarriers[1].srcAccessMask = vkOut.VkSourceImageAccess;
-            imageBarriers[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-
-            vkCmdPipelineBarrier(b.VulkanCopyCommandBuffer[frame], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                                 VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 2, imageBarriers);
-
-            // Copy shared to source
-            VkExtent3D extent = { vkOut.Width, vkOut.Height, 1 };
-            VkImageCopy copyRegion = {};
-            copyRegion.extent = extent;
-            copyRegion.dstSubresource.aspectMask = imageBarriers[0].subresourceRange.aspectMask;
-            copyRegion.dstSubresource.mipLevel = imageBarriers[0].subresourceRange.baseMipLevel;
-            copyRegion.dstSubresource.baseArrayLayer = imageBarriers[0].subresourceRange.baseArrayLayer;
-            copyRegion.dstSubresource.layerCount = imageBarriers[0].subresourceRange.layerCount;
-            copyRegion.srcSubresource = copyRegion.dstSubresource;
-
-            vkCmdCopyImage(b.VulkanCopyCommandBuffer[frame], imageBarriers[0].image, imageBarriers[0].newLayout,
-                           imageBarriers[1].image, imageBarriers[1].newLayout, 1, &copyRegion);
-
-            // Shared
-            imageBarriers[0].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            imageBarriers[0].newLayout = VK_IMAGE_LAYOUT_GENERAL;
-            imageBarriers[0].srcAccessMask = imageBarriers[0].dstAccessMask;
-            imageBarriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-
-            imageBarriers[1].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-            imageBarriers[1].newLayout = VK_IMAGE_LAYOUT_GENERAL;
-            imageBarriers[1].srcAccessMask = imageBarriers[1].dstAccessMask;
-            imageBarriers[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-
-            vkCmdPipelineBarrier(b.VulkanCopyCommandBuffer[frame], VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                 VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 2, imageBarriers);
-
-            vkOut.VkSharedImageLayout = imageBarriers[0].newLayout;
-            vkOut.VkSharedImageAccess = imageBarriers[0].dstAccessMask;
-            vkOut.VkSourceImageLayout = imageBarriers[1].newLayout;
-            vkOut.VkSourceImageAccess = imageBarriers[1].dstAccessMask;
-        }
-
-        // Close virtual command buffer
-        vkResult = vkEndCommandBuffer(b.VulkanCopyCommandBuffer[frame]);
-        if (vkResult != VK_SUCCESS)
-        {
-            LOG_ERROR("vkEndCommandBuffer error: {0:x}", (int) vkResult);
-            return false;
-        }
-
-        LOG_DEBUG("D3D12 Signal & Vulkan Wait!");
-
-        _fenceValue++;
-        Vulkan_wDx12::signalValueCopyBack = _fenceValue;
-
-        // Vulkan side will wait D3D12 shared fence
-        Vulkan_wDx12::copyBackTimelineInfo.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
-        Vulkan_wDx12::copyBackTimelineInfo.pNext = nullptr;
-        Vulkan_wDx12::copyBackTimelineInfo.waitSemaphoreValueCount = 1;
-        Vulkan_wDx12::copyBackTimelineInfo.pWaitSemaphoreValues = &Vulkan_wDx12::signalValueD3D12;
-        Vulkan_wDx12::copyBackTimelineInfo.signalSemaphoreValueCount = 1;
-        Vulkan_wDx12::copyBackTimelineInfo.pSignalSemaphoreValues = &Vulkan_wDx12::signalValueCopyBack;
-
-        // This is copy back submit queue
-        Vulkan_wDx12::copyBackWaitStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-        Vulkan_wDx12::copyBackSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        Vulkan_wDx12::copyBackSubmitInfo.pNext = &Vulkan_wDx12::copyBackTimelineInfo;
-        Vulkan_wDx12::copyBackSubmitInfo.waitSemaphoreCount = 1;
-        Vulkan_wDx12::copyBackSubmitInfo.pWaitSemaphores = &vkSemaphoreTextureCopy[frame];
-        Vulkan_wDx12::copyBackSubmitInfo.pWaitDstStageMask = &Vulkan_wDx12::copyBackWaitStage;
-        Vulkan_wDx12::copyBackSubmitInfo.signalSemaphoreCount = 1;
-        Vulkan_wDx12::copyBackSubmitInfo.pSignalSemaphores = &vkSemaphoreCopyBack[frame];
-        Vulkan_wDx12::copyBackSubmitInfo.commandBufferCount = 1;
-        Vulkan_wDx12::copyBackSubmitInfo.pCommandBuffers = &b.VulkanCopyCommandBuffer[frame];
-
-        // This is for syncing with copy back
-        Vulkan_wDx12::syncTimelineInfo.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
-        Vulkan_wDx12::syncTimelineInfo.pNext = nullptr;
-        Vulkan_wDx12::syncTimelineInfo.waitSemaphoreValueCount = 1;
-        Vulkan_wDx12::syncTimelineInfo.pWaitSemaphoreValues = &Vulkan_wDx12::signalValueCopyBack;
-        Vulkan_wDx12::syncTimelineInfo.signalSemaphoreValueCount = 0;
-        Vulkan_wDx12::syncTimelineInfo.pSignalSemaphoreValues = nullptr;
-
-        // this is for moved command buffers and signals (also for to be sure copy back completed)
-        Vulkan_wDx12::syncWaitStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-        Vulkan_wDx12::syncSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        Vulkan_wDx12::syncSubmitInfo.pNext = &Vulkan_wDx12::syncTimelineInfo;
-        Vulkan_wDx12::syncSubmitInfo.waitSemaphoreCount = 1;
-        Vulkan_wDx12::syncSubmitInfo.pWaitSemaphores = &vkSemaphoreCopyBack[frame];
-        Vulkan_wDx12::syncSubmitInfo.pWaitDstStageMask = &Vulkan_wDx12::syncWaitStage;
-        Vulkan_wDx12::syncSubmitInfo.signalSemaphoreCount = 0;
-        Vulkan_wDx12::syncSubmitInfo.pSignalSemaphores = nullptr;
-        Vulkan_wDx12::syncSubmitInfo.commandBufferCount = 1;
-        Vulkan_wDx12::syncSubmitInfo.pCommandBuffers = &b.VulkanBarrierCommandBuffer[frame];
-
-        // Trigger the injection on next vkQueueSubmit
-        Vulkan_wDx12::commandBufferFoundCount = 0;
-
-        LOG_DEBUG("Output copy completed synchronously");
-    }
-
+    LOG_DEBUG("Prepared Vulkan w/Dx12 transaction: resource={}, d3d12={}, copyBack={}", pendingResourceCopyValue,
+              d3d12CompleteValue, copyBackValue);
+    pendingResourceCopyValue = 0;
     return true;
+}
+
+void IFeature_VkwDx12::AbortPendingInterop(VkCommandBuffer InCmdBuffer, uint32_t InFrame)
+{
+    Vulkan_wDx12::CancelPendingSubmission(InCmdBuffer);
+
+    // ProcessVulkanTextures resets the command list before validation/copy setup. Close it on every aborted Evaluate so
+    // the same command-list slot can be Reset safely on the next frame. No D3D12 queue wait is queued before success.
+    if (Dx12CommandList[InFrame] != nullptr)
+        Dx12CommandList[InFrame]->Close();
+
+    auto virtualCommandBuffer = Vulkan_wDx12::RemoveVirtualCommandBuffer(InCmdBuffer);
+    if (virtualCommandBuffer != VK_NULL_HANDLE)
+        Vulkan_wDx12::EndCmdBuffer(virtualCommandBuffer);
+
+    pendingResourceCopyValue = 0;
 }
 
 void IFeature_VkwDx12::ReleaseSharedResources()
@@ -2061,6 +2053,7 @@ bool IFeature_VkwDx12::Init(VkInstance InInstance, VkPhysicalDevice InPD, VkDevi
 bool IFeature_VkwDx12::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters)
 {
     LOG_FUNC();
+    std::scoped_lock evaluateLock(EvaluateMutex);
 
     if (!IsInited())
         return false;
@@ -2068,19 +2061,43 @@ bool IFeature_VkwDx12::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter
     auto frame = _frameCount % VKDX12_BUFFER_COUNT;
     auto cmdList = Dx12CommandList[frame];
 
+    void* originalColor = nullptr;
+    void* originalMotionVectors = nullptr;
+    void* originalOutput = nullptr;
+    void* originalDepth = nullptr;
+    void* originalExposure = nullptr;
+    void* originalReactiveMask = nullptr;
+    InParameters->Get(NVSDK_NGX_Parameter_Color, &originalColor);
+    InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, &originalMotionVectors);
+    InParameters->Get(NVSDK_NGX_Parameter_Output, &originalOutput);
+    InParameters->Get(NVSDK_NGX_Parameter_Depth, &originalDepth);
+    InParameters->Get(NVSDK_NGX_Parameter_ExposureTexture, &originalExposure);
+    InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, &originalReactiveMask);
+
+    auto RestoreVulkanParameters = [&]()
+    {
+        InParameters->Set(NVSDK_NGX_Parameter_Color, originalColor);
+        InParameters->Set(NVSDK_NGX_Parameter_MotionVectors, originalMotionVectors);
+        InParameters->Set(NVSDK_NGX_Parameter_Output, originalOutput);
+        InParameters->Set(NVSDK_NGX_Parameter_Depth, originalDepth);
+        InParameters->Set(NVSDK_NGX_Parameter_ExposureTexture, originalExposure);
+        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, originalReactiveMask);
+    };
+
     bool dx12EvalResult = false;
+    bool interopPrepared = false;
     do
     {
         if (!ProcessVulkanTextures(InCmdBuffer, InParameters))
         {
-            LOG_ERROR("Can't process Dx11 textures!");
+            LOG_ERROR("Can't process Vulkan textures!");
+            AbortPendingInterop(InCmdBuffer, frame);
             break;
         }
+        interopPrepared = true;
 
         if (State::Instance().changeBackend[Handle()->Id])
-        {
             break;
-        }
 
         InParameters->Set(NVSDK_NGX_Parameter_Color, (void*) vkColor.Dx12Resource);
         InParameters->Set(NVSDK_NGX_Parameter_MotionVectors, (void*) vkMv.Dx12Resource);
@@ -2099,11 +2116,18 @@ bool IFeature_VkwDx12::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter
     } while (false);
 
     if (!dx12EvalResult)
+    {
+        if (interopPrepared)
+            AbortPendingInterop(InCmdBuffer, frame);
+        RestoreVulkanParameters();
         return false;
+    }
 
-    if (!CopyBackOutput())
+    if (!CopyBackOutput(InCmdBuffer))
     {
         LOG_ERROR("Can't copy output texture back!");
+        AbortPendingInterop(InCmdBuffer, frame);
+        RestoreVulkanParameters();
         return false;
     }
 

@@ -236,6 +236,7 @@ struct CommandBufferStateEntry
 {
     std::shared_ptr<CommandBufferState> State;
     std::mutex Mutex; // Fine-grained lock per command buffer
+    std::atomic<VkCommandBuffer> VirtualCommandBuffer { VK_NULL_HANDLE };
 };
 
 class CommandBufferStateTracker
@@ -243,42 +244,111 @@ class CommandBufferStateTracker
   public:
     CommandBufferStateTracker() { _state = &State::Instance(); }
 
-    // Call this when command buffers are allocated from a pool
+    // Call this when command buffers are allocated from a pool. Queue family may be unknown if the
+    // command-pool creation hook was missed; preserve that as unknown rather than fabricating family 0.
     void OnAllocateCommandBuffers(VkCommandPool pool, uint32_t count, const VkCommandBuffer* pCommandBuffers,
-                                  uint32_t queueFamilyIndex)
+                                  std::optional<uint32_t> queueFamilyIndex, VkCommandBufferLevel level)
     {
-        // Phase 1: Ensure pool metadata exists (only _poolMetadataMutex)
+        // Allocation is infrequent; keep metadata update simple and atomic.
         {
-            std::shared_lock poolLock(_poolMetadataMutex);
-            if (_poolToQueueFamily.find(pool) == _poolToQueueFamily.end())
+            std::unique_lock poolLock(_poolMetadataMutex);
+
+            if (queueFamilyIndex.has_value())
             {
-                poolLock.unlock();
-
-                std::unique_lock exclusivePoolLock(_poolMetadataMutex);
-                // Double-check after acquiring exclusive lock
-                if (_poolToQueueFamily.find(pool) == _poolToQueueFamily.end())
+                auto familyIt = _poolToQueueFamily.find(pool);
+                if (familyIt == _poolToQueueFamily.end())
                 {
-                    _poolToQueueFamily[pool] = queueFamilyIndex;
-
-                    auto epochIt = _poolEpochs.find(pool);
-                    if (epochIt == _poolEpochs.end())
-                    {
-                        _poolEpochs[pool] = std::make_shared<std::atomic<uint64_t>>(
-                            _globalEpochCounter.load(std::memory_order_acquire));
-                    }
+                    _poolToQueueFamily[pool] = *queueFamilyIndex;
+                }
+                else if (familyIt->second != *queueFamilyIndex)
+                {
+                    LOG_WARN("Pool {:X} queue family changed from {} to {} - replacing stale metadata",
+                             (size_t) pool, familyIt->second, *queueFamilyIndex);
+                    familyIt->second = *queueFamilyIndex;
                 }
             }
-        }
-        // _poolMetadataMutex fully released here before touching _statesMapMutex
 
-        // Phase 2: Map command buffers (only _statesMapMutex)
+            if (_poolEpochs.find(pool) == _poolEpochs.end())
+            {
+                _poolEpochs[pool] = std::make_shared<std::atomic<uint64_t>>(
+                    _globalEpochCounter.load(std::memory_order_acquire));
+            }
+        }
+
         {
             std::unique_lock mapLock(_statesMapMutex);
             for (uint32_t i = 0; i < count; ++i)
             {
                 _cmdBufferToPool[pCommandBuffers[i]] = pool;
+                _cmdBufferLevels[pCommandBuffers[i]] = level;
             }
         }
+    }
+
+    // Compatibility overload for any out-of-tree callers that only provide a known queue family.
+    void OnAllocateCommandBuffers(VkCommandPool pool, uint32_t count, const VkCommandBuffer* pCommandBuffers,
+                                  uint32_t queueFamilyIndex)
+    {
+        OnAllocateCommandBuffers(pool, count, pCommandBuffers, std::optional<uint32_t> { queueFamilyIndex },
+                                 VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+    }
+
+    bool RegisterVirtualCommandBuffer(VkCommandBuffer cmd, VkCommandBuffer virtualCmd)
+    {
+        if (cmd == VK_NULL_HANDLE || virtualCmd == VK_NULL_HANDLE)
+            return false;
+
+        auto entry = GetOrCreateEntry(cmd, false);
+        VkCommandBuffer expected = VK_NULL_HANDLE;
+        if (!entry->VirtualCommandBuffer.compare_exchange_strong(expected, virtualCmd, std::memory_order_acq_rel,
+                                                                  std::memory_order_acquire))
+        {
+            return false;
+        }
+
+        _virtualCommandBufferCount.fetch_add(1, std::memory_order_release);
+        return true;
+    }
+
+    VkCommandBuffer GetVirtualCommandBuffer(VkCommandBuffer cmd) const
+    {
+        if (cmd == VK_NULL_HANDLE || _virtualCommandBufferCount.load(std::memory_order_acquire) == 0)
+            return VK_NULL_HANDLE;
+
+        std::shared_ptr<CommandBufferStateEntry> entry;
+        {
+            std::shared_lock mapLock(_statesMapMutex);
+            auto it = _states.find(cmd);
+            if (it == _states.end())
+                return VK_NULL_HANDLE;
+            entry = it->second;
+        }
+
+        return entry ? entry->VirtualCommandBuffer.load(std::memory_order_acquire) : VK_NULL_HANDLE;
+    }
+
+    VkCommandBuffer RemoveVirtualCommandBuffer(VkCommandBuffer cmd)
+    {
+        if (cmd == VK_NULL_HANDLE || _virtualCommandBufferCount.load(std::memory_order_acquire) == 0)
+            return VK_NULL_HANDLE;
+
+        std::shared_ptr<CommandBufferStateEntry> entry;
+        {
+            std::shared_lock mapLock(_statesMapMutex);
+            auto it = _states.find(cmd);
+            if (it == _states.end())
+                return VK_NULL_HANDLE;
+            entry = it->second;
+        }
+
+        if (!entry)
+            return VK_NULL_HANDLE;
+
+        auto virtualCmd = entry->VirtualCommandBuffer.exchange(VK_NULL_HANDLE, std::memory_order_acq_rel);
+        if (virtualCmd != VK_NULL_HANDLE)
+            _virtualCommandBufferCount.fetch_sub(1, std::memory_order_acq_rel);
+
+        return virtualCmd;
     }
 
     void OnBegin(VkCommandBuffer cmd, const VkCommandBufferBeginInfo* pBeginInfo)
@@ -864,7 +934,14 @@ class CommandBufferStateTracker
     void OnCommandBufferDestroyed(VkCommandBuffer cmd)
     {
         std::unique_lock lock(_statesMapMutex);
-        _states.erase(cmd);
+        auto stateIt = _states.find(cmd);
+        if (stateIt != _states.end())
+        {
+            ClearVirtualCommandBuffer(stateIt->second);
+            _states.erase(stateIt);
+        }
+        _cmdBufferToPool.erase(cmd);
+        _cmdBufferLevels.erase(cmd);
     }
 
     void OnFreeCommandBuffers(VkCommandPool pool, uint32_t count, const VkCommandBuffer* pCommandBuffers)
@@ -872,8 +949,14 @@ class CommandBufferStateTracker
         std::unique_lock lock(_statesMapMutex);
         for (uint32_t i = 0; i < count; ++i)
         {
-            _states.erase(pCommandBuffers[i]);
+            auto stateIt = _states.find(pCommandBuffers[i]);
+            if (stateIt != _states.end())
+            {
+                ClearVirtualCommandBuffer(stateIt->second);
+                _states.erase(stateIt);
+            }
             _cmdBufferToPool.erase(pCommandBuffers[i]);
+            _cmdBufferLevels.erase(pCommandBuffers[i]);
         }
 
         // LOG_DEBUG("Freed {} command buffers from pool {:X}", count, (size_t) pool);
@@ -882,9 +965,8 @@ class CommandBufferStateTracker
     // Call this when a command pool is destroyed
     void OnDestroyPool(VkCommandPool pool)
     {
-        if (_state->currentFeature == nullptr || !_state->currentFeature->IsWithDx12())
-            return;
-
+        // Allocation metadata is maintained even when w/Dx12 is not the current feature, so destruction must
+        // always retire it as well. Otherwise a recycled VkCommandPool handle can inherit stale queue-family data.
         std::unique_lock poolLock(_poolMetadataMutex);
         std::unique_lock mapLock(_statesMapMutex);
 
@@ -893,7 +975,13 @@ class CommandBufferStateTracker
         {
             if (it->second == pool)
             {
-                _states.erase(it->first);
+                auto stateIt = _states.find(it->first);
+                if (stateIt != _states.end())
+                {
+                    ClearVirtualCommandBuffer(stateIt->second);
+                    _states.erase(stateIt);
+                }
+                _cmdBufferLevels.erase(it->first);
                 it = _cmdBufferToPool.erase(it);
             }
             else
@@ -903,6 +991,7 @@ class CommandBufferStateTracker
         }
 
         _poolEpochs.erase(pool);
+        _poolToQueueFamily.erase(pool);
         LOG_DEBUG("Pool {:X} destroyed - removed all associated command buffers", (size_t) pool);
     }
 
@@ -1041,6 +1130,15 @@ class CommandBufferStateTracker
             }
             return familyIt->second;
         }
+    }
+
+    std::optional<VkCommandBufferLevel> GetCommandBufferLevel(VkCommandBuffer cmd) const
+    {
+        std::shared_lock mapLock(_statesMapMutex);
+        auto it = _cmdBufferLevels.find(cmd);
+        if (it == _cmdBufferLevels.end())
+            return std::nullopt;
+        return it->second;
     }
 
   private:
@@ -1657,6 +1755,16 @@ class CommandBufferStateTracker
         return true;
     }
 
+    void ClearVirtualCommandBuffer(const std::shared_ptr<CommandBufferStateEntry>& entry)
+    {
+        if (!entry)
+            return;
+
+        auto virtualCmd = entry->VirtualCommandBuffer.exchange(VK_NULL_HANDLE, std::memory_order_acq_rel);
+        if (virtualCmd != VK_NULL_HANDLE)
+            _virtualCommandBufferCount.fetch_sub(1, std::memory_order_acq_rel);
+    }
+
     std::shared_ptr<CommandBufferStateEntry> GetOrCreateEntry(VkCommandBuffer cmd, bool createState = true)
     {
         {
@@ -1689,8 +1797,10 @@ class CommandBufferStateTracker
 
     // Per-pool epoch tracking for accurate invalidation
     std::unordered_map<VkCommandBuffer, VkCommandPool> _cmdBufferToPool;
+    std::unordered_map<VkCommandBuffer, VkCommandBufferLevel> _cmdBufferLevels;
     std::unordered_map<VkCommandPool, uint32_t> _poolToQueueFamily;
     std::unordered_map<VkCommandPool, std::shared_ptr<std::atomic<uint64_t>>> _poolEpochs;
     std::atomic<uint64_t> _globalEpochCounter { 1 };
+    std::atomic<uint32_t> _virtualCommandBufferCount { 0 };
 };
 } // namespace vk_state
