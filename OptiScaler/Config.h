@@ -1,4 +1,5 @@
 #pragma once
+
 #include "SysUtils.h"
 #include "State.h"
 
@@ -251,6 +252,131 @@ class Config
     CustomOptional<bool> BuildPipelines { true };
     CustomOptional<int32_t> NetworkModel { 0 };
     CustomOptional<bool> CreateHeaps { true };
+
+    // --- DLSS 5 Neural Rendering (OptiScaler/dlssnr) --- removable as one block -----------------
+    // DLSS Neural Rendering: a detail-synthesis pass over the upscaler's output. Off by default -- it is
+    // an undocumented feature driven directly through its snippet, not something NVIDIA exposes.
+    CustomOptional<bool> DlssNrEnabled { false };
+    // Toggles the pass in game. Unbound by default -- a key that does something unexpected is worse
+    // than one that does nothing.
+    CustomOptional<int> DlssNrToggleKey { UnboundKey };
+    CustomOptional<uint32_t> DlssNrPreset { 0 };
+    CustomOptional<float> DlssNrIntensity { 1.0f };
+    // 0 default (standard), 1 natural, 2 cinematic -- the model's own processing profiles.
+    CustomOptional<uint32_t> DlssNrStyle { 0 };
+    CustomOptional<float> DlssNrLocalStructure { 1.0f };
+    CustomOptional<float> DlssNrLocalTone { 1.0f };
+    // -1 means follow local structure, which is the model's own default. It is not a strength of zero.
+    CustomOptional<float> DlssNrSkinStructure { -1.0f };
+    CustomOptional<bool> DlssNrAutoMask { true };
+
+    // How much of the model's edit reaches the frame. Separated because detail synthesis is a luminance
+    // edit and any colour shift is usually the part you do not want, and allowed past 1.0 because
+    // exaggerating an edit is the only honest way to see whether there is one.
+    CustomOptional<float> DlssNrTransferStrength { 1.0f };
+    CustomOptional<float> DlssNrColourStrength { 1.0f };
+
+
+    // The most the pass may multiply or divide a pixel by. A detail pass has no business restyling a
+    // light source, whatever the model returns.
+    CustomOptional<float> DlssNrMaxRatio { 2.0f };
+
+    // How a model that worked below the frame's size is brought back. 0 classic, 1 matched
+    // residual. Only has an effect when Model resolution is under 100%.
+    CustomOptional<uint32_t> DlssNrTransfer { 1 };
+
+    // Measure the white point from the frame instead of taking it from the slider. On a frame the
+    // game already tone mapped there is nothing to measure and this has no effect.
+    //
+    // Off by default, because it is not finished. The pass writes its result back into the same buffer
+    // the meter reads, so with the pass running the meter is partly measuring its own output and the
+    // two chase each other: Enshrouded, one session, 1545 samples spanning 0.01 to 97.9 with 57 jumps
+    // beyond 1.5x in a single frame. Measured in the same spot seconds apart, 41.31 with the pass off
+    // against 0.46 with it on. That is visible as the picture pumping and occasionally flickering.
+    //
+    // The slider is the supported control until the loop is broken. This stays as an opt-in so the
+    // behaviour can still be looked at.
+
+
+    // Take the white point from the game's own exposure texture instead of measuring or guessing.
+    // Off by default until it has been seen to work in more than one game.
+    CustomOptional<bool> DlssNrWhitePointFromExposure { true };
+
+    // 0 off, 1 the picture the model was shown, 2 its raw answer, 3 what it changed, amplified.
+    CustomOptional<uint32_t> DlssNrDebugView { 0 };
+
+    // Showing the pass against itself, without having to toggle it and remember what the last frame
+    // looked like. 0 off, 1 side by side, 2 a wipe.
+    //
+    // Side by side squeezes the whole frame into each half, so it is a comparison rather than
+    // something to play in. The wipe cuts one frame and resamples nothing, so it is; the split is a
+    // stored setting and stays where it was put once the menu closes.
+    CustomOptional<uint32_t> DlssNrCompare { 0 };
+    CustomOptional<float> DlssNrCompareSplit { 0.5f };
+
+    // Side by side only. 1 fits the whole frame at its right shape and accepts the bars; 2 fills
+    // the half and crops the sides off instead.
+    CustomOptional<float> DlssNrCompareZoom { 1.0f };
+
+    // Which side the edited frame sits on, in both comparison modes.
+    CustomOptional<bool> DlssNrCompareSwap { false };
+
+    // Labels drawn onto the two sides of a comparison, so a screenshot still says which is which.
+    // Drawn into the frame's own plane with a clip per side: in the wipe they are revealed and hidden
+    // by the split exactly as the images are, and there is nothing to drag.
+    CustomOptional<bool> DlssNrCompareTags { false };
+    CustomOptional<float> DlssNrTagScale { 1.5f };
+
+    // The fraction of the frame's resolution the model works at. The frame itself is never reduced --
+    // only the model's contribution is computed small and enlarged, so the picture underneath is
+    // untouched whatever this is set to. 1.0 is full resolution and behaves exactly as before.
+    CustomOptional<float> DlssNrWorkingScale { 1.0f };
+
+    // Ask the driver's own nvngx.dll whether it will dispatch Neural Rendering, once per session.
+    //
+    // Everything here drives the model's DLL directly through a forwarder, because the model refuses
+    // callers whose module path does not contain "nvngx.dll". But the model ships inside the driver
+    // store, and NVIDIA does not ship a feature DLL that no dispatcher can reach -- so the driver's
+    // nvngx.dll may well know feature 18 already. If it does, the forwarder is unnecessary, the
+    // signature question disappears, and users stop needing a 165 MB copy in every game folder.
+    //
+    // Off by default: it is a diagnostic, not a feature.
+    CustomOptional<bool> DlssNrProxyProbe { false };
+
+    // Run Neural Rendering through the driver's own nvngx.dll rather than through the forwarder.
+    //
+    // This is how DLSS itself is called. The forwarder exists only because driving the model
+    // directly trips its caller check, and a probe showed the driver dispatches feature 18 already:
+    // asking for 18 answers differently from asking for a feature that does not exist. OptiScaler
+    // also already tells the driver where to look, since NVNGX_FeatureInfo_Paths carries the game
+    // and OptiScaler folders into Init_Ext.
+    //
+    // Off until it is shown to produce the same picture. If it does, the forwarder can go.
+    CustomOptional<bool> DlssNrUseProxy { false };
+
+    // Which depth convention the model is told the guide uses.
+    //
+    //   0  what the game's own DLSS feature was created with, which is what it means for the upscaler
+    //   1  force normal
+    //   2  force inverted
+    //
+    // Writes one set of matched before/after frames per session, without anyone having to ask. The
+    // folder is cleared at the start of each run, so it holds one session's worth and never grows.
+    CustomOptional<bool> DlssNrAutoCapture { true };
+
+
+
+
+
+    // Multiplies the (auto or manual) white point before the encode: what the model considers "white".
+    // Higher means highlights sit lower on the curve and the model treats them as less extreme.
+    CustomOptional<float> DlssNrWhitePointScale { 1.0f };
+
+
+
+
+
+    // --- end DLSS 5 Neural Rendering -------------------------------------------------------------
 
     // DLSS
     CustomOptional<bool> DLSSEnabled { true };

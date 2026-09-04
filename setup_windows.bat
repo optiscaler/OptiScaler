@@ -406,6 +406,47 @@ echo.
 
 set setupSuccess=true
 
+REM --- DLSS 5 Neural Rendering ---------------------------------------------------------------
+REM The model ships in an NVIDIA driver package and cannot be redistributed here, so the user has
+REM to supply it. Saying where it goes, and whether it is already there, heads off the single most
+REM common reason for the feature to sit silently disabled.
+echo.
+echo  ------------------------------------------------------------------
+echo   DLSS 5 Neural Rendering
+echo  ------------------------------------------------------------------
+echo.
+if exist "nvngx_dlssnr.dll" (
+    echo   nvngx_dlssnr.dll found here. Neural Rendering can run.
+) else (
+    echo   nvngx_dlssnr.dll was NOT found in this folder.
+    echo.
+    echo   Neural Rendering needs it. It cannot ship with OptiScaler because
+    echo   it comes from an NVIDIA driver package, so copy it into THIS
+    echo   folder - the same one holding the game executable and the file
+    echo   OptiScaler was just renamed to.
+    echo.
+    echo   One copy per game. There is no shared or system-wide location.
+)
+echo.
+echo   Two similarly named files matter here, one character apart:
+echo.
+echo     nvngx.dll_dlssnr.dll   ships in this package  ^(about 13 KB^)
+echo     nvngx_dlssnr.dll       you supply it          ^(about 165 MB^)
+echo.
+echo   To check you have the right file: Properties ^> Details should
+echo   read "NVIDIA DLSSNR" at about 165 MB. A file that size named
+echo   nvngx_dlssd.dll is this model misnamed, not Ray Reconstruction -
+echo   installing it as Ray Reconstruction breaks that instead.
+echo.
+echo   Neural Rendering is OFF by default. Turn it on in the OptiScaler
+echo   overlay under "DLSS Neural Rendering", or set Enabled=true under
+echo   the DlssNr section of OptiScaler.ini.
+echo.
+echo   Needs an RTX 50 series card and a driver new enough to ship the
+echo   model. If it cannot run, the overlay says why rather than failing
+echo   quietly.
+echo.
+
 :end
 pause
 

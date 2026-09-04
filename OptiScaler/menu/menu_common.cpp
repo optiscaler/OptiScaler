@@ -1,6 +1,11 @@
 ﻿#include "pch.h"
 #include "menu_common.h"
 
+#include <algorithm>
+#include <cfloat>
+
+#include <dlssnr/DlssNr.h>
+
 #include "input/input_system.h"
 
 #include "font/Hack_Compressed.h"
@@ -163,6 +168,7 @@ static std::string updateNoticeUrl;
 static float lastMenuScale = 0.0f;
 static CustomOptional<uint32_t> comboPreset { 0 };
 static int lastKey = 0;
+static bool inputDlssNr = false;
 static bool capturingKey = false;
 
 template <typename T, size_t N> struct RingBuffer
@@ -280,6 +286,8 @@ void MenuCommon::UpdateManualInput(HWND targetHwnd)
         CheckShortcut(config->FGShortcutKey.value_or_default(), inputFG, "Menu key pressed, will be switching FG mode");
         CheckShortcut(config->FpsCycleShortcutKey.value_or_default(), inputFpsCycle,
                       "Menu key pressed, will be switching FPS mode");
+        CheckShortcut(config->DlssNrToggleKey.value_or_default(), inputDlssNr,
+                      "Neural Rendering key pressed, will be toggling the pass");
     }
     else if (capturingKey)
     {
@@ -1411,6 +1419,19 @@ void MenuCommon::HandleMenuShortcuts(RenderMenuContext& ctx)
             config->ShowFps = !config->ShowFps.value_or_default();
         }
 
+        if (inputDlssNr)
+        {
+            inputDlssNr = false;
+            config->DlssNrEnabled = !config->DlssNrEnabled.value_or_default();
+            LOG_DEBUG("Neural Rendering toggle key pressed, setting DlssNrEnabled to {}",
+                      config->DlssNrEnabled.value_or_default());
+
+            ImGuiToast toast { ImGuiToastType::Info, 2000 };
+            toast.setTitle("DLSS Neural Rendering");
+            toast.setContent(config->DlssNrEnabled.value_or_default() ? "On" : "Off");
+            ImGui::InsertNotification(toast);
+        }
+
         if (inputFpsCycle && config->ShowFps.value_or_default())
             config->FpsOverlayType = (FpsOverlay) ((config->FpsOverlayType.value_or_default() + 1) % FpsOverlay_COUNT);
 
@@ -1552,7 +1573,8 @@ void MenuCommon::BeginMenuFrameIfNeeded(RenderMenuContext& ctx)
 
     // New frame check
     if ((!config->DisableSplash.value_or_default() && now > splashStart && now < splashLimit) ||
-        config->ShowFps.value_or_default() || _isVisible || ImGui::notifications.size() > 0)
+        config->ShowFps.value_or_default() || _isVisible || ImGui::notifications.size() > 0 ||
+        (config->DlssNrCompare.value_or_default() != 0 && config->DlssNrCompareTags.value_or_default()))
     {
         if (!_isUWP)
         {
@@ -1726,8 +1748,75 @@ void MenuCommon::UpdateFrameTimeAverages(RenderMenuContext& ctx)
     }
 }
 
+// Labels for the comparison views.
+//
+// Drawn straight onto the foreground draw list, not as ImGui windows -- the last attempt made them
+// draggable windows and the clamping fought the split. Here each label is clipped to its own side of
+// the comparison, so in the wipe the moving split reveals and hides it exactly as it does the
+// pictures, and there is nothing to drag. Both wipe labels sit in the same top-left corner, each
+// clipped to its side, so whichever picture currently owns that corner is the one whose label shows.
+void MenuCommon::RenderNrCompareTags()
+{
+    auto* config = Config::Instance();
+
+    const uint32_t mode = config->DlssNrCompare.value_or_default();
+
+    if (mode == 0 || !config->DlssNrCompareTags.value_or_default())
+        return;
+
+    const ImVec2 screen = ImGui::GetIO().DisplaySize;
+
+    if (screen.x < 1.0f || screen.y < 1.0f)
+        return;
+
+    const bool swap = config->DlssNrCompareSwap.value_or_default();
+    const float split = mode == 1 ? 0.5f
+                                  : std::clamp(config->DlssNrCompareSplit.value_or_default(), 0.0f, 1.0f);
+    const float splitX = split * screen.x;
+
+    const float scale = std::clamp(config->DlssNrTagScale.value_or_default(), 0.5f, 5.0f);
+
+    // The left side is the untouched frame unless swapped -- matching the shader's
+    // showOriginal = (uv.x < split) != swap.
+    const char* leftText = swap ? "DLSS NR : ON" : "DLSS NR : OFF";
+    const char* rightText = swap ? "DLSS NR : OFF" : "DLSS NR : ON";
+
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    ImFont* font = ImGui::GetFont();
+    const float fontSize = ImGui::GetFontSize() * scale;
+    const float margin = 10.0f * scale;
+
+    // Both labels flank the divider along the top: the left picture's label is right-aligned just
+    // left of the split, the right picture's is left-aligned just right of it. Each is clipped to its
+    // own side, so in the wipe the split reveals and hides them along with the images.
+    auto drawTag = [&](const char* text, float x, ImVec2 clipMin, ImVec2 clipMax)
+    {
+        const ImVec2 size = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, text);
+
+        // Never let a label run off the visible frame as it grows.
+        x = std::min(std::max(x, 0.0f), screen.x - size.x);
+        float y = std::min(margin, screen.y - size.y - margin);
+        y = std::max(y, 0.0f);
+
+        dl->PushClipRect(clipMin, clipMax, true);
+        dl->AddText(font, fontSize, ImVec2(x + 2.0f, y + 2.0f), IM_COL32(0, 0, 0, 210), text);
+        dl->AddText(font, fontSize, ImVec2(x, y), IM_COL32(255, 255, 255, 255), text);
+        dl->PopClipRect();
+    };
+
+    const ImVec2 leftSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, leftText);
+
+    // Left picture's label: right edge a margin in from the split. Right picture's: left edge a margin
+    // out from the split.
+    drawTag(leftText, splitX - margin - leftSize.x, ImVec2(0.0f, 0.0f), ImVec2(splitX, screen.y));
+    drawTag(rightText, splitX + margin, ImVec2(splitX, 0.0f), ImVec2(screen.x, screen.y));
+}
+
 void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
 {
+    RenderNrCompareTags();
+
+
     auto& state = ctx.state;
     auto config = ctx.config;
     auto& io = ctx.io;
@@ -6986,11 +7075,13 @@ void MenuCommon::RenderKeybindSettings(RenderMenuContext& ctx)
         static auto fpsOverlay = Keybind("FPS Overlay", 11);
         static auto fpsOverlayCycle = Keybind("FPS Overlay Cycle", 12);
         static auto fgEnable = Keybind("Frame Generation", 13);
+        static auto dlssNrToggle = Keybind("Neural Rendering", 14);
 
         menu.Render(config->ShortcutKey);
         fpsOverlay.Render(config->FpsShortcutKey);
         fpsOverlayCycle.Render(config->FpsCycleShortcutKey);
         fgEnable.Render(config->FGShortcutKey);
+        dlssNrToggle.Render(config->DlssNrToggleKey);
     }
 }
 
@@ -7016,6 +7107,7 @@ void MenuCommon::RenderMainMenuTable(RenderMenuContext& ctx)
 
         // Right column: image quality, initialization, advanced options, appearance, overlay and input settings.
         RenderActiveImageSettings(ctx);
+        DlssNr::RenderMenu(ctx.config, ctx.menuResScale);
         RenderMagnifierSettings(ctx);
         RenderQuirksSettings(ctx);
         RenderAdvancedSettings(ctx);
@@ -7083,7 +7175,9 @@ void MenuCommon::RenderMainMenuGraphs(RenderMenuContext& ctx)
                         ImGui::Text(formattedTime.c_str());
                     }
 
-                    if (hasExtra)
+                    std::optional<double> nrTime {};
+                    nrTime = DlssNr::LastGpuTime();
+                    if (hasExtra || nrTime.has_value())
                     {
                         ImGui::TableNextRow();
                         ImGui::TableNextRow();
@@ -7103,6 +7197,14 @@ void MenuCommon::RenderMainMenuGraphs(RenderMenuContext& ctx)
 
                             ImGui::TableNextColumn();
                             ImGui::Text(formattedTime.c_str());
+                        }
+
+                        if (nrTime.has_value())
+                        {
+                            ImGui::TableNextColumn();
+                            ImGui::Text("Neural Rendering");
+                            ImGui::TableNextColumn();
+                            ImGui::Text(StrFmt("%.2f ms", nrTime.value()).c_str());
                         }
                     }
 

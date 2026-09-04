@@ -67,15 +67,23 @@ bool OS_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InR
     CreateShaderResourceView(_device, InResource, currentHeap.GetSrvCPU(0));
     CreateUnorderedAccessView(_device, OutResource, currentHeap.GetUavCPU(0), 0);
 
-    FsrEasuCon(fsr1Constants.const0, fsr1Constants.const1, fsr1Constants.const2, fsr1Constants.const3,
-               State::Instance().currentFeature->TargetWidth(), State::Instance().currentFeature->TargetHeight(),
-               State::Instance().currentFeature->TargetWidth(), State::Instance().currentFeature->TargetHeight(),
-               State::Instance().currentFeature->DisplayWidth(), State::Instance().currentFeature->DisplayHeight());
+    // The work is sized by the resources actually passed in. For the usual Output Scaling chain these
+    // match the current feature's target/display sizes; for any other caller only the resources are
+    // the truth.
+    const auto srcDesc = InResource->GetDesc();
+    const auto dstDesc = OutResource->GetDesc();
+    const auto srcW = (uint32_t) srcDesc.Width;
+    const auto srcH = (uint32_t) srcDesc.Height;
+    const auto dstW = (uint32_t) dstDesc.Width;
+    const auto dstH = (uint32_t) dstDesc.Height;
 
-    constants.srcWidth = State::Instance().currentFeature->TargetWidth();
-    constants.srcHeight = State::Instance().currentFeature->TargetHeight();
-    constants.destWidth = State::Instance().currentFeature->DisplayWidth();
-    constants.destHeight = State::Instance().currentFeature->DisplayHeight();
+    FsrEasuCon(fsr1Constants.const0, fsr1Constants.const1, fsr1Constants.const2, fsr1Constants.const3, srcW, srcH,
+               srcW, srcH, dstW, dstH);
+
+    constants.srcWidth = srcW;
+    constants.srcHeight = srcH;
+    constants.destWidth = dstW;
+    constants.destHeight = dstH;
 
     // fsr upscaling
     bool createdConstantsBuffer = false;
@@ -106,9 +114,8 @@ bool OS_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InR
     UINT dispatchWidth = 0;
     UINT dispatchHeight = 0;
 
-    dispatchWidth =
-        static_cast<UINT>((State::Instance().currentFeature->DisplayWidth() + InNumThreadsX - 1) / InNumThreadsX);
-    dispatchHeight = (State::Instance().currentFeature->DisplayHeight() + InNumThreadsY - 1) / InNumThreadsY;
+    dispatchWidth = (dstW + InNumThreadsX - 1) / InNumThreadsX;
+    dispatchHeight = (dstH + InNumThreadsY - 1) / InNumThreadsY;
 
     InCmdList->Dispatch(dispatchWidth, dispatchHeight, 1);
 

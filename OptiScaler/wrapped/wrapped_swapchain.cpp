@@ -1130,6 +1130,43 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::SetColorSpace1(DXGI_COLOR_SPAC
 
     MenuOverlayDx::CleanupRenderTarget(true, _handle);
 
+    // What one unit of the buffer means, which is the question the white point is really asking.
+    //
+    // Two of these encodings are absolute. PQ (ST.2084) puts 1.0 at 10,000 nits by definition, and
+    // scRGB -- linear, Rec.709 primaries -- puts 1.0 at 80 nits. In either the divisor this pass
+    // wants is arithmetic rather than a guess or a reading: paper white in nits over the unit. The
+    // rest are relative and say nothing about scale.
+    //
+    // Logged rather than used, for now. Whether a game that reports one of these actually honours it
+    // is the thing worth knowing before anything is built on it.
+    const char* meaning = "relative -- no scale to be had";
+    const char* name = "other";
+
+    switch (ColorSpace)
+    {
+    case DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020:
+        name = "PQ / ST.2084 (HDR10)";
+        meaning = "absolute: 1.0 = 10000 nits, so 203-nit paper white = 0.0203";
+        break;
+    case DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709:
+        name = "scRGB (linear, Rec.709)";
+        meaning = "absolute: 1.0 = 80 nits, so 203-nit paper white = 2.5375";
+        break;
+    case DXGI_COLOR_SPACE_YCBCR_FULL_GHLG_TOPLEFT_P2020:
+        name = "HLG";
+        break;
+    case DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P2020:
+        name = "Rec.2020, gamma 2.2";
+        break;
+    case DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709:
+        name = "sRGB (SDR)";
+        break;
+    default:
+        break;
+    }
+
+    LOG_INFO("DLSS-NR: swapchain colour space {} -- {} ({})", (int) ColorSpace, name, meaning);
+
     return _real3->SetColorSpace1(ColorSpace);
 }
 

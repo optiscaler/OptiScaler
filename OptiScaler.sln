@@ -5,6 +5,8 @@ VisualStudioVersion = 17.2.32602.215
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "OptiScaler", "OptiScaler\OptiScaler.vcxproj", "{8D2B73FB-EECD-45CE-B8E5-335610462F58}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "dlssnr_forwarder", "OptiScaler\dlssnr\forwarder\dlssnr_forwarder.vcxproj", "{7C1F3B2E-5D44-4A9B-9C1E-2F6A8D0B4E71}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -27,6 +29,15 @@ Global
 		{8D2B73FB-EECD-45CE-B8E5-335610462F58}.ReleaseDebug|x64.Build.0 = ReleaseDebug|x64
 		{8D2B73FB-EECD-45CE-B8E5-335610462F58}.ReleaseDebug|x86.ActiveCfg = ReleaseDebug|Win32
 		{8D2B73FB-EECD-45CE-B8E5-335610462F58}.ReleaseDebug|x86.Build.0 = ReleaseDebug|Win32
+		{7C1F3B2E-5D44-4A9B-9C1E-2F6A8D0B4E71}.Debug|x64.ActiveCfg = Debug|x64
+		{7C1F3B2E-5D44-4A9B-9C1E-2F6A8D0B4E71}.Debug|x64.Build.0 = Debug|x64
+		{7C1F3B2E-5D44-4A9B-9C1E-2F6A8D0B4E71}.Debug|x86.ActiveCfg = Debug|x64
+		{7C1F3B2E-5D44-4A9B-9C1E-2F6A8D0B4E71}.Release|x64.ActiveCfg = Release|x64
+		{7C1F3B2E-5D44-4A9B-9C1E-2F6A8D0B4E71}.Release|x64.Build.0 = Release|x64
+		{7C1F3B2E-5D44-4A9B-9C1E-2F6A8D0B4E71}.Release|x86.ActiveCfg = Release|x64
+		{7C1F3B2E-5D44-4A9B-9C1E-2F6A8D0B4E71}.ReleaseDebug|x64.ActiveCfg = ReleaseDebug|x64
+		{7C1F3B2E-5D44-4A9B-9C1E-2F6A8D0B4E71}.ReleaseDebug|x64.Build.0 = ReleaseDebug|x64
+		{7C1F3B2E-5D44-4A9B-9C1E-2F6A8D0B4E71}.ReleaseDebug|x86.ActiveCfg = ReleaseDebug|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
