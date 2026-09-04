@@ -4,6 +4,8 @@
 #include <Config.h>
 #include <DllNames.h>
 
+#include <framegen/dlssg/MfgUnlock.h>
+
 #include <proxies/Ntdll_Proxy.h>
 #include <proxies/Kernel32_Proxy.h>
 #include <proxies/Dxgi_Proxy.h>
@@ -105,6 +107,23 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
             return nvngxDlss;
         else
             LOG_ERROR("Trying to load dll: {}", libNameA);
+    }
+
+    // nvngx_dlssg
+    //
+    // The module publishes DLSSG.MultiFrameCountMax while it initialises and slDLSSGGetState returns
+    // the published value rather than recomputing it, so the patch has to be in before anything in
+    // here runs. Patching at the first GetState is one call too late.
+    if (libName.contains(L"nvngx_dlssg"))
+    {
+        auto dlssgSnippet = NtdllProxy::LoadLibraryExW_Ldr(lpLibFullPath, NULL, 0);
+
+        if (dlssgSnippet != nullptr)
+            MfgUnlock::TryApply();
+        else
+            LOG_ERROR("Trying to load dll as nvngx_dlssg: {}", libNameA);
+
+        return dlssgSnippet;
     }
 
     // NGX OTA
