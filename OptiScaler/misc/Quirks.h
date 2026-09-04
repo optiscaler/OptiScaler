@@ -175,7 +175,7 @@ static const QuirkEntry quirkTable[] = {
     //
     // Kunitsu-Gami: Path of the Goddess, Monster Hunter Wilds, MONSTER HUNTER RISE, Dead Rising Deluxe Remaster
     // (including the demo), Dragon's Dogma 2, PRAGMATA Demo, Resident Evil Requiem (+ demo)
-    // Monster Hunter Stories 3: Twisted, Reflection, PRAGMATA, Onimusha: Way of the Sword Demo
+    // Monster Hunter Stories 3: Twisted, Reflection, PRAGMATA, Onimusha: Way of the Sword (+ Demo)
     QUIRK_ENTRY("kunitsugami.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("kunitsugamidemo.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("monsterhunterwilds.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing,
@@ -186,7 +186,7 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("dd2ccs.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing,
                 GameQuirk::DisableHudfix),
     QUIRK_ENTRY("dd2.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing,
-                GameQuirk::DisableHudfix),
+                GameQuirk::DisableHudfix, GameQuirk::RestoreComputeSigOnNvidia, GameQuirk::PregmataFixDLSSModes),
     QUIRK_ENTRY("pragmata_sketchbook.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing,
                 GameQuirk::RestoreComputeSigOnNvidia, GameQuirk::AllowedFrameAhead2, GameQuirk::PregmataFixDLSSModes),
     QUIRK_ENTRY("re9.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing,
@@ -198,6 +198,8 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("pragmata.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing,
                 GameQuirk::RestoreComputeSigOnNvidia, GameQuirk::PregmataFixDLSSModes),
     QUIRK_ENTRY("onimushawots_demo.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing,
+                GameQuirk::RestoreComputeSigOnNvidia),
+    QUIRK_ENTRY("onimushawots.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing,
                 GameQuirk::RestoreComputeSigOnNvidia),
 
     // REF PDUpscaler branch

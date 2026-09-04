@@ -73,6 +73,11 @@ void SetFocusStateLocked(bool focused, const char* reason, HWND foreground, DWOR
     const bool oldFocused = _state.Focused;
     _state.Focused = focused;
 
+    if (oldFocused && !focused)
+        HandleBlockingFocusLossLocked();
+    else if (!oldFocused && focused)
+        HandleBlockingFocusGainLocked();
+
     if (oldFocused != focused)
     {
         LOG_DEBUG(
@@ -241,12 +246,17 @@ void ClearTargetWindowLocked()
                  _state.TargetProcessId, _state.TargetThreadId);
     }
 
+    const bool wasFocused = _state.Focused;
+
     _state.TargetHwnd = nullptr;
     _state.TargetRootHwnd = nullptr;
     _state.TargetProcessId = 0;
     _state.TargetThreadId = 0;
     _state.ExternalTargetProcess = false;
     _state.Focused = false;
+
+    if (wasFocused)
+        HandleBlockingFocusLossLocked();
 
     if (!_state.HasExplicitInputHwnd)
     {

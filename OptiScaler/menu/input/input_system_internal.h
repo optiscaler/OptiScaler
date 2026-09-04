@@ -535,6 +535,8 @@ bool ShouldApplyBlockingPolicyLocked();
 bool ShouldBlockKeyboardInputLocked();
 bool ShouldBlockMouseInputLocked();
 bool ShouldBlockCursorInputLocked();
+void HandleBlockingFocusGainLocked();
+void HandleBlockingFocusLossLocked();
 void LogInputHealthSnapshotLocked(const char* origin);
 void PollInputFallbackLocked();
 
