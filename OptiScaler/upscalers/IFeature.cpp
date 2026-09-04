@@ -278,7 +278,12 @@ void IFeature::TickFrozenCheck()
 
         lastFrameCount = _frameCount;
 
-        _featureFrozen = updatesWithoutFramecountChange > 10;
+        // Ticked once per present, but _frameCount only advances on an evaluate. Frame generation
+        // presents its generated frames between evaluates, so the count reaches the multiplier every
+        // real frame with nothing wrong. Scale the threshold by it.
+        const auto presentsPerEvaluate = std::max(1, State::Instance().dlssgDetectedInterpolationCount + 1);
+
+        _featureFrozen = updatesWithoutFramecountChange > 10L * presentsPerEvaluate;
     }
 }
 
