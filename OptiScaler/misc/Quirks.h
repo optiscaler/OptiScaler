@@ -183,7 +183,7 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("dd2ccs.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing,
                 GameQuirk::DisableHudfix),
     QUIRK_ENTRY("dd2.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing,
-                GameQuirk::DisableHudfix),
+                GameQuirk::DisableHudfix, GameQuirk::RestoreComputeSigOnNvidia, GameQuirk::PregmataFixDLSSModes),
     QUIRK_ENTRY("pragmata_sketchbook.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing,
                 GameQuirk::RestoreComputeSigOnNvidia, GameQuirk::AllowedFrameAhead2, GameQuirk::PregmataFixDLSSModes),
     QUIRK_ENTRY("re9.exe", GameQuirk::RestoreComputeSigOnNonNvidia, GameQuirk::DisableDxgiSpoofing,
