@@ -120,6 +120,9 @@ static const QuirkEntry quirkTable[] = {
     // Tainted Grail - Fall of Avalon
     QUIRK_ENTRY("fall of avalon.exe", GameQuirk::ForceAutoExposure),
 
+    // Granblue Fantasy Relink
+    QUIRK_ENTRY("granblue_fantasy_relink.exe", GameQuirk::DisableFakenvapi),
+
     // Path of Exile 2
     QUIRK_ENTRY("pathofexile.exe", GameQuirk::LoadD3D12Manually, GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("pathofexile_x64.exe", GameQuirk::LoadD3D12Manually, GameQuirk::DisableDxgiSpoofing),
