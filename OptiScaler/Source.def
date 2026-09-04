@@ -26,6 +26,9 @@ DXGIGetDebugInterface1 = _DXGIGetDebugInterface1
 ApplyCompatResolutionQuirking = _ApplyCompatResolutionQuirking
 CompatString = _CompatString
 CompatValue = _CompatValue
+DXGIDisableVBlankVirtualization = _DXGIDisableVBlankVirtualization
+DXGIReportAdapterConfiguration = _DXGIReportAdapterConfiguration
+DXGIDumpJournal =_DXGIDumpJournal
 
 EXPORTS
 AppCacheCheckManifest = _AppCacheCheckManifest

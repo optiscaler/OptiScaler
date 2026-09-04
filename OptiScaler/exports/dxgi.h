@@ -24,6 +24,7 @@ struct dxgi_dll
     FARPROC PIXGetCaptureState = nullptr;
     FARPROC SetAppCompatStringPointer = nullptr;
     FARPROC UpdateHMDEmulationStatus = nullptr;
+    FARPROC DisableVBlankVirtualization = nullptr;
 
     void LoadOriginalLibrary(HMODULE module)
     {
@@ -44,6 +45,7 @@ struct dxgi_dll
         PIXGetCaptureState = KernelBaseProxy::GetProcAddress_()(module, "PIXGetCaptureState");
         SetAppCompatStringPointer = KernelBaseProxy::GetProcAddress_()(module, "SetAppCompatStringPointer");
         UpdateHMDEmulationStatus = KernelBaseProxy::GetProcAddress_()(module, "UpdateHMDEmulationStatus");
+        DisableVBlankVirtualization = KernelBaseProxy::GetProcAddress_()(module, "DXGIDisableVBlankVirtualization");
     }
 } dxgi;
 
@@ -67,6 +69,12 @@ HRESULT _DXGIDeclareAdapterRemovalSupport() { return DxgiProxy::DeclareAdepterRe
 HRESULT _DXGIGetDebugInterface1(UINT Flags, REFIID riid, void** pDebug)
 {
     return DxgiProxy::GetDebugInterface_()(Flags, riid, pDebug);
+}
+
+void _DXGIDisableVBlankVirtualization()
+{
+    LOG_FUNC();
+    dxgi.DisableVBlankVirtualization();
 }
 
 void _ApplyCompatResolutionQuirking()
