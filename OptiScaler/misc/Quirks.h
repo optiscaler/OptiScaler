@@ -121,6 +121,7 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("fall of avalon.exe", GameQuirk::ForceAutoExposure),
 
     // Granblue Fantasy Relink
+    // Disabled fakenvapi to fix broken rendering
     QUIRK_ENTRY("granblue_fantasy_relink.exe", GameQuirk::DisableFakenvapi),
 
     // Path of Exile 2
