@@ -1137,19 +1137,7 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
         newOptions.dynamicTargetFrameRate = Config::Instance()->FGDLSSGFramerateTargetDMFG.value();
     }
 
-    if (state.swapchainApi == API::Vulkan)
-    {
-        // Only matters for Vulkan, DX doesn't use this delay
-        if (dlssgPotentiallyActive && !MenuOverlayBase::IsVisible())
-            state.delayMenuRenderBy = 10;
-
-        if (MenuOverlayBase::IsVisible())
-        {
-            newOptions.mode = sl::DLSSGMode::eOff;
-            newOptions.flags |= sl::DLSSGFlags::eRetainResourcesWhenOff;
-            ReflexHooks::setDlssgFrameCount(0);
-        }
-    }
+    applyMenuDlssgInterlock(newOptions, dlssgPotentiallyActive);
 
     LOG_TRACE("DLSSG Modified Mode: {}", magic_enum::enum_name(newOptions.mode));
 
@@ -1158,6 +1146,7 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
         // Populate dlssgMfgMax once
         if (!state.dlssgMfgMax.has_value())
         {
+
             sl::DLSSGState localState {};
             sl::DLSSGOptions localOptions {};
             if (o_slDLSSGGetState(viewport, localState, &localOptions) == sl::Result::eOk &&
@@ -1193,6 +1182,7 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
 sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport, sl::DLSSGState& state,
                                               const sl::DLSSGOptions* options)
 {
+
     sl::Result result {};
 
     const auto originalStructVersion = state.structVersion;
@@ -1728,6 +1718,28 @@ void StreamlineHooks::updateDlssgOptions()
         LOG_FUNC();
         hkslDLSSGSetOptions(lastDlssgViewport, lastDlssgOptions);
     }
+}
+
+void StreamlineHooks::applyMenuDlssgInterlock(sl::DLSSGOptions& options, bool dlssgPotentiallyActive)
+{
+    auto& state = State::Instance();
+
+    // Keyed on the overlay, not the swapchain: the submit this guards against is MenuOverlayVk's, and
+    // a title whose swapchainApi is not Vulkan can still have that overlay live.
+    if (state.swapchainApi != API::Vulkan && !state.menuOverlayIsVulkan)
+        return;
+
+    // Charged while the menu is hidden, spent by MenuOverlayVk::QueuePresent once it opens: the
+    // overlay holds off for 10 presents while DLSS-G unwinds. DX overlays do not use this delay.
+    if (dlssgPotentiallyActive && !MenuOverlayBase::IsVisible())
+        state.delayMenuRenderBy = 10;
+
+    if (!MenuOverlayBase::IsVisible())
+        return;
+
+    options.mode = sl::DLSSGMode::eOff;
+    options.flags |= sl::DLSSGFlags::eRetainResourcesWhenOff;
+    ReflexHooks::setDlssgFrameCount(0);
 }
 
 // SL INTERPOSER
