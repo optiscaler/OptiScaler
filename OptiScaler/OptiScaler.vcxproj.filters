@@ -1543,9 +1543,18 @@
     <None Include="shaders\magnifier\precompile\Magnifier_Shader_Vk.spv" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="dlssnr\DlssNr_Status.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dlssnr\DlssNr_Proxy.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="upscalers\ShaderPipeline_Dx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClCompile Include="dlssnr\DlssNr_Status.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="upscalers\ShaderPipeline_Vk.h">
