@@ -8,6 +8,7 @@
 
 #include <hooks/Reflex_Hooks.h>
 #include <hooks/DxgiFactory_Hooks.h>
+#include <hooks/Streamline_Hooks.h>
 
 #include <magic_enum.hpp>
 
@@ -360,6 +361,10 @@ bool DLSSG_Dx12::Dispatch()
         options.mode = sl::DLSSGMode::eDynamic;
         options.dynamicTargetFrameRate = Config::Instance()->FGDLSSGFramerateTargetDMFG.value_or_default();
     }
+
+    // StreamlineProxy holds the raw export, so this push bypasses hkslDLSSGSetOptions and its
+    // interlock. Apply it here too.
+    StreamlineHooks::applyMenuDlssgInterlock(options, true);
 
     auto dlssgSetOptionsResult = StreamlineProxy::DLSSGSetOptions()(viewport, options);
 

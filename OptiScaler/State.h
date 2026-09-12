@@ -168,6 +168,11 @@ class State
     bool dlssgDebugView = false;
     bool dlssgInterpolatedOnly = false;
     uint64_t dlssgLastFrame = 0;
+
+    // Presents MenuOverlayVk must skip before it may submit again. Charged to 10 whenever DLSS-G is
+    // pushed active with the menu hidden, decremented once per present. A game that pushes DLSS-G
+    // options every frame therefore pins it non-zero and the Vulkan overlay draws nothing at all --
+    // FPS overlay and notifications included -- for as long as DLSS-G runs.
     uint32_t delayMenuRenderBy = 0;
 
     // FSR Common
@@ -310,6 +315,9 @@ class State
     bool vulkanCreatingSC = false;
     bool creatingD3DDevice = false;
     bool vulkanSkipHooks = false;
+    // MenuOverlayVk holds ImGui's renderer backend. Independent of swapchainApi, and the condition
+    // MenuOverlayDx::Present stands down on: ImGui has one renderer backend at a time.
+    bool menuOverlayIsVulkan = false;
     VkInstance VulkanInstance = nullptr;
 
     // Framegraph

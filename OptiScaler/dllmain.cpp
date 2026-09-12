@@ -947,7 +947,16 @@ static void CheckWorkingMode()
 
     // NVAPI
     // Doesn't seem to like GetModuleHandle for some reason, so call our load to make sure
-    if (GetDllNameWModule(&nvapiNamesW) != nullptr)
+    //
+    // Also loaded when it is not present yet and an interface is meant to be withheld. Streamline
+    // resolves its nvapi entry points as it initialises, and a detour installed after that resolve is
+    // never consulted -- the module is hooked, the caller holds addresses from before the hook. Since
+    // Streamline 2.14 that resolve happens first, so DisableFlipMetering stopped taking effect.
+    // Loading it here puts the detour in front of it. Only on Nvidia, and only when something asks,
+    // so no process gains nvapi that would not have had it.
+    if (GetDllNameWModule(&nvapiNamesW) != nullptr ||
+        (Config::Instance()->DisableFlipMetering.value_or_default() &&
+         IdentifyGpu::getPrimaryGpu().vendorId == VendorId::Nvidia))
     {
         // This hooks nvapi as well when possible
         auto nvapi64 = LibraryLoadHooks::LoadNvApi();

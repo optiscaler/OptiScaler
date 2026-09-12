@@ -530,6 +530,12 @@ void MenuOverlayDx::Present(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         return;
     }
 
+    // MenuOverlayVk holds io.BackendRendererUserData, so ImGui_ImplDX11/DX12 would run against its
+    // data. MenuOverlayVk stands down for vkd3d-proton D3D12 swapchains; this covers the reverse
+    // order, where it claimed the backend first.
+    if (State::Instance().menuOverlayIsVulkan)
+        return;
+
     LOG_DEBUG("");
 
     ID3D12CommandQueue* cq = nullptr;

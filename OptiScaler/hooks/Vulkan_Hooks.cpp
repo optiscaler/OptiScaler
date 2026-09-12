@@ -252,8 +252,15 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
         State::Instance().swapchainApi = Vulkan;
 
     // Tick feature to let it know if it's frozen
-    if (auto currentFeature = State::Instance().currentFeature; currentFeature != nullptr)
-        currentFeature->TickFrozenCheck();
+    //
+    // A vkd3d-proton D3D12 title reaches this and LocalPresent both, and two ticks per present halve
+    // the frozen threshold. Frame generation already spends several presents per evaluate, so the
+    // doubled count crosses it and the feature reads as frozen while the game is running.
+    if (State::Instance().swapchainApi != DX12)
+    {
+        if (auto currentFeature = State::Instance().currentFeature; currentFeature != nullptr)
+            currentFeature->TickFrozenCheck();
+    }
 
     VkPresentInfoKHR localPresentInfo {};
     memcpy(&localPresentInfo, pPresentInfo, sizeof(VkPresentInfoKHR));
