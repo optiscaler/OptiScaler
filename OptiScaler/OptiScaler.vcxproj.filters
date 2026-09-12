@@ -1549,6 +1549,9 @@
     <ClInclude Include="dlssnr\DlssNr_Proxy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="shaders\dlssnr\DlssNr_Common.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="upscalers\ShaderPipeline_Dx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
