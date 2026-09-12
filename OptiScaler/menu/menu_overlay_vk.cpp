@@ -480,7 +480,7 @@ void MenuOverlayVk::DestroyVulkanObjects(bool shutdown)
             fd->BackbufferView = VK_NULL_HANDLE;
         }
 
-        if (fd->BackbufferView != VK_NULL_HANDLE)
+        if (fd->Framebuffer != VK_NULL_HANDLE)
         {
             vkDestroyFramebuffer(_ImVulkan_Info.Device, fd->Framebuffer, VK_NULL_HANDLE);
             fd->Framebuffer = VK_NULL_HANDLE;
