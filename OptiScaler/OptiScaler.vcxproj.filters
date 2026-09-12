@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="Header Files">
@@ -1541,5 +1541,89 @@
       <Filter>Source Files</Filter>
     </None>
     <None Include="shaders\magnifier\precompile\Magnifier_Shader_Vk.spv" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="upscalers\ShaderPipeline_Dx12.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="upscalers\ShaderPipeline_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="dlssnr\DlssNrFinished_Vk.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="dlssnr\DlssNrFinished_Vk.h"><Filter>Header Files</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="dlssnr\DlssNr.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="dlssnr\DlssNr_Capture.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="dlssnr\DlssNr_PipelineCapture.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="dlssnr\DlssNr_ExposureScan.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="dlssnr\DlssNr_ExposureScan.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="dlssnr\DlssNr_GpuLifetime.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="dlssnr\DlssNr_GpuLifetime.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="dlssnr\DlssNr_HoldParameters_Dx12.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="dlssnr\DlssNr_Menu.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="dlssnr\DlssNr_MenuBlend.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="dlssnr\DlssNr_MenuInput.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="dlssnr\DlssNr_MenuModel.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="dlssnr\DlssNr_MenuOverlay.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="dlssnr\DlssNr_MenuOverlay.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="dlssnr\DlssNr_MenuPlacement.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="dlssnr\DlssNr_MenuSections.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="dlssnr\DlssNr_Pipeline_Dx12.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="dlssnr\DlssNr_Pipeline_Dx12.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="dlssnr\DlssNr_Proxy.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="dlssnr\DlssNr_Upscaler.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="dlssnr\DlssNr_VkExtensions.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="dlssnr\DlssNrFeature_Dx12.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="dlssnr\DlssNrFeature_Vk.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="dlssnr\DlssNrFeature_Vk.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="dlssnr\DlssNrFeature_Vk_Internal.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="dlssnr\DlssNrFeature_Vk_Model.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="dlssnr\DlssNrFeature_Vk_Resources.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="dlssnr\PassProfiles.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="shaders\dlssnr\DlssNr_ActiveColor.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="shaders\dlssnr\DlssNr_Dx12.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="shaders\dlssnr\DlssNr_GpuTime.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="shaders\dlssnr\DlssNr_Guides.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="shaders\dlssnr\DlssNr_ResidualPair.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="shaders\dlssnr\DlssNr_SeamClock.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="shaders\dlssnr\DlssNr_Upscaler_Dx12.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="shaders\dlssnr\DlssNr_Upscaler_Dx12.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="shaders\dlssnr\DlssNr_Vk.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="shaders\dlssnr\DlssNr_Vk.h"><Filter>Header Files</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="dlssnr\DlssNr_ExposureAnchors.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="dlssnr\DlssNr_ExposureReadback.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="dlssnr\DlssNr_ExposureScan_Internal.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="shaders\dlssnr\DlssNr_Dx12_DeferredSr.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="shaders\dlssnr\DlssNr_Dx12_Enlarge.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="shaders\dlssnr\DlssNr_Dx12_Evaluate.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="shaders\dlssnr\DlssNr_Dx12_Exposure.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="shaders\dlssnr\DlssNr_Dx12_FinishedCompose.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="shaders\dlssnr\DlssNr_Dx12_FinishedQueue.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="shaders\dlssnr\DlssNr_Dx12_Hold.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="shaders\dlssnr\DlssNr_Dx12_Late.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="shaders\dlssnr\DlssNr_Dx12_Resources.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="shaders\dlssnr\DlssNr_Dx12_Run.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="shaders\dlssnr\DlssNr_Dx12_State.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="shaders\dlssnr\DlssNr_Dx12_Status.cpp"><Filter>Source Files</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="shaders\dlssnr\DlssNr_Dx12_Encode.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="shaders\dlssnr\DlssNr_Dx12_Models.cpp"><Filter>Source Files</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="shaders\dlssnr\DlssNr_Dx12_ModelState.h"><Filter>Header Files</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="dlssnr\DlssNr_Placement.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="dlssnr\DlssNr_FinishedReady.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="dlssnr\DlssNr_StreamlinePicture.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="dlssnr\DlssNr_StreamlinePicture.cpp"><Filter>Source Files</Filter></ClCompile>
   </ItemGroup>
 </Project>

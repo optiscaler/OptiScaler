@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -250,6 +250,7 @@ move $(SolutionDir)x64\Release\$(TargetFileName) $(SolutionDir)x64\Release\a\
 md $(SolutionDir)x64\Release\a\Licenses
 del /Q $(SolutionDir)x64\Release\a\Licenses\*.*
 copy $(SolutionDir)external\xess\LICENSE.txt $(SolutionDir)x64\Release\a\Licenses\XeSS_LICENSE.txt /Y
+copy "$(SolutionDir)Licenses\RenoDX_ATTRIBUTION.txt" $(SolutionDir)x64\Release\a\Licenses\ /Y
 md $(SolutionDir)x64\Release\a\OptiScaler
 copy $(SolutionDir)external\xess\bin\*.dll $(SolutionDir)x64\Release\a\OptiScaler\ /Y
 copy $(SolutionDir)external\FidelityFX-SDK\docs\license.md $(SolutionDir)x64\Release\a\OptiScaler\Licenses\FidelityFX_v1_LICENSE.md /Y
@@ -326,6 +327,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="fsr4\FSR4ModelSelection.h" />
     <ClInclude Include="hooks\D3D12_Hooks.h" />
     <ClInclude Include="hooks\DxgiFactory_Hooks.h" />
+    <ClInclude Include="hooks\DxgiSwapchainSizing.h" />
     <ClInclude Include="hooks\DxgiFactory_WrappedCalls.h" />
     <ClInclude Include="hooks\Dxgi_Hooks.h" />
     <ClInclude Include="hooks\FG_Hooks.h" />
@@ -852,4 +854,18 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
+  <ItemGroup>
+    <ClInclude Include="upscalers\ShaderPipeline_Dx12.h" />
+    <ClInclude Include="upscalers\ShaderPipeline_Vk.h" />
+  </ItemGroup>
+  <ItemGroup>
+  </ItemGroup>
+  <ItemGroup>
+  </ItemGroup>
+  <ItemGroup>
+  </ItemGroup>
+  <ItemGroup>
+  </ItemGroup>
+  <ItemGroup>
+  </ItemGroup>
 </Project>
