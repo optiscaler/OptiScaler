@@ -1,5 +1,6 @@
-﻿#include "pch.h"
+#include "pch.h"
 #include "menu_common.h"
+#include "DlssgExternalTelemetry.h"
 
 #include "input/input_system.h"
 
@@ -1957,9 +1958,15 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                                      usesDx12CompatLayer ? " w/Dx12" : "");
             }
 
-            if (fg != nullptr && fg->IsActive() && !fg->IsPaused())
+            DLSSGFrameTelemetry externalTelemetry {};
+            const bool managedFg = fg != nullptr && fg->IsActive() && !fg->IsPaused();
+            const bool externalFg = !managedFg && DlssgExternalTelemetry::Read(externalTelemetry);
+            if (externalFg)
+                fgText += " | DLSSG source telemetry";
+            if (managedFg || externalFg)
             {
-                const double baseFps = frameRate / (double) (fg->GetInterpolatedFrameCount() + 1);
+                const double baseFps = externalFg ? externalTelemetry.base_fps
+                                                 : frameRate / (double) (fg->GetInterpolatedFrameCount() + 1);
 
                 switch (overlayType)
                 {
