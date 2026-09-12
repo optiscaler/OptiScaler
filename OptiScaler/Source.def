@@ -17,12 +17,27 @@ D3D12PIXReportCounter = _D3D12PIXReportCounter @115 PRIVATE
 D3D12SerializeRootSignature = _D3D12SerializeRootSignatureExport @116 PRIVATE
 D3D12SerializeVersionedRootSignature = _D3D12SerializeVersionedRootSignatureExport @117 PRIVATE
 
-EXPORTS  
+EXPORTS
 CreateDXGIFactory = _CreateDXGIFactory
 CreateDXGIFactory1 = _CreateDXGIFactory1
-CreateDXGIFactory2 = _CreateDXGIFactory2 
-DXGIDeclareAdapterRemovalSupport = _DXGIDeclareAdapterRemovalSupport 
-DXGIGetDebugInterface1 = _DXGIGetDebugInterface1 
+CreateDXGIFactory2 = _CreateDXGIFactory2
+DXGIDeclareAdapterRemovalSupport = _DXGIDeclareAdapterRemovalSupport
+DXGIGetDebugInterface1 = _DXGIGetDebugInterface1
+ApplyCompatResolutionQuirking = _ApplyCompatResolutionQuirking
+CompatString = _CompatString
+CompatValue = _CompatValue
+DXGIDisableVBlankVirtualization = _DXGIDisableVBlankVirtualization
+DXGIDumpJournal = _DXGIDumpJournal
+DXGIReportAdapterConfiguration = _DXGIReportAdapterConfiguration
+DXGID3D10CreateDevice = _DXGID3D10CreateDevice
+DXGID3D10CreateLayeredDevice = _DXGID3D10CreateLayeredDevice
+DXGID3D10GetLayeredDeviceSize = _DXGID3D10GetLayeredDeviceSize
+DXGID3D10RegisterLayers = _DXGID3D10RegisterLayers
+PIXBeginCapture = _PIXBeginCapture
+PIXEndCapture = _PIXEndCapture
+PIXGetCaptureState = _PIXGetCaptureState
+SetAppCompatStringPointer = _SetAppCompatStringPointer
+UpdateHMDEmulationStatus = _UpdateHMDEmulationStatus
 
 EXPORTS
 AppCacheCheckManifest = _AppCacheCheckManifest
