@@ -66,7 +66,7 @@ static bool PrepareDx12FlipFormat(DXGI_FORMAT& format)
         return true;
 
     default:
-        LOG_ERROR("Unsupported texture format for DX12 flip swapchain: {}", (UINT) format);)
+        LOG_ERROR("Unsupported texture format for DX12 flip swapchain: {}", (UINT) format);
         return false;
     }
 }
