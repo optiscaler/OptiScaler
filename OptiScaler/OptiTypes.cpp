@@ -76,6 +76,9 @@ std::string UpscalerDisplayName(Upscaler upscaler, API api)
     case Upscaler::DLSS:
         return "DLSS";
 
+    case Upscaler::DLSS_on12:
+        return "DLSS w/Dx12";
+
     case Upscaler::DLSSD:
         return "DLSSD";
     }
@@ -112,6 +115,7 @@ std::string UpscalerShortName(Upscaler upscaler)
         return "XeSS";
 
     case Upscaler::DLSS:
+    case Upscaler::DLSS_on12:
         return "DLSS";
 
     case Upscaler::DLSSD:
@@ -144,6 +148,8 @@ std::string UpscalerToCode(Upscaler upscaler)
         return "ffx_12";
     case Upscaler::DLSS:
         return "dlss";
+    case Upscaler::DLSS_on12:
+        return "dlss_12";
     case Upscaler::DLSSD:
         return "dlssd";
     case Upscaler::FSR31: // DX11 only
@@ -162,6 +168,7 @@ Upscaler CodeToUpscaler(const std::string& code)
         { "fsr22", Upscaler::FSR22 }, { "fsr22_12", Upscaler::FSR22_on12 },
         { "ffx", Upscaler::FFX },     { "ffx_12", Upscaler::FFX_on12 },
         { "dlss", Upscaler::DLSS },   { "dlssd", Upscaler::DLSSD },
+        { "dlss_12", Upscaler::DLSS_on12 },
         { "fsr31", Upscaler::FSR31 }, { "fsr31_12", Upscaler::FFX_on12 }, // for compat reasons
     };
 

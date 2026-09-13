@@ -758,6 +758,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="upscalers\dlssd\DLSSDFeature_Vk.cpp" />
     <ClCompile Include="upscalers\dlss\DLSSFeature.cpp" />
     <ClCompile Include="upscalers\dlss\DLSSFeature_Dx11.cpp" />
+    <ClCompile Include="upscalers\dlss\DLSSFeature_Dx11On12.cpp" />
     <ClCompile Include="upscalers\dlss\DLSSFeature_Dx12.cpp" />
     <ClCompile Include="upscalers\dlss\DLSSFeature_Vk.cpp" />
     <ClCompile Include="upscalers\FeatureProvider_Dx11.cpp" />
