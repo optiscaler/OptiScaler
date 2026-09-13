@@ -175,6 +175,8 @@ bool DlssNr_Dx12::DispatchPass(ID3D12GraphicsCommandList* InCmdList, const DlssN
                                ID3D12Resource* InMotion, ID3D12Resource* InPrevEdit, ID3D12Resource* OutTarget,
                                ID3D12Resource* OutKeep, uint32_t* immutableSlot)
 {
+    std::lock_guard ownersLock(nrOwnersMutex);
+    std::lock_guard stateLock(_state->mutex);
     _state->lifetime.Record(InCmdList);
     if (!_init || InCmdList == nullptr || _device == nullptr || InSource == nullptr || OutTarget == nullptr)
         return false;
@@ -315,6 +317,8 @@ bool DlssNr_Dx12::DispatchResidualPass(ID3D12GraphicsCommandList* InCmdList, con
                                        ID3D12Resource* InSource, ID3D12Resource* InModel, ID3D12Resource* InOriginal,
                                        ID3D12Resource* InMotion, ID3D12Resource* OutTarget, bool finishedColor)
 {
+    std::lock_guard ownersLock(nrOwnersMutex);
+    std::lock_guard stateLock(_state->mutex);
     _state->lifetime.Record(InCmdList);
     if (finishedColor && !_finishedColorPipelineState && _init)
         CreateComputePipeline(_device, &_finishedColorPipelineState, dlssnr_finished_color_cso,
@@ -368,6 +372,8 @@ bool DlssNr_Dx12::DispatchResidualPass(ID3D12GraphicsCommandList* InCmdList, con
 
 bool DlssNr_Dx12::CreateBufferResource(ID3D12Device* device, ID3D12Resource* source, D3D12_RESOURCE_STATES state)
 {
+    std::lock_guard ownersLock(nrOwnersMutex);
+    std::lock_guard stateLock(_state->mutex);
     if (device == nullptr || source == nullptr)
         return false;
     auto desc = source->GetDesc();
@@ -393,6 +399,8 @@ bool DlssNr_Dx12::CreateBufferResource(ID3D12Device* device, ID3D12Resource* sou
 
 void DlssNr_Dx12::SetBufferState(ID3D12GraphicsCommandList* cmdList, D3D12_RESOURCE_STATES state)
 {
+    std::lock_guard ownersLock(nrOwnersMutex);
+    std::lock_guard stateLock(_state->mutex);
     _state->lifetime.Record(cmdList);
     Shader_Dx12::SetBufferState(cmdList, state, _state->buffer, &_state->bufferState);
 }
@@ -444,6 +452,7 @@ bool DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmd, ID3D12Resource* colou
 void DlssNr_Dx12::BeginInputHold(ID3D12GraphicsCommandList* cmd, NVSDK_NGX_Parameter* params,
                                 const D3D12_RESOURCE_STATES* inputStates)
 {
+    std::lock_guard ownersLock(nrOwnersMutex);
     std::lock_guard lock(_state->mutex);
     _state->BeginInputHold(cmd, params, inputStates);
 }

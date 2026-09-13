@@ -12,4 +12,4 @@ namespace Util { inline bool CheckForRealObject(const char*, IUnknown* object, I
     "$PSScriptRoot/nr_gpu_lifetime_smoke.cpp" "$repo/OptiScaler/dlssnr/DlssNr_GpuLifetime.cpp" d3d12.lib dxgi.lib ole32.lib
 if ($LASTEXITCODE -ne 0) { throw 'NR lifetime test compilation failed.' }
 & "$build/smoke.exe"
-if ($LASTEXITCODE -ne 0) { throw 'NR lifetime test failed.' }
+if ($LASTEXITCODE -ne 0) { throw "NR lifetime test failed (exit $LASTEXITCODE)." }

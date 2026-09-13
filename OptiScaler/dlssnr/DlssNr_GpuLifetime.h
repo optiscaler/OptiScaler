@@ -6,7 +6,9 @@
 
 namespace DlssNr
 {
-// NR-local lifetime tracking. Calls must be serialized by the owning NR state.
+// NR-local lifetime tracking. Record/submit/reset/retire/collect calls are serialized internally.
+// Owners must still guard their resources and outlive all calls. Lock order when owned by NR:
+// owner registry -> NR state -> tracker; retirement callbacks may re-enter on the calling thread.
 class GpuLifetime
 {
     struct Impl;

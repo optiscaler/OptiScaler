@@ -5,6 +5,10 @@
 #include <wrl/client.h>
 #include <cstdio>
 #include <stdexcept>
+#include <atomic>
+#include <barrier>
+#include <thread>
+#include <vector>
 #include <Util.h>
 #include "../OptiScaler/dlssnr/DlssNr_GpuLifetime.h"
 using Microsoft::WRL::ComPtr;
@@ -219,7 +223,45 @@ try
                "private DLSS retirement depends on unrelated NR recordings");
         unrelated.Reset(); common.Collect(); expect(commonReleased, "unrelated recording did not retire");
     }
-    std::puts("NR GPU lifetime smoke passed (including isolated private DLSS retirement)");
+    {
+        // Starfield resets lists on worker threads while the NR render path records/collects.
+        // Each worker owns a distinct list; only the production lifetime tracker is shared.
+        constexpr unsigned workers = 4, cycles = 2000;
+        DlssNr::GpuLifetime life;
+        std::vector<ComPtr<ID3D12GraphicsCommandList>> work(workers);
+        for (auto& list : work)
+        {
+            check(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, allocator.Get(), nullptr,
+                                            IID_PPV_ARGS(&list)));
+            check(list->Close());
+        }
+        std::barrier start(workers + 1);
+        std::atomic_uint callbacks { 0 }, finished { 0 };
+        std::vector<std::jthread> threads;
+        for (unsigned worker = 0; worker < workers; ++worker)
+            threads.emplace_back([&, worker]
+            {
+                start.arrive_and_wait();
+                for (unsigned cycle = 0; cycle < cycles; ++cycle)
+                {
+                    life.Record(work[worker].Get());
+                    life.Retire([&] { ++callbacks; });
+                    life.ResetRecording(work[worker].Get());
+                }
+                ++finished;
+            });
+        start.arrive_and_wait();
+        while (finished != workers)
+        {
+            life.Collect();
+            std::this_thread::yield();
+        }
+        threads.clear(); // join before checking final ownership
+        life.Collect();
+        expect(life.Idle() && callbacks == workers * cycles,
+               "concurrent record/reset lost, duplicated or retained ownership");
+    }
+    std::puts("NR GPU lifetime smoke passed (including concurrent record/reset/collection)");
     return 0;
 }
 catch (const std::exception& e) { std::fprintf(stderr, "%s\n", e.what()); return 1; }

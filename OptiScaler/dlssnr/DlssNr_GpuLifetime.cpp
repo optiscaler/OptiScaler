@@ -5,6 +5,7 @@
 #include <vector>
 #include <wrl/client.h>
 #include <atomic>
+#include <mutex>
 #include <objbase.h>
 
 namespace DlssNr
@@ -20,6 +21,9 @@ template <typename T> T* Identity(T* object)
 
 struct GpuLifetime::Impl
 {
+    // Reset notifications may arrive on a different engine thread from Record/Retire.
+    // Recursive because collection/destruction can re-enter the tracker on this thread.
+    std::recursive_mutex mutex;
     struct Timeline
     {
         Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue;
@@ -125,6 +129,7 @@ GpuLifetime::~GpuLifetime()
 }
 void GpuLifetime::Record(ID3D12GraphicsCommandList* commands)
 {
+    std::lock_guard lock(impl->mutex);
     if (!commands) return;
     commands = Identity(commands);
     Collect();
@@ -143,6 +148,7 @@ void GpuLifetime::Record(ID3D12GraphicsCommandList* commands)
 }
 void GpuLifetime::Submitted(ID3D12CommandQueue* queue, UINT count, ID3D12CommandList* const* lists)
 {
+    std::lock_guard lock(impl->mutex);
     if (impl->recordings.empty()) return;
     std::vector<Impl::Recording*> matched;
     for (UINT i = 0; i < count; ++i)
@@ -180,6 +186,7 @@ void GpuLifetime::Submitted(ID3D12CommandQueue* queue, UINT count, ID3D12Command
 }
 void GpuLifetime::ResetRecording(ID3D12CommandList* commands)
 {
+    std::lock_guard lock(impl->mutex);
     commands = Identity(commands);
     for (auto& use : impl->recordings)
         if (use->commands == commands) use->open = false;
@@ -187,11 +194,13 @@ void GpuLifetime::ResetRecording(ID3D12CommandList* commands)
 }
 void GpuLifetime::Retire(std::function<void()> destroy)
 {
+    std::lock_guard lock(impl->mutex);
     impl->retired.push_back({ impl->recordings, std::move(destroy) });
     Collect();
 }
 void GpuLifetime::Collect()
 {
+    std::lock_guard lock(impl->mutex);
     if (impl->collecting) return;
     struct CollectionScope
     {
@@ -217,6 +226,7 @@ void GpuLifetime::Collect()
 }
 bool GpuLifetime::Idle()
 {
+    std::lock_guard lock(impl->mutex);
     Collect();
     return !impl->collecting && impl->recordings.empty();
 }
