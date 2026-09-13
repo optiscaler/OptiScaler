@@ -378,8 +378,276 @@ VkResult VulkanSpoofing::hkvkCreateInstance(VkInstanceCreateInfo* pCreateInfo, c
     return VK_SUCCESS;
 }
 
+struct VulkanDeviceFeatureState::Impl
+{
+    struct ModifiedFeature
+    {
+        VkBool32* value = nullptr;
+        VkBool32 original = VK_FALSE;
+    };
+
+    VkDeviceCreateInfo* pCreateInfo = nullptr;
+    PFN_vkGetPhysicalDeviceFeatures2 getFeatures2 = nullptr;
+    std::vector<ModifiedFeature> modifiedFeatures;
+
+    VkPhysicalDeviceFeatures coreFeatures {};
+    VkPhysicalDeviceShaderFloat16Int8Features shaderFloat16Int8 {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES
+    };
+    VkPhysicalDevice8BitStorageFeatures storage8Bit { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES };
+    VkPhysicalDeviceDescriptorIndexingFeatures descriptorIndexing {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES
+    };
+    VkPhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddress {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES
+    };
+    VkPhysicalDeviceVulkanMemoryModelFeatures vulkanMemoryModel {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_MEMORY_MODEL_FEATURES
+    };
+    VkPhysicalDeviceSynchronization2Features synchronization2 {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
+    };
+    VkPhysicalDeviceSubgroupSizeControlFeatures subgroupSizeControl {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES
+    };
+    VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptorBuffer {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT
+    };
+    VkPhysicalDeviceShaderFloat8FeaturesEXT shaderFloat8 {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT8_FEATURES_EXT
+    };
+    VkPhysicalDeviceCooperativeMatrixFeaturesKHR cooperativeMatrix {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_KHR
+    };
+    VkPhysicalDeviceCooperativeMatrix2FeaturesNV cooperativeMatrix2 {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_2_FEATURES_NV
+    };
+
+    Impl(VkDeviceCreateInfo* pCreateInfo, PFN_vkGetPhysicalDeviceFeatures2 getFeatures2)
+        : pCreateInfo(pCreateInfo), getFeatures2(getFeatures2)
+    {
+    }
+
+    ~Impl()
+    {
+        for (auto feature = modifiedFeatures.rbegin(); feature != modifiedFeatures.rend(); ++feature)
+            *feature->value = feature->original;
+    }
+
+    bool SupportsExtension(const char* extension) const { return vkDeviceExtensions.contains(extension); }
+
+    template <typename T> T* FindFeatureStruct(VkStructureType sType)
+    {
+        for (auto* next = static_cast<const VkBaseInStructure*>(pCreateInfo->pNext); next != nullptr;
+             next = next->pNext)
+        {
+            if (next->sType == sType)
+                return const_cast<T*>(reinterpret_cast<const T*>(next));
+        }
+
+        return nullptr;
+    }
+
+    void EnableSupportedFeature(VkBool32& enabled, VkBool32 supported)
+    {
+        if (supported != VK_TRUE || enabled == VK_TRUE)
+            return;
+
+        modifiedFeatures.push_back({ &enabled, enabled });
+        enabled = VK_TRUE;
+    }
+
+    template <typename T> T GetSupportedFeatureStruct(VkPhysicalDevice physicalDevice, VkStructureType sType) const
+    {
+        T supported {};
+        supported.sType = sType;
+
+        VkPhysicalDeviceFeatures2 features { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+        features.pNext = &supported;
+        getFeatures2(physicalDevice, &features);
+        return supported;
+    }
+
+    template <typename T, typename... Members>
+    void EnableFeatureStruct(VkPhysicalDevice physicalDevice, T& feature, VkStructureType sType, Members... members)
+    {
+        const auto supported = GetSupportedFeatureStruct<T>(physicalDevice, sType);
+        auto* enabled = FindFeatureStruct<T>(sType);
+
+        if (enabled == nullptr)
+        {
+            feature.pNext = const_cast<void*>(pCreateInfo->pNext);
+            pCreateInfo->pNext = &feature;
+            enabled = &feature;
+        }
+
+        (EnableSupportedFeature(enabled->*members, supported.*members), ...);
+    }
+
+    void EnableCoreFeatures(VkPhysicalDevice physicalDevice)
+    {
+        VkPhysicalDeviceFeatures2 supported { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+        getFeatures2(physicalDevice, &supported);
+
+        if (auto* features = FindFeatureStruct<VkPhysicalDeviceFeatures2>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2))
+        {
+            EnableSupportedFeature(features->features.shaderInt16, supported.features.shaderInt16);
+            EnableSupportedFeature(features->features.shaderStorageImageWriteWithoutFormat,
+                                   supported.features.shaderStorageImageWriteWithoutFormat);
+            return;
+        }
+
+        if (pCreateInfo->pEnabledFeatures != nullptr)
+            coreFeatures = *pCreateInfo->pEnabledFeatures;
+
+        if (supported.features.shaderInt16 == VK_TRUE)
+            coreFeatures.shaderInt16 = VK_TRUE;
+
+        if (supported.features.shaderStorageImageWriteWithoutFormat == VK_TRUE)
+            coreFeatures.shaderStorageImageWriteWithoutFormat = VK_TRUE;
+
+        pCreateInfo->pEnabledFeatures = &coreFeatures;
+    }
+
+    void EnableVulkan12Features(VkPhysicalDevice physicalDevice)
+    {
+        if (auto* features = FindFeatureStruct<VkPhysicalDeviceVulkan12Features>(
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES))
+        {
+            const auto supported = GetSupportedFeatureStruct<VkPhysicalDeviceVulkan12Features>(
+                physicalDevice, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES);
+
+            if (SupportsExtension(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME))
+            {
+                EnableSupportedFeature(features->shaderFloat16, supported.shaderFloat16);
+                EnableSupportedFeature(features->shaderInt8, supported.shaderInt8);
+            }
+
+            if (SupportsExtension(VK_KHR_8BIT_STORAGE_EXTENSION_NAME))
+                EnableSupportedFeature(features->storageBuffer8BitAccess, supported.storageBuffer8BitAccess);
+
+            if (SupportsExtension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME))
+            {
+                EnableSupportedFeature(features->runtimeDescriptorArray, supported.runtimeDescriptorArray);
+                EnableSupportedFeature(features->descriptorBindingPartiallyBound,
+                                       supported.descriptorBindingPartiallyBound);
+            }
+
+            if (SupportsExtension(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME))
+                EnableSupportedFeature(features->bufferDeviceAddress, supported.bufferDeviceAddress);
+
+            if (SupportsExtension(VK_KHR_VULKAN_MEMORY_MODEL_EXTENSION_NAME))
+                EnableSupportedFeature(features->vulkanMemoryModel, supported.vulkanMemoryModel);
+
+            return;
+        }
+
+        if (SupportsExtension(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME))
+            EnableFeatureStruct(physicalDevice, shaderFloat16Int8,
+                                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES,
+                                &VkPhysicalDeviceShaderFloat16Int8Features::shaderFloat16,
+                                &VkPhysicalDeviceShaderFloat16Int8Features::shaderInt8);
+
+        if (SupportsExtension(VK_KHR_8BIT_STORAGE_EXTENSION_NAME))
+            EnableFeatureStruct(physicalDevice, storage8Bit, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES,
+                                &VkPhysicalDevice8BitStorageFeatures::storageBuffer8BitAccess);
+
+        if (SupportsExtension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME))
+            EnableFeatureStruct(physicalDevice, descriptorIndexing,
+                                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES,
+                                &VkPhysicalDeviceDescriptorIndexingFeatures::runtimeDescriptorArray,
+                                &VkPhysicalDeviceDescriptorIndexingFeatures::descriptorBindingPartiallyBound);
+
+        if (SupportsExtension(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME))
+            EnableFeatureStruct(physicalDevice, bufferDeviceAddress,
+                                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES,
+                                &VkPhysicalDeviceBufferDeviceAddressFeatures::bufferDeviceAddress);
+
+        if (SupportsExtension(VK_KHR_VULKAN_MEMORY_MODEL_EXTENSION_NAME))
+            EnableFeatureStruct(physicalDevice, vulkanMemoryModel,
+                                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_MEMORY_MODEL_FEATURES,
+                                &VkPhysicalDeviceVulkanMemoryModelFeatures::vulkanMemoryModel);
+    }
+
+    void EnableVulkan13Features(VkPhysicalDevice physicalDevice)
+    {
+        if (auto* features = FindFeatureStruct<VkPhysicalDeviceVulkan13Features>(
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES))
+        {
+            const auto supported = GetSupportedFeatureStruct<VkPhysicalDeviceVulkan13Features>(
+                physicalDevice, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES);
+
+            if (SupportsExtension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME))
+                EnableSupportedFeature(features->synchronization2, supported.synchronization2);
+
+            if (SupportsExtension(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME))
+            {
+                EnableSupportedFeature(features->subgroupSizeControl, supported.subgroupSizeControl);
+                EnableSupportedFeature(features->computeFullSubgroups, supported.computeFullSubgroups);
+            }
+
+            return;
+        }
+
+        if (SupportsExtension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME))
+            EnableFeatureStruct(physicalDevice, synchronization2,
+                                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES,
+                                &VkPhysicalDeviceSynchronization2Features::synchronization2);
+
+        if (SupportsExtension(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME))
+            EnableFeatureStruct(physicalDevice, subgroupSizeControl,
+                                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES,
+                                &VkPhysicalDeviceSubgroupSizeControlFeatures::subgroupSizeControl,
+                                &VkPhysicalDeviceSubgroupSizeControlFeatures::computeFullSubgroups);
+    }
+
+    void EnableExtensionFeatures(VkPhysicalDevice physicalDevice)
+    {
+        if (SupportsExtension(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME))
+            EnableFeatureStruct(physicalDevice, descriptorBuffer,
+                                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT,
+                                &VkPhysicalDeviceDescriptorBufferFeaturesEXT::descriptorBuffer);
+
+        if (SupportsExtension(VK_EXT_SHADER_FLOAT8_EXTENSION_NAME))
+            EnableFeatureStruct(physicalDevice, shaderFloat8,
+                                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT8_FEATURES_EXT,
+                                &VkPhysicalDeviceShaderFloat8FeaturesEXT::shaderFloat8,
+                                &VkPhysicalDeviceShaderFloat8FeaturesEXT::shaderFloat8CooperativeMatrix);
+
+        if (SupportsExtension(VK_KHR_COOPERATIVE_MATRIX_EXTENSION_NAME))
+            EnableFeatureStruct(physicalDevice, cooperativeMatrix,
+                                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_KHR,
+                                &VkPhysicalDeviceCooperativeMatrixFeaturesKHR::cooperativeMatrix);
+
+        if (SupportsExtension(VK_NV_COOPERATIVE_MATRIX_2_EXTENSION_NAME))
+            EnableFeatureStruct(physicalDevice, cooperativeMatrix2,
+                                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_2_FEATURES_NV,
+                                &VkPhysicalDeviceCooperativeMatrix2FeaturesNV::cooperativeMatrixConversions);
+    }
+
+    void EnableFeatures(VkPhysicalDevice physicalDevice)
+    {
+        if (getFeatures2 == nullptr)
+            return;
+
+        EnableCoreFeatures(physicalDevice);
+        EnableVulkan12Features(physicalDevice);
+        EnableVulkan13Features(physicalDevice);
+        EnableExtensionFeatures(physicalDevice);
+    }
+};
+
+VulkanDeviceFeatureState::VulkanDeviceFeatureState(VkDeviceCreateInfo* pCreateInfo,
+                                                   PFN_vkGetPhysicalDeviceFeatures2 getFeatures2)
+    : impl(std::make_unique<Impl>(pCreateInfo, getFeatures2))
+{
+}
+
+VulkanDeviceFeatureState::~VulkanDeviceFeatureState() = default;
+
 VkResult VulkanSpoofing::hkvkCreateDevice(VkPhysicalDevice physicalDevice, VkDeviceCreateInfo* pCreateInfo,
-                                          const VkAllocationCallbacks* pAllocator, VkDevice* pDevice)
+                                          const VkAllocationCallbacks* pAllocator, VkDevice* pDevice,
+                                          VulkanDeviceFeatureState* featureState)
 {
     if (State::Instance().creatingD3DDevice)
     {
@@ -459,120 +727,85 @@ VkResult VulkanSpoofing::hkvkCreateDevice(VkPhysicalDevice physicalDevice, VkDev
         newExtensionList.push_back(extName);
     }
 
+    const auto addExtension = [](const char* extension)
+    {
+        if (!vkDeviceExtensions.contains(extension))
+            return false;
+
+        for (const char* enabledExtension : newExtensionList)
+        {
+            if (enabledExtension != nullptr && std::strcmp(enabledExtension, extension) == 0)
+                return true;
+        }
+
+        LOG_DEBUG("  Adding {}", extension);
+        newExtensionList.push_back(extension);
+        return true;
+    };
+
     if (primaryGpu.vendorId == VendorId::Nvidia)
     {
         LOG_INFO("Adding NVNGX Vulkan extensions");
-        if (vkDeviceExtensions.contains(std::string(VK_NVX_MULTIVIEW_PER_VIEW_ATTRIBUTES_EXTENSION_NAME)))
-        {
-            LOG_DEBUG("  Adding {}", VK_NVX_MULTIVIEW_PER_VIEW_ATTRIBUTES_EXTENSION_NAME);
-            newExtensionList.push_back(VK_NVX_MULTIVIEW_PER_VIEW_ATTRIBUTES_EXTENSION_NAME);
-        }
+        addExtension(VK_NVX_MULTIVIEW_PER_VIEW_ATTRIBUTES_EXTENSION_NAME);
 
-        if (vkDeviceExtensions.contains(std::string(VK_NV_LOW_LATENCY_EXTENSION_NAME)))
-        {
-            LOG_DEBUG("  Adding {}", VK_NV_LOW_LATENCY_EXTENSION_NAME);
-            newExtensionList.push_back(VK_NV_LOW_LATENCY_EXTENSION_NAME);
-        }
+        addExtension(VK_NV_LOW_LATENCY_EXTENSION_NAME);
 
-        if (vkDeviceExtensions.contains(std::string(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME)))
-        {
-            LOG_DEBUG("  Adding {}", VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
-            newExtensionList.push_back(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
-        }
+        addExtension(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
 
-        if (vkDeviceExtensions.contains(std::string(VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME)))
-        {
-            LOG_DEBUG("  Adding {}", VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
-            newExtensionList.push_back(VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
-        }
+        addExtension(VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
 
         if (primaryGpu.dlssCapable)
         {
-            if (vkDeviceExtensions.contains(std::string(VK_NVX_BINARY_IMPORT_EXTENSION_NAME)))
-            {
-                LOG_DEBUG("  Adding {}", VK_NVX_BINARY_IMPORT_EXTENSION_NAME);
-                newExtensionList.push_back(VK_NVX_BINARY_IMPORT_EXTENSION_NAME);
-            }
+            addExtension(VK_NVX_BINARY_IMPORT_EXTENSION_NAME);
 
-            if (vkDeviceExtensions.contains(std::string(VK_NVX_IMAGE_VIEW_HANDLE_EXTENSION_NAME)))
-            {
-                LOG_DEBUG("  Adding {}", VK_NVX_IMAGE_VIEW_HANDLE_EXTENSION_NAME);
-                newExtensionList.push_back(VK_NVX_IMAGE_VIEW_HANDLE_EXTENSION_NAME);
-            }
+            addExtension(VK_NVX_IMAGE_VIEW_HANDLE_EXTENSION_NAME);
         }
     }
 
     LOG_INFO("Adding FFX Vulkan extensions");
-    if (vkDeviceExtensions.contains(std::string(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME)))
-    {
-        LOG_DEBUG("  Adding {}", VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
-        newExtensionList.push_back(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
-    }
+    static constexpr const char* ffxExtensions[] = {
+        VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME, VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
+        VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME,        VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME,
+        VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
+    };
 
-    if (vkDeviceExtensions.contains(std::string(VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME)))
-    {
-        LOG_DEBUG("  Adding {}", VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
-        newExtensionList.push_back(VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
-    }
+    for (const auto* extension : ffxExtensions)
+        addExtension(extension);
 
-    if (vkDeviceExtensions.contains(std::string(VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME)))
+    // Extensions with feature structs are enabled as complete capabilities.
+    if (featureState != nullptr && featureState->impl != nullptr)
     {
-        LOG_DEBUG("  Adding {}", VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME);
-        newExtensionList.push_back(VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME);
-    }
+        static constexpr const char* ffxFeatureExtensions[] = {
+            VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME,   VK_EXT_SHADER_FLOAT8_EXTENSION_NAME,
+            VK_KHR_COOPERATIVE_MATRIX_EXTENSION_NAME,  VK_NV_COOPERATIVE_MATRIX_2_EXTENSION_NAME,
+            VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,   VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME,
+            VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME, VK_KHR_8BIT_STORAGE_EXTENSION_NAME,
+            VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME, VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
+            VK_KHR_VULKAN_MEMORY_MODEL_EXTENSION_NAME, VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME,
+        };
 
-    if (vkDeviceExtensions.contains(std::string(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME)))
-    {
-        LOG_DEBUG("  Adding {}", VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
-        newExtensionList.push_back(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
-    }
+        for (const auto* extension : ffxFeatureExtensions)
+            addExtension(extension);
 
-    if (vkDeviceExtensions.contains(std::string(VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME)))
-    {
-        LOG_DEBUG("  Adding {}", VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME);
-        newExtensionList.push_back(VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME);
+        featureState->impl->EnableFeatures(physicalDevice);
     }
 
     LOG_INFO("Adding XeSS Vulkan extensions");
-    if (vkDeviceExtensions.contains(std::string(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME)))
-    {
-        LOG_DEBUG("  Adding {}", VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME);
-        newExtensionList.push_back(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME);
-    }
+    addExtension(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME);
 
-    if (vkDeviceExtensions.contains(std::string(VK_KHR_SHADER_INTEGER_DOT_PRODUCT_EXTENSION_NAME)))
-    {
-        LOG_DEBUG("  Adding {}", VK_KHR_SHADER_INTEGER_DOT_PRODUCT_EXTENSION_NAME);
-        newExtensionList.push_back(VK_KHR_SHADER_INTEGER_DOT_PRODUCT_EXTENSION_NAME);
-    }
+    addExtension(VK_KHR_SHADER_INTEGER_DOT_PRODUCT_EXTENSION_NAME);
 
-    if (vkDeviceExtensions.contains(std::string(VK_EXT_MUTABLE_DESCRIPTOR_TYPE_EXTENSION_NAME)))
-    {
-        LOG_DEBUG("  Adding {}", VK_EXT_MUTABLE_DESCRIPTOR_TYPE_EXTENSION_NAME);
-        newExtensionList.push_back(VK_EXT_MUTABLE_DESCRIPTOR_TYPE_EXTENSION_NAME);
-    }
+    addExtension(VK_EXT_MUTABLE_DESCRIPTOR_TYPE_EXTENSION_NAME);
 
     LOG_INFO("Adding Vk w/Dx12 Vulkan extensions");
 
-    if (vkDeviceExtensions.contains(std::string(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME)))
-    {
-        LOG_DEBUG("  Adding {}", VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME);
-        newExtensionList.push_back(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME);
-    }
+    addExtension(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME);
 
-    if (vkDeviceExtensions.contains(std::string(VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME)))
-    {
-        LOG_DEBUG("  Adding {}", VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME);
-        newExtensionList.push_back(VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME);
-    }
+    addExtension(VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME);
 
 #ifdef USE_QUEUE_SUBMIT_2_KHR
     LOG_INFO("Adding QueueSubmit2 Vulkan extensions");
-    if (vkDeviceExtensions.contains(std::string(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)))
-    {
-        LOG_DEBUG("  Adding {}", VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
-        newExtensionList.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
-    }
+    addExtension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
 #endif
 
     if (State::Instance().vkAntiLagSupported)
