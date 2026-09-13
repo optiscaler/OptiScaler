@@ -21,6 +21,8 @@ class DxgiFactoryHooks
     using PFN_CreateSwapChainForHwnd = rewrite_signature<decltype(&IDXGIFactory2::CreateSwapChainForHwnd)>::type;
     using PFN_CreateSwapChainForCoreWindow =
         rewrite_signature<decltype(&IDXGIFactory2::CreateSwapChainForCoreWindow)>::type;
+    using PFN_CreateSwapChainForComposition =
+        rewrite_signature<decltype(&IDXGIFactory2::CreateSwapChainForComposition)>::type;
 
     inline static PFN_EnumAdapterByGpuPreference o_EnumAdapterByGpuPreference = nullptr;
     inline static PFN_EnumAdapterByLuid o_EnumAdapterByLuid = nullptr;
@@ -29,6 +31,7 @@ class DxgiFactoryHooks
     inline static PFN_CreateSwapChain o_CreateSwapChain = nullptr;
     inline static PFN_CreateSwapChainForHwnd o_CreateSwapChainForHwnd = nullptr;
     inline static PFN_CreateSwapChainForCoreWindow o_CreateSwapChainForCoreWindow = nullptr;
+    inline static PFN_CreateSwapChainForComposition o_CreateSwapChainForComposition = nullptr;
 
     inline static PFN_CreateSwapChain o_DLSSGCreateSwapChain = nullptr;
     inline static PFN_CreateSwapChainForHwnd o_DLSSGCreateSwapChainForHwnd = nullptr;
@@ -48,6 +51,9 @@ class DxgiFactoryHooks
 
     static HRESULT DLSSGCreateSwapChain(IDXGIFactory* realFactory, IUnknown* pDevice, DXGI_SWAP_CHAIN_DESC* pDesc,
                                         IDXGISwapChain** ppSwapChain);
+    static HRESULT CreateSwapChainForComposition(IDXGIFactory2* realFactory, IUnknown* pDevice,
+                                                 const DXGI_SWAP_CHAIN_DESC1* pDesc, IDXGIOutput* pRestrictToOutput,
+                                                 IDXGISwapChain1** ppSwapChain);
 
     static HRESULT DLSSGCreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUnknown* pDevice, HWND hWnd,
                                                const DXGI_SWAP_CHAIN_DESC1* pDesc,
@@ -67,6 +73,7 @@ class DxgiFactoryHooks
     VALIDATE_MEMBER_HOOK(CreateSwapChain, PFN_CreateSwapChain)
     VALIDATE_MEMBER_HOOK(CreateSwapChainForHwnd, PFN_CreateSwapChainForHwnd)
     VALIDATE_MEMBER_HOOK(CreateSwapChainForCoreWindow, PFN_CreateSwapChainForCoreWindow)
+    VALIDATE_MEMBER_HOOK(CreateSwapChainForComposition, PFN_CreateSwapChainForComposition)
     VALIDATE_MEMBER_HOOK(EnumAdapters, PFN_EnumAdapters)
     VALIDATE_MEMBER_HOOK(EnumAdapters1, PFN_EnumAdapters1)
     VALIDATE_MEMBER_HOOK(EnumAdapterByLuid, PFN_EnumAdapterByLuid)
