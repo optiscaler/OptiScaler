@@ -224,7 +224,8 @@ bool Dx11WithDx12::SyncDx11ToDx12()
         return false;
     }
 
-    Dx11DeviceContext->Flush();
+    // Games flush should be enough, so disabled for now
+    // Dx11DeviceContext->Flush();
 
     result = Dx12CommandQueue->Wait(Dx12FenceTextureCopy, fenceValue);
     if (result != S_OK)
@@ -964,6 +965,9 @@ bool Dx11WithDx12::CopyUpscalerOutputToDx11(UINT frameIndex)
     }
 
     Dx11DeviceContext->CopyResource(cache.ParamOutput[outputIndex], cache.Output[outputIndex].SharedTexture);
-    Dx11DeviceContext->Flush();
+
+    // Games flush should be enough, so disabled for now
+    // Dx11DeviceContext->Flush();
+
     return true;
 }
