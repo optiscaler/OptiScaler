@@ -1,0 +1,35 @@
+name: Package NR Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version label'
+        required: true
+        default: 'nr-dev'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: true
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+      - name: Package
+        shell: powershell
+        env:
+          PACKAGE_VERSION: ${{ inputs.version }}
+        run: ./package_release.ps1 -Version $env:PACKAGE_VERSION
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: OptiScaler-NR-${{ inputs.version }}
+          path: release/*.zip
+          if-no-files-found: error

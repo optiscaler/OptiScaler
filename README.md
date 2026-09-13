@@ -36,6 +36,17 @@
 </div>
 
 
+## Neural Rendering on this branch
+
+Experimental NR adds pre/post-upscale and finished-picture processing, multipass tuning,
+model resolution, HDR/exposure controls and separate edit upscaling. It defaults off and
+uses a separately supplied `nvngx_dlssnr.dll` through the NVIDIA driver; no NR helper DLL.
+
+See [installation](INSTALL-DLSSNR.md), [controls](docs/NR-PIPELINE-UI.md),
+[game tests and limits](docs/NR-UPSTREAM-REVIEW.md), [implementation](OptiScaler/dlssnr/README.md)
+and [credits](docs/CREDITS.md). Official download links refer to upstream OptiScaler;
+these experimental features are proposed separately.
+
 ## About
 
 **OptiScaler** is a tool that lets you replace upscalers in games that ***already support DLSS2+ / FSR2+ / XeSS*** ($`^1`$), as well as manage ***frame generation*** in already mentioned games _(either by replacing existing FG options or enabling it in DX12 games through experimental ***OptiFG***)_. It also offers extensive customization options for all users, including those with Nvidia GPUs using DLSS.
