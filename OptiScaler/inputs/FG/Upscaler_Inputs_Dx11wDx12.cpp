@@ -65,9 +65,6 @@ void UpscalerInputsDx11wDx12::Init(ID3D11Device* dx11Device, ID3D11DeviceContext
     _dx12CommandQueue = WithDx12::GetD3D12CommandQueue();
 
     Dx11WithDx12::Init(dx11Device, dx11Context);
-
-    if (dx11Device != nullptr && !Config::Instance()->FGDisableHUDFix.value_or_default())
-        ResTrack_Dx11::HookDevice(dx11Device);
 }
 
 void UpscalerInputsDx11wDx12::Reset()

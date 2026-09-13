@@ -93,11 +93,6 @@ static void HookToDeviceLocal(ID3D11Device* InDevice)
     if (InDevice == nullptr)
         return;
 
-    if (State::Instance().activeFgInput == FGInput::Upscaler && !Config::Instance()->FGDisableHUDFix.value_or_default())
-    {
-        ResTrack_Dx11::HookDevice(InDevice);
-    }
-
     if (o_CreateSamplerState != nullptr)
         return;
 
