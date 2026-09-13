@@ -419,15 +419,26 @@ class NVNGXProxy
     inline static bool _dx11Inited = false;
     inline static bool _dx12Inited = false;
     inline static bool _vulkanInited = false;
+    inline static thread_local bool _traceFeatureCreation = false;
 
     inline static void LogCallback(const char* message, NVSDK_NGX_Logging_Level loggingLevel,
                                    NVSDK_NGX_Feature sourceComponent)
     {
         std::string logMessage(message);
-        LOG_DEBUG("NVSDK Feature {}: {}", (UINT) sourceComponent, logMessage);
+        if (_traceFeatureCreation)
+            LOG_INFO("NGX private feature creation [{}]: {}", (UINT) sourceComponent, logMessage);
+        else
+            LOG_DEBUG("NVSDK Feature {}: {}", (UINT) sourceComponent, logMessage);
     }
 
   public:
+    class ScopedFeatureCreationTrace
+    {
+        bool previous = _traceFeatureCreation;
+      public:
+        ScopedFeatureCreationTrace() { _traceFeatureCreation = true; }
+        ~ScopedFeatureCreationTrace() { _traceFeatureCreation = previous; }
+    };
     static void InitNVNGX(HMODULE nvngxModule = nullptr)
     {
         // if dll already loaded
@@ -906,7 +917,7 @@ class NVNGXProxy
 
         _vulkanInited = (nvResult == NVSDK_NGX_Result_Success);
 
-        return true;
+        return _vulkanInited;
     }
 
     static void SetVulkanInited(bool value) { _vulkanInited = value; }

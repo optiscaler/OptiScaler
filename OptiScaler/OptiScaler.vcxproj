@@ -870,10 +870,13 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="dlssnr\DlssNr_GpuLifetime.cpp" />
     <ClInclude Include="dlssnr\DlssNr_GpuLifetime.h" />
     <ClInclude Include="dlssnr\DlssNr_HoldParameters_Dx12.h" />
+    <ClInclude Include="dlssnr\DlssNr_Upscaler.h" />
     <ClInclude Include="shaders\dlssnr\DlssNr_GpuTime.h" />
     <ClInclude Include="shaders\dlssnr\DlssNr_Guides.h" />
     <ClInclude Include="shaders\dlssnr\DlssNr_ResidualPair.h" />
     <ClInclude Include="shaders\dlssnr\DlssNr_SeamClock.h" />
+    <ClCompile Include="shaders\dlssnr\DlssNr_Upscaler_Dx12.cpp" />
+    <ClInclude Include="shaders\dlssnr\DlssNr_Upscaler_Dx12.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dlssnr\DlssNr_ExposureAnchors.cpp" />
