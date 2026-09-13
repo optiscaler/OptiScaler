@@ -360,6 +360,7 @@ class StreamlineProxy
         auto nvngxDlssPath = Util::FindFilePath(exePath, "nvngx_dlss.dll");
         auto nvngxDlssDPath = Util::FindFilePath(exePath, "nvngx_dlssd.dll");
         auto nvngxDlssGPath = Util::FindFilePath(exePath, "nvngx_dlssg.dll");
+        auto nvngxDlssNrPath = Util::FindFilePath(exePath, "nvngx_dlssnr.dll");
 
         std::vector<std::wstring> pathStorage;
 
@@ -378,6 +379,11 @@ class StreamlineProxy
 
         if (Config::Instance()->DLSSFeaturePath.has_value())
             pathStorage.push_back(Config::Instance()->DLSSFeaturePath.value());
+
+        // Streamline can initialize NGX before the upscaler does. Include the NR
+        // runtime now: later NGX initialization cannot repair the first search list.
+        if (nvngxDlssNrPath.has_value())
+            pathStorage.push_back(nvngxDlssNrPath.value().parent_path().wstring());
 
         // Streamline makes a copy of those
         std::vector<const wchar_t*> paths;
