@@ -246,6 +246,23 @@ static PFN_vkVoidFunction LowLatencyInputHook(const char* pName, PFN_vkVoidFunct
     return nullptr;
 }
 
+static bool EnableRadvCooperativeMatrix2()
+{
+    using PFN_wine_set_unix_env = LONG(WINAPI*)(const char*, const char*);
+
+    const auto getModuleHandleW = KernelBaseProxy::GetModuleHandleW_();
+    const auto getProcAddress = KernelBaseProxy::GetProcAddress_();
+    if (!getModuleHandleW || !getProcAddress)
+        return false;
+
+    const auto ntdll = getModuleHandleW(L"ntdll.dll");
+    if (!ntdll)
+        return false;
+
+    const auto setUnixEnv = reinterpret_cast<PFN_wine_set_unix_env>(getProcAddress(ntdll, "__wine_set_unix_env"));
+    return setUnixEnv && setUnixEnv("radv_cooperative_matrix2_nv", "true") >= 0;
+}
+
 static void HookDevice(VkDevice InDevice)
 {
     if (o_CreateSwapchainKHR != nullptr || State::Instance().vulkanSkipHooks)
@@ -380,6 +397,16 @@ static VkResult hkvkCreateInstance(const VkInstanceCreateInfo* pCreateInfo, cons
     VkInstanceCreateInfo localCreateInfo {};
     memcpy(&localCreateInfo, pCreateInfo, sizeof(VkInstanceCreateInfo));
 
+    if (State::Instance().isRunningOnLinux && !State::Instance().vulkanSkipHooks &&
+        !State::Instance().creatingD3DDevice && Config::Instance()->VulkanUpscaler.value_or_default() == Upscaler::FFX)
+    {
+        static const bool radvCooperativeMatrix2Enabled = EnableRadvCooperativeMatrix2();
+        if (radvCooperativeMatrix2Enabled)
+        {
+            LOG_INFO("Enabled RADV cooperative matrix 2 support");
+        }
+    }
+
     VulkanSpoofing::hkvkCreateInstance(&localCreateInfo, pAllocator, pInstance);
 
     // FFX and Streamline use Vulkan 1.2 core functions like vkWaitSemaphores. Wine only provides those to 1.2 apps,
@@ -476,7 +503,13 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
         }
     }
 
-    VulkanSpoofing::hkvkCreateDevice(physicalDevice, &localCreteInfo, pAllocator, pDevice);
+    VulkanDeviceFeatureState deviceFeatures(&localCreteInfo, o_vkGetPhysicalDeviceFeatures2);
+    auto* featureState = !State::Instance().vulkanSkipHooks && !State::Instance().creatingD3DDevice &&
+                                 o_vkGetPhysicalDeviceFeatures2 != nullptr
+                             ? &deviceFeatures
+                             : nullptr;
+
+    VulkanSpoofing::hkvkCreateDevice(physicalDevice, &localCreteInfo, pAllocator, pDevice, featureState);
 
     auto result = o_vkCreateDevice(physicalDevice, &localCreteInfo, pAllocator, pDevice);
 
