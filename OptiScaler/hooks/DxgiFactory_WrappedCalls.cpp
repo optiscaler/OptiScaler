@@ -296,8 +296,9 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChain(IDXGIFactory* realFactory, Wrap
 
                     if (SUCCEEDED(realScResult) && realDx11SwapChain != nullptr && fgSwapChain4 != nullptr)
                     {
-                        State::Instance().currentSwapchainDesc = localDesc;
+                        State::Instance().currentSwapchainDesc = fgDesc;
                         State::Instance().currentRealSwapchain = realDx11SwapChain;
+                        State::Instance().currentFGSwapchain = fgSwapChain4;
                         State::Instance().currentD3D11Device = device;
                         State::Instance().currentD3D12Device = WithDx12::GetD3D12Device();
                         State::Instance().currentCommandQueue = WithDx12::GetD3D12CommandQueue();
@@ -687,9 +688,10 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChainForHwnd(IDXGIFactory2* realFacto
 
                     if (SUCCEEDED(realScResult) && realDx11SwapChain1 != nullptr && fgSwapChain4 != nullptr)
                     {
-                        ((IDXGISwapChain*) realDx11SwapChain1)->GetDesc(&State::Instance().currentSwapchainDesc);
+                        ((IDXGISwapChain*) fgSwapChain4)->GetDesc(&State::Instance().currentSwapchainDesc);
                         State::Instance().currentSwapchainDesc.OutputWindow = hWnd;
                         State::Instance().currentRealSwapchain = realDx11SwapChain1;
+                        State::Instance().currentFGSwapchain = fgSwapChain4;
                         State::Instance().currentD3D11Device = device;
                         State::Instance().currentD3D12Device = WithDx12::GetD3D12Device();
                         State::Instance().currentCommandQueue = WithDx12::GetD3D12CommandQueue();

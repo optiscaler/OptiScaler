@@ -619,8 +619,9 @@ HRESULT DxgiFactoryHooks::CreateSwapChain(IDXGIFactory* realFactory, IUnknown* p
 
                     if (SUCCEEDED(realScResult) && realDx11SwapChain != nullptr && fgSwapChain4 != nullptr)
                     {
-                        State::Instance().currentSwapchainDesc = localDesc;
+                        State::Instance().currentSwapchainDesc = fgDesc;
                         State::Instance().currentRealSwapchain = realDx11SwapChain;
+                        State::Instance().currentFGSwapchain = fgSwapChain4;
                         State::Instance().currentD3D11Device = device;
                         State::Instance().currentD3D12Device = WithDx12::GetD3D12Device();
                         State::Instance().currentCommandQueue = WithDx12::GetD3D12CommandQueue();
@@ -1014,9 +1015,10 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
 
                     if (realScResult == S_OK && realDx11SwapChain1 != nullptr && fgSwapChain4 != nullptr)
                     {
-                        ((IDXGISwapChain*) realDx11SwapChain1)->GetDesc(&State::Instance().currentSwapchainDesc);
+                        ((IDXGISwapChain*) fgSwapChain4)->GetDesc(&State::Instance().currentSwapchainDesc);
                         State::Instance().currentSwapchainDesc.OutputWindow = hWnd;
                         State::Instance().currentRealSwapchain = realDx11SwapChain1;
+                        State::Instance().currentFGSwapchain = fgSwapChain4;
                         State::Instance().currentD3D11Device = device;
                         State::Instance().currentD3D12Device = WithDx12::GetD3D12Device();
                         State::Instance().currentCommandQueue = WithDx12::GetD3D12CommandQueue();
@@ -1027,6 +1029,7 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
 
                         *ppSwapChain = (IDXGISwapChain1*) new Dx11wDx12SC(realDx11SwapChain1, fgSwapChain4, device,
                                                                           hWnd, localDesc.Flags);
+
                         State::Instance().currentSwapchain = *ppSwapChain;
                         State::Instance().currentWrappedSwapchain = *ppSwapChain;
 
