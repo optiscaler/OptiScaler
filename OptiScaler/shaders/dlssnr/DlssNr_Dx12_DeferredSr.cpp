@@ -45,7 +45,17 @@ auto DlssNr_Dx12::State::DeferredSrContext::Allocate(Generation& g) -> bool
     g.exposure = owner.CreateScratch(g.device, DXGI_FORMAT_R32_FLOAT, 1, 1);
     if (!g.edited || !g.residualInput || !g.residualOutput || !g.clean || !g.composed || !g.exposure)
         return false;
-
+    if (g.rayReconstruction)
+    {
+        // Signed scene-linear history, before the nonlinear private-upscaler carrier encoding.
+        for (auto& history : g.accumulatedEdit)
+        {
+            history = owner.CreateScratch(g.device, DXGI_FORMAT_R32G32B32A32_FLOAT, g.w, g.h);
+            if (!history) return false;
+        }
+        LOG_INFO("DLSS-NR: motion-reprojected RR residual accumulation enabled at {}x{} before private upscaling",
+                 g.w, g.h);
+    }
     g.codec = std::make_unique<DlssNr_Dx12>("Deferred NR contribution", g.device);
     if (!g.codec->IsInit())
         return false;
@@ -163,7 +173,9 @@ auto DlssNr_Dx12::State::DeferredSrContext::Before(ID3D12GraphicsCommandList* cm
     const auto backend = DlssNr::GetPrivateUpscaler(cfg.DlssNrPrivateUpscaler.value_or_default());
     // Only native DX12 RR parameters contain DX12 material/reflection guides. Bridges
     // do not transfer these resources, so keep their existing private SR backend.
-    auto rrInputs = DlssNr::PrivateRrInputsDx12 {};
+    auto rrInputs = backend == DlssNr::PrivateUpscaler::DLSS && rayReconstruction && !interop
+        ? DlssNr::PrivateUpscalerDx12::ReadRrInputs(source, active->width, active->height)
+        : DlssNr::PrivateRrInputsDx12 {};
     const bool privateRr = rrInputs.valid;
     if (current && (current->rayReconstruction != rayReconstruction ||
                     current->privateRr != privateRr ||
@@ -370,7 +382,59 @@ auto DlssNr_Dx12::State::DeferredSrContext::Before(ID3D12GraphicsCommandList* cm
                           D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         owner.Barrier(cmd, color, arrival, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         bool accumulated = true;
-
+        if (g.rayReconstruction)
+        {
+            if (!g.accumulationReadable)
+            {
+                for (auto* history : g.accumulatedEdit)
+                    owner.Barrier(cmd, history, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                                  D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                g.accumulationReadable = true;
+            }
+            const auto motionDesc = motion->GetDesc();
+            const auto motionRegion = DlssNr::GuideSubrect(
+                { unsigned(motionDesc.Width), motionDesc.Height },
+                frame.MotionVectorsLowResolution ? DlssNr::GuideExtent { g.w, g.h }
+                                                 : DlssNr::GuideExtent { g.outW, g.outH }, 0, 0);
+            const unsigned next = g.accumulatedIndex ^ 1u;
+            auto* history = g.accumulatedEdit[next];
+            owner.Barrier(cmd, history, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            if (motion != color)
+                owner.Barrier(cmd, motion, inputStates.motion, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            DlssNrConstants accum {};
+            accum.Mode = DlssNrResidualMode_Accumulate;
+            accum.Width = g.w; accum.Height = g.h;
+            const float configuredBlend = cfg.DlssNrResidualAcrossRrBlend.value_or_default();
+            accum.ResidualBlend = std::isfinite(configuredBlend) ? std::clamp(configuredBlend, .01f, 1.0f) : .08f;
+            accum.ResidualHistoryValid = g.accumulationValid && !frame.Reset;
+            accum.GuideWidth = motionRegion.width; accum.GuideHeight = motionRegion.height;
+            // v0.7.7 convention: convert the game's pixel displacement to input-frame UV displacement.
+            accum.MvScaleX = frame.MvScaleX / float(g.w);
+            accum.MvScaleY = frame.MvScaleY / float(g.h);
+            accumulated = motionRegion.valid() && g.codec->DispatchResidualPass(cmd, accum, color, g.edited,
+                g.accumulatedEdit[g.accumulatedIndex], motion, history);
+            if (motion != color)
+                owner.Barrier(cmd, motion, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, inputStates.motion);
+            owner.Barrier(cmd, history, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                          D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            if (accumulated)
+            {
+                // Rebuild a composed input at exactly the SAME resolution. The existing carrier
+                // encoder then supports both ordinary signed edits and finished-picture HDR transfer.
+                // Actual enlargement is still performed by the selected private DLSS/SR adapter.
+                DlssNrConstants compose {};
+                compose.Mode = DlssNrResidualMode_Apply;
+                compose.Width = g.w; compose.Height = g.h; compose.TransferStrength = 1;
+                owner.Barrier(cmd, g.edited, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                              D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+                accumulated = g.codec->DispatchResidualPass(cmd, compose, color, history, nullptr, nullptr, g.edited);
+                owner.Barrier(cmd, g.edited, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                              D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                g.accumulatedIndex = next;
+            }
+            g.accumulationValid = accumulated;
+        }
         DlssNrConstants encode {};
         encode.Mode = DlssNrMode_EncodeResidual;
         encode.Width = g.w;
