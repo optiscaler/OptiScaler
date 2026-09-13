@@ -1025,6 +1025,9 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_EvaluateFeature(VkCommandBuffer 
             LOG_DEBUG("VULKAN_EvaluateFeature for ({0})", handleId);
             auto result = NVNGXProxy::VULKAN_EvaluateFeature()(InCmdList, InFeatureHandle, InParameters, InCallback);
             LOG_INFO("VULKAN_EvaluateFeature result for ({0}): {1:X}", handleId, (UINT) result);
+
+            // SR and RR always use IFeature_Vk, whose common shader pipeline owns NR.
+            // Other native feature IDs (including frame generation) must not run it.
             return result;
         }
         else
@@ -1087,12 +1090,11 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_Shutdown(void)
 {
     shutdown = true;
 
-    // for (auto const& [key, val] : VkContexts) {
-    //     if (val.feature)
-    //         NVSDK_NGX_VULKAN_ReleaseFeature(val.feature->Handle());
-    // }
-
-    // VkContexts.clear();
+    // Release feature-owned shaders/model resources while the Vulkan device and NGX are alive.
+    if (vkDevice != VK_NULL_HANDLE)
+        vkDeviceWaitIdle(vkDevice);
+    State::Instance().currentFeature = nullptr;
+    VkContexts.clear();
 
     vkInstance = nullptr;
     vkPD = nullptr;
@@ -1122,6 +1124,11 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_Shutdown(void)
 NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_Shutdown1(VkDevice InDevice)
 {
     shutdown = true;
+
+    if (InDevice != VK_NULL_HANDLE)
+        vkDeviceWaitIdle(InDevice);
+    State::Instance().currentFeature = nullptr;
+    VkContexts.clear();
 
     if (Config::Instance()->DLSSEnabled.value_or_default() && NVNGXProxy::IsVulkanInited() &&
         NVNGXProxy::VULKAN_Shutdown1() != nullptr)

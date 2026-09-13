@@ -1569,6 +1569,9 @@
     <ClInclude Include="upscalers\ShaderPipeline_Vk.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="dlssnr\DlssNrPipeline_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dlssnr\DlssNrFinished_Vk.cpp"><Filter>Source Files</Filter></ClCompile>

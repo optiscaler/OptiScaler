@@ -290,9 +290,11 @@ VkResult VulkanSpoofing::hkvkCreateInstance(VkInstanceCreateInfo* pCreateInfo, c
         newExtensionList.push_back(pCreateInfo->ppEnabledExtensionNames[i]);
     }
 
-    auto primaryGpu = IdentifyGpu::getPrimaryGpu();
-
-    if (primaryGpu.dlssCapable && Config::Instance()->DLSSEnabled.value_or_default())
+    // No physical device exists yet, so the vendor cannot be read from Vulkan here. DXGI is not
+    // asked either: under Proton it is dxvk, whose adapter enumeration creates a Vulkan instance
+    // and re-enters this hook. Every extension below is added only where the loader advertises it,
+    // which is the condition that decides whether adding it is legal.
+    if (Config::Instance()->DLSSEnabled.value_or_default())
     {
         LOG_INFO("Adding NVNGX Vulkan extensions");
         if (vkInstanceExtensions.contains(std::string(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME)))
@@ -430,14 +432,51 @@ VkResult VulkanSpoofing::hkvkCreateDevice(VkPhysicalDevice physicalDevice, VkDev
     static std::vector<const char*> newExtensionList;
     newExtensionList.clear();
 
-    auto primaryGpu = IdentifyGpu::getPrimaryGpu();
+    // The vendor of the device being created, from Vulkan. VkPhysicalDeviceProperties::vendorID is
+    // the PCI id, which is what VendorId holds. IdentifyGpu is not used here: it enumerates DXGI
+    // adapters, and under Proton DXGI is dxvk, whose enumeration creates a Vulkan instance and
+    // re-enters this hook. It also answers for the primary adapter rather than for this device.
+    // o_vkGetPhysicalDeviceProperties is only resolved when Vulkan spoofing is on, so the entry
+    // point is looked up here when it is not. Both are the unhooked one, which reports the real
+    // hardware rather than a spoofed vendor -- an NVX extension needs the real part.
+    static PFN_vkGetPhysicalDeviceProperties queryDeviceProperties = nullptr;
+
+    if (queryDeviceProperties == nullptr)
+    {
+        queryDeviceProperties = o_vkGetPhysicalDeviceProperties;
+
+        if (queryDeviceProperties == nullptr)
+        {
+            if (auto vulkanModule = KernelBaseProxy::GetModuleHandleW_()(L"vulkan-1.dll"); vulkanModule != nullptr)
+                queryDeviceProperties = (PFN_vkGetPhysicalDeviceProperties) KernelBaseProxy::GetProcAddress_()(
+                    vulkanModule, "vkGetPhysicalDeviceProperties");
+        }
+    }
+
+    uint32_t vendorId = 0;
+    bool dlssCapable = false;
+
+    if (queryDeviceProperties != nullptr)
+    {
+        VkPhysicalDeviceProperties deviceProperties {};
+        queryDeviceProperties(physicalDevice, &deviceProperties);
+        vendorId = deviceProperties.vendorID;
+
+        // NGX wants Turing or later. The driver advertising the NVX extensions is that same
+        // condition and is checked per extension below, so no architecture query is needed.
+        dlssCapable = vendorId == (uint32_t) VendorId::Nvidia;
+    }
+    else
+    {
+        LOG_WARN("vkGetPhysicalDeviceProperties did not resolve, NVNGX Vulkan extensions not added");
+    }
 
     LOG_DEBUG("Checking extensions and removing Streamline ones");
     for (size_t i = 0; i < pCreateInfo->enabledExtensionCount; i++)
     {
         auto extName = pCreateInfo->ppEnabledExtensionNames[i];
 
-        if (Config::Instance()->VulkanExtensionSpoofing.value_or_default() && primaryGpu.vendorId != VendorId::Nvidia)
+        if (Config::Instance()->VulkanExtensionSpoofing.value_or_default() && vendorId != (uint32_t) VendorId::Nvidia)
         {
             auto binaryImport = std::strcmp(extName, VK_NVX_BINARY_IMPORT_EXTENSION_NAME) == 0;
             auto imgViewHandle = std::strcmp(extName, VK_NVX_IMAGE_VIEW_HANDLE_EXTENSION_NAME) == 0;
@@ -459,7 +498,7 @@ VkResult VulkanSpoofing::hkvkCreateDevice(VkPhysicalDevice physicalDevice, VkDev
         newExtensionList.push_back(extName);
     }
 
-    if (primaryGpu.vendorId == VendorId::Nvidia)
+    if (vendorId == (uint32_t) VendorId::Nvidia)
     {
         LOG_INFO("Adding NVNGX Vulkan extensions");
         if (vkDeviceExtensions.contains(std::string(VK_NVX_MULTIVIEW_PER_VIEW_ATTRIBUTES_EXTENSION_NAME)))
@@ -486,7 +525,7 @@ VkResult VulkanSpoofing::hkvkCreateDevice(VkPhysicalDevice physicalDevice, VkDev
             newExtensionList.push_back(VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
         }
 
-        if (primaryGpu.dlssCapable)
+        if (dlssCapable)
         {
             if (vkDeviceExtensions.contains(std::string(VK_NVX_BINARY_IMPORT_EXTENSION_NAME)))
             {

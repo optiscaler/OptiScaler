@@ -420,6 +420,9 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="shaders\output_scaling\precompile\bcds_magc_Shader_Vk.h" />
     <ClInclude Include="shaders\output_scaling\precompile\bcus_Shader_Vk.h" />
     <ClInclude Include="shaders\rcas\RCAS_Vk.h" />
+    <ClInclude Include="shaders\dlssnr\DlssNr_Vk.h" />
+    <ClInclude Include="dlssnr\DlssNrFeature_Vk.h" />
+    <ClInclude Include="dlssnr\DlssNrFinished_Vk.h" />
     <ClInclude Include="dlssnr\DlssNr_ExposureScan.h" />
     <ClInclude Include="shaders\render_ui\precompile\render_ui_pm_PShader.h" />
     <ClInclude Include="shaders\render_ui\precompile\render_ui_pm_VShader.h" />
@@ -510,6 +513,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="upscalers\dlss\DLSSFeature.h" />
     <ClInclude Include="upscalers\dlss\DLSSFeature_Dx11.h" />
     <ClInclude Include="upscalers\dlss\DLSSFeature_Dx12.h" />
+    <ClInclude Include="upscalers\dlss\DLSSFeature_VkOn12.h" />
     <ClInclude Include="upscalers\dlss\DLSSFeature_Vk.h" />
     <ClInclude Include="upscalers\FeatureProvider_Dx11.h" />
     <ClInclude Include="upscalers\FeatureProvider_Dx12.h" />
@@ -759,6 +763,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="upscalers\dlss\DLSSFeature.cpp" />
     <ClCompile Include="upscalers\dlss\DLSSFeature_Dx11.cpp" />
     <ClCompile Include="upscalers\dlss\DLSSFeature_Dx11On12.cpp" />
+    <ClCompile Include="upscalers\dlss\DLSSFeature_VkOn12.cpp" />
     <ClCompile Include="upscalers\dlss\DLSSFeature_Dx12.cpp" />
     <ClCompile Include="upscalers\dlss\DLSSFeature_Vk.cpp" />
     <ClCompile Include="upscalers\FeatureProvider_Dx11.cpp" />
@@ -827,6 +832,9 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="inputs\NVNGX_DLSS_Dx11.cpp" />
     <ClCompile Include="shaders\dlssnr\DlssNr_Dx12.cpp" />
     <ClInclude Include="shaders\dlssnr\DlssNr_ActiveColor.h" />
+    <ClCompile Include="shaders\dlssnr\DlssNr_Vk.cpp" />
+    <ClCompile Include="dlssnr\DlssNrFeature_Vk.cpp" />
+    <ClCompile Include="dlssnr\DlssNrFinished_Vk.cpp" />
     <ClCompile Include="dlssnr\DlssNr_ExposureScan.cpp" />
     <ClCompile Include="dlssnr\DlssNr_Proxy.cpp" />
     <ClCompile Include="inputs\NVNGX_DLSS_Dx12.cpp" />
@@ -869,6 +877,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="shaders\dlssnr\DlssNr_Common.h" />
     <ClInclude Include="upscalers\ShaderPipeline_Dx12.h" />
     <ClInclude Include="upscalers\ShaderPipeline_Vk.h" />
+    <ClInclude Include="dlssnr\DlssNrPipeline_Vk.h" />
     <ClCompile Include="dlssnr\DlssNr_Status.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -881,7 +890,11 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="dlssnr\DlssNr_Pipeline_Dx12.cpp" />
     <ClInclude Include="dlssnr\DlssNr_Pipeline_Dx12.h" />
     <ClInclude Include="dlssnr\DlssNr_Upscaler.h" />
+    <ClInclude Include="dlssnr\DlssNr_VkExtensions.h" />
     <ClInclude Include="dlssnr\DlssNrFeature_Dx12.h" />
+    <ClInclude Include="dlssnr\DlssNrFeature_Vk_Internal.h" />
+    <ClCompile Include="dlssnr\DlssNrFeature_Vk_Model.cpp" />
+    <ClCompile Include="dlssnr\DlssNrFeature_Vk_Resources.cpp" />
     <ClInclude Include="shaders\dlssnr\DlssNr_GpuTime.h" />
     <ClInclude Include="shaders\dlssnr\DlssNr_Guides.h" />
     <ClInclude Include="shaders\dlssnr\DlssNr_ResidualPair.h" />
