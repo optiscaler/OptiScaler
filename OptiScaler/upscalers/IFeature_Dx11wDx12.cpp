@@ -1,6 +1,7 @@
 #include <pch.h>
 #include "IFeature_Dx11wDx12.h"
 
+#include <Util.h>
 #include <Config.h>
 
 #include <proxies/DXGI_Proxy.h>
@@ -30,7 +31,7 @@ bool IFeature_Dx11wDx12::CreateD3D12Objects()
 {
     HRESULT result;
 
-    for (size_t i = 0; i < DX11WDX12_NUM_OF_BUFFERS; i++)
+    for (size_t i = 0; i < DX11WDX12_COMMAND_BUFFER_COUNT; i++)
     {
         if (Dx12CommandAllocator[i] == nullptr)
         {
@@ -84,7 +85,7 @@ bool IFeature_Dx11wDx12::CreateD3D12Objects()
 
 void IFeature_Dx11wDx12::ReleaseSharedResources()
 {
-    for (size_t i = 0; i < DX11WDX12_NUM_OF_BUFFERS; i++)
+    for (size_t i = 0; i < DX11WDX12_COMMAND_BUFFER_COUNT; i++)
     {
         SAFE_RELEASE(Dx12CommandList[i]);
         SAFE_RELEASE(Dx12CommandAllocator[i]);
@@ -107,9 +108,10 @@ bool IFeature_Dx11wDx12::ProcessDx11Textures(const NVSDK_NGX_Parameter* InParame
 {
     HRESULT result;
 
-    auto frame = _frameCount % DX11WDX12_NUM_OF_BUFFERS;
+    const auto commandFrame = (UINT) (_frameCount % DX11WDX12_COMMAND_BUFFER_COUNT);
+    const auto resourceFrame = (UINT) (_frameCount % DX11_WITH_DX12_CACHED_FRAMES);
     const auto cacheFrameKey = Dx11WithDx12::NextUpscalerFrameId();
-    Dx11WithDx12::SetUpscalerFrameIndex((UINT) frame);
+    Dx11WithDx12::SetUpscalerFrameIndex(resourceFrame);
 
     auto mask = Dx11WithDx12::ResourceMask::Color | Dx11WithDx12::ResourceMask::Mv | Dx11WithDx12::ResourceMask::Depth |
                 Dx11WithDx12::ResourceMask::Output;
@@ -129,7 +131,7 @@ bool IFeature_Dx11wDx12::ProcessDx11Textures(const NVSDK_NGX_Parameter* InParame
         LOG_DEBUG("ReactiveMask disabled!");
 
     const auto prepareResult = Dx11WithDx12::PrepareUpscalerResources(
-        InParameters, mask, (UINT) frame, cacheFrameKey, Config::Instance()->DontUseNTShared.value_or_default(),
+        InParameters, mask, resourceFrame, cacheFrameKey, Config::Instance()->DontUseNTShared.value_or_default(),
         reactiveRequired, true);
 
     if (!prepareResult.Success)
@@ -155,35 +157,56 @@ bool IFeature_Dx11wDx12::ProcessDx11Textures(const NVSDK_NGX_Parameter* InParame
         return false;
     }
 
-    const auto allocatorFenceValue = Dx12CommandAllocatorFenceValue[frame];
-    if (allocatorFenceValue != 0 && Dx12Fence->GetCompletedValue() < allocatorFenceValue)
+    const auto allocatorFenceValue = Dx12CommandAllocatorFenceValue[commandFrame];
+    const auto completedBefore = Dx12Fence->GetCompletedValue();
+    if (allocatorFenceValue != 0 && completedBefore < allocatorFenceValue)
     {
         result = Dx12Fence->SetEventOnCompletion(allocatorFenceValue, Dx12FenceEvent);
         if (result != S_OK)
         {
-            LOG_ERROR("SetEventOnCompletion error for allocator {} fence {}: {:X}", frame, allocatorFenceValue,
+            LOG_ERROR("SetEventOnCompletion error for allocator {} fence {}: {:X}", commandFrame, allocatorFenceValue,
                       (UINT) result);
             return false;
         }
 
-        const auto waitResult = WaitForSingleObject(Dx12FenceEvent, INFINITE);
+        const auto waitStart = Util::MillisecondsNow();
+        const auto waitResult = WaitForSingleObject(Dx12FenceEvent, 5000);
+        const auto waitMs = Util::MillisecondsNow() - waitStart;
+        const auto completedAfter = Dx12Fence->GetCompletedValue();
+
+        if (waitMs > 0.25)
+        {
+            LOG_WARN("Dx11wDx12 allocator wait: {:.3f} ms, slot: {}, required fence: {}, completed before: {}, "
+                     "completed after: {}",
+                     waitMs, commandFrame, allocatorFenceValue, completedBefore, completedAfter);
+        }
+
         if (waitResult != WAIT_OBJECT_0)
         {
-            LOG_ERROR("WaitForSingleObject failed for allocator {} fence {}: {:X}", frame, allocatorFenceValue,
-                      (UINT) waitResult);
+            if (waitResult == WAIT_TIMEOUT)
+            {
+                LOG_ERROR("Dx11wDx12 allocator wait timed out after {:.3f} ms, slot: {}, required fence: {}, "
+                          "completed: {}",
+                          waitMs, commandFrame, allocatorFenceValue, completedAfter);
+            }
+            else
+            {
+                LOG_ERROR("WaitForSingleObject failed for allocator {} fence {}: {:X}", commandFrame,
+                          allocatorFenceValue, (UINT) waitResult);
+            }
             return false;
         }
     }
 
-    result = Dx12CommandAllocator[frame]->Reset();
+    result = Dx12CommandAllocator[commandFrame]->Reset();
     if (result != S_OK)
     {
-        LOG_ERROR("CommandAllocator Reset error for frame {}, allocator fence {}, completed {}: {:X}", frame,
+        LOG_ERROR("CommandAllocator Reset error for frame {}, allocator fence {}, completed {}: {:X}", commandFrame,
                   allocatorFenceValue, Dx12Fence->GetCompletedValue(), (UINT) result);
         return false;
     }
 
-    result = Dx12CommandList[frame]->Reset(Dx12CommandAllocator[frame], nullptr);
+    result = Dx12CommandList[commandFrame]->Reset(Dx12CommandAllocator[commandFrame], nullptr);
     if (result != S_OK)
     {
         LOG_ERROR("CommandList Reset error: {:X}", (UINT) result);
@@ -196,8 +219,8 @@ bool IFeature_Dx11wDx12::ProcessDx11Textures(const NVSDK_NGX_Parameter* InParame
 
 bool IFeature_Dx11wDx12::CopyBackOutput()
 {
-    const auto frame = (UINT) (_frameCount % DX11WDX12_NUM_OF_BUFFERS);
-    return Dx11WithDx12::CopyUpscalerOutputToDx11(frame);
+    const auto resourceFrame = (UINT) (_frameCount % DX11_WITH_DX12_CACHED_FRAMES);
+    return Dx11WithDx12::CopyUpscalerOutputToDx11(resourceFrame);
 }
 
 bool IFeature_Dx11wDx12::Init(ID3D11Device* InDevice, ID3D11DeviceContext* InContext, NVSDK_NGX_Parameter* InParameters)
@@ -268,8 +291,9 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
     if (dc != nullptr)
         dc->Release();
 
-    auto frame = _frameCount % DX11WDX12_NUM_OF_BUFFERS;
-    auto cmdList = Dx12CommandList[frame];
+    const auto commandFrame = (UINT) (_frameCount % DX11WDX12_COMMAND_BUFFER_COUNT);
+    const auto resourceFrame = (UINT) (_frameCount % DX11_WITH_DX12_CACHED_FRAMES);
+    auto cmdList = Dx12CommandList[commandFrame];
 
     auto& cache = Dx11WithDx12::GetUpscalerResourceCache();
     auto& dx11Color = cache.Color;
@@ -277,7 +301,7 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
     auto& dx11Depth = cache.Depth;
     auto& dx11Reactive = cache.Reactive;
     auto& dx11Exp = cache.Exposure;
-    auto& dx11Out = cache.Output[frame];
+    auto& dx11Out = cache.Output[resourceFrame];
 
     auto getOriginalNgxResource = [](NVSDK_NGX_Parameter* parameters, const char* name, ID3D11Resource** outResource)
     {
@@ -430,7 +454,7 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
         }
         else
         {
-            Dx12CommandAllocatorFenceValue[frame] = fenceValue;
+            Dx12CommandAllocatorFenceValue[commandFrame] = fenceValue;
         }
     }
 
