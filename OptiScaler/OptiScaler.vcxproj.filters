@@ -887,6 +887,9 @@
     <ClInclude Include="with_dx12\with_dx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="dlssnr\DlssNr_FinishedPictureBridge_Dx11.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="shaders\magnifier\Magnifier_Common.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1547,6 +1550,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="dlssnr\DlssNr_Proxy.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\dlssnr\DlssNr_Dx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="shaders\dlssnr\DlssNr_Common.h">
