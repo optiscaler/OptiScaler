@@ -1549,6 +1549,9 @@
     <ClInclude Include="dlssnr\DlssNr_Status.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="dlssnr\DlssNr_PipelineUi.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="dlssnr\DlssNr_Proxy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
