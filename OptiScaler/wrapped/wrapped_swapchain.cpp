@@ -445,8 +445,9 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         LOG_DEBUG("Final SyncInterval: {}", SyncInterval);
     }
 
-    // DXVK check, it's here because of upscaler time calculations
-    if (IdentifyGpu::getPrimaryGpu().usesDxvk)
+    // Keep the DXVK D3D11 Vulkan path after upscaler time calculations.
+    // DXGI also reports DXVK for D3D12/vkd3d, which must reach the DirectX overlay below.
+    if (IdentifyGpu::getPrimaryGpu().usesDxvk && isD3D11)
     {
         if (pPresentParameters == nullptr)
             presentResult = pSwapChain->Present(SyncInterval, Flags);
@@ -459,16 +460,8 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         }
         else if (presentResult == DXGI_ERROR_DEVICE_REMOVED)
         {
-            if (isD3D11)
-            {
-                if (State::Instance().currentD3D11Device != nullptr)
-                    Util::GetDeviceRemovedReason(State::Instance().currentD3D11Device);
-            }
-            else
-            {
-                if (State::Instance().currentD3D12Device != nullptr)
-                    Util::GetDeviceRemovedReason(State::Instance().currentD3D12Device);
-            }
+            if (State::Instance().currentD3D11Device != nullptr)
+                Util::GetDeviceRemovedReason(State::Instance().currentD3D11Device);
         }
         else
         {
