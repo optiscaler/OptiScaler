@@ -1117,7 +1117,8 @@ void FSRFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
 
     // use swapchain buffer info
     DXGI_SWAP_CHAIN_DESC desc {};
-    if (State::Instance().currentSwapchain->GetDesc(&desc) == S_OK)
+    if ((_swapChain != nullptr && _swapChain->GetDesc(&desc) == S_OK) ||
+        State::Instance().currentSwapchain->GetDesc(&desc) == S_OK)
     {
         createFg.displaySize = { desc.BufferDesc.Width, desc.BufferDesc.Height };
 
