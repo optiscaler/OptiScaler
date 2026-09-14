@@ -333,6 +333,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="hooks\LibraryLoad_Hooks.h" />
     <ClInclude Include="hooks\CommandBuffer_StateTracker.h" />
     <ClInclude Include="framegen\nvngx\IFGNvngx.h" />
+    <ClInclude Include="framegen\reprojection\InputCollection.h" />
     <ClInclude Include="shaders\hud_copy\HudCopy_Vk.h" />
     <ClInclude Include="inputs\FG\Streamline_Inputs_Sl1_Dx12.h" />
     <ClInclude Include="include\device_info\device_info.hpp" />
@@ -341,6 +342,8 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="low_latency\input\input_reflex.h" />
     <ClInclude Include="low_latency\input\input_xell.h" />
     <ClInclude Include="low_latency\input\input_antilag2.h" />
+    <ClInclude Include="framegen\reprojection\Reprojection_Dx12.h" />
+    <ClInclude Include="framegen\reprojection\RawInputHook.h" />
     <ClInclude Include="shaders\hud_copy\precompile\HudCopy_Shader_Vk.h" />
     <ClInclude Include="shaders\magnifier\Magnifier_Dx11.h" />
     <ClInclude Include="menu\input\input_system.h" />
@@ -378,6 +381,8 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="shaders\rcas\shaders\DA_DAS_Shader.h" />
     <ClInclude Include="shaders\rcas\shaders\DA_RCAS_Shader.h" />
     <ClInclude Include="shaders\rcas\shaders\RCAS_Shader.h" />
+    <ClInclude Include="shaders\reproject\Reproject_Common.h" />
+    <ClInclude Include="shaders\reproject\Reproject_Dx12.h" />
     <ClInclude Include="shaders\Shader_Common.h" />
     <ClInclude Include="misc\SkipSpoof.h" />
     <ClInclude Include="shaders\Shader_Dx11.h" />
@@ -623,6 +628,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="hooks\LibraryLoad_Hooks.cpp" />
     <ClCompile Include="hooks\VulkanwDx12_Hooks.cpp" />
     <ClCompile Include="hooks\Xell_Hooks.cpp" />
+    <ClCompile Include="framegen\reprojection\InputCollection.cpp" />
     <ClCompile Include="shaders\hud_copy\HudCopy_Vk.cpp" />
     <ClCompile Include="inputs\FG\Streamline_Inputs_Sl1_Dx12.cpp" />
     <ClCompile Include="include\device_info\device_info.cpp" />
@@ -631,6 +637,8 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="low_latency\input\input_reflex.cpp" />
     <ClCompile Include="low_latency\input\input_xell.cpp" />
     <ClCompile Include="low_latency\input\input_antilag2.cpp" />
+    <ClCompile Include="framegen\reprojection\Reprojection_Dx12.cpp" />
+    <ClCompile Include="framegen\reprojection\RawInputHook.cpp" />
     <ClCompile Include="shaders\magnifier\Magnifier_Dx11.cpp" />
     <ClCompile Include="menu\input\input_system.cpp" />
     <ClCompile Include="menu\input\input_system_cursor.cpp" />
@@ -678,6 +686,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="shaders\output_scaling\OS_Vk.cpp" />
     <ClCompile Include="shaders\rcas\RCAS_Common.cpp" />
     <ClCompile Include="shaders\rcas\RCAS_Vk.cpp" />
+    <ClCompile Include="shaders\reproject\Reproject_Dx12.cpp" />
     <ClCompile Include="shaders\Shader_Common.cpp" />
     <ClCompile Include="shaders\render_ui\RUI_Dx12.cpp" />
     <ClCompile Include="shaders\resource_copy\RC_Vk.cpp" />

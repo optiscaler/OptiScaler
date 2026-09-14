@@ -103,6 +103,8 @@ bool Config::Reload(std::filesystem::path iniPath)
                     FGOutput.set_from_config(FGOutput::XeFG);
                 else if (lstrcmpiA(FGOutputString.value().c_str(), "dlssg") == 0)
                     FGOutput.set_from_config(FGOutput::DLSSG);
+                else if (lstrcmpiA(FGOutputString.value().c_str(), "reprojection") == 0)
+                    FGOutput.set_from_config(FGOutput::Reprojection);
             }
 
             const bool canUseNvngxReplacement =
@@ -241,6 +243,11 @@ bool Config::Reload(std::filesystem::path iniPath)
             FGDLSSGFramerateTargetDMFG.set_from_config(readFloat("DLSSG", "FramerateTargetDMFG"));
             FGDLSSGOverrideForceDMFG.set_from_config(readBool("DLSSG", "OverrideForceDMFG"));
             FGDLSSGForceDMFG.set_from_config(readBool("DLSSG", "ForceDMFG"));
+        }
+
+        {
+            ReprojectionFillMode.set_from_config(
+                readString("Reprojection", "FillMode", true).transform(CodeToEnum<ReprojectionFill>));
         }
 
         // FSR FG Inputs
@@ -441,7 +448,8 @@ bool Config::Reload(std::filesystem::path iniPath)
 
         // Sharpness
         {
-            SharpnessShader.set_from_config(readString("Sharpness", "Shader", true).transform(CodeToSharpnessShader));
+            SharpnessShader.set_from_config(
+                readString("Sharpness", "Shader", true).transform(CodeToEnum<SharpenShader>));
             OverrideSharpness.set_from_config(readBool("Sharpness", "OverrideSharpness"));
 
             if (auto setting = readFloat("Sharpness", "Sharpness"); setting.has_value())
@@ -908,6 +916,8 @@ bool Config::SaveIni()
                 FGOutputString = "XeFG";
             else if (FGOutputHeld.value() == FGOutput::DLSSG)
                 FGOutputString = "DLSSG";
+            else if (FGOutputHeld.value() == FGOutput::Reprojection)
+                FGOutputString = "Reprojection";
         }
         ini.SetValue("FrameGen", "FGOutput", FGOutputString.c_str());
 
@@ -1016,6 +1026,14 @@ bool Config::SaveIni()
         ini.SetValue("DLSSG", "OverrideForceDMFG",
                      GetBoolValue(Instance()->FGDLSSGOverrideForceDMFG.value_for_config()).c_str());
         ini.SetValue("DLSSG", "ForceDMFG", GetBoolValue(Instance()->FGDLSSGForceDMFG.value_for_config()).c_str());
+    }
+
+    // Reprojection
+    {
+        std::string fillMode =
+            ReprojectionFillMode.value_for_config().transform(EnumToCode<ReprojectionFill>).value_or("auto");
+
+        ini.SetValue("Reprojection", "FillMode", fillMode.c_str());
     }
 
     // OptiFG
@@ -1193,7 +1211,7 @@ bool Config::SaveIni()
     // Sharpness
     {
         std::string shader = SharpnessShader.value_for_config()
-                                 .transform(SharpnessShaderToCode) // Turn enum into string
+                                 .transform(EnumToCode<SharpenShader>) // Turn enum into string
                                  .value_or("auto");
 
         ini.SetValue("Sharpness", "Shader", shader.c_str());
