@@ -3197,6 +3197,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
         { FGOutput::FSRFG, "FSR FG", "FSR3/4-FG, RDNA4 autoupgrades to FSR4-FG\n\nFSR4-FG sometimes better/worse than XeFG" },
         { FGOutput::DLSSG, "DLSSG", "DLSSG output\nCan be used in conjuction with Nukem's for example" },
         { FGOutput::XeFG, "XeFG", "XeFG - heaviest, but best universal FG\n\nXeFG 3 overall deals best with HUD\n\nEnable UI Composition if HUD ghosting" },
+        { FGOutput::Reprojection, "Reprojection", "Reprojection" },
     };
 
     // clang-format on
@@ -3488,8 +3489,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
         }
 
         auto fgOutput = reinterpret_cast<IFGFeature_Dx12*>(state.currentFG);
-        if (((state.activeFgOutput == FGOutput::FSRFG || state.activeFgOutput == FGOutput::XeFG ||
-              state.activeFgOutput == FGOutput::DLSSG) &&
+        if ((state.activeFgOutput != FGOutput::Reprojection && state.activeFgOutput != FGOutput::NoFG &&
              state.activeFgInput != FGInput::NoFG && state.activeFgInput != FGInput::NvngxFG) &&
             fgOutput)
         {
@@ -4265,6 +4265,27 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             LOG_DEBUG("Changed set FGDLSSGUseGamesReflexMarkers: {}", useGamesMarkers);
         }
         ImGui::EndDisabled();
+    }
+
+    if (state.activeFgOutput == FGOutput::Reprojection && fgOutput)
+    {
+        ImGui::SeparatorText("Reprojection");
+
+        bool fgActive = config->FGEnabled.value_or_default();
+        if (ImGui::Checkbox("Active##2", &fgActive))
+        {
+            config->FGEnabled = fgActive;
+            LOG_DEBUG("Reprojection enabled: {}", fgActive);
+
+            if (config->FGEnabled.value_or_default())
+                state.fgChanged = true;
+        }
+        ShowHelpMarker("Enable reprojection");
+
+        static std::vector<MenuOption<ReprojectionFill>> fillModes = { { ReprojectionFill::StrechEdge, "Strech edge" },
+                                                                       { ReprojectionFill::Black, "Black" } };
+
+        PopulateCombo("Edge fill mode", config->ReprojectionFillMode, fillModes);
     }
 
     // OptiFG

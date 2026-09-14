@@ -181,32 +181,3 @@ Upscaler CodeToUpscalerFfx(const std::string& code)
 
     return CodeToUpscaler(code);
 }
-
-// Converts enum to the string codes for config
-std::string SharpnessShaderToCode(SharpenShader sharpenShader)
-{
-    switch (sharpenShader)
-    {
-    case SharpenShader::RCAS:
-        return "rcas";
-    case SharpenShader::DepthAware:
-        return "da";
-    case SharpenShader::LocalContrastDepthAware:
-        return "lcda";
-    default:
-        return "";
-    }
-}
-
-// Converts string codes into enum for config
-SharpenShader CodeToSharpnessShader(const std::string& code)
-{
-    static const std::unordered_map<std::string, SharpenShader> mapping = {
-        { "rcas", SharpenShader::RCAS },
-        { "da", SharpenShader::DepthAware },
-        { "lcda", SharpenShader::LocalContrastDepthAware },
-    };
-
-    auto it = mapping.find(code);
-    return (it != mapping.end()) ? it->second : SharpenShader::RCAS;
-}
