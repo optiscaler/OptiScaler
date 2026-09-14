@@ -155,6 +155,9 @@ static const QuirkEntry quirkTable[] = {
     // Trails in the Sky 1st Chapter
     QUIRK_ENTRY("sora_1st.exe", GameQuirk::UseFsr2Dx11Inputs, GameQuirk::DisableDxgiSpoofing),
 
+    // Rise of the Tomb Raider
+    QUIRK_ENTRY("rottr.exe", GameQuirk::SkipD3D11FeatureLevelElevation),
+
     // NINJA GAIDEN 4
     // No spoof needed for DLSS inputs
     QUIRK_ENTRY("ninjagaiden4-steam.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::DisableResizeSkip,
