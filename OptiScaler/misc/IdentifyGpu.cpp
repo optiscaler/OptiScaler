@@ -51,7 +51,10 @@ std::vector<GpuInformation> IdentifyGpu::checkGpuInfo()
     ComPtr<IDXGIFactory6> factory = nullptr;
     HRESULT result = S_FALSE;
 
-    result = DxgiProxy::CreateDxgiFactory_()(__uuidof(factory), (IDXGIFactory**) factory.GetAddressOf());
+    {
+        ScopedCreatingD3DDevice creatingD3DDevice {};
+        result = DxgiProxy::CreateDxgiFactory_()(__uuidof(factory), (IDXGIFactory**) factory.GetAddressOf());
+    }
 
     if (result != S_OK || factory == nullptr)
     {

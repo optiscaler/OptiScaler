@@ -113,11 +113,15 @@ inline static HRESULT hkCreateDXGIFactory(REFIID riid, IDXGIFactory** ppFactory)
     HRESULT result;
     auto owner = State::GetOwner();
     State::DisableChecks(owner, "dxgi");
+
+    {
+        ScopedCreatingD3DDevice creatingD3DDevice {};
 #ifndef DXGI_DEBUG_ENABLED
-    result = o_CreateDXGIFactory(riid, ppFactory);
+        result = o_CreateDXGIFactory(riid, ppFactory);
 #else
-    result = o_CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, riid, (IDXGIFactory2**) ppFactory);
+        result = o_CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, riid, (IDXGIFactory2**) ppFactory);
 #endif
+    }
 
     State::EnableChecks(owner);
 
@@ -172,11 +176,16 @@ inline static HRESULT hkCreateDXGIFactory1(REFIID riid, IDXGIFactory1** ppFactor
     HRESULT result;
     auto owner = State::GetOwner();
     State::DisableChecks(owner, "dxgi");
+
+    {
+        ScopedCreatingD3DDevice creatingD3DDevice {};
 #ifndef DXGI_DEBUG_ENABLED
-    result = o_CreateDXGIFactory1(riid, ppFactory);
+        result = o_CreateDXGIFactory1(riid, ppFactory);
 #else
-    result = o_CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, riid, (IDXGIFactory2**) ppFactory);
+        result = o_CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, riid, (IDXGIFactory2**) ppFactory);
 #endif
+    }
+
     State::EnableChecks(owner);
 
     if (result != S_OK)
@@ -232,11 +241,16 @@ inline static HRESULT hkCreateDXGIFactory2(UINT Flags, REFIID riid, IDXGIFactory
     HRESULT result;
     auto owner = State::GetOwner();
     State::DisableChecks(owner, "dxgi");
+
+    {
+        ScopedCreatingD3DDevice creatingD3DDevice {};
 #ifndef DXGI_DEBUG_ENABLED
-    result = o_CreateDXGIFactory2(Flags, riid, ppFactory);
+        result = o_CreateDXGIFactory2(Flags, riid, ppFactory);
 #else
-    result = o_CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, riid, (IDXGIFactory2**) ppFactory);
+        result = o_CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, riid, (IDXGIFactory2**) ppFactory);
 #endif
+    }
+
     State::EnableChecks(owner);
 
     if (result != S_OK)

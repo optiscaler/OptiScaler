@@ -263,6 +263,7 @@ static HRESULT hkD3D11CreateDevice(IDXGIAdapter* pAdapter, D3D_DRIVER_TYPE Drive
     HRESULT result;
     {
         ScopedSkipParentWrapping skipParentWrapping {};
+        ScopedCreatingD3DDevice creatingD3DDevice {};
         result = o_D3D11CreateDevice(pAdapter, DriverType, Software, Flags, pFeatureLevels, FeatureLevels, SDKVersion,
                                      ppDevice, pFeatureLevel, ppImmediateContext);
     }

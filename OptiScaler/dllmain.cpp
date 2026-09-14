@@ -1730,6 +1730,9 @@ void CheckMemoryForProxies()
 
 DWORD WINAPI getGpuInfo(LPVOID hModuleVoid)
 {
+    // TODO: dxvk deadlocks when the game and identify gpu calls create at the same time
+    // Sleep(1000);
+
     auto primaryGpu = IdentifyGpu::getPrimaryGpu();
 
     // We don't yet know if the GPU supports FSR 4 so hook any AMD
