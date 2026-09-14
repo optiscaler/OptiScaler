@@ -31,6 +31,8 @@ inline constexpr CString FSR_Reactive = "FSR.reactive";
 
 } // namespace OptiKeys
 
+template <typename T> struct EnumConfig;
+
 typedef enum API
 {
     NotSelected = 0,
@@ -89,6 +91,16 @@ enum class SharpenShader
     RCAS,
     DepthAware,
     LocalContrastDepthAware
+};
+
+template <> struct EnumConfig<SharpenShader>
+{
+    static constexpr auto default_value = SharpenShader::RCAS;
+
+    static constexpr std::pair<SharpenShader, std::string_view> mapping[] = { { SharpenShader::RCAS, "rcas" },
+                                                                              { SharpenShader::DepthAware, "da" },
+                                                                              { SharpenShader::LocalContrastDepthAware,
+                                                                                "lcda" } };
 };
 
 enum class FSR4Support : uint8_t
@@ -242,8 +254,24 @@ Upscaler CodeToUpscaler(const std::string& code);
 // Needs this function for compatibility for now
 Upscaler CodeToUpscalerFfx(const std::string& code);
 
-// Converts enum to the string codes for config
-std::string SharpnessShaderToCode(SharpenShader sharpenShader);
+// Enum to String Code
+template <typename T> std::string EnumToCode(T value)
+{
+    for (const auto& pair : EnumConfig<T>::mapping)
+    {
+        if (pair.first == value)
+            return std::string(pair.second);
+    }
+    return "";
+}
 
-// Converts string codes into enum for config
-SharpenShader CodeToSharpnessShader(const std::string& code);
+// String Code to Enum
+template <typename T> T CodeToEnum(std::string_view code)
+{
+    for (const auto& pair : EnumConfig<T>::mapping)
+    {
+        if (pair.second == code)
+            return pair.first;
+    }
+    return EnumConfig<T>::default_value;
+}
