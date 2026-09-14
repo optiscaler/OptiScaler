@@ -248,6 +248,8 @@ bool IFeature_Dx11wDx12::Init(ID3D11Device* InDevice, ID3D11DeviceContext* InCon
         return false;
     }
 
+    UpscalerTime = std::make_unique<GpuTime_Dx11>(InDevice);
+
     SetInitParameters(InParameters);
 
     // Non-DLSS upscalers don't use the cmdList during Init
@@ -266,6 +268,8 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
 
     ID3D11DeviceContext4* dc;
     auto result = InDeviceContext->QueryInterface(IID_PPV_ARGS(&dc));
+
+    ScopedGpuTime_Dx11 scopedGpuTime(UpscalerTime.get(), InDeviceContext);
 
     if (result != S_OK)
     {
