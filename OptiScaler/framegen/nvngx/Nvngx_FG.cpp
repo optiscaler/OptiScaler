@@ -12,6 +12,7 @@
 #include "Nvngx_FFX.h"
 #include "Nvngx_Combo.h"
 #include <imgui/ImGuiNotify.hpp>
+#include <nvsdk_ngx_vk.h>
 
 IFGNvngx* Nvngx_FG::getProvider()
 {
@@ -363,10 +364,10 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InCm
 
         if (presentWithHud && hudlessResource && device)
         {
-            if (_hudCopy.get() == nullptr)
-                _hudCopy = std::make_unique<HudCopy_Dx12>("HudCopy", device);
+            if (_hudCopyDx12.get() == nullptr)
+                _hudCopyDx12 = std::make_unique<HudCopy_Dx12>("HudCopy", device);
 
-            if (auto hudCopy = _hudCopy.get(); hudCopy && hudCopy->IsInit())
+            if (auto hudCopy = _hudCopyDx12.get(); hudCopy && hudCopy->IsInit())
             {
                 // In Cyberprank - DLSSG has noise issues, FSR FG has noise + vignetting
                 // In Death Stranding 2 - DLSSG has wrong colormapping it seems, FSR FG is fine
@@ -418,6 +419,9 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_Init(unsigned long long InApplicationId, const
     if (!provider)
         return NVSDK_NGX_Result_Fail;
 
+    if (!_hudCopyVk)
+        _hudCopyVk = std::make_unique<HudCopy_Vk>("HudCopy", InDevice, InPD);
+
     return provider->VULKAN_Init(InApplicationId, InApplicationDataPath, InInstance, InPD, InDevice, InGIPA, InGDPA,
                                  InFeatureInfo, InSDKVersion);
 }
@@ -431,6 +435,9 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_Init_Ext(unsigned long long InApplicationId, c
 
     if (!provider)
         return NVSDK_NGX_Result_Fail;
+
+    if (!_hudCopyVk)
+        _hudCopyVk = std::make_unique<HudCopy_Vk>("HudCopy", InDevice, InPD);
 
     return provider->VULKAN_Init_Ext(InApplicationId, InApplicationDataPath, InInstance, InPD, InDevice, InSDKVersion,
                                      InFeatureInfo);
@@ -446,6 +453,9 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_Init_Ext2(unsigned long long InApplicationId, 
 
     if (!provider)
         return NVSDK_NGX_Result_Fail;
+
+    if (!_hudCopyVk)
+        _hudCopyVk = std::make_unique<HudCopy_Vk>("HudCopy", InDevice, InPD);
 
     return provider->VULKAN_Init_Ext2(InApplicationId, InApplicationDataPath, InInstance, InPD, InDevice, InGIPA,
                                       InGDPA, InSDKVersion, InFeatureInfo);
@@ -582,6 +592,44 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_EvaluateFeature(VkCommandBuffer InCmdList, con
 
     Nvngx_FG_Handle* ourHandle = (Nvngx_FG_Handle*) InFeatureHandle;
     std::shared_lock lock(ourHandle->handleMutex);
+
+    bool applyHudCutoff = Config::Instance()->FGHudCutoff.value_or_default() > 0.0f ||
+                          State::Instance().gameQuirks & GameQuirk::FSRFGHudlessMismatchFixup;
+
+    uint32_t frameIndex = 1;
+    InParameters->Get("DLSSG.MultiFrameIndex", &frameIndex);
+
+    if (applyHudCutoff && frameIndex == 1)
+    {
+        NVSDK_NGX_Resource_VK* presentWithHud = nullptr;
+        InParameters->Get("DLSSG.Backbuffer", (void**) &presentWithHud);
+        VkImageLayout presentWithHudLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+        NVSDK_NGX_Resource_VK* hudlessResource = nullptr;
+        InParameters->Get("DLSSG.HUDLess", (void**) &hudlessResource);
+        VkImageLayout hudlessLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+
+        if (presentWithHud && hudlessResource)
+        {
+            if (auto hudCopy = _hudCopyVk.get(); hudCopy && hudCopy->IsInit())
+            {
+                float hudDetectionThreshold = 0.03f;
+
+                if (Config::Instance()->FGHudCutoff.value_or_default() > 0.0f)
+                    hudDetectionThreshold = Config::Instance()->FGHudCutoff.value_or_default() / 10.0f;
+
+                VkImageInfo presentWithHudInfo = *(VkImageInfo*) &presentWithHud->Resource.ImageViewInfo;
+                VkImageInfo hudlessResourceInfo = *(VkImageInfo*) &hudlessResource->Resource.ImageViewInfo;
+
+                hudCopy->Dispatch(InCmdList, hudlessResourceInfo, hudlessLayout, presentWithHudInfo,
+                                  presentWithHudLayout, hudDetectionThreshold);
+            }
+        }
+        else
+        {
+            LOG_WARN("Couldn't run hudless fixup");
+        }
+    }
 
     if (Config::Instance()->NvngxFGDisableHudless.value_or_default())
         InParameters->Set("DLSSG.HUDLess", (void*) nullptr);

@@ -65,7 +65,7 @@ bool HudCopy_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* 
     CreateShaderResourceView(_device, present, currentHeap.GetSrvCPU(1));
     CreateUnorderedAccessView(_device, _buffer, currentHeap.GetUavCPU(0), 0);
 
-    InternalCompareParams constants {};
+    InternalHudCopyParams constants {};
     constants.DiffThreshold = hudDetectionThreshold;
 
     if (!CreateConstantsBuffer(_device, _constantBuffer, constants, currentHeap.GetCbvCPU(0)))
@@ -117,7 +117,7 @@ HudCopy_Dx12::HudCopy_Dx12(std::string InName, ID3D12Device* InDevice) : Shader_
         return;
     }
 
-    D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(InternalCompareParams));
+    D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(InternalHudCopyParams));
     auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 
     auto result =

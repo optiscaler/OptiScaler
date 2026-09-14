@@ -5,6 +5,7 @@
 #include "proxies/NVNGX_Proxy.h"
 #include "proxies/Ntdll_Proxy.h"
 #include <shaders/hud_copy/HudCopy_Dx12.h>
+#include <shaders/hud_copy/HudCopy_Vk.h>
 #include "IFGNvngx.h"
 
 class Nvngx_FG
@@ -21,7 +22,8 @@ class Nvngx_FG
 
     static inline std::atomic_uint32_t lastIdCreated = 0;
     static inline std::unique_ptr<IFGNvngx> _provider;
-    static inline std::unique_ptr<HudCopy_Dx12> _hudCopy;
+    static inline std::unique_ptr<HudCopy_Dx12> _hudCopyDx12;
+    static inline std::unique_ptr<HudCopy_Vk> _hudCopyVk;
 
     static IFGNvngx* getProvider();
 

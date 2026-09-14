@@ -569,7 +569,7 @@ static const QuirkEntry quirkTable[] = {
 
     // No Man's Sky
     QUIRK_ENTRY("nms.exe", GameQuirk::KernelBaseHooks, GameQuirk::VulkanDLSSBarrierFixup,
-                GameQuirk::EnableVulkanSpoofing),
+                GameQuirk::EnableVulkanSpoofing, GameQuirk::FSRFGHudlessMismatchFixup),
 
     // RTX Remix
     QUIRK_ENTRY("nvremixbridge.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::LoadVulkanManually,
