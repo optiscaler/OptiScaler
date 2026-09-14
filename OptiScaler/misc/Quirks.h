@@ -538,7 +538,7 @@ static const QuirkEntry quirkTable[] = {
 
     // Rise of the Tomb Raider
     // Hudfix incompatible
-    QUIRK_ENTRY("rottr.exe", GameQuirk::DisableHudfix),
+    QUIRK_ENTRY("rottr.exe", GameQuirk::DisableHudfix, GameQuirk::SkipD3D11FeatureLevelElevation),
 
     // Shadow of the Tomb Raider
     // Hudfix incompatible
