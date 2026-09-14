@@ -198,7 +198,11 @@ void Shader_Dx12::CreateShaderResourceView(ID3D12Device* device, ID3D12Resource*
     }
 
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-    srvDesc.Format = TranslateTypelessFormats((format != DXGI_FORMAT_UNKNOWN) ? format : desc.Format);
+    const auto viewFormat = (format != DXGI_FORMAT_UNKNOWN) ? format : desc.Format;
+    // NR's copied depth guide already has the depth-plane SRV format. The shared
+    // translator maps it back to a DSV format, which removes the device on SRV creation.
+    srvDesc.Format = viewFormat == DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS
+                         ? viewFormat : TranslateTypelessFormats(viewFormat);
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 
     const UINT mipLevels = (desc.MipLevels) ? static_cast<UINT>(desc.MipLevels) : static_cast<UINT>(-1);
