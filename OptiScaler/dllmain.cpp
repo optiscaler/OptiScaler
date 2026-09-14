@@ -39,6 +39,8 @@
 #include <hooks/Advapi32_Hooks.h>
 #include <hooks/Streamline_Hooks.h>
 
+#include <framegen/reprojection/RawInputHook.h>
+
 #include <nvapi/NvApiHooks.h>
 
 #include "spoofing/User32_Spoofing.h"
@@ -2124,6 +2126,11 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         {
             LOG_WARN("Unity detected with Upscaler input, but FGResourceFlip is not set. Enabling it");
             Config::Instance()->FGResourceFlip.set_volatile_value(true);
+        }
+
+        if (State::Instance().activeFgOutput == FGOutput::Reprojection)
+        {
+            RawInputHook::getInstance().start();
         }
 
         for (size_t i = 0; i < 300; i++)
