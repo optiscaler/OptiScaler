@@ -583,6 +583,9 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_EvaluateFeature(VkCommandBuffer InCmdList, con
     Nvngx_FG_Handle* ourHandle = (Nvngx_FG_Handle*) InFeatureHandle;
     std::shared_lock lock(ourHandle->handleMutex);
 
+    if (Config::Instance()->NvngxFGDisableHudless.value_or_default())
+        InParameters->Set("DLSSG.HUDLess", (void*) nullptr);
+
     // LOG_TRACE("Handle received from the game: {:X}", (uint64_t) InFeatureHandle);
 
     return provider->VULKAN_EvaluateFeature(InCmdList, ourHandle->nativeHandle, InParameters, InCallback);
