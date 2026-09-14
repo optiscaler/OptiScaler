@@ -1247,7 +1247,7 @@ void MenuCommon::AddDx11Backends(std::string* code, std::string* name)
 
     if (ImGui::BeginCombo("", selectedUpscalerName.c_str()))
     {
-        if (ImGui::Selectable("XeSS", *code == "xess"))
+        if (State::Instance().currentD3D11AdepterDesc.VendorId == 0x8086 && ImGui::Selectable("XeSS", *code == "xess"))
             State::Instance().newBackend = "xess";
 
         if (ImGui::Selectable("FSR 2.2.1", *code == "fsr22"))
