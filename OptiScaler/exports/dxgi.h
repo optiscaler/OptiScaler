@@ -111,8 +111,6 @@ HRESULT WINAPI _DXGIGetDebugInterface1(UINT flags, REFIID riid, void** pDebug)
 
 HRESULT WINAPI _DXGIDisableVBlankVirtualization()
 {
-    LOG_FUNC();
-
     if (dxgi.DisableVBlankVirtualization == nullptr)
         return E_NOTIMPL;
 
@@ -121,8 +119,6 @@ HRESULT WINAPI _DXGIDisableVBlankVirtualization()
 
 HRESULT WINAPI _ApplyCompatResolutionQuirking(void* p1, void* p2)
 {
-    LOG_FUNC();
-
     if (dxgi.ApplyCompatResolutionQuirking == nullptr)
         return E_NOTIMPL;
 
@@ -131,8 +127,6 @@ HRESULT WINAPI _ApplyCompatResolutionQuirking(void* p1, void* p2)
 
 BOOL WINAPI _CompatString(LPCSTR szName, ULONG* pSize, LPSTR lpData, bool flag)
 {
-    LOG_FUNC();
-
     if (dxgi.CompatString == nullptr)
         return FALSE;
 
@@ -141,8 +135,6 @@ BOOL WINAPI _CompatString(LPCSTR szName, ULONG* pSize, LPSTR lpData, bool flag)
 
 BOOL WINAPI _CompatValue(LPCSTR szName, UINT64* pValue)
 {
-    LOG_FUNC();
-
     if (dxgi.CompatValue == nullptr)
         return FALSE;
 
@@ -152,8 +144,6 @@ BOOL WINAPI _CompatValue(LPCSTR szName, UINT64* pValue)
 HRESULT WINAPI _DXGID3D10CreateDevice(HMODULE hModule, IDXGIFactory* pFactory, IDXGIAdapter* pAdapter, UINT flags,
                                       void* pUnknown, void** ppDevice)
 {
-    LOG_FUNC();
-
     if (dxgi.D3D10CreateDevice == nullptr)
         return E_NOTIMPL;
 
@@ -163,8 +153,6 @@ HRESULT WINAPI _DXGID3D10CreateDevice(HMODULE hModule, IDXGIFactory* pFactory, I
 HRESULT WINAPI _DXGID3D10CreateLayeredDevice(IDXGIAdapter* pAdapter, UINT flags, void* pUnknown, REFIID riid,
                                              void** ppDevice)
 {
-    LOG_FUNC();
-
     if (dxgi.D3D10CreateLayeredDevice == nullptr)
         return E_NOTIMPL;
 
@@ -173,8 +161,6 @@ HRESULT WINAPI _DXGID3D10CreateLayeredDevice(IDXGIAdapter* pAdapter, UINT flags,
 
 SIZE_T WINAPI _DXGID3D10GetLayeredDeviceSize(const void* pLayers, UINT numLayers)
 {
-    LOG_FUNC();
-
     if (dxgi.D3D10GetLayeredDeviceSize == nullptr)
         return 0;
 
@@ -183,8 +169,6 @@ SIZE_T WINAPI _DXGID3D10GetLayeredDeviceSize(const void* pLayers, UINT numLayers
 
 HRESULT WINAPI _DXGID3D10RegisterLayers(const void* pLayers, UINT numLayers)
 {
-    LOG_FUNC();
-
     if (dxgi.D3D10RegisterLayers == nullptr)
         return E_NOTIMPL;
 
@@ -193,16 +177,12 @@ HRESULT WINAPI _DXGID3D10RegisterLayers(const void* pLayers, UINT numLayers)
 
 void WINAPI _DXGID3D10ETWRundown()
 {
-    LOG_FUNC();
-
     if (dxgi.D3D10ETWRundown != nullptr)
         dxgi.D3D10ETWRundown();
 }
 
 HRESULT WINAPI _DXGIDumpJournal(ULONG_PTR p1)
 {
-    LOG_FUNC();
-
     if (dxgi.DumpJournal == nullptr)
         return E_NOTIMPL;
 
@@ -211,8 +191,6 @@ HRESULT WINAPI _DXGIDumpJournal(ULONG_PTR p1)
 
 HRESULT WINAPI _DXGIReportAdapterConfiguration(ULONG_PTR p1)
 {
-    LOG_FUNC();
-
     if (dxgi.ReportAdapterConfiguration == nullptr)
         return E_NOTIMPL;
 
@@ -221,8 +199,6 @@ HRESULT WINAPI _DXGIReportAdapterConfiguration(ULONG_PTR p1)
 
 HRESULT WINAPI _PIXBeginCapture(DWORD captureFlags, const void* captureParameters)
 {
-    LOG_FUNC();
-
     if (dxgi.PIXBeginCapture == nullptr)
         return E_NOTIMPL;
 
@@ -231,8 +207,6 @@ HRESULT WINAPI _PIXBeginCapture(DWORD captureFlags, const void* captureParameter
 
 HRESULT WINAPI _PIXEndCapture(BOOL discard)
 {
-    LOG_FUNC();
-
     if (dxgi.PIXEndCapture == nullptr)
         return E_NOTIMPL;
 
@@ -241,8 +215,6 @@ HRESULT WINAPI _PIXEndCapture(BOOL discard)
 
 DWORD WINAPI _PIXGetCaptureState()
 {
-    LOG_FUNC();
-
     if (dxgi.PIXGetCaptureState == nullptr)
         return 0;
 
@@ -251,8 +223,6 @@ DWORD WINAPI _PIXGetCaptureState()
 
 HRESULT WINAPI _SetAppCompatStringPointer(ULONG_PTR p1, ULONG_PTR p2)
 {
-    LOG_FUNC();
-
     if (dxgi.SetAppCompatStringPointer == nullptr)
         return E_NOTIMPL;
 
@@ -261,8 +231,6 @@ HRESULT WINAPI _SetAppCompatStringPointer(ULONG_PTR p1, ULONG_PTR p2)
 
 HRESULT WINAPI _UpdateHMDEmulationStatus(ULONG_PTR p1)
 {
-    LOG_FUNC();
-
     if (dxgi.UpdateHMDEmulationStatus == nullptr)
         return E_NOTIMPL;
 
