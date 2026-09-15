@@ -9,6 +9,9 @@
 #include <proxies/XeFG_Proxy.h>
 #include <proxies/FfxApi_Proxy.h>
 #include <proxies/Streamline_Proxy.h>
+#include <proxies/KernelBase_Proxy.h>
+
+#include <tlhelp32.h>
 
 #include <framegen/nvngx/Nvngx_FG.h>
 
@@ -64,6 +67,52 @@ constexpr uint64_t debounceThreshold = 1000;
 static bool hasGamepad = false;
 static bool ffxInitTried = false;
 static bool xefgInitTried = false;
+
+// Detect the compatibility proxy by its exports, not its filename: it may be
+// loaded as version.dll, another proxy name, or an ASI. Presence permits menu
+// selection only; the runtime still performs its own capability checks.
+static bool HasLoadedDlssgCompatibilityMod()
+{
+    using Clock = std::chrono::steady_clock;
+    static auto nextCheck = Clock::time_point::min();
+    static bool found = false;
+
+    const auto now = Clock::now();
+    if (now < nextCheck)
+        return found;
+
+    nextCheck = now + std::chrono::seconds(1);
+    found = false;
+
+    const auto snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, GetCurrentProcessId());
+    if (snapshot == INVALID_HANDLE_VALUE)
+        return false;
+
+    MODULEENTRY32W entry {};
+    entry.dwSize = sizeof(entry);
+    if (Module32FirstW(snapshot, &entry))
+    {
+        do
+        {
+            // Hold a reference while inspecting exports in case a plugin unloads.
+            HMODULE module = nullptr;
+            if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+                                   reinterpret_cast<LPCWSTR>(entry.modBaseAddr), &module))
+                continue;
+
+            found = KernelBaseProxy::GetProcAddress_()(module, "DlssgProxy_Name") != nullptr &&
+                    KernelBaseProxy::GetProcAddress_()(module, "DlssgProxy_Role") != nullptr;
+            FreeLibrary(module);
+
+            if (found)
+                break;
+        } while (Module32NextW(snapshot, &entry));
+    }
+
+    CloseHandle(snapshot);
+    return found;
+}
+
 static std::string windowTitle;
 static std::string selectedUpscalerName = "";
 static Upscaler currentBackend = Upscaler::Reset;
@@ -3202,7 +3251,9 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
     // DLSSG output requirements
     auto constexpr dlssgOutputIndex = (uint32_t) FGOutput::DLSSG;
-    const bool supportsDlssg = primaryGpu.nvidiaArchInfo.architecture_id >= NV_GPU_ARCHITECTURE_AD100;
+    const bool supportsDlssg = primaryGpu.nvidiaArchInfo.architecture_id >= NV_GPU_ARCHITECTURE_AD100 ||
+                               (primaryGpu.vendorId == VendorId::Nvidia && primaryGpu.dlssCapable &&
+                                HasLoadedDlssgCompatibilityMod());
     const bool hasDlssgReplacement =
         state.nukemsFgFileAvailable || state.artursFgFileAvailable || FfxApiProxy::IsFGReady(false);
 
@@ -3264,7 +3315,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     // clang-format off
 
     nvngxOptions = {
-        { FGNvngxReplacement::None, "None (Real DLSSG)", "Real DLSSG, For RTX 40xx and above"},
+        { FGNvngxReplacement::None, "None (Real DLSSG)", "Real DLSSG, for RTX 40xx and above or a loaded DLSSG compatibility mod"},
         { FGNvngxReplacement::Nukems, "Nukem's", "FSR 3 FG" },
         { FGNvngxReplacement::Arturs, "Enabler", "FSR 3 MFG mod" },
         { FGNvngxReplacement::FFX, "FSR 3/4 FG", "FSR 3/4 FG using the FFX upgrade\n\n"
