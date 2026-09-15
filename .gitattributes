@@ -1,3 +1,8 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 *.sh eol=lf
+
+# Compiled NR shaders are reviewed through their HLSL sources.
+OptiScaler/shaders/dlssnr/precompile/*.h linguist-generated=true
+OptiScaler/shaders/dlssnr/precompile/*.cso linguist-generated=true
+OptiScaler/shaders/dlssnr/precompile/*.spv linguist-generated=true

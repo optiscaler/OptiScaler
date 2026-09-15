@@ -1,4 +1,5 @@
 #include "pch.h"
+#include <dlssnr/DlssNr.h>
 #include "FG_Hooks.h"
 #include <Config.h>
 
@@ -1219,6 +1220,7 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
         else if (state.activeFgInput == FGInput::FSRFG30)
             FSR3FG::ffxPresentCallback();
 
+        DlssNr::ApplyToFinishedPicture(This, state.currentCommandQueue);
         fg->Present();
     }
     else if (willPresent && fg != nullptr)

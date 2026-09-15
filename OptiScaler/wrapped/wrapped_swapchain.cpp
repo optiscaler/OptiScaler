@@ -1,5 +1,7 @@
 #include "pch.h"
 #include "wrapped_swapchain.h"
+#include <dlssnr/DlssNr.h>
+#include <hooks/DxgiSwapchainSizing.h>
 
 #include <Util.h>
 #include <Config.h>
@@ -455,6 +457,14 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
 
         if (presentResult == S_OK)
         {
+            // DXVK returns below before the native path advances the NR epoch.
+            // Count a completed Present; retain the deferred NR evaluation guard.
+            if (willPresent)
+            {
+                _frameCounter++;
+                State::Instance().frameCount = _frameCounter;
+            }
+
             LOG_TRACE("3 {}", (UINT) presentResult);
         }
         else if (presentResult == DXGI_ERROR_DEVICE_REMOVED)
@@ -488,6 +498,11 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
             else
                 currentFeature->TickFrozenCheck();
         }
+
+        if (cq && (fg == nullptr || !fg->IsActive() || fg->IsPaused()))
+            DlssNr::ApplyToFinishedPicture(pSwapChain, cq);
+        else if (isD3D11 && State::Instance().swapchainInteropApi == SwapchainInteropApi::None)
+            DlssNr::ApplyToFinishedPictureDx11(pSwapChain);
 
         // Draw overlay
         MenuOverlayDx::Present(pSwapChain, SyncInterval, Flags, pPresentParameters, pDevice, hWnd, isUWP);
@@ -546,8 +561,8 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
 }
 
 WrappedIDXGISwapChain4::WrappedIDXGISwapChain4(IDXGISwapChain* real, IUnknown* pDevice, HWND hWnd, UINT flags,
-                                               bool isUWP)
-    : _real(real), _device(pDevice), _handle(hWnd), _refcount(1), _uwp(isUWP)
+                                               bool isUWP, bool isComposition)
+    : _real(real), _device(pDevice), _handle(hWnd), _refcount(1), _uwp(isUWP), _composition(isComposition)
 {
     _id = ++scCount;
     _lastFlags = flags;
@@ -774,6 +789,11 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::Present(UINT SyncInterval, UIN
     OwnedLockGuard lock(_localMutex, 4);
 #endif
 
+    if (_composition && !IsCompositionWindow(_handle))
+        _handle = FindCompositionWindow();
+    if (_composition && _handle == nullptr)
+        return _real->Present(SyncInterval, Flags);
+
     HRESULT result;
 
     if ((Flags & DXGI_PRESENT_TEST) == 0)
@@ -863,6 +883,8 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::GetDesc(DXGI_SWAP_CHAIN_DESC* 
 HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount, UINT Width, UINT Height,
                                                                 DXGI_FORMAT NewFormat, UINT SwapChainFlags)
 {
+    if (!DlssNr::WaitForFinishedPicture())
+        return DXGI_ERROR_WAS_STILL_DRAWING;
     LOG_DEBUG("");
 
 #ifdef USE_LOCAL_MUTEX
@@ -896,7 +918,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
 
     State::Instance().scChanged = true;
 
-    if (Config::Instance()->OverrideVsync.value_or_default() && !State::Instance().SCExclusiveFullscreen &&
+    if (!_composition && Config::Instance()->OverrideVsync.value_or_default() && !State::Instance().SCExclusiveFullscreen &&
         State::Instance().currentFG == nullptr)
     {
         LOG_DEBUG("Overriding flags");
@@ -1036,6 +1058,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
                 if (DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT & css)
                 {
                     result = _real3->SetColorSpace1(hdrCS);
+                    if (SUCCEEDED(result)) DlssNr::FinishedPictureColorSpace(_real3, hdrCS);
 
                     if (result != S_OK)
                     {
@@ -1131,6 +1154,11 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::Present1(UINT SyncInterval, UI
 #ifdef USE_LOCAL_MUTEX
     OwnedLockGuard lock(_localMutex, 5);
 #endif
+
+    if (_composition && !IsCompositionWindow(_handle))
+        _handle = FindCompositionWindow();
+    if (_composition && _handle == nullptr)
+        return _real1->Present1(SyncInterval, Flags, pPresentParameters);
 
     HRESULT result;
 
@@ -1237,10 +1265,48 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::SetColorSpace1(DXGI_COLOR_SPAC
     if (SUCCEEDED(result))
     {
         UpdateOutputColorSpace(ColorSpace);
+        DlssNr::FinishedPictureColorSpace(_real3, ColorSpace);
 
         CheckForHdrOutput();
 
         LOG_INFO("Output HDR Active: {}", State::Instance().hdrOutputActive);
+
+        // What one unit of the buffer means, which is the question the white point is really asking.
+        //
+        // Two of these encodings are absolute. PQ (ST.2084) puts 1.0 at 10,000 nits by definition, and
+        // scRGB -- linear, Rec.709 primaries -- puts 1.0 at 80 nits. In either the divisor this pass
+        // wants is arithmetic rather than a guess or a reading: paper white in nits over the unit. The
+        // rest are relative and say nothing about scale.
+        //
+        // Logged rather than used, for now. Whether a game that reports one of these actually honours it
+        // is the thing worth knowing before anything is built on it.
+        const char* meaning = "relative -- no scale to be had";
+        const char* name = "other";
+
+        switch (ColorSpace)
+        {
+        case DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020:
+            name = "PQ / ST.2084 (HDR10)";
+            meaning = "absolute: 1.0 = 10000 nits, so 203-nit paper white = 0.0203";
+            break;
+        case DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709:
+            name = "scRGB (linear, Rec.709)";
+            meaning = "absolute: 1.0 = 80 nits, so 203-nit paper white = 2.5375";
+            break;
+        case DXGI_COLOR_SPACE_YCBCR_FULL_GHLG_TOPLEFT_P2020:
+            name = "HLG";
+            break;
+        case DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P2020:
+            name = "Rec.2020, gamma 2.2";
+            break;
+        case DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709:
+            name = "sRGB (SDR)";
+            break;
+        default:
+            break;
+        }
+
+        LOG_INFO("DLSS-NR: swapchain colour space {} -- {} ({})", (int) ColorSpace, name, meaning);
 
         MenuOverlayDx::ApplyThemeStyle();
     }
@@ -1253,6 +1319,8 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
                                                                  const UINT* pCreationNodeMask,
                                                                  IUnknown* const* ppPresentQueue)
 {
+    if (!DlssNr::WaitForFinishedPicture())
+        return DXGI_ERROR_WAS_STILL_DRAWING;
     LOG_DEBUG("");
 
 #ifdef USE_LOCAL_MUTEX
@@ -1294,7 +1362,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
 
     State::Instance().scChanged = true;
 
-    if (Config::Instance()->OverrideVsync.value_or_default() && !State::Instance().SCExclusiveFullscreen &&
+    if (!_composition && Config::Instance()->OverrideVsync.value_or_default() && !State::Instance().SCExclusiveFullscreen &&
         State::Instance().currentFG == nullptr)
     {
         LOG_DEBUG("Overriding flags");
@@ -1454,6 +1522,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
                 if (DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT & css)
                 {
                     result = _real3->SetColorSpace1(hdrCS);
+                    if (SUCCEEDED(result)) DlssNr::FinishedPictureColorSpace(_real3, hdrCS);
 
                     if (result != S_OK)
                     {

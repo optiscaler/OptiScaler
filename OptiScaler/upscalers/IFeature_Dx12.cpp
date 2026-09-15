@@ -5,6 +5,8 @@
 
 #include "IFeature_Dx12.h"
 #include "State.h"
+#include <dlssnr/DlssNr_ExposureScan.h>
+#include <dlssnr/DlssNr_Pipeline_Dx12.h>
 
 void IFeature_Dx12::ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
                                     D3D12_RESOURCE_STATES InBeforeState, D3D12_RESOURCE_STATES InAfterState) const
@@ -44,13 +46,41 @@ bool IFeature_Dx12::Init(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCo
     return result;
 }
 
-bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters)
+bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters,
+                             ID3D12CommandQueue* timingQueue, uint64_t submissionEpoch, bool sourceRayReconstruction)
 {
+    const bool interop = timingQueue != nullptr;
+    if (!interop)
+        submissionEpoch = State::Instance().frameCount;
+    if (timingQueue == nullptr)
+        timingQueue = State::Instance().currentCommandQueue;
     if (!IsInited())
     {
         LOG_ERROR("Not inited!");
         return false;
     }
+
+    if (!NeuralRendering && Config::Instance()->DlssNrEnabled.value_or_default())
+        NeuralRendering = std::make_unique<DlssNr_Dx12>("Neural Rendering", Device);
+
+    // Hold the inputs shared by NR and SR, not just NR's colour. Restore temporary
+    // jitter/exposure/reset parameters even when evaluation exits early.
+    const auto holdStates = DlssNr::ResolveInputStates_Dx12(interop);
+    const D3D12_RESOURCE_STATES holdInputStates[] = {
+        holdStates.color, holdStates.depth, holdStates.motion, holdStates.exposure
+    };
+    if (NeuralRendering)
+        NeuralRendering->BeginInputHold(InCommandList, InParameters, holdInputStates);
+    struct RestoreHoldParameters
+    {
+        DlssNr_Dx12* shader;
+        NVSDK_NGX_Parameter* params;
+        ~RestoreHoldParameters()
+        {
+            if (shader)
+                shader->EndInputHold(params);
+        }
+    } restoreHold { NeuralRendering.get(), InParameters };
 
     if (Config::Instance()->OverrideSharpness.value_or_default())
         _sharpness = Config::Instance()->Sharpness.value_or_default();
@@ -87,16 +117,23 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     if (!OutputScaler->IsInit())
         useOutputScaling = false;
 
-    ID3D12Resource* paramOutput = nullptr;
-    ID3D12Resource* paramMotion = nullptr;
-    ID3D12Resource* paramDepth = nullptr;
+    auto* paramOutput = GetUpscalerResource_Dx12(InParameters, NVSDK_NGX_Parameter_Output);
+    auto* paramMotion = GetUpscalerResource_Dx12(InParameters, NVSDK_NGX_Parameter_MotionVectors);
+    auto* paramDepth = GetUpscalerResource_Dx12(InParameters, NVSDK_NGX_Parameter_Depth);
 
-    InParameters->Get(NVSDK_NGX_Parameter_Output, &paramOutput);
-    InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, &paramMotion);
-    InParameters->Get(NVSDK_NGX_Parameter_Depth, &paramDepth);
+    RestoreUpscalerResources_Dx12 restoreResources(InParameters);
+
+    const bool rayReconstruction = sourceRayReconstruction || upscaler == Upscaler::DLSSD;
+    // Specialized schedules own the two seams but keep the same per-feature shader/history lifetime.
+    const bool specializedNr = NeuralRendering && NeuralRendering->ProcessSeam(
+        InCommandList, InParameters, true, timingQueue, rayReconstruction, submissionEpoch, interop, GetFeatureFlags());
+    const bool nrBeforeUpscale = NeuralRendering && !specializedNr &&
+                                 Config::Instance()->DlssNrEnabled.value_or_default() &&
+                                 Config::Instance()->DlssNrRunBeforeSr.value_or_default() &&
+                                 DlssNr::CanRunBeforeUpscale_Dx12(InParameters);
 
     // Order is important as that's the order of shader dispatch
-    std::vector<ShaderPass> pipeline;
+    ShaderPipeline_Dx12 pipeline;
 
     if (useOutputScaling)
     {
@@ -196,6 +233,12 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
               } });
     }
 
+    if (NeuralRendering && !specializedNr && !nrBeforeUpscale && Config::Instance()->DlssNrEnabled.value_or_default())
+    {
+        pipeline.push_back(MakeDlssNrPass(*NeuralRendering, Device, InCommandList, InParameters, false,
+                                          GetFeatureFlags(), timingQueue, interop, rayReconstruction, submissionEpoch));
+    }
+
     if (Magnifier->ShouldRun())
     {
         pipeline.push_back(
@@ -223,42 +266,53 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
               } });
     }
 
-    // Iterate BACKWARDS to establish where each shader needs to pull its input from
-    ID3D12Resource* currentTarget = paramOutput;
-    for (auto it = pipeline.rbegin(); it != pipeline.rend(); ++it)
-    {
-        ID3D12Resource* requiredInput = it->Setup(currentTarget);
-        if (requiredInput)
-        {
-            it->outputBuffer = currentTarget;
-            it->inputBuffer = requiredInput;
-            currentTarget = requiredInput; // Shift the target back for the next previous stage
-        }
-    }
+    // Post-seam scheduling sees the same final output identity as the pre-seam, after all ordinary passes.
+    if (NeuralRendering)
+        pipeline.push_back({ [](ID3D12Resource* output) { return output; },
+                         [&](ID3D12Resource*, ID3D12Resource* output)
+                         {
+                             auto* previousOutput = GetUpscalerResource_Dx12(InParameters, NVSDK_NGX_Parameter_Output);
+                             SetUpscalerResource_Dx12(InParameters, NVSDK_NGX_Parameter_Output, output);
+                             NeuralRendering->ProcessSeam(InCommandList, InParameters, false, timingQueue,
+                                                          rayReconstruction, submissionEpoch, interop,
+                                                          GetFeatureFlags());
+                             SetUpscalerResource_Dx12(InParameters, NVSDK_NGX_Parameter_Output, previousOutput);
+                             return true;
+                         } });
 
     // Upscaler will write to the first active shader, or just output
-    InParameters->Set(NVSDK_NGX_Parameter_Output, currentTarget);
-
+    auto* currentTarget = SetupShaderPipeline(pipeline, paramOutput);
+    SetUpscalerResource_Dx12(InParameters, NVSDK_NGX_Parameter_Output, currentTarget);
+    auto* originalColor = GetUpscalerResource_Dx12(InParameters, NVSDK_NGX_Parameter_Color);
+    const bool diagnoseNr = nrBeforeUpscale && !interop;
+    if (diagnoseNr)
+        NeuralRendering->DiagnosePipeline(0, InCommandList, InParameters, originalColor, GetFeatureFlags(),
+                                         rayReconstruction);
+    if (nrBeforeUpscale)
+    {
+        if (auto* nrInput = PrepareDlssNrInput(*NeuralRendering, Device, InCommandList, InParameters, GetFeatureFlags(),
+                                               timingQueue, interop, rayReconstruction, submissionEpoch))
+            SetUpscalerResource_Dx12(InParameters, NVSDK_NGX_Parameter_Color, nrInput);
+    }
+    if (diagnoseNr)
+    {
+        auto* edited = GetUpscalerResource_Dx12(InParameters, NVSDK_NGX_Parameter_Color);
+        NeuralRendering->DiagnosePipeline(1, InCommandList, InParameters, edited, GetFeatureFlags(),
+                                         rayReconstruction, edited != originalColor);
+    }
     UpscalerTime->Start(InCommandList);
-
-    auto evalResult = EvaluateInternal(InCommandList, InParameters);
-
+    const bool evalResult = EvaluateInternal(InCommandList, InParameters);
     UpscalerTime->End(InCommandList);
+    if (diagnoseNr)
+        NeuralRendering->DiagnosePipeline(2, InCommandList, InParameters, currentTarget, GetFeatureFlags(),
+                                         rayReconstruction, evalResult);
+    SetUpscalerResource_Dx12(InParameters, NVSDK_NGX_Parameter_Color, originalColor);
 
     if (!evalResult)
         return false;
 
-    // Iterate FORWARDS to execute the shaders in the defined order
-    for (auto& pass : pipeline)
-    {
-        if (pass.inputBuffer && pass.outputBuffer)
-        {
-            if (!pass.Dispatch(pass.inputBuffer, pass.outputBuffer))
-            {
-                return true;
-            }
-        }
-    }
+    if (!DispatchShaderPipeline(pipeline))
+        return true;
 
     // imgui
     if (!Config::Instance()->OverlayMenu.value_or_default() && _frameCount > 30)
@@ -278,8 +332,6 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
                 Imgui = std::make_unique<Menu_Dx12>(GetForegroundWindow(), Device);
         }
     }
-
-    InParameters->Set(NVSDK_NGX_Parameter_Output, paramOutput);
 
     return evalResult;
 }
@@ -321,6 +373,7 @@ IFeature_Dx12::IFeature_Dx12(unsigned int InHandleId, NVSDK_NGX_Parameter* InPar
 
 IFeature_Dx12::~IFeature_Dx12()
 {
+    DlssNr::ExposureScan::ReleaseTrackedResources();
     if (State::Instance().isShuttingDown)
         return;
 
@@ -328,4 +381,5 @@ IFeature_Dx12::~IFeature_Dx12()
     OutputScaler.reset();
     RCAS.reset();
     Bias.reset();
+    DlssNr_Dx12::Retire(std::move(NeuralRendering));
 }

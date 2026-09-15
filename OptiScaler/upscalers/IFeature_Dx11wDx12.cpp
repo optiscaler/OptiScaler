@@ -1,5 +1,7 @@
 #include <pch.h>
 #include "IFeature_Dx11wDx12.h"
+#include "NgxOptionalDx12Inputs.h"
+
 
 #include <Util.h>
 #include <Config.h>
@@ -252,9 +254,64 @@ bool IFeature_Dx11wDx12::Init(ID3D11Device* InDevice, ID3D11DeviceContext* InCon
 
     SetInitParameters(InParameters);
 
-    // Non-DLSS upscalers don't use the cmdList during Init
-    // We have more than one cmdList so unsure how that would even work
-    SetInit(dx12Feature->Init(_dx11on12Device, Dx12CommandList[0], InParameters));
+    // The list has to be recording, and what is recorded on it has to run.
+    //
+    // Every command list here is closed the moment it is created, and the note this replaces said
+    // non-DLSS upscalers do not use the list during Init -- which was true, and stopped being true the
+    // day DLSS got a bridge variant. DLSS and Ray Reconstruction are the only features whose
+    // InitInternal touches the argument at all: NVSDK_NGX_D3D12_CreateFeature records the model's
+    // weight upload and history initialisation onto it, and documents that the caller must submit it
+    // afterwards.
+    //
+    // Recorded onto a closed list, all of that is discarded. ID3D12GraphicsCommandList methods return
+    // void, so nothing fails, nothing logs, and CreateFeature still answers Success -- the model then
+    // runs against state that was never uploaded. That is the posterised, flat-blocked picture, and it
+    // gets worse with model size: the old CNN degraded to soft, the transformer collapses to blocks.
+    //
+    // So: open the list, let Init record into it, submit it, and wait. The wait is not optional --
+    // the first Evaluate resets this same allocator, and doing that under work still in flight is a
+    // device removal rather than a bad picture.
+    HRESULT prep = Dx12CommandAllocator[0]->Reset();
+
+    if (prep != S_OK)
+        LOG_WARN("Init: allocator reset before feature creation failed: {:X}", (UINT) prep);
+
+    prep = Dx12CommandList[0]->Reset(Dx12CommandAllocator[0], nullptr);
+
+    if (prep != S_OK)
+        LOG_WARN("Init: command list reset before feature creation failed: {:X}", (UINT) prep);
+
+    const bool initialised = dx12Feature->Init(_dx11on12Device, Dx12CommandList[0], InParameters);
+
+    SetInit(initialised);
+
+    if (Dx12CommandList[0]->Close() == S_OK && Dx12CommandQueue != nullptr)
+    {
+        ID3D12CommandList* lists[] = { Dx12CommandList[0] };
+        Dx12CommandQueue->ExecuteCommandLists(1, lists);
+
+        // Recorded against allocator 0, so allocator 0 must not be reset until this has retired. That
+        // is what Dx12CommandAllocatorFenceValue is for, and ProcessDx11Textures already honours it.
+        const UINT64 signalled = ++Dx12FenceValue;
+
+        if (Dx12CommandQueue->Signal(Dx12Fence, signalled) == S_OK)
+        {
+            Dx12CommandAllocatorFenceValue[0] = signalled;
+
+            if (Dx12Fence->GetCompletedValue() < signalled &&
+                Dx12Fence->SetEventOnCompletion(signalled, Dx12FenceEvent) == S_OK)
+            {
+                WaitForSingleObject(Dx12FenceEvent, INFINITE);
+            }
+        }
+
+        LOG_INFO("Init: feature creation work submitted and waited on (fence {})", signalled);
+    }
+    else
+    {
+        LOG_WARN("Init: could not submit the feature creation work; a feature that records during "
+                 "creation will be missing it");
+    }
 
     return IsInited();
 }
@@ -335,10 +392,8 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
         getOriginalNgxResource(InParameters, NVSDK_NGX_Parameter_Output, &restoreParamOutput);
     const bool hasRestoreParamDepth =
         getOriginalNgxResource(InParameters, NVSDK_NGX_Parameter_Depth, &restoreParamDepth);
-    const bool hasRestoreParamExposure =
-        getOriginalNgxResource(InParameters, NVSDK_NGX_Parameter_ExposureTexture, &restoreParamExposure);
-    const bool hasRestoreParamReactive = getOriginalNgxResource(
-        InParameters, NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, &restoreParamReactive);
+    getOriginalNgxResource(InParameters, NVSDK_NGX_Parameter_ExposureTexture, &restoreParamExposure);
+    getOriginalNgxResource(InParameters, NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, &restoreParamReactive);
 
     ComPtr<ID3D11ShaderResourceView> restoreSRVs[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
     ComPtr<ID3D11SamplerState> restoreSamplerStates[D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT] = {};
@@ -403,15 +458,25 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
         InParameters->Set(NVSDK_NGX_Parameter_Output, (void*) dx11Out.Dx12Resource);
         InParameters->Set(NVSDK_NGX_Parameter_Depth, (void*) dx11Depth.Dx12Resource);
 
-        if (!AutoExposure() && dx11Exp.Dx12Resource != nullptr)
-            InParameters->Set(NVSDK_NGX_Parameter_ExposureTexture, (void*) dx11Exp.Dx12Resource);
-
-        if (!Config::Instance()->DisableReactiveMask.value_or(false) && dx11Reactive.Dx12Resource != nullptr)
-            InParameters->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask,
-                              (void*) dx11Reactive.Dx12Resource);
+        SetOptionalDx12Inputs(InParameters, dx11Exp.Dx12Resource, dx11Reactive.Dx12Resource, AutoExposure(),
+                              Config::Instance()->DisableReactiveMask.value_or(false));
 
         LOG_DEBUG("Dispatch!!");
-        dx12EvalResult = dx12Feature->Evaluate(cmdList, InParameters);
+        dx12EvalResult = dx12Feature->Evaluate(cmdList, InParameters, Dx12CommandQueue, _frameCount);
+
+        // DLSS 5 Neural Rendering rides the bridge: at this moment the block carries the D3D12 copies
+        // of every input, the list is still recording, and the model's edit lands on the D3D12 output
+        // before it is copied back to the game's D3D11 texture. This one call is what makes the pass
+        // work in DirectX 11 games, whatever upscaler carried it here.
+        static bool reportedNrOffer = false;
+
+        if (!reportedNrOffer)
+        {
+            reportedNrOffer = true;
+            LOG_INFO("DLSS-NR: the D3D11 bridge reached the hand-off (upscale ok: {}, enabled: {})",
+                     dx12EvalResult, Config::Instance()->DlssNrEnabled.value_or_default());
+
+        }
 
     } while (false);
 
@@ -427,11 +492,9 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
     if (hasRestoreParamDepth)
         InParameters->Set(NVSDK_NGX_Parameter_Depth, (void*) restoreParamDepth);
 
-    if (hasRestoreParamExposure)
-        InParameters->Set(NVSDK_NGX_Parameter_ExposureTexture, (void*) restoreParamExposure);
-
-    if (hasRestoreParamReactive)
-        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void*) restoreParamReactive);
+    // Restore nulls too: no D3D12 pointer may escape back into the DX11 caller.
+    InParameters->Set(NVSDK_NGX_Parameter_ExposureTexture, (void*) restoreParamExposure);
+    InParameters->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void*) restoreParamReactive);
 
     if (commandListRecording)
     {

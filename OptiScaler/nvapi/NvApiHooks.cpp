@@ -66,6 +66,15 @@ NvAPI_Status __stdcall NvApiHooks::hkNvAPI_DRS_GetSetting(NvDRSSessionHandle hSe
     auto result = o_NvAPI_DRS_GetSetting(hSession, hProfile, settingId, pSetting);
     if (pSetting && result == NVAPI_OK)
     {
+        constexpr NvU32 streamlineOverrideId = 0x10E41E06;
+        if (settingId == streamlineOverrideId && State::Instance().gameName == "KCD2" &&
+            State::Instance().activeFgOutput == FGOutput::DLSSG)
+        {
+            // Keep the tested local Streamline stack. This changes the query
+            // result for this process only, not the saved NVIDIA driver profile.
+            pSetting->u32CurrentValue = 0;
+            LOG_INFO("KCD2: use installed Streamline instead of OTA override");
+        }
 #ifdef LOG_ALL_DRS_GET_CALLS
         LOG_TRACE("settingId: {:X}, settingLocation: {}, isCurrentPredefined: {}", settingId,
                   magic_enum::enum_name(pSetting->settingLocation), pSetting->isCurrentPredefined,

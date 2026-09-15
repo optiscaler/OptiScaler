@@ -18,11 +18,11 @@ bool DLSSDFeatureDx11::InitInternal(ID3D11DeviceContext* InContext, NVSDK_NGX_Pa
 
     do
     {
-        if (!_dlssdInited)
+        if (!_dlssdInitedDx11)
         {
-            _dlssdInited = NVNGXProxy::InitDx11(Device);
+            _dlssdInitedDx11 = NVNGXProxy::InitDx11(Device);
 
-            if (!_dlssdInited)
+            if (!_dlssdInitedDx11)
                 return false;
 
             _moduleLoaded =

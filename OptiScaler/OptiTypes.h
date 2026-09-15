@@ -62,6 +62,8 @@ enum class Upscaler
 
     DLSS, // "dlss", used for the DLSS upscaler backend
 
+    DLSS_on12, // "dlss_12", DLSS run on the D3D12 side of the D3D11 bridge
+
     DLSSD, // "dlssd", used for the DLSS-D/Ray Reconstruction upscaler+denoiser backend
     Reset
 };

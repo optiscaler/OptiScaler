@@ -1,4 +1,5 @@
 #include <pch.h>
+#include <dlssnr/DlssNrFinished_Vk.h>
 
 #include "VulkanwDx12_Hooks.h"
 
@@ -6132,6 +6133,7 @@ bool Vulkan_wDx12::RegisterPendingSubmission(const PendingSubmission& submission
 
 void Vulkan_wDx12::CancelPendingSubmission(VkCommandBuffer commandBuffer)
 {
+    DlssNr::FinishedVkReset(commandBuffer);
     if (commandBuffer == VK_NULL_HANDLE)
         return;
 
@@ -6219,7 +6221,14 @@ VkResult Vulkan_wDx12::hk_vkQueueSubmit(VkQueue queue, uint32_t submitCount, con
     }
 
     if (submitIndex == UINT32_MAX)
-        return o_vkQueueSubmit(queue, submitCount, pSubmits, fence);
+    {
+        const auto result = o_vkQueueSubmit(queue, submitCount, pSubmits, fence);
+        if (result == VK_SUCCESS)
+            for (uint32_t i = 0; i < submitCount; ++i)
+                for (uint32_t j = 0; j < pSubmits[i].commandBufferCount; ++j)
+                    DlssNr::FinishedVkSubmitted(queue, pSubmits[i].pCommandBuffers[j]);
+        return result;
+    }
 
     const auto& original = pSubmits[submitIndex];
 
@@ -6350,6 +6359,10 @@ VkResult Vulkan_wDx12::hk_vkQueueSubmit(VkQueue queue, uint32_t submitCount, con
         AbortPendingD3D12Wait(pending, "vkQueueSubmit failed");
     }
 
+    if (result == VK_SUCCESS)
+        for (uint32_t i = 0; i < submitCount; ++i)
+            for (uint32_t j = 0; j < pSubmits[i].commandBufferCount; ++j)
+                DlssNr::FinishedVkSubmitted(queue, pSubmits[i].pCommandBuffers[j]);
     return result;
 }
 
@@ -6489,7 +6502,14 @@ VkResult Vulkan_wDx12::hk_vkQueueSubmit2(VkQueue queue, uint32_t submitCount, co
     }
 
     if (submitIndex == UINT32_MAX)
-        return o_vkQueueSubmit2(queue, submitCount, pSubmits, fence);
+    {
+        const auto result = o_vkQueueSubmit2(queue, submitCount, pSubmits, fence);
+        if (result == VK_SUCCESS)
+            for (uint32_t i = 0; i < submitCount; ++i)
+                for (uint32_t j = 0; j < pSubmits[i].commandBufferInfoCount; ++j)
+                    DlssNr::FinishedVkSubmitted(queue, pSubmits[i].pCommandBufferInfos[j].commandBuffer);
+        return result;
+    }
 
     LOG_DEBUG("Injected Vulkan w/Dx12 submit2 for command buffer {:X}", (size_t) pending.submitCommandBuffer);
     auto result = Submit2WithDx12Interop(o_vkQueueSubmit2, queue, submitCount, pSubmits, fence, pending, submitIndex,
@@ -6500,6 +6520,10 @@ VkResult Vulkan_wDx12::hk_vkQueueSubmit2(VkQueue queue, uint32_t submitCount, co
         AbortPendingD3D12Wait(pending, "vkQueueSubmit2 failed");
     }
 
+    if (result == VK_SUCCESS)
+        for (uint32_t i = 0; i < submitCount; ++i)
+            for (uint32_t j = 0; j < pSubmits[i].commandBufferInfoCount; ++j)
+                DlssNr::FinishedVkSubmitted(queue, pSubmits[i].pCommandBufferInfos[j].commandBuffer);
     return result;
 }
 
@@ -6530,7 +6554,14 @@ VkResult Vulkan_wDx12::hk_vkQueueSubmit2KHR(VkQueue queue, uint32_t submitCount,
     }
 
     if (submitIndex == UINT32_MAX)
-        return o_vkQueueSubmit2KHR(queue, submitCount, pSubmits, fence);
+    {
+        const auto result = o_vkQueueSubmit2KHR(queue, submitCount, pSubmits, fence);
+        if (result == VK_SUCCESS)
+            for (uint32_t i = 0; i < submitCount; ++i)
+                for (uint32_t j = 0; j < pSubmits[i].commandBufferInfoCount; ++j)
+                    DlssNr::FinishedVkSubmitted(queue, pSubmits[i].pCommandBufferInfos[j].commandBuffer);
+        return result;
+    }
 
     LOG_DEBUG("Injected Vulkan w/Dx12 submit2KHR for command buffer {:X}", (size_t) pending.submitCommandBuffer);
     auto result = Submit2WithDx12Interop(o_vkQueueSubmit2KHR, queue, submitCount, pSubmits, fence, pending, submitIndex,
@@ -6541,12 +6572,17 @@ VkResult Vulkan_wDx12::hk_vkQueueSubmit2KHR(VkQueue queue, uint32_t submitCount,
         AbortPendingD3D12Wait(pending, "vkQueueSubmit2KHR failed");
     }
 
+    if (result == VK_SUCCESS)
+        for (uint32_t i = 0; i < submitCount; ++i)
+            for (uint32_t j = 0; j < pSubmits[i].commandBufferInfoCount; ++j)
+                DlssNr::FinishedVkSubmitted(queue, pSubmits[i].pCommandBufferInfos[j].commandBuffer);
     return result;
 }
 
 VkResult Vulkan_wDx12::hk_vkBeginCommandBuffer(VkCommandBuffer commandBuffer,
                                                const VkCommandBufferBeginInfo* pBeginInfo)
 {
+    DlssNr::FinishedVkReset(commandBuffer);
     if (GetVirtualCommandBuffer(commandBuffer) == VK_NULL_HANDLE)
         cmdBufferStateTracker.OnBegin(commandBuffer, pBeginInfo);
 
@@ -6580,6 +6616,7 @@ VkResult Vulkan_wDx12::hk_vkEndCommandBuffer(VkCommandBuffer commandBuffer)
 
 VkResult Vulkan_wDx12::hk_vkResetCommandBuffer(VkCommandBuffer commandBuffer, VkCommandBufferResetFlags flags)
 {
+    DlssNr::FinishedVkReset(commandBuffer);
 #ifdef LOG_ALL_RECORDS
     LOG_DEBUG("commandBuffer: {:X}", (size_t) commandBuffer);
 #endif
@@ -6599,6 +6636,8 @@ void Vulkan_wDx12::hk_vkFreeCommandBuffers(VkDevice device, VkCommandPool comman
 #endif
 
     // Notify state tracker before freeing
+    for (uint32_t i = 0; i < commandBufferCount; ++i)
+        DlssNr::FinishedVkReset(pCommandBuffers[i]);
     cmdBufferStateTracker.OnFreeCommandBuffers(commandPool, commandBufferCount, pCommandBuffers);
 
     // Call original function
@@ -6648,6 +6687,7 @@ void Vulkan_wDx12::hk_vkDestroyCommandPool(VkDevice device, VkCommandPool comman
 #endif
 
     // Notify state tracker about pool destruction
+    DlssNr::FinishedVkResetPool(commandPool);
     cmdBufferStateTracker.OnDestroyPool(commandPool);
 
     {
@@ -6665,6 +6705,7 @@ VkResult Vulkan_wDx12::hk_vkResetCommandPool(VkDevice device, VkCommandPool comm
 #endif
 
     // Notify state tracker before reset
+    DlssNr::FinishedVkResetPool(commandPool);
     cmdBufferStateTracker.OnResetPool(commandPool);
 
     // Call original function

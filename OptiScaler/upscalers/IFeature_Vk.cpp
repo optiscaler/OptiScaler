@@ -3,6 +3,7 @@
 #include "IFeature_Vk.h"
 #include "State.h"
 #include "nvsdk_ngx_vk.h"
+#include <dlssnr/DlssNrPipeline_Vk.h>
 
 bool IFeature_Vk::Init(VkInstance InInstance, VkPhysicalDevice InPD, VkDevice InDevice, VkCommandBuffer InCmdBuffer,
                        PFN_vkGetInstanceProcAddr InGIPA, PFN_vkGetDeviceProcAddr InGDPA,
@@ -36,6 +37,9 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
         LOG_ERROR("Not inited!");
         return false;
     }
+
+    if (!NeuralRendering && Config::Instance()->DlssNrEnabled.value_or_default() && !IsWithDx12())
+        NeuralRendering = std::make_unique<DlssNr_Vk>("Neural Rendering", Device, PhysicalDevice);
 
     if (Config::Instance()->OverrideSharpness.value_or_default())
         _sharpness = Config::Instance()->Sharpness.value_or_default();
@@ -78,6 +82,8 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
     InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, (void**) &paramMotion);
     InParameters->Get(NVSDK_NGX_Parameter_Depth, (void**) &paramDepth);
 
+    DlssNr::ScopedVkParameters scopedParameters(InParameters);
+
     // Save the original output so we can restore it later
     VkImageInfo originalOutput {};
     if (paramOutput)
@@ -94,7 +100,27 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
         VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
     // Order is important as that's the order of shader dispatch
-    std::vector<ShaderPass> pipeline;
+    ShaderPipeline_Vk pipeline;
+    const bool finishedNr = Config::Instance()->DlssNrFinishedPicture.value_or_default();
+    const bool useNr = !finishedNr && NeuralRendering && NeuralRendering->CanRender() && !IsWithDx12() &&
+                       Config::Instance()->DlssNrEnabled.value_or_default() &&
+                       DlssNr::HasSupportedSubrects(InParameters, false);
+    const bool nrBeforeUpscale =
+        useNr && Config::Instance()->DlssNrRunBeforeSr.value_or_default() &&
+        DlssNr::HasSupportedSubrects(InParameters, true);
+    const auto nrDepth = DlssNr::ImageInfo(paramDepth);
+    const auto nrMotion = DlssNr::ImageInfo(paramMotion);
+    auto nrFrame = DlssNr::FrameInfo(InParameters, nrBeforeUpscale);
+    nrFrame.DepthInverted = DepthInverted();
+    nrFrame.ColourIsLinearHdr = IsHdr();
+    nrFrame.RayReconstruction = upscaler == Upscaler::DLSSD;
+    nrFrame.MotionVectorsLowResolution = LowResMV();
+    if (finishedNr && NeuralRendering && !IsWithDx12())
+        NeuralRendering->CaptureFinished(InCmdBuffer, nrDepth, nrMotion, nrFrame, Instance);
+    // Keep the current per-evaluate subrect. The feature's cached render size may be last frame's.
+
+    if (useNr && !nrBeforeUpscale)
+        pipeline.push_back(DlssNr::MakePass(*NeuralRendering, InCmdBuffer, Instance, nrDepth, nrMotion, nrFrame));
 
     if (useOutputScaling)
     {
@@ -163,7 +189,7 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
               // Dispatch
               [&](const VkImageInfo& input, const VkImageInfo& output) -> bool
               {
-                  if (!RCAS->CanRender() || !paramMotion || !paramOutput)
+                  if (!RCAS->CanRender() || !paramMotion || !paramDepth || !paramOutput)
                       return true;
 
                   RCAS->SetImageLayout(InCmdBuffer, input.Image, VK_IMAGE_LAYOUT_GENERAL,
@@ -246,29 +272,17 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
               } });
     }
 
-    // Iterate BACKWARDS to establish where each shader needs to pull its input from
-    VkImageInfo currentTarget = originalOutput;
-    for (auto it = pipeline.rbegin(); it != pipeline.rend(); ++it)
-    {
-        VkImageInfo requiredInput = it->Setup(currentTarget);
-        if (requiredInput.Image != VK_NULL_HANDLE)
-        {
-            it->outputBuffer = currentTarget;
-            it->inputBuffer = requiredInput;
-            currentTarget = requiredInput; // Shift the target back for the next previous stage
-        }
-    }
-
-    // Write target back into the params
-    // In DX11/DX12 we set ngx param but in Vulkan we can set just the resource info
+    const auto currentTarget = SetupShaderPipeline(pipeline, originalOutput);
     if (paramOutput)
+        scopedParameters.SetOutput(currentTarget);
+
+    if (nrBeforeUpscale)
     {
-        paramOutput->Resource.ImageViewInfo.Image = currentTarget.Image;
-        paramOutput->Resource.ImageViewInfo.ImageView = currentTarget.ImageView;
-        paramOutput->Resource.ImageViewInfo.SubresourceRange = currentTarget.SubresourceRange;
-        paramOutput->Resource.ImageViewInfo.Format = currentTarget.Format;
-        paramOutput->Resource.ImageViewInfo.Width = currentTarget.Width;
-        paramOutput->Resource.ImageViewInfo.Height = currentTarget.Height;
+        const auto originalColour = DlssNr::ParameterImage(InParameters, NVSDK_NGX_Parameter_Color);
+        const auto enhancedColour =
+            DlssNr::PrepareInput(*NeuralRendering, InCmdBuffer, Instance, originalColour, nrDepth, nrMotion, nrFrame);
+        if (enhancedColour.Image && enhancedColour.Image != originalColour.Image)
+            scopedParameters.SetColour(*NeuralRendering, InCmdBuffer, enhancedColour);
     }
 
     // UpscalerTime->Start(InCmdBuffer);
@@ -280,28 +294,8 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
     if (!evalResult)
         return false;
 
-    // Iterate FORWARDS to execute the shaders in the defined order
-    for (auto& pass : pipeline)
-    {
-        if (pass.inputBuffer.Image != VK_NULL_HANDLE && pass.outputBuffer.Image != VK_NULL_HANDLE)
-        {
-            if (!pass.Dispatch(pass.inputBuffer, pass.outputBuffer))
-            {
-                return false;
-            }
-        }
-    }
-
-    // Restore original output pointer
-    if (paramOutput)
-    {
-        paramOutput->Resource.ImageViewInfo.Image = originalOutput.Image;
-        paramOutput->Resource.ImageViewInfo.ImageView = originalOutput.ImageView;
-        paramOutput->Resource.ImageViewInfo.SubresourceRange = originalOutput.SubresourceRange;
-        paramOutput->Resource.ImageViewInfo.Format = originalOutput.Format;
-        paramOutput->Resource.ImageViewInfo.Width = originalOutput.Width;
-        paramOutput->Resource.ImageViewInfo.Height = originalOutput.Height;
-    }
+    if (!DispatchShaderPipeline(pipeline))
+        return false;
 
     _frameCount++;
 

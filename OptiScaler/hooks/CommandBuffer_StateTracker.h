@@ -1132,6 +1132,13 @@ class CommandBufferStateTracker
         }
     }
 
+    VkCommandPool GetCommandBufferPool(VkCommandBuffer cmd) const
+    {
+        std::shared_lock lock(_statesMapMutex);
+        const auto found = _cmdBufferToPool.find(cmd);
+        return found == _cmdBufferToPool.end() ? VK_NULL_HANDLE : found->second;
+    }
+
     std::optional<VkCommandBufferLevel> GetCommandBufferLevel(VkCommandBuffer cmd) const
     {
         std::shared_lock mapLock(_statesMapMutex);
