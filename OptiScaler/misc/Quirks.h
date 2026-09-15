@@ -429,6 +429,10 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY_UE(dungeonhaven, GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceAutoExposure,
                    GameQuirk::DontUseUnrealColorBarriers, GameQuirk::DontUseUnrealMVBarriers),
 
+    // Sword and Fairy 7
+    // No UE barriers to fix crash on upscaler init
+    QUIRK_ENTRY_UE(pal7, GameQuirk::DontUseUnrealColorBarriers, GameQuirk::DontUseUnrealMVBarriers),
+
     // Watch Dogs: Legion
     // AE required to fix FSR4 ghosting
     QUIRK_ENTRY("watchdogslegion.exe", GameQuirk::ForceAutoExposure),
