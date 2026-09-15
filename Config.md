@@ -423,4 +423,10 @@ These can be changed from the in-game menu with real-time results.
 
 ![menu scale](images/ui_scale.png)
 
+### External DLSSG telemetry
+
+The FPS overlay can display source-frame cadence from a compatible external
+DLSSG provider without replacing its FG backend. See
+[External DLSSG telemetry](docs/ExternalDlssgTelemetry.md) for setup and measurement limits.
+
 
