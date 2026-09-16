@@ -41,13 +41,13 @@ class Shader_Dx12
                                ID3D12Resource* Buffer, D3D12_RESOURCE_STATES* BufferState);
 
     void CreateShaderResourceView(ID3D12Device* device, ID3D12Resource* tex, D3D12_CPU_DESCRIPTOR_HANDLE srvDescriptor,
-                                  DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN);
+                                  DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN, bool translateTypeless = true);
 
     void CreateUnorderedAccessView(ID3D12Device* device, ID3D12Resource* tex, D3D12_CPU_DESCRIPTOR_HANDLE uavDescriptor,
-                                   uint32_t mipLevel);
+                                   uint32_t mipLevel, bool translateTypeless = true);
 
     void CreateRenderTargetView(ID3D12Device* device, ID3D12Resource* tex, D3D12_CPU_DESCRIPTOR_HANDLE rtvDescriptor,
-                                uint32_t mipLevel);
+                                uint32_t mipLevel, bool translateTypeless = true);
 
     bool SetupRootSignature(ID3D12Device* InDevice, uint32_t srcCount, uint32_t uavCount, uint32_t cbvCount,
                             uint32_t rtvCount = 0, uint32_t samplerCount = 0, uint32_t staticSamplerCount = 0,
