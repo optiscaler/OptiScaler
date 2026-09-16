@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "input_system_internal.h"
 
+#include <hooks/Kernel_Hooks.h>
+
 #include <detours/detours.h>
 
 #include <tlhelp32.h>
@@ -246,14 +248,14 @@ void ResolveOptionalUser32Exports()
 
     if (o_GetPhysicalCursorPos == nullptr)
     {
-        o_GetPhysicalCursorPos =
-            reinterpret_cast<GetPhysicalCursorPos_t>(GetProcAddress(user32, "GetPhysicalCursorPos"));
+        o_GetPhysicalCursorPos = reinterpret_cast<GetPhysicalCursorPos_t>(
+            KernelBaseProxy::GetProcAddress_()(user32, "GetPhysicalCursorPos"));
     }
 
     if (o_SetPhysicalCursorPos == nullptr)
     {
-        o_SetPhysicalCursorPos =
-            reinterpret_cast<SetPhysicalCursorPos_t>(GetProcAddress(user32, "SetPhysicalCursorPos"));
+        o_SetPhysicalCursorPos = reinterpret_cast<SetPhysicalCursorPos_t>(
+            KernelBaseProxy::GetProcAddress_()(user32, "SetPhysicalCursorPos"));
     }
 }
 } // namespace

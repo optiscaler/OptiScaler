@@ -43,7 +43,7 @@ static int ExportCallback(PVOID hNewDll, ULONG nOrdinal, LPCSTR pszName, PVOID p
     if (pszName == NULL)
         return true;
 
-    auto pNewFunction = GetProcAddress((HMODULE) hNewDll, pszName);
+    auto pNewFunction = KernelBaseProxy::GetProcAddress_()((HMODULE) hNewDll, pszName);
 
     if (pNewFunction && pNewFunction != pOldFunction)
     {

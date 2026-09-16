@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "input_system_internal.h"
 
+#include <hooks/Kernel_Hooks.h>
+
 #include <algorithm>
 #include <cwctype>
 #include <string>
@@ -43,9 +45,11 @@ void LoadHidApi()
     if (hid == nullptr)
         return;
 
-    hidGetPreparsedData = reinterpret_cast<HidD_GetPreparsedData_t>(GetProcAddress(hid, "HidD_GetPreparsedData"));
-    hidFreePreparsedData = reinterpret_cast<HidD_FreePreparsedData_t>(GetProcAddress(hid, "HidD_FreePreparsedData"));
-    hidGetCaps = reinterpret_cast<HidP_GetCaps_t>(GetProcAddress(hid, "HidP_GetCaps"));
+    hidGetPreparsedData =
+        reinterpret_cast<HidD_GetPreparsedData_t>(KernelBaseProxy::GetProcAddress_()(hid, "HidD_GetPreparsedData"));
+    hidFreePreparsedData =
+        reinterpret_cast<HidD_FreePreparsedData_t>(KernelBaseProxy::GetProcAddress_()(hid, "HidD_FreePreparsedData"));
+    hidGetCaps = reinterpret_cast<HidP_GetCaps_t>(KernelBaseProxy::GetProcAddress_()(hid, "HidP_GetCaps"));
 }
 
 std::wstring ToLowerCopy(std::wstring text)

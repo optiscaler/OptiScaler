@@ -124,9 +124,10 @@ std::vector<GpuInformation> IdentifyGpu::checkGpuInfo()
                         if (!pvkGetProps)
                         {
                             HMODULE hVulkan = GetModuleHandleA("vulkan-1.dll");
-                            pvkGetProps = hVulkan ? (PFN_vkGetPhysicalDeviceProperties) GetProcAddress(
-                                                        hVulkan, "vkGetPhysicalDeviceProperties")
-                                                  : nullptr;
+                            pvkGetProps = hVulkan
+                                              ? (PFN_vkGetPhysicalDeviceProperties) KernelBaseProxy::GetProcAddress_()(
+                                                    hVulkan, "vkGetPhysicalDeviceProperties")
+                                              : nullptr;
                         }
 
                         if (pvkGetProps)
