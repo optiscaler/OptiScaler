@@ -190,6 +190,16 @@ std::vector<GpuInformation> IdentifyGpu::checkGpuInfo()
         if (gpuInfo.vendorId == VendorId::Nvidia)
         {
             queryNvapi(gpuInfo);
+
+            // Attempt to use real DLSSG by default on Ada+
+            if (gpuInfo.nvidiaArchInfo.architecture_id >= NV_GPU_ARCHITECTURE_AD100 &&
+                !Config::Instance()->FGNvngxReplacement.has_value())
+            {
+                Config::Instance()->FGNvngxReplacement = FGNvngxReplacement::None;
+
+                if (State::Instance().activeFgOutput == FGOutput::DLSSG)
+                    State::Instance().activeFgNvngx = FGNvngxReplacement::None;
+            }
         }
     }
 

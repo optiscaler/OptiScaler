@@ -360,6 +360,27 @@ class StreamlineProxy
 
         auto initResult = StreamlineProxy::Init()(pref, sl::kSDKVersion);
 
+        sl::AdapterInfo adapterInfo {};
+        if (StreamlineProxy::IsFeatureSupported()(sl::kFeatureDLSS_G, adapterInfo) != sl::Result::eOk)
+        {
+            if (State::Instance().activeFgNvngx == FGNvngxReplacement::None)
+            {
+                Config::Instance()->FGNvngxReplacement = FGNvngxReplacement::Nukems;
+                Config::Instance()->SaveIni();
+
+                MessageBoxW(NULL,
+                            L"You've tried to use real DLSSG, but it's not supported\n"
+                            "Opti will try to use a replacement, restart the game",
+                            L"No DLSSG Support", MB_ICONWARNING | MB_OK);
+
+                std::exit(1);
+            }
+            else
+            {
+                LOG_ERROR("FG Nvngx replacement was selected but SL failed to init DLSSG");
+            }
+        }
+
         State::EnableChecks(owner);
 
         if (initResult == sl::Result::eOk)
