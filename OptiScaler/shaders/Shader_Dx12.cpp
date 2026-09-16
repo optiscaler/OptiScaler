@@ -184,7 +184,8 @@ void Shader_Dx12::SetBufferState(ID3D12GraphicsCommandList* InCommandList, D3D12
 
 // From DirectXHelpers.cpp licensed under MIT
 void Shader_Dx12::CreateShaderResourceView(ID3D12Device* device, ID3D12Resource* tex,
-                                           D3D12_CPU_DESCRIPTOR_HANDLE srvDescriptor, DXGI_FORMAT format)
+                                           D3D12_CPU_DESCRIPTOR_HANDLE srvDescriptor, DXGI_FORMAT format,
+                                           bool translateTypeless)
 {
     if (!device || !tex)
         throw std::invalid_argument("Direct3D device and resource must be valid");
@@ -199,10 +200,12 @@ void Shader_Dx12::CreateShaderResourceView(ID3D12Device* device, ID3D12Resource*
 
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     const auto viewFormat = (format != DXGI_FORMAT_UNKNOWN) ? format : desc.Format;
-    // NR's copied depth guide already has the depth-plane SRV format. The shared
-    // translator maps it back to a DSV format, which removes the device on SRV creation.
-    srvDesc.Format = viewFormat == DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS
-                         ? viewFormat : TranslateTypelessFormats(viewFormat);
+
+    if (translateTypeless)
+        srvDesc.Format = TranslateTypelessFormats(viewFormat);
+    else
+        srvDesc.Format = viewFormat;
+
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 
     const UINT mipLevels = (desc.MipLevels) ? static_cast<UINT>(desc.MipLevels) : static_cast<UINT>(-1);
@@ -258,7 +261,8 @@ void Shader_Dx12::CreateShaderResourceView(ID3D12Device* device, ID3D12Resource*
 }
 
 void Shader_Dx12::CreateUnorderedAccessView(ID3D12Device* device, ID3D12Resource* tex,
-                                            D3D12_CPU_DESCRIPTOR_HANDLE uavDescriptor, uint32_t mipLevel)
+                                            D3D12_CPU_DESCRIPTOR_HANDLE uavDescriptor, uint32_t mipLevel,
+                                            bool translateTypeless)
 {
     if (!device || !tex)
         throw std::invalid_argument("Direct3D device and resource must be valid");
@@ -272,7 +276,10 @@ void Shader_Dx12::CreateUnorderedAccessView(ID3D12Device* device, ID3D12Resource
     }
 
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-    uavDesc.Format = TranslateTypelessFormats(desc.Format);
+    if (translateTypeless)
+        uavDesc.Format = TranslateTypelessFormats(desc.Format);
+    else
+        uavDesc.Format = desc.Format;
 
     switch (desc.Dimension)
     {
@@ -326,7 +333,8 @@ void Shader_Dx12::CreateUnorderedAccessView(ID3D12Device* device, ID3D12Resource
 }
 
 void Shader_Dx12::CreateRenderTargetView(ID3D12Device* device, ID3D12Resource* tex,
-                                         D3D12_CPU_DESCRIPTOR_HANDLE rtvDescriptor, uint32_t mipLevel)
+                                         D3D12_CPU_DESCRIPTOR_HANDLE rtvDescriptor, uint32_t mipLevel,
+                                         bool translateTypeless)
 {
     if (!device || !tex)
         throw std::invalid_argument("Direct3D device and resource must be valid");
@@ -340,7 +348,10 @@ void Shader_Dx12::CreateRenderTargetView(ID3D12Device* device, ID3D12Resource* t
     }
 
     D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
-    rtvDesc.Format = TranslateTypelessFormats(desc.Format);
+    if (translateTypeless)
+        rtvDesc.Format = TranslateTypelessFormats(desc.Format);
+    else
+        rtvDesc.Format = desc.Format;
 
     switch (desc.Dimension)
     {
