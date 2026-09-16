@@ -57,6 +57,12 @@ DirectInputDeviceRelease_t o_DirectInputDeviceRelease = nullptr;
 
 thread_local int bypassHookDepth = 0;
 
+std::mutex& GetDetourTransactionMutex()
+{
+    static std::mutex mutex;
+    return mutex;
+}
+
 bool ShouldApplyBlockingPolicyLocked() { return bypassHookDepth == 0 && _state.MenuVisible && _state.Focused; }
 
 bool ShouldBlockKeyboardInputLocked() { return ShouldApplyBlockingPolicyLocked() && _state.BlockKeyboard; }
@@ -100,6 +106,24 @@ void HandleBlockingFocusLossLocked()
 
 namespace
 {
+std::mutex optionalInputIntegrationMutex;
+
+void UpdateOptionalInputIntegrations()
+{
+    std::scoped_lock integrationLock(optionalInputIntegrationMutex);
+
+    {
+        std::unique_lock stateLock(_state.Mutex);
+
+        if (!_state.Initialized || !_state.HooksInstalled)
+            return;
+    }
+
+    UpdateGameInputIntegration();
+    UpdateXInputIntegration();
+    UpdateDirectInputIntegration();
+}
+
 const char* YesNo(bool value) { return value ? "yes" : "no"; }
 
 const char* AcquisitionModeName(InputAcquisitionMode mode)
@@ -802,23 +826,23 @@ bool Initialize(const InitializeOptions& options)
         {
             LOG_WARN("Initialize re-entry retrying incomplete Win32 hook installation");
             _state.HooksInstalled = InstallHooks();
-
-            if (_state.HooksInstalled)
-            {
-                UpdateGameInputIntegrationLocked();
-                UpdateXInputIntegrationLocked();
-                UpdateDirectInputIntegrationLocked();
-            }
         }
+
+        const bool hooksInstalled = _state.HooksInstalled;
 
         LOG_DEBUG(
             "Initialize re-entry state target:{} targetPid:{} input:{} inputPid:{} externalTarget:{} subclassed:{} "
             "hooksInstalled:{}",
             static_cast<void*>(_state.TargetHwnd), _state.TargetProcessId, static_cast<void*>(_state.InputHwnd),
             _state.InputProcessId, _state.ExternalTargetProcess ? 1 : 0, _state.WndProcSubclassed ? 1 : 0,
-            _state.HooksInstalled ? 1 : 0);
+            hooksInstalled ? 1 : 0);
 
-        return _state.HooksInstalled;
+        lock.unlock();
+
+        if (hooksInstalled)
+            UpdateOptionalInputIntegrations();
+
+        return hooksInstalled;
     }
 
     _state.Initialized = true;
@@ -839,12 +863,10 @@ bool Initialize(const InitializeOptions& options)
              static_cast<void*>(_state.InputHwnd), _state.InputProcessId, _state.ExternalTargetProcess ? 1 : 0,
              _state.WndProcSubclassed ? 1 : 0);
 
+    lock.unlock();
+
     if (hooksInstalled)
-    {
-        UpdateGameInputIntegrationLocked();
-        UpdateXInputIntegrationLocked();
-        UpdateDirectInputIntegrationLocked();
-    }
+        UpdateOptionalInputIntegrations();
 
     return hooksInstalled;
 }
@@ -1098,6 +1120,8 @@ void ResetStateAfterShutdown()
 
 void Shutdown()
 {
+    // Keep optional integration install/remove operations mutually exclusive.
+    std::unique_lock integrationLock(optionalInputIntegrationMutex);
     std::unique_lock lock(_state.Mutex);
 
     // Restore cursor confinement and clear the blocking policy before any hook teardown
@@ -1148,11 +1172,6 @@ static void BeginFrameLocked(HWND targetHwnd, HWND inputHwnd, bool hasInputHwnd,
     ValidateInputWindowLocked();
     ValidateWindowSubclassLocked();
 
-    // Optional input APIs may be loaded after OptiInput initialization.
-    UpdateGameInputIntegrationLocked();
-    UpdateXInputIntegrationLocked();
-    UpdateDirectInputIntegrationLocked();
-
     UpdateFocusState(_state.TargetHwnd);
     EnsureExternalRawInputSinkLocked();
     UpdateExternalMouseHookLocked();
@@ -1165,9 +1184,19 @@ void BeginFrame(HWND targetHwnd, bool isUwp)
     std::unique_lock lock(_state.Mutex);
 
     if (!_state.Initialized)
+    {
+        lock.unlock();
         Initialize(targetHwnd, isUwp);
+        lock.lock();
+    }
 
-    BeginFrameLocked(targetHwnd, nullptr, false, isUwp);
+    if (_state.Initialized)
+        BeginFrameLocked(targetHwnd, nullptr, false, isUwp);
+
+    lock.unlock();
+
+    // Module/export resolution can wait on the loader
+    UpdateOptionalInputIntegrations();
 }
 
 void BeginFrame(HWND targetHwnd, HWND inputHwnd, bool isUwp)
@@ -1175,9 +1204,19 @@ void BeginFrame(HWND targetHwnd, HWND inputHwnd, bool isUwp)
     std::unique_lock lock(_state.Mutex);
 
     if (!_state.Initialized)
+    {
+        lock.unlock();
         Initialize(targetHwnd, inputHwnd, isUwp);
+        lock.lock();
+    }
 
-    BeginFrameLocked(targetHwnd, inputHwnd, inputHwnd != nullptr, isUwp);
+    if (_state.Initialized)
+        BeginFrameLocked(targetHwnd, inputHwnd, inputHwnd != nullptr, isUwp);
+
+    lock.unlock();
+
+    // Module/export resolution can wait on the loader
+    UpdateOptionalInputIntegrations();
 }
 
 void FeedImGui(bool menuVisible)

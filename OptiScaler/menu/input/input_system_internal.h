@@ -477,18 +477,21 @@ class ScopedHookBypass
     ScopedHookBypass& operator=(ScopedHookBypass&&) = delete;
 };
 
+// Dynamic input hook installation may run without the state mutex
+std::mutex& GetDetourTransactionMutex();
+
 // Lifecycle
 bool InstallHooks();
 bool RemoveHooks();
 bool ReleaseTrackedWindowsHooksLocked();
 
 // GameInput / Windows.Gaming.Input
-void UpdateGameInputIntegrationLocked();
+void UpdateGameInputIntegration();
 bool RemoveGameInputHooksLocked();
 HRESULT WINAPI hkGameInputCreate(void** gameInput);
 
 // XInput
-void UpdateXInputIntegrationLocked();
+void UpdateXInputIntegration();
 bool RemoveXInputHooksLocked();
 void DrainXInputKeystrokesLocked();
 DWORD WINAPI hkXInputGetState(DWORD userIndex, XINPUT_STATE* state);
@@ -497,7 +500,7 @@ DWORD WINAPI hkXInputGetKeystroke(DWORD userIndex, DWORD reserved, PXINPUT_KEYST
 DWORD WINAPI hkXInputSetState(DWORD userIndex, XINPUT_VIBRATION* vibration);
 
 // DirectInput
-void UpdateDirectInputIntegrationLocked();
+void UpdateDirectInputIntegration();
 bool RemoveDirectInputHooksLocked();
 void DrainDirectInputBufferedDataLocked();
 HRESULT WINAPI hkDirectInput8Create(HINSTANCE instance, DWORD version, REFIID riid, LPVOID* out, LPUNKNOWN outer);
