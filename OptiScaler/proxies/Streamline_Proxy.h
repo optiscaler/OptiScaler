@@ -318,8 +318,10 @@ class StreamlineProxy
         ok &= ResolveActiveFeature(sl::kFeatureReflex, "slReflexGetState", _slReflexGetState, state.optiSlReflex);
         ok &= ResolveActiveFeature(sl::kFeatureReflex, "slReflexSleep", _slReflexSleep, state.optiSlReflex);
         ok &= ResolveActiveFeature(sl::kFeatureReflex, "slReflexSetOptions", _slReflexSetOptions, state.optiSlReflex);
-        ResolveActiveFeature(sl::kFeatureReflex, "slReflexSetCameraData", _slReflexSetCameraData, state.optiSlReflex, false);
-        ResolveActiveFeature(sl::kFeatureReflex, "slReflexGetPredictedCameraData", _slReflexGetPredictedCameraData, state.optiSlReflex, false);
+        ResolveActiveFeature(sl::kFeatureReflex, "slReflexSetCameraData", _slReflexSetCameraData, state.optiSlReflex,
+                             false);
+        ResolveActiveFeature(sl::kFeatureReflex, "slReflexGetPredictedCameraData", _slReflexGetPredictedCameraData,
+                             state.optiSlReflex, false);
         ResolveActiveFeature(sl::kFeaturePCL, "slPCLGetState", _slPCLGetState, state.optiSlPCL, false);
         ok &= ResolveActiveFeature(sl::kFeaturePCL, "slPCLSetMarker", _slPCLSetMarker, state.optiSlPCL);
         ok &= ResolveActiveFeature(sl::kFeaturePCL, "slPCLSetOptions", _slPCLSetOptions, state.optiSlPCL);
