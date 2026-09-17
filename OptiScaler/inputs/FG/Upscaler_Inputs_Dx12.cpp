@@ -266,6 +266,9 @@ void UpscalerInputsDx12::UpscaleEnd(ID3D12GraphicsCommandList* InCmdList, NVSDK_
             if (InParameters->Get(NVSDK_NGX_Parameter_Output, &output) != NVSDK_NGX_Result_Success)
                 InParameters->Get(NVSDK_NGX_Parameter_Output, (void**) &output);
 
+            if (output == nullptr)
+                return;
+
             ResourceInfo info {};
             auto desc = output->GetDesc();
             info.buffer = output;
