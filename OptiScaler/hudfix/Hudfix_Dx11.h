@@ -42,6 +42,7 @@ struct Dx11ResourceInfo
     ID3D11Texture2D* texture = nullptr;
     UINT width = 0;
     UINT height = 0;
+    UINT arraySize = 1;
     DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
     UINT bindFlags = 0;
     UINT miscFlags = 0;

@@ -289,8 +289,11 @@ bool Hudfix_Dx12::CheckResource(ResourceInfo* resource)
         return false;
     }
 
-    // Get resource info
-    auto resDesc = resource->buffer->GetDesc();
+    D3D12_RESOURCE_DESC resDesc = {};
+    resDesc.Width = resource->width;
+    resDesc.Height = resource->height;
+    resDesc.Format = resource->format;
+    resDesc.Flags = resource->flags;
 
     // dimensions not match
     uint32_t width = s.currentSwapchainDesc.BufferDesc.Width;

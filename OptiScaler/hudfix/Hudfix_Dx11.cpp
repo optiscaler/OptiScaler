@@ -239,6 +239,7 @@ bool Hudfix_Dx11::FillResourceInfo(ID3D11Texture2D* texture, Dx11ResourceType ty
     outInfo->texture = texture;
     outInfo->width = desc.Width;
     outInfo->height = desc.Height;
+    outInfo->arraySize = desc.ArraySize;
     outInfo->format = desc.Format;
     outInfo->bindFlags = desc.BindFlags;
     outInfo->miscFlags = desc.MiscFlags;
@@ -378,7 +379,13 @@ bool Hudfix_Dx11::CheckResource(Dx11ResourceInfo* resource)
     }
 
     D3D11_TEXTURE2D_DESC desc = {};
-    resource->texture->GetDesc(&desc);
+    desc.Width = resource->width;
+    desc.Height = resource->height;
+    desc.ArraySize = resource->arraySize;
+    desc.Format = resource->format;
+    desc.SampleDesc.Count = resource->sampleCount;
+    desc.BindFlags = resource->bindFlags;
+    desc.MiscFlags = resource->miscFlags;
 
     if (desc.Width == 0 || desc.Height == 0 || desc.ArraySize == 0)
         return false;
