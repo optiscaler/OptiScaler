@@ -82,75 +82,6 @@ inline static bool CompareResourceFormats(DXGI_FORMAT sc, DXGI_FORMAT hudless)
     return scGroup >= 0 && scGroup == hudlessGroup;
 }
 
-bool Hudfix_Dx12::CreateObjects()
-{
-    if (_commandQueue != nullptr)
-        return true;
-
-    do
-    {
-        HRESULT result;
-
-        for (size_t i = 0; i < BUFFER_COUNT; i++)
-        {
-            result = State::Instance().currentD3D12Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
-                                                                                  IID_PPV_ARGS(&_commandAllocator[i]));
-            if (result != S_OK)
-            {
-                LOG_ERROR("CreateCommandAllocator: {:X}", (unsigned long) result);
-                break;
-            }
-            _commandAllocator[i]->SetName(L"Hudfix CommandAllocator");
-
-            result = State::Instance().currentD3D12Device->CreateCommandList(
-                0, D3D12_COMMAND_LIST_TYPE_DIRECT, _commandAllocator[i], NULL, IID_PPV_ARGS(&_commandList[i]));
-            if (result != S_OK)
-            {
-                LOG_ERROR("CreateCommandList: {:X}", (unsigned long) result);
-                break;
-            }
-
-            _commandList[i]->SetName(L"Hudfix CommandList");
-
-            result = _commandList[i]->Close();
-            if (result != S_OK)
-            {
-                LOG_ERROR("_hudlessCommandList->Close: {:X}", (unsigned long) result);
-                break;
-            }
-
-            result =
-                State::Instance().currentD3D12Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&_fence[i]));
-            if (result != S_OK)
-            {
-                LOG_ERROR("CreateFence: {0:X}", (unsigned long) result);
-                break;
-            }
-        }
-
-        // Create a command queue for frame generation
-        D3D12_COMMAND_QUEUE_DESC queueDesc = {};
-        queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-        queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-        queueDesc.NodeMask = 0;
-        queueDesc.Priority = D3D12_COMMAND_QUEUE_PRIORITY_HIGH;
-
-        HRESULT hr = State::Instance().currentD3D12Device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&_commandQueue));
-        if (hr != S_OK)
-        {
-            LOG_ERROR("CreateCommandQueue: {:X}", (unsigned long) hr);
-            break;
-        }
-
-        _commandQueue->SetName(L"Hudfix CommandQueue");
-
-        return true;
-
-    } while (false);
-
-    return false;
-}
-
 bool Hudfix_Dx12::CreateBufferResource(ID3D12Device* InDevice, ResourceInfo* InSource, D3D12_RESOURCE_STATES InState,
                                        ID3D12Resource** OutResource)
 {
@@ -680,12 +611,6 @@ bool Hudfix_Dx12::CheckForHudless(ID3D12GraphicsCommandList* cmdList, ResourceIn
         auto fIndex = GetIndex();
 
         LOG_TRACE("Capture resource: {:X}, index: {}", (size_t) resource->buffer, fIndex);
-
-        if (_commandQueue == nullptr && !CreateObjects())
-        {
-            LOG_WARN("Can't create command queue!");
-            return false;
-        }
 
         auto scWidth = s.currentSwapchainDesc.BufferDesc.Width;
         auto scHeight = s.currentSwapchainDesc.BufferDesc.Height;

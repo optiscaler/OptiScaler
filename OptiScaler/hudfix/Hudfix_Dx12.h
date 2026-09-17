@@ -89,14 +89,8 @@ class Hudfix_Dx12
     inline static INT64 _captureCounter[BUFFER_COUNT] = { 0, 0, 0, 0 };
     inline static FT_Dx12* _formatTransfer[BUFFER_COUNT] = { nullptr, nullptr, nullptr, nullptr };
 
-    inline static ID3D12CommandQueue* _commandQueue = nullptr;
-    inline static ID3D12GraphicsCommandList* _commandList[BUFFER_COUNT] = { nullptr, nullptr, nullptr, nullptr };
-    inline static ID3D12CommandAllocator* _commandAllocator[BUFFER_COUNT] = { nullptr, nullptr, nullptr, nullptr };
-    inline static ID3D12Fence* _fence[BUFFER_COUNT] = { nullptr, nullptr, nullptr, nullptr };
-
     inline static bool _skipHudlessChecks = false;
 
-    static bool CreateObjects();
     static bool CreateBufferResource(ID3D12Device* InDevice, ResourceInfo* InSource, D3D12_RESOURCE_STATES InState,
                                      ID3D12Resource** OutResource);
     static bool CreateBufferResourceWithSize(ID3D12Device* InDevice, ResourceInfo* InSource,
