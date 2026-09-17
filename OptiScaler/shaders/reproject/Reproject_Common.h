@@ -23,6 +23,28 @@ Texture2D<float3> PresentCopy : register(t1);
 RWTexture2D<float3> Present : register(u0);
 SamplerState LinearClampSampler : register(s0);
 
+float Bayer4x4(uint2 p)
+{
+    static const float4x4 bayer =
+    {
+        0.0f / 16.0f, 8.0f / 16.0f, 2.0f / 16.0f, 10.0f / 16.0f,
+       12.0f / 16.0f, 4.0f / 16.0f, 14.0f / 16.0f, 6.0f / 16.0f,
+        3.0f / 16.0f, 11.0f / 16.0f, 1.0f / 16.0f, 9.0f / 16.0f,
+       15.0f / 16.0f, 7.0f / 16.0f, 13.0f / 16.0f, 5.0f / 16.0f
+    };
+
+    return bayer[p.y & 3][p.x & 3];
+}
+
+float HashNoise(uint2 p)
+{
+    uint n = p.x * 374761393u + p.y * 668265263u;
+    n = (n ^ (n >> 13u)) * 1274126177u;
+    n ^= n >> 16u;
+
+    return n * (1.0f / 4294967295.0f);
+}
+
 [numthreads(16, 16, 1)]
 void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
@@ -71,7 +93,32 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     {
         reprojectedGame = Hudless.SampleLevel(LinearClampSampler, saturate(sourceUV), 0.0f);
     }
+    else if (EdgeMode == 2)
+    {
+        float3 background = Hudless.Load(int3(pixelCoord, 0));
+        reprojectedGame = inside ? lerp(background, reprojectedGame, 1.0f) : background;
+    }
 
+    if (EdgeMode == 2 && inside)
+    {
+        const float ditherWidthPx = ScreenHeight / 16.0f;
+
+        // Only measure distance to reprojected edges that fall inside the screen bounds
+        float distLeft = (sourceUV.x < uv.x) ? sourceUV.x * ScreenWidth : ditherWidthPx;
+        float distRight = (sourceUV.x > uv.x) ? (1.0f - sourceUV.x) * ScreenWidth : ditherWidthPx;
+        float distTop = (sourceUV.y < uv.y) ? sourceUV.y * ScreenHeight : ditherWidthPx;
+        float distBottom = (sourceUV.y > uv.y) ? (1.0f - sourceUV.y) * ScreenHeight : ditherWidthPx;
+
+        float edgeDistancePx = min(min(distLeft, distRight), min(distTop, distBottom));
+        float projectedProbability = smoothstep(0.0f, ditherWidthPx, edgeDistancePx);
+        
+        // float dither = Bayer4x4(pixelCoord);
+        float dither = HashNoise(pixelCoord);
+        float3 background = Hudless.Load(int3(pixelCoord, 0));
+
+        reprojectedGame = dither < projectedProbability ? reprojectedGame : background;
+    }
+    
     // Final UI Blend
     Present[pixelCoord] = lerp(reprojectedGame, present, uiMask);
 }
