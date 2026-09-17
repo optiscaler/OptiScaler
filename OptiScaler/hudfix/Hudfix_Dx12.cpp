@@ -744,22 +744,14 @@ bool Hudfix_Dx12::CheckForHudless(ID3D12GraphicsCommandList* cmdList, ResourceIn
                 srcBox.front = 0;
                 srcBox.back = 1;
 
-                if (scWidth > resource->width || scHeight > resource->height)
-                {
-                    srcBox.right = static_cast<UINT>(resource->width);
-                    srcBox.bottom = resource->height;
-                    UINT top = (scHeight - resource->height) / 2;
-                    UINT left = static_cast<UINT>((scWidth - resource->width) / 2);
+                const UINT copyWidth = static_cast<UINT>(resource->width < scWidth ? resource->width : scWidth);
+                const UINT copyHeight = resource->height < scHeight ? resource->height : scHeight;
+                srcBox.right = copyWidth;
+                srcBox.bottom = copyHeight;
 
+                const UINT left = (scWidth - copyWidth) / 2;
+                const UINT top = (scHeight - copyHeight) / 2;
                     cmdList->CopyTextureRegion(&dstLocation, left, top, 0, &srcLocation, &srcBox);
-                }
-                else
-                {
-                    srcBox.right = scWidth;
-                    srcBox.bottom = scHeight;
-
-                    cmdList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, &srcBox);
-                }
 
                 // Using state D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE as skip flag
                 if (state != D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE)
