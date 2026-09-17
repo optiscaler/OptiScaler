@@ -52,8 +52,8 @@ class Reprojection_Dx12 : public virtual IFGFeature_Dx12
     CalibrationState _calibration;
     bool _isFirstFrame = true;
 
-    void FilloutStruct(ReprojectionParams& params, float diffThreshold, float pinkAmount, float resX, float resY,
-                       int currIndex, DirectX::XMFLOAT2 direction, DirectX::XMFLOAT2 fullFrameMouseDelta);
+    void FilloutStruct(ReprojectionParams& params, float diffThreshold, uint32_t resX, uint32_t resY, int currIndex,
+                       DirectX::XMINT2 direction, DirectX::XMINT2 fullFrameMouseDelta);
 
   protected:
     void ReleaseObjects() override final;
@@ -90,7 +90,7 @@ class Reprojection_Dx12 : public virtual IFGFeature_Dx12
     void* FrameGenerationContext() override final;
     void* SwapchainContext() override final;
 
-    Reprojection_Dx12() : IFGFeature_Dx12(), IFGFeature() {}
+    Reprojection_Dx12() : IFGFeature_Dx12(), IFGFeature() { _framesToInterpolate = 0; }
 
     ~Reprojection_Dx12() {};
 

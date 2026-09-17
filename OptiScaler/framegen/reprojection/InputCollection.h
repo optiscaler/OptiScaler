@@ -1,6 +1,7 @@
 #pragma once
 
 #include <shared_mutex>
+#include <DirectXMath.h>
 
 struct InputDelta
 {
@@ -13,6 +14,8 @@ struct InputDelta
         y += other.y;
         return *this;
     }
+
+    operator DirectX::XMINT2() const { return { x, y }; }
 };
 
 class InputCollection

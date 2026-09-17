@@ -238,15 +238,13 @@ bool Reprojection_Dx12::Present()
                 auto previousIndex = (fIndex + BUFFER_COUNT - 1) % BUFFER_COUNT;
 
                 float diffThreshold = 0.01f;
-                float pink = 0.0f;
 
                 auto presentToPresentMouseDelta = InputCollection::getInstance().readPresentDelta();
 
                 ReprojectionParams params {};
-                FilloutStruct(params, diffThreshold, pink, (float) _interpolationWidth[fIndex],
-                              (float) _interpolationHeight[fIndex], fIndex,
-                              { (float) mouseDeltaSinceSim.x, (float) mouseDeltaSinceSim.y },
-                              { (float) presentToPresentMouseDelta.x, (float) presentToPresentMouseDelta.y });
+                FilloutStruct(params, diffThreshold, (uint32_t) _interpolationWidth[fIndex],
+                              (uint32_t) _interpolationHeight[fIndex], fIndex, mouseDeltaSinceSim,
+                              presentToPresentMouseDelta);
 
                 _reproject->Dispatch((IDXGISwapChain3*) _swapChain, commandList, params, hudless->GetResource(),
                                      hudless->state, depth->GetResource(), depth->state);
@@ -348,29 +346,21 @@ bool Reprojection_Dx12::SetResource(Dx12Resource* inputResource)
     return true;
 }
 
-void Reprojection_Dx12::FilloutStruct(ReprojectionParams& params, float diffThreshold, float pinkAmount, float resX,
-                                      float resY, int currIndex, DirectX::XMFLOAT2 direction,
-                                      DirectX::XMFLOAT2 fullFrameMouseDelta)
+void Reprojection_Dx12::FilloutStruct(ReprojectionParams& params, float diffThreshold, uint32_t resX, uint32_t resY,
+                                      int currIndex, DirectX::XMINT2 direction, DirectX::XMINT2 fullFrameMouseDelta)
 {
-    using namespace DirectX;
-
-    params.DiffThreshold = diffThreshold;
-    params.PinkAmount = pinkAmount;
-    params.MouseDeltaX = -direction.x;
-    params.MouseDeltaY = -direction.y;
+    params.UiDiffThreshold = diffThreshold;
     params.ScreenWidth = resX;
     params.ScreenHeight = resY;
-
-    params.CameraVFov = _cameraVFov[currIndex];
-    params.CameraAspectRatio = _cameraAspectRatio[currIndex];
     params.EdgeMode = Config::Instance()->ReprojectionFillMode.value_or_default() == ReprojectionFill::StrechEdge;
 
-    const float tanHalfFovY = std::tan(params.CameraVFov * 0.5f);
+    const float tanHalfFovY = std::tan(_cameraVFov[currIndex] * 0.5f);
     const float pixelAngle = 2.0f * std::atan(tanHalfFovY / resY);
 
     params.TanHalfFovY = tanHalfFovY;
+    params.TanHalfFovX = tanHalfFovY * _cameraAspectRatio[currIndex];
     params.InvTanHalfFovY = 1.0f / tanHalfFovY;
-    params.InvTanHalfFovX = 1.0f / (tanHalfFovY * params.CameraAspectRatio);
+    params.InvTanHalfFovX = 1.0f / params.TanHalfFovX;
 
     const float mouseX = fullFrameMouseDelta.x * pixelAngle;
     const float mouseY = fullFrameMouseDelta.y * pixelAngle;
@@ -426,12 +416,9 @@ void Reprojection_Dx12::FilloutStruct(ReprojectionParams& params, float diffThre
 
     XMMATRIX rotation = XMMatrixTranspose(viewToWorld * rotPitch * rotYaw * worldToView);
 
-    XMFLOAT4X4 m;
-    XMStoreFloat4x4(&m, rotation);
-
-    params.ReprojectionRow0 = XMFLOAT3(m._11, m._12, m._13);
-    params.ReprojectionRow1 = XMFLOAT3(m._21, m._22, m._23);
-    params.ReprojectionRow2 = XMFLOAT3(m._31, m._32, m._33);
+    XMStoreFloat4(&params.ReprojectionRow0, rotation.r[0]);
+    XMStoreFloat4(&params.ReprojectionRow1, rotation.r[1]);
+    XMStoreFloat4(&params.ReprojectionRow2, rotation.r[2]);
 }
 
 void Reprojection_Dx12::SetCommandQueue(FG_ResourceType type, ID3D12CommandQueue* queue) { _gameCommandQueue = queue; }
