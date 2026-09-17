@@ -9,6 +9,7 @@
 #include <resource_tracking/ResTrack_dx12.h>
 
 #include <hooks/Reflex_Hooks.h>
+#include <hooks/Streamline_Hooks.h>
 #include <hooks/DxgiFactory_Hooks.h>
 
 #include <magic_enum.hpp>
@@ -103,6 +104,13 @@ bool DLSSG_Dx12::CreateSwapchain(IDXGIFactory* factory, ID3D12CommandQueue* cmdQ
     StreamlineProxy::SetFeatureLoaded()(sl::kFeatureDLSS_G, true);
 
     desc->Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+    if (State::Instance().gameName == "KCD2")
+    {
+        // KCD2 waits on this handle. Declare application ownership so Streamline
+        // does not also consume it and stall its flip queue.
+        desc->Flags |= DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+        LOG_INFO("KCD2: requesting application-owned frame-latency waitable");
+    }
 
     auto result = S_FALSE;
 
@@ -214,6 +222,11 @@ bool DLSSG_Dx12::CreateSwapchain1(IDXGIFactory* factory, ID3D12CommandQueue* cmd
         StreamlineProxy::SetFeatureLoaded()(sl::kFeatureDLSS_G, true);
 
         desc->Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+        if (State::Instance().gameName == "KCD2")
+        {
+            desc->Flags |= DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+            LOG_INFO("KCD2: requesting application-owned frame-latency waitable");
+        }
         auto result = factory2->CreateSwapChainForHwnd(cmdQueue, hwnd, desc, pFullscreenDesc, nullptr, swapChain);
 
         factory2->Release();
@@ -363,6 +376,7 @@ bool DLSSG_Dx12::Dispatch()
         options.dynamicTargetFrameRate = Config::Instance()->FGDLSSGFramerateTargetDMFG.value_or_default();
     }
 
+    StreamlineHooks::applyMenuDlssgInterlock(options, true);
     auto dlssgSetOptionsResult = StreamlineProxy::DLSSGSetOptions()(viewport, options);
 
     if (dlssgSetOptionsResult != sl::Result::eOk)

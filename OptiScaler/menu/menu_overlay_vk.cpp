@@ -426,11 +426,13 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
     }
 
     _vulkanObjectsCreated = true;
+    State::Instance().menuOverlayIsVulkan = true;
     LOG_FUNC_RESULT(_vulkanObjectsCreated);
 }
 
 void MenuOverlayVk::DestroyVulkanObjects(bool shutdown)
 {
+    State::Instance().menuOverlayIsVulkan = false;
     if (_ImVulkan_Info.Device == VK_NULL_HANDLE)
         return;
 

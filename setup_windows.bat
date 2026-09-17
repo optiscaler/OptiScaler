@@ -406,6 +406,15 @@ echo.
 
 set setupSuccess=true
 
+REM Neural Rendering is optional; install the model separately as documented in INSTALL-DLSSNR.md.
+if "%setupSuccess%"=="true" (
+    echo.
+    echo Neural Rendering is off by default. See INSTALL-DLSSNR.md for the model runtime
+    echo and enable it in the OptiScaler overlay when the ordinary upscaler works.
+    echo NR uses OptiScaler, your nvngx_dlssnr.dll, and the installed NVIDIA driver.
+    echo No separate NR helper DLL is required or supplied.
+)
+
 :end
 pause
 

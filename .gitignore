@@ -440,3 +440,14 @@ CyberFSR/imgui.ini
 /OptiScaler/resource_build_commit.h
 /OptiScaler/misc/Telemetry.cpp
 /OptiScaler/misc/Telemetry.h
+release
+
+# Local dependency/download caches.
+/.dependencies/
+/OptiScaler/streamline/
+
+.agents/
+.logs/
+
+# Local runtime experiments (not packaged)
+dlssg_for_sm86/

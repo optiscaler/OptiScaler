@@ -1,5 +1,14 @@
 ﻿#include "pch.h"
+#include <dlssnr/DlssNr_MenuOverlay.h>
 #include "menu_common.h"
+#include <dlssnr/DlssNr_ExposureScan.h>
+
+#include <algorithm>
+#include <cfloat>
+
+#include <dlssnr/DlssNr.h>
+
+
 
 #include "input/input_system.h"
 
@@ -163,6 +172,7 @@ static std::string updateNoticeUrl;
 static float lastMenuScale = 0.0f;
 static CustomOptional<uint32_t> comboPreset { 0 };
 static int lastKey = 0;
+static bool inputDlssNr = false;
 static bool capturingKey = false;
 
 template <typename T, size_t N> struct RingBuffer
@@ -280,6 +290,8 @@ void MenuCommon::UpdateManualInput(HWND targetHwnd)
         CheckShortcut(config->FGShortcutKey.value_or_default(), inputFG, "Menu key pressed, will be switching FG mode");
         CheckShortcut(config->FpsCycleShortcutKey.value_or_default(), inputFpsCycle,
                       "Menu key pressed, will be switching FPS mode");
+        CheckShortcut(config->DlssNrToggleKey.value_or_default(), inputDlssNr,
+                      "Neural Rendering key pressed, will be toggling the pass");
     }
     else if (capturingKey)
     {
@@ -294,7 +306,7 @@ void MenuCommon::ShowTooltip(const char* tip)
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
     {
         ImGui::BeginTooltip();
-        ImGui::Text(tip);
+        ImGui::TextUnformatted(tip);
         ImGui::EndTooltip();
     }
 }
@@ -498,7 +510,7 @@ void MenuCommon::AddDx11Backends(Upscaler upscaler)
 {
     RenderUpscalerCombo(API::DX11, upscaler,
                         { Upscaler::XeSS, Upscaler::FSR22, Upscaler::FSR31, Upscaler::XeSS_on12, Upscaler::FSR21_on12,
-                          Upscaler::FSR22_on12, Upscaler::FFX_on12, Upscaler::DLSS });
+                          Upscaler::FSR22_on12, Upscaler::FFX_on12, Upscaler::DLSS, Upscaler::DLSS_on12 });
 }
 
 void MenuCommon::AddDx12Backends(Upscaler upscaler)
@@ -1466,6 +1478,19 @@ void MenuCommon::HandleMenuShortcuts(RenderMenuContext& ctx)
             config->ShowFps = !config->ShowFps.value_or_default();
         }
 
+        if (inputDlssNr)
+        {
+            inputDlssNr = false;
+            config->DlssNrEnabled = !config->DlssNrEnabled.value_or_default();
+            LOG_DEBUG("Neural Rendering toggle key pressed, setting DlssNrEnabled to {}",
+                      config->DlssNrEnabled.value_or_default());
+
+            ImGuiToast toast { ImGuiToastType::Info, 2000 };
+            toast.setTitle("DLSS Neural Rendering");
+            toast.setContent(config->DlssNrEnabled.value_or_default() ? "On" : "Off");
+            ImGui::InsertNotification(toast);
+        }
+
         if (inputFpsCycle && config->ShowFps.value_or_default())
             config->FpsOverlayType = (FpsOverlay) ((config->FpsOverlayType.value_or_default() + 1) % FpsOverlay_COUNT);
 
@@ -1606,8 +1631,15 @@ void MenuCommon::BeginMenuFrameIfNeeded(RenderMenuContext& ctx)
     auto& newFrame = ctx.newFrame;
 
     // New frame check
+    // The lamp is drawn while the menu is closed, which is the whole point of it. Tied to its own
+    // setting and nothing else: an overlay that appears because a scan is running, rather than
+    // because someone asked for it, is an overlay nobody asked for.
+    const bool scanIndicator = config->DlssNrScanMeter.value_or_default() &&
+                               DlssNr::ExposureScan::Where() != DlssNr::ExposureScan::Verdict::Off;
+
     if ((!config->DisableSplash.value_or_default() && now > splashStart && now < splashLimit) ||
-        config->ShowFps.value_or_default() || _isVisible || ImGui::notifications.size() > 0)
+        config->ShowFps.value_or_default() || _isVisible || ImGui::notifications.size() > 0 || scanIndicator ||
+        (config->DlssNrCompare.value_or_default() != 0 && config->DlssNrCompareTags.value_or_default()))
     {
         if (!_isUWP)
         {
@@ -1779,8 +1811,13 @@ void MenuCommon::UpdateFrameTimeAverages(RenderMenuContext& ctx)
     }
 }
 
+// Labels for the comparison views.
+//
 void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
 {
+    DlssNr::RenderNrCompareTags();
+
+
     auto& state = ctx.state;
     auto config = ctx.config;
     auto& io = ctx.io;
@@ -3120,7 +3157,6 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     auto& primaryGpu = *ctx.primaryGpu;
 
     /// FG INPUTS
-
     static std::vector<MenuOption<FGInput>> inputOptions;
     inputOptions.clear();
 
@@ -7070,11 +7106,13 @@ void MenuCommon::RenderKeybindSettings(RenderMenuContext& ctx)
         static auto fpsOverlay = Keybind("FPS Overlay", 11);
         static auto fpsOverlayCycle = Keybind("FPS Overlay Cycle", 12);
         static auto fgEnable = Keybind("Frame Generation", 13);
+        static auto dlssNrToggle = Keybind("Neural Rendering", 14);
 
         menu.Render(config->ShortcutKey);
         fpsOverlay.Render(config->FpsShortcutKey);
         fpsOverlayCycle.Render(config->FpsCycleShortcutKey);
         fgEnable.Render(config->FGShortcutKey);
+        dlssNrToggle.Render(config->DlssNrToggleKey);
     }
 }
 
@@ -7100,6 +7138,7 @@ void MenuCommon::RenderMainMenuTable(RenderMenuContext& ctx)
 
         // Right column: image quality, initialization, advanced options, appearance, overlay and input settings.
         RenderActiveImageSettings(ctx);
+        DlssNr::RenderMenu(ctx.config, ctx.menuResScale);
         RenderMagnifierSettings(ctx);
         RenderQuirksSettings(ctx);
         RenderAdvancedSettings(ctx);
@@ -7167,7 +7206,9 @@ void MenuCommon::RenderMainMenuGraphs(RenderMenuContext& ctx)
                         ImGui::Text(formattedTime.c_str());
                     }
 
-                    if (hasExtra)
+                    std::optional<double> nrTime {};
+                    nrTime = DlssNr::LastGpuTime();
+                    if (hasExtra || nrTime.has_value())
                     {
                         ImGui::TableNextRow();
                         ImGui::TableNextRow();
@@ -7187,6 +7228,14 @@ void MenuCommon::RenderMainMenuGraphs(RenderMenuContext& ctx)
 
                             ImGui::TableNextColumn();
                             ImGui::Text(formattedTime.c_str());
+                        }
+
+                        if (nrTime.has_value())
+                        {
+                            ImGui::TableNextColumn();
+                            ImGui::Text("Neural Rendering (elapsed)");
+                            ImGui::TableNextColumn();
+                            ImGui::Text(StrFmt("%.2f ms", nrTime.value()).c_str());
                         }
                     }
 
@@ -7715,6 +7764,7 @@ bool MenuCommon::RenderMenu()
     RenderNotifications(ctx);
     UpdateFrameTimeAverages(ctx);
     RenderPerformanceOverlay(ctx);
+    DlssNr::RenderExposureScanIndicator(ctx.config->FpsOverlayAlpha.value_or_default());
 
     // 4) Draw the full settings menu last so popups and child windows keep their existing behavior.
     RenderMainMenuWindow(ctx);

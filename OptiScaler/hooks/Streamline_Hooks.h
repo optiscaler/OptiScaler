@@ -140,6 +140,7 @@ class StreamlineHooks
 
     static void updateForceReflex();
     static void updateDlssgOptions();
+    static void applyMenuDlssgInterlock(sl::DLSSGOptions& options, bool potentiallyActive);
 
     static void unhookInterposer();
     static void hookInterposer(HMODULE slInterposer);
