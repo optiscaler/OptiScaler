@@ -79,7 +79,7 @@ inline static bool CompareResourceFormats(DXGI_FORMAT sc, DXGI_FORMAT hudless)
 
     auto scGroup = GetFormatGroup(sc);
     auto hudlessGroup = GetFormatGroup(hudless);
-    return scGroup == hudlessGroup;
+    return scGroup >= 0 && scGroup == hudlessGroup;
 }
 
 bool Hudfix_Dx12::CreateObjects()
