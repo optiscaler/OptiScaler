@@ -1962,9 +1962,13 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                                      usesDx12CompatLayer ? " w/Dx12" : "");
             }
 
+            uint32_t interpolatedFrameCount = 0;
             if (fg != nullptr && fg->IsActive() && !fg->IsPaused())
+                interpolatedFrameCount = fg->GetInterpolatedFrameCount();
+
+            if (interpolatedFrameCount)
             {
-                const double baseFps = frameRate / (double) (fg->GetInterpolatedFrameCount() + 1);
+                const double baseFps = frameRate / (double) (interpolatedFrameCount + 1);
 
                 switch (overlayType)
                 {
@@ -4271,21 +4275,29 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
     {
         ImGui::SeparatorText("Reprojection");
 
-        bool fgActive = config->FGEnabled.value_or_default();
-        if (ImGui::Checkbox("Active##2", &fgActive))
+        if (ImGui::BeginTable("reprojection1", 2, ImGuiTableFlags_SizingStretchProp))
         {
-            config->FGEnabled = fgActive;
-            LOG_DEBUG("Reprojection enabled: {}", fgActive);
+            ImGui::TableNextColumn();
+            bool fgActive = config->FGEnabled.value_or_default();
+            if (ImGui::Checkbox("Active##2", &fgActive))
+            {
+                config->FGEnabled = fgActive;
+                LOG_DEBUG("Reprojection enabled: {}", fgActive);
 
-            if (config->FGEnabled.value_or_default())
-                state.fgChanged = true;
+                if (config->FGEnabled.value_or_default())
+                    state.fgChanged = true;
+            }
+            ShowHelpMarker("Enable reprojection");
+
+            ImGui::TableNextColumn();
+            static std::vector<MenuOption<ReprojectionFill>> fillModes = {
+                { ReprojectionFill::StrechEdge, "Strech edge" }, { ReprojectionFill::Black, "Black" }
+            };
+
+            PopulateCombo("Edge fill mode", config->ReprojectionFillMode, fillModes);
+
+            ImGui::EndTable();
         }
-        ShowHelpMarker("Enable reprojection");
-
-        static std::vector<MenuOption<ReprojectionFill>> fillModes = { { ReprojectionFill::StrechEdge, "Strech edge" },
-                                                                       { ReprojectionFill::Black, "Black" } };
-
-        PopulateCombo("Edge fill mode", config->ReprojectionFillMode, fillModes);
     }
 
     // OptiFG

@@ -13,32 +13,20 @@
 
 struct alignas(256) ReprojectionParams
 {
-    float DiffThreshold;
-    float PinkAmount;
-    float MouseDeltaX;
-    float MouseDeltaY;
-
-    float ScreenWidth;
-    float ScreenHeight;
-    float CameraVFov;
-    float CameraAspectRatio;
-
+    float UiDiffThreshold;
+    uint32_t ScreenWidth;
+    uint32_t ScreenHeight;
     uint32_t EdgeMode;
+
+    float TanHalfFovX;
     float TanHalfFovY;
-    float InvTanHalfFovY;
     float InvTanHalfFovX;
+    float InvTanHalfFovY;
 
-    // Row 0 of inverse reprojection rotation matrix
-    DirectX::XMFLOAT3 ReprojectionRow0;
-    float _pad0;
-
-    // Row 1
-    DirectX::XMFLOAT3 ReprojectionRow1;
-    float _pad1;
-
-    // Row 2
-    DirectX::XMFLOAT3 ReprojectionRow2;
-    float _pad2;
+    // Inverse reprojection rotation matrix
+    DirectX::XMFLOAT4 ReprojectionRow0;
+    DirectX::XMFLOAT4 ReprojectionRow1;
+    DirectX::XMFLOAT4 ReprojectionRow2;
 };
 
 class Reproject_Dx12 : public Shader_Dx12
