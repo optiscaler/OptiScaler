@@ -699,13 +699,13 @@ bool Hudfix_Dx12::CheckForHudless(ID3D12GraphicsCommandList* cmdList, ResourceIn
 
                 // Using state D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE as skip flag
                 if (state != D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE)
-                    ResourceBarrier(cmdList, resource->buffer, resource->state, D3D12_RESOURCE_STATE_COPY_SOURCE);
+                    ResourceBarrier(cmdList, resource->buffer, state, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
                 cmdList->CopyResource(_captureBuffer[fIndex], resource->buffer);
 
                 // Using state D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE as skip flag
                 if (state != D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE)
-                    ResourceBarrier(cmdList, resource->buffer, D3D12_RESOURCE_STATE_COPY_SOURCE, resource->state);
+                    ResourceBarrier(cmdList, resource->buffer, D3D12_RESOURCE_STATE_COPY_SOURCE, state);
 
                 LOG_DEBUG("Copy created");
             }
