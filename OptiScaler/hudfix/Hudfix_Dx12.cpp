@@ -342,8 +342,8 @@ bool Hudfix_Dx12::CheckResource(ResourceInfo* resource)
 
     if (State::Instance().fgOnlyUseCapturedResources)
     {
-        auto result = _captureList.find(resource->buffer) != _captureList.end();
-        return result;
+        std::lock_guard<std::mutex> lock(_captureMutex);
+        return _captureList.find(resource->buffer) != _captureList.end();
     }
 
     auto& s = State::Instance();
@@ -473,6 +473,8 @@ void Hudfix_Dx12::UpscaleStart()
 
     if (State::Instance().clearCapturedHudlesses)
     {
+        std::lock_guard<std::mutex> lock(_checkMutex);
+
         LOG_DEBUG("ClearCapturedHudlesses");
         State::Instance().clearCapturedHudlesses = false;
         State::Instance().capturedHudlesses.clear();
@@ -563,6 +565,9 @@ bool Hudfix_Dx12::CheckForHudless(ID3D12GraphicsCommandList* cmdList, ResourceIn
             break;
         }
 
+        LOG_DEBUG("Waiting _checkMutex");
+        std::lock_guard<std::mutex> lock(_checkMutex);
+
         CapturedHudlessInfo* capturedHudlessInfo = nullptr;
         auto it = s.capturedHudlesses.find(resource->buffer);
         if (it != s.capturedHudlesses.end())
@@ -575,10 +580,6 @@ bool Hudfix_Dx12::CheckForHudless(ID3D12GraphicsCommandList* cmdList, ResourceIn
                 break;
             }
         }
-
-        // Prevent double capture
-        LOG_DEBUG("Waiting _checkMutex");
-        std::lock_guard<std::mutex> lock(_checkMutex);
 
         if (!ignoreBlocked && Config::Instance()->FGResourceBlocking.value_or_default())
         {
@@ -751,7 +752,7 @@ bool Hudfix_Dx12::CheckForHudless(ID3D12GraphicsCommandList* cmdList, ResourceIn
 
                 const UINT left = (scWidth - copyWidth) / 2;
                 const UINT top = (scHeight - copyHeight) / 2;
-                    cmdList->CopyTextureRegion(&dstLocation, left, top, 0, &srcLocation, &srcBox);
+                cmdList->CopyTextureRegion(&dstLocation, left, top, 0, &srcLocation, &srcBox);
 
                 // Using state D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE as skip flag
                 if (state != D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE)
@@ -903,6 +904,9 @@ bool Hudfix_Dx12::CheckForHudless(ID3D12GraphicsCommandList* cmdList, ResourceIn
 
 void Hudfix_Dx12::ResetCounters()
 {
+    std::lock_guard<std::mutex> checkLock(_checkMutex);
+    std::lock_guard<std::mutex> counterLock(_counterMutex);
+
     _fgCounter = 0;
     _upscaleCounter = 0;
 
