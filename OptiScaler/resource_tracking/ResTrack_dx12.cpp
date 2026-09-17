@@ -1384,7 +1384,7 @@ void ResTrack_Dx12::hkDrawInstanced(ID3D12GraphicsCommandList* This, UINT Vertex
         size_t shardIdx = GetShardIndex(This);
         auto& shard = _hudlessShards[fIndex][shardIdx];
 
-        if (This == MenuOverlayDx::MenuCommandList() && shard.map.contains(This))
+        if (This == MenuOverlayDx::MenuCommandList())
         {
             LOCK_GUARD(shard.mutex);
 
@@ -1496,7 +1496,7 @@ void ResTrack_Dx12::hkDrawIndexedInstanced(ID3D12GraphicsCommandList* This, UINT
         size_t shardIdx = GetShardIndex(This);
         auto& shard = _hudlessShards[fIndex][shardIdx];
 
-        if (This == MenuOverlayDx::MenuCommandList() && shard.map.contains(This))
+        if (This == MenuOverlayDx::MenuCommandList())
         {
             LOCK_GUARD(shard.mutex);
 
@@ -1678,7 +1678,7 @@ void ResTrack_Dx12::hkDispatch(ID3D12GraphicsCommandList* This, UINT ThreadGroup
         size_t shardIdx = GetShardIndex(This);
         auto& shard = _hudlessShards[fIndex][shardIdx];
 
-        if (This == MenuOverlayDx::MenuCommandList() && shard.map.contains(This))
+        if (This == MenuOverlayDx::MenuCommandList())
         {
             LOCK_GUARD(shard.mutex);
 
