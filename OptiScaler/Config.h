@@ -223,16 +223,19 @@ enum class LowLatencyMode : uint32_t
 
 enum class ReprojectionFill : uint32_t
 {
-    StrechEdge,
     Black,
+    StrechEdge,
+    Dithering,
 };
 
 template <> struct EnumConfig<ReprojectionFill>
 {
-    static constexpr auto default_value = ReprojectionFill::StrechEdge;
+    static constexpr auto default_value = ReprojectionFill::Dithering;
 
     static constexpr std::pair<ReprojectionFill, std::string_view> mapping[] = {
-        { ReprojectionFill::StrechEdge, "strech" }, { ReprojectionFill::Black, "black" }
+        { ReprojectionFill::StrechEdge, "strech" },
+        { ReprojectionFill::Black, "black" },
+        { ReprojectionFill::Dithering, "dithering" }
     };
 };
 
