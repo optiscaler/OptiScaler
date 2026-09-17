@@ -352,7 +352,14 @@ void Reprojection_Dx12::FilloutStruct(ReprojectionParams& params, float diffThre
     params.UiDiffThreshold = diffThreshold;
     params.ScreenWidth = resX;
     params.ScreenHeight = resY;
-    params.EdgeMode = Config::Instance()->ReprojectionFillMode.value_or_default() == ReprojectionFill::StrechEdge;
+
+    auto fillMode = Config::Instance()->ReprojectionFillMode.value_or_default();
+    if (fillMode == ReprojectionFill::Black)
+        params.EdgeMode = 0;
+    else if (fillMode == ReprojectionFill::StrechEdge)
+        params.EdgeMode = 1;
+    else if (fillMode == ReprojectionFill::Dithering)
+        params.EdgeMode = 2;
 
     const float tanHalfFovY = std::tan(_cameraVFov[currIndex] * 0.5f);
     const float pixelAngle = 2.0f * std::atan(tanHalfFovY / resY);

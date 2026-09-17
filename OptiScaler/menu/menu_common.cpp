@@ -4291,7 +4291,9 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
             ImGui::TableNextColumn();
             static std::vector<MenuOption<ReprojectionFill>> fillModes = {
-                { ReprojectionFill::StrechEdge, "Strech edge" }, { ReprojectionFill::Black, "Black" }
+                { ReprojectionFill::StrechEdge, "Strech edge" },
+                { ReprojectionFill::Black, "Black" },
+                { ReprojectionFill::Dithering, "Dithering" }
             };
 
             PopulateCombo("Edge fill mode", config->ReprojectionFillMode, fillModes);
