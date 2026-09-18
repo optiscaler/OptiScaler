@@ -482,7 +482,6 @@ class ResTrack_Dx12
 {
   private:
     inline static bool _presentDone = true;
-    inline static std::mutex _drawMutex;
     inline static bool _useShards = false;
 
     inline static std::mutex _resourceCommandListMutex;
