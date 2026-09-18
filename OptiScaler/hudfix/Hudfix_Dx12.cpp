@@ -439,8 +439,8 @@ bool Hudfix_Dx12::CheckResource(ResourceInfo* resource)
 
     if (resDesc.Height != height || resDesc.Width != width)
     {
-        auto toleranceX = width / 8;
-        auto toleranceY = height / 8;
+        auto toleranceX = width / 20;
+        auto toleranceY = height / 20;
 
         // Extended size check
         if (resource->captureInfo != CaptureInfo::Upscaler &&

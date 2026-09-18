@@ -410,8 +410,8 @@ bool Hudfix_Dx11::CheckResource(Dx11ResourceInfo* resource)
 
     if (desc.Width != width || desc.Height != height)
     {
-        const UINT toleranceX = width / 8;
-        const UINT toleranceY = height / 8;
+        const UINT toleranceX = width / 20;
+        const UINT toleranceY = height / 20;
 
         if (resource->captureInfo != Dx11CaptureInfo::Upscaler &&
             !(Config::Instance()->FGRelaxedResolutionCheck.value_or_default() &&
