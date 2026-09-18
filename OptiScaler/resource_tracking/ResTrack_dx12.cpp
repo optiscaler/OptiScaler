@@ -157,15 +157,17 @@ bool ResTrack_Dx12::CheckResource(ID3D12Resource* resource, ResourceInfo* outInf
         return false;
 
     auto& s = State::Instance();
+    const uint32_t width = s.currentSwapchainDesc.BufferDesc.Width;
+    const uint32_t height = s.currentSwapchainDesc.BufferDesc.Height;
 
-    if (resDesc.Height != s.currentSwapchainDesc.BufferDesc.Height ||
-        resDesc.Width != s.currentSwapchainDesc.BufferDesc.Width)
+    if (resDesc.Height != height || resDesc.Width != width)
     {
+        const auto toleranceX = width / 20;
+        const auto toleranceY = height / 20;
+
         if (!(Config::Instance()->FGRelaxedResolutionCheck.value_or_default() &&
-              resDesc.Height >= s.currentSwapchainDesc.BufferDesc.Height - 32 &&
-              resDesc.Height <= s.currentSwapchainDesc.BufferDesc.Height + 32 &&
-              resDesc.Width >= s.currentSwapchainDesc.BufferDesc.Width - 32 &&
-              resDesc.Width <= s.currentSwapchainDesc.BufferDesc.Width + 32))
+              resDesc.Height >= height - toleranceY && resDesc.Height <= height + toleranceY &&
+              resDesc.Width >= width - toleranceX && resDesc.Width <= width + toleranceX))
         {
             return false;
         }
