@@ -83,6 +83,24 @@ DXGI_FORMAT ResolveBufferFormat(IDXGISwapChain* swapchain, IDXGISwapChain1* swap
 
     return DXGI_FORMAT_UNKNOWN;
 }
+
+bool IsChanged(IDXGISwapChain* swapchain, UINT bufferCount, UINT width, UINT height, DXGI_FORMAT format, UINT flags)
+{
+    if (swapchain == nullptr)
+        return false;
+
+    DXGI_SWAP_CHAIN_DESC desc {};
+    if (FAILED(swapchain->GetDesc(&desc)))
+        return false;
+
+    const UINT resolvedBufferCount = bufferCount != 0 ? bufferCount : desc.BufferCount;
+    const UINT resolvedWidth = width != 0 ? width : desc.BufferDesc.Width;
+    const UINT resolvedHeight = height != 0 ? height : desc.BufferDesc.Height;
+    const DXGI_FORMAT resolvedFormat = format != DXGI_FORMAT_UNKNOWN ? format : desc.BufferDesc.Format;
+
+    return resolvedBufferCount == desc.BufferCount && resolvedWidth == desc.BufferDesc.Width &&
+           resolvedHeight == desc.BufferDesc.Height && resolvedFormat == desc.BufferDesc.Format && flags == desc.Flags;
+}
 } // namespace
 
 Dx11wDx12SC::Dx11wDx12SC(IDXGISwapChain* real, IDXGISwapChain4* fgSC, ID3D11Device* pDevice, HWND hWnd, UINT flags)
@@ -425,6 +443,8 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::ResizeBuffers(UINT BufferCount, UINT Widt
     LOG_DEBUG("Dx11wDx12SC ResizeBuffers: count {}, size {}x{}, format {}, flags {:X}", BufferCount, Width, Height,
               (UINT) NewFormat, SwapChainFlags);
 
+    const bool skipFgResize = IsChanged(_fgSwapChain, BufferCount, Width, Height, NewFormat, SwapChainFlags);
+
     if (!_WaitForCopyQueueIdle())
         LOG_WARN("continuing ResizeBuffers after copy fence wait failure");
 
@@ -436,7 +456,17 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::ResizeBuffers(UINT BufferCount, UINT Widt
 
     HRESULT fgResult = DXGI_ERROR_DEVICE_REMOVED;
     if (SUCCEEDED(realResult) && _fgSwapChain != nullptr)
-        fgResult = _fgSwapChain->ResizeBuffers(BufferCount, Width, Height, NewFormat, SwapChainFlags);
+    {
+        if (skipFgResize)
+        {
+            LOG_DEBUG("Skipping FG ResizeBuffers");
+            fgResult = S_OK;
+        }
+        else
+        {
+            fgResult = _fgSwapChain->ResizeBuffers(BufferCount, Width, Height, NewFormat, SwapChainFlags);
+        }
+    }
 
     LOG_DEBUG("Dx11wDx12SC ResizeBuffers results: real {:X}, fg {:X}", (UINT) realResult, (UINT) fgResult);
 
@@ -634,6 +664,8 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::ResizeBuffers1(UINT BufferCount, UINT Wid
     LOG_DEBUG("Dx11wDx12SC ResizeBuffers1: count {}, size {}x{}, format {}, flags {:X}", BufferCount, Width, Height,
               (UINT) Format, SwapChainFlags);
 
+    const bool skipFgResize = IsChanged(_fgSwapChain, BufferCount, Width, Height, Format, SwapChainFlags);
+
     if (!_WaitForCopyQueueIdle())
         LOG_WARN("continuing ResizeBuffers1 after copy fence wait failure");
 
@@ -648,7 +680,15 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::ResizeBuffers1(UINT BufferCount, UINT Wid
     if (SUCCEEDED(realResult) && _fgSwapChain != nullptr)
     {
         // The game's ppPresentQueue is not valid for the DX12 FG swapchain. Use ResizeBuffers for phase 1.
-        fgResult = _fgSwapChain->ResizeBuffers(BufferCount, Width, Height, Format, SwapChainFlags);
+        if (skipFgResize)
+        {
+            LOG_DEBUG("Skipping FG ResizeBuffers1");
+            fgResult = S_OK;
+        }
+        else
+        {
+            fgResult = _fgSwapChain->ResizeBuffers(BufferCount, Width, Height, Format, SwapChainFlags);
+        }
     }
 
     LOG_DEBUG("Dx11wDx12SC ResizeBuffers1 results: real {:X}, fg {:X}", (UINT) realResult, (UINT) fgResult);
