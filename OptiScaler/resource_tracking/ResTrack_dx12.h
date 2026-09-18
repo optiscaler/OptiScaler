@@ -547,7 +547,7 @@ class ResTrack_Dx12
     static void HookToQueue(ID3D12Device* InDevice);
     static void HookResource(ID3D12Device* InDevice);
 
-    static bool CheckResource(ID3D12Resource* resource);
+    static bool CheckResource(ID3D12Resource* resource, ResourceInfo* outInfo = nullptr);
 
     static bool CheckForRealObject(const std::string functionName, IUnknown* pObject, IUnknown** ppRealObject);
 
@@ -567,8 +567,6 @@ class ResTrack_Dx12
     static std::shared_ptr<HeapInfo> GetHeapByCpuHandle(SIZE_T cpuHandle);
     static std::shared_ptr<HeapInfo> GetHeapByGpuHandleGR(SIZE_T gpuHandle);
     static std::shared_ptr<HeapInfo> GetHeapByGpuHandleCR(SIZE_T gpuHandle);
-
-    static void FillResourceInfo(ID3D12Resource* resource, ResourceInfo* info);
 
     // Sharding
     inline static constexpr size_t SHARD_COUNT = 16;
