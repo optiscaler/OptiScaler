@@ -6,6 +6,7 @@
 
 #include <set>
 #include <dxgi.h>
+#include <atomic>
 #include <d3d12.h>
 #include <shared_mutex>
 
@@ -61,10 +62,10 @@ class Hudfix_Dx12
 {
   private:
     // Last upscaled frame
-    inline static UINT64 _upscaleCounter = 0;
+    inline static std::atomic<UINT64> _upscaleCounter { 0 };
 
     // Last presented frame
-    inline static UINT64 _fgCounter = 0;
+    inline static std::atomic<UINT64> _fgCounter { 0 };
 
     // Limit until calling FG without hudless
     inline static double _lastDiffTime = 0.0;
@@ -72,7 +73,7 @@ class Hudfix_Dx12
     inline static double _targetTime = 0.0;
     inline static double _frameTime = 0.0;
 
-    inline static bool _skipTracking = false;
+    inline static std::atomic<bool> _skipTracking { false };
 
     // Buffer for Format Transfer
     inline static ID3D12Resource* _captureBuffer[BUFFER_COUNT] = { nullptr, nullptr, nullptr, nullptr };
@@ -90,7 +91,7 @@ class Hudfix_Dx12
     inline static INT64 _captureCounter[BUFFER_COUNT] = { 0, 0, 0, 0 };
     inline static FT_Dx12* _formatTransfer[BUFFER_COUNT] = { nullptr, nullptr, nullptr, nullptr };
 
-    inline static bool _skipHudlessChecks = false;
+    inline static std::atomic<bool> _skipHudlessChecks { false };
 
     static bool CreateBufferResource(ID3D12Device* InDevice, ResourceInfo* InSource, D3D12_RESOURCE_STATES InState,
                                      ID3D12Resource** OutResource);
@@ -101,11 +102,9 @@ class Hudfix_Dx12
                                 D3D12_RESOURCE_STATES InBeforeState, D3D12_RESOURCE_STATES InAfterState);
 
     // Check _captureCounter for current frame
-    static bool CheckCapture();
+    static bool CheckCapture(int fIndex);
 
-    static void HudlessFound(ID3D12GraphicsCommandList* cmdList);
-
-    static int GetIndex();
+    static void HudlessFound(UINT64 upscaleCounter);
 
   public:
     // Trig for upscaling start
@@ -140,6 +139,6 @@ class Hudfix_Dx12
     // Reset frame counters
     static void ResetCounters();
 
-    static bool GetSkipStatus() { return _skipTracking; }
-    static void SetSkipStatus(bool status) { _skipTracking = status; }
+    static bool GetSkipStatus() { return _skipTracking.load(std::memory_order_acquire); }
+    static void SetSkipStatus(bool status) { _skipTracking.store(status, std::memory_order_release); }
 };
