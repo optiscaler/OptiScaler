@@ -7,6 +7,7 @@
 #include <nvapi/fakenvapi.h>
 #include <hooks/Reflex_Hooks.h>
 #include <hooks/D3D12_Hooks.h>
+#include <with_dx12/dx11_with_dx12_sync.h>
 
 #include <menu/menu_overlay_dx.h>
 
@@ -277,6 +278,14 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
             return pSwapChain->Present(SyncInterval, Flags);
         else
             return ((IDXGISwapChain1*) pSwapChain)->Present1(SyncInterval, Flags, pPresentParameters);
+    }
+
+    // This lock will delay/prevent release of buffers while present is ongoing
+    std::shared_lock<std::shared_mutex> dx11wDx12PresentLock(Dx11wDx12Sync::PresentResizeMutex(), std::defer_lock);
+    if (State::Instance().swapchainInteropApi == SwapchainInteropApi::Dx11wDx12 &&
+        State::Instance().activeFgOutput == FGOutput::XeFG)
+    {
+        dx11wDx12PresentLock.lock();
     }
 
     LOG_DEBUG("{}", _frameCounter);
