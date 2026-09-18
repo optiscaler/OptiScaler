@@ -276,7 +276,7 @@ void UpscalerInputsDx11wDx12::UpscaleStart(NVSDK_NGX_Parameter* InParameters, IF
                     setResource.width = feature->RenderWidth();
                     setResource.height = feature->RenderHeight();
                     setResource.state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-                    setResource.validity = FG_ResourceValidity::JustTrackCmdlist;
+                    setResource.validity = FG_ResourceValidity::UntilPresent;
 
                     fg->SetResource(&setResource);
                     done = true;

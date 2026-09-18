@@ -1098,7 +1098,7 @@ ffxReturnCode_t ffxDispatch_Dx12FG(ffxContext* context, ffxDispatchDescHeader* d
             if (Config::Instance()->FGDepthValidNow.value_or_default())
                 depth.validity = FG_ResourceValidity::ValidNow;
             else
-                depth.validity = FG_ResourceValidity::JustTrackCmdlist;
+                depth.validity = FG_ResourceValidity::UntilPresent;
 
             depth.width = cdDesc->renderSize.width; // cdDesc->depth.description.height;
             depth.frameIndex = fIndex;
@@ -1132,7 +1132,7 @@ ffxReturnCode_t ffxDispatch_Dx12FG(ffxContext* context, ffxDispatchDescHeader* d
             if (Config::Instance()->FGVelocityValidNow.value_or_default())
                 velocity.validity = FG_ResourceValidity::ValidNow;
             else
-                velocity.validity = FG_ResourceValidity::JustTrackCmdlist;
+                velocity.validity = FG_ResourceValidity::UntilPresent;
 
             velocity.width = width; // cdDesc->motionVectors.description.height;
             velocity.frameIndex = fIndex;
@@ -1190,7 +1190,7 @@ ffxReturnCode_t ffxDispatch_Dx12FG(ffxContext* context, ffxDispatchDescHeader* d
             if (Config::Instance()->FGDepthValidNow.value_or_default())
                 depth.validity = FG_ResourceValidity::ValidNow;
             else
-                depth.validity = FG_ResourceValidity::JustTrackCmdlist;
+                depth.validity = FG_ResourceValidity::UntilPresent;
 
             depth.width = cdDesc->renderSize.width; // cdDesc->depth.description.height;
             depth.frameIndex = fIndex;
@@ -1224,7 +1224,7 @@ ffxReturnCode_t ffxDispatch_Dx12FG(ffxContext* context, ffxDispatchDescHeader* d
             if (Config::Instance()->FGVelocityValidNow.value_or_default())
                 velocity.validity = FG_ResourceValidity::ValidNow;
             else
-                velocity.validity = FG_ResourceValidity::JustTrackCmdlist;
+                velocity.validity = FG_ResourceValidity::UntilPresent;
 
             velocity.width = width; // cdDesc->motionVectors.description.height;
             velocity.frameIndex = fIndex;

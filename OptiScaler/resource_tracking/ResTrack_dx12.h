@@ -484,9 +484,6 @@ class ResTrack_Dx12
     inline static bool _presentDone = true;
     inline static bool _useShards = false;
 
-    inline static std::mutex _resourceCommandListMutex;
-    inline static std::unordered_map<FG_ResourceType, ID3D12GraphicsCommandList*> _resourceCommandList[BUFFER_COUNT];
-
     inline static ULONG64 _lastHudlessFrame = 0;
     inline static std::mutex _hudlessMutex;
     inline static void* _hudlessMutexQueue = nullptr;
@@ -521,10 +518,6 @@ class ResTrack_Dx12
     static void hkDispatch(ID3D12GraphicsCommandList* This, UINT ThreadGroupCountX, UINT ThreadGroupCountY,
                            UINT ThreadGroupCountZ);
 
-    static void hkExecuteBundle(ID3D12GraphicsCommandList* This, ID3D12GraphicsCommandList* pCommandList);
-
-    static HRESULT hkClose(ID3D12GraphicsCommandList* This);
-
     static void hkCreateRenderTargetView(ID3D12Device* This, ID3D12Resource* pResource,
                                          D3D12_RENDER_TARGET_VIEW_DESC* pDesc,
                                          D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor);
@@ -535,16 +528,12 @@ class ResTrack_Dx12
                                             ID3D12Resource* pCounterResource, D3D12_UNORDERED_ACCESS_VIEW_DESC* pDesc,
                                             D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor);
 
-    static void hkExecuteCommandLists(ID3D12CommandQueue* This, UINT NumCommandLists,
-                                      ID3D12CommandList* const* ppCommandLists);
-
     static HRESULT hkCreateDescriptorHeap(ID3D12Device* This, D3D12_DESCRIPTOR_HEAP_DESC* pDescriptorHeapDesc,
                                           REFIID riid, void** ppvHeap);
 
     static ULONG hkRelease(ID3D12Resource* This);
 
     static void HookCommandList(ID3D12Device* InDevice);
-    static void HookToQueue(ID3D12Device* InDevice);
     static void HookResource(ID3D12Device* InDevice);
 
     static bool CheckResource(ID3D12Resource* resource, ResourceInfo* outInfo = nullptr);
@@ -583,5 +572,4 @@ class ResTrack_Dx12
     static void ReleaseHooks();
     static void ReleaseDeviceHooks();
     static void ClearPossibleHudless();
-    static void SetResourceCmdList(FG_ResourceType type, ID3D12GraphicsCommandList* cmdList);
 };

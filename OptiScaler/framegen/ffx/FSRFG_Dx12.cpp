@@ -1586,11 +1586,6 @@ bool FSRFG_Dx12::SetResource(Dx12Resource* inputResource)
 
     SetResourceReady(type, fIndex);
 
-    // if (inputResource->validity == FG_ResourceValidity::UntilPresent)
-    //     SetResourceReady(type, fIndex);
-    // else
-    //     ResTrack_Dx12::SetResourceCmdList(type, inputResource->cmdList);
-
     LOG_TRACE("_frameResources[{}][{}]: {:X}", fIndex, magic_enum::enum_name(type), (size_t) fResource->GetResource());
     return true;
 }
