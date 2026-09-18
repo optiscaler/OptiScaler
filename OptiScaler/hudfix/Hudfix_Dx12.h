@@ -9,6 +9,7 @@
 #include <atomic>
 #include <d3d12.h>
 #include <shared_mutex>
+#include <vector>
 
 enum ResourceType
 {
@@ -78,6 +79,18 @@ class Hudfix_Dx12
     // Buffer for Format Transfer
     inline static ID3D12Resource* _captureBuffer[BUFFER_COUNT] = { nullptr, nullptr, nullptr, nullptr };
 
+    struct CaptureRemoveInfo
+    {
+        ID3D12Fence* fence = nullptr;
+        UINT64 fenceValue = 0;
+        std::vector<ID3D12Resource*> resources;
+    };
+
+    inline static std::atomic<bool> _captureRemovalActive { false };
+    inline static std::mutex _captureRemoveMutex;
+    inline static std::vector<ID3D12Resource*> _pendingCaptureRemovals;
+    inline static std::vector<CaptureRemoveInfo> _captureRemoveInfos;
+
     // used hudless list
     inline static ankerl::unordered_dense::map<ID3D12Resource*, HudlessInfo> _hudlessList;
 
@@ -92,6 +105,9 @@ class Hudfix_Dx12
     inline static FT_Dx12* _formatTransfer[BUFFER_COUNT] = { nullptr, nullptr, nullptr, nullptr };
 
     inline static std::atomic<bool> _skipHudlessChecks { false };
+
+    static void RemoveCaptureBuffer(ID3D12Resource** resource);
+    static void ProcessPendingCaptureRemovals();
 
     static bool CreateBufferResource(ID3D12Device* InDevice, ResourceInfo* InSource, D3D12_RESOURCE_STATES InState,
                                      ID3D12Resource** OutResource);
