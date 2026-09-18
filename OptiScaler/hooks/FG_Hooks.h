@@ -56,6 +56,7 @@ class FGHooks
     inline static bool _skipPresent1 = false;
     inline static UINT _lastPresentFlags = 0;
     inline static double _lastFGFrameTime = -1.0;
+    inline static std::shared_mutex _resizeMutex;
 
     static void HookFGSwapchain(IDXGISwapChain* pSwapChain);
 
