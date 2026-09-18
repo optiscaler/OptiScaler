@@ -7,6 +7,16 @@
 
 #include <framegen/IFGFeature_Dx12.h>
 
+namespace
+{
+struct ScopedBoolFlag
+{
+    bool& flag;
+    explicit ScopedBoolFlag(bool& value) : flag(value) { flag = true; }
+    ~ScopedBoolFlag() { flag = false; }
+};
+} // namespace
+
 inline static int GetFormatGroup(DXGI_FORMAT format)
 {
     switch (format)
@@ -480,6 +490,23 @@ bool Hudfix_Dx12::IsResourceCheckActive()
 
 bool Hudfix_Dx12::SkipHudlessChecks() { return _skipHudlessChecks; }
 
+void Hudfix_Dx12::RemoveResourceFromTracking(ID3D12Resource* resource)
+{
+    if (resource == nullptr)
+        return;
+
+    std::unique_lock<std::mutex> checkLock(_checkMutex, std::defer_lock);
+    if (!_checkMutexOwned)
+        checkLock.lock();
+
+    std::lock_guard<std::mutex> captureLock(_captureMutex);
+
+    _hudlessList.erase(resource);
+    State::Instance().capturedHudlesses.erase(resource);
+    _captureList.erase(resource);
+    State::Instance().fgCapturedResourceCount = _captureList.size();
+}
+
 bool Hudfix_Dx12::CheckForHudless(ID3D12GraphicsCommandList* cmdList, ResourceInfo* resource,
                                   D3D12_RESOURCE_STATES state, bool ignoreBlocked)
 {
@@ -501,6 +528,7 @@ bool Hudfix_Dx12::CheckForHudless(ID3D12GraphicsCommandList* cmdList, ResourceIn
 
         LOG_DEBUG("Waiting _checkMutex");
         std::lock_guard<std::mutex> lock(_checkMutex);
+        ScopedBoolFlag checkOwnership(_checkMutexOwned);
 
         CapturedHudlessInfo* capturedHudlessInfo = nullptr;
         auto it = s.capturedHudlesses.find(resource->buffer);

@@ -86,6 +86,7 @@ class Hudfix_Dx12
     inline static std::mutex _checkMutex;
     inline static std::mutex _captureMutex;
     inline static std::mutex _counterMutex;
+    inline static thread_local bool _checkMutexOwned = false;
     inline static INT64 _captureCounter[BUFFER_COUNT] = { 0, 0, 0, 0 };
     inline static FT_Dx12* _formatTransfer[BUFFER_COUNT] = { nullptr, nullptr, nullptr, nullptr };
 
@@ -133,6 +134,8 @@ class Hudfix_Dx12
                                 bool ignoreBlocked = false);
 
     static bool CheckResource(ResourceInfo* resource);
+
+    static void RemoveResourceFromTracking(ID3D12Resource* resource);
 
     // Reset frame counters
     static void ResetCounters();

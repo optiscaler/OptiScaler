@@ -850,6 +850,7 @@ ULONG ResTrack_Dx12::hkRelease(ID3D12Resource* This)
         return o_Release(This);
 
     std::vector<TrackedResourceSlot> toClean;
+    bool finalRelease = false;
     {
         std::lock_guard lock(_trackedResourcesMutex);
 
@@ -858,15 +859,18 @@ ULONG ResTrack_Dx12::hkRelease(ID3D12Resource* This)
 
         if (refCount <= 1)
         {
+            finalRelease = true;
+
             if (auto it = _trackedResources.find(This); it != _trackedResources.end())
             {
                 toClean = std::move(it->second);
                 _trackedResources.erase(it);
             }
-
-            State::Instance().capturedHudlesses.erase(This);
         }
     }
+
+    if (finalRelease)
+        Hudfix_Dx12::RemoveResourceFromTracking(This);
 
     // Clean descriptor slots outside the reverse-index lock.
     for (const auto& slot : toClean)
