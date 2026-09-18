@@ -141,6 +141,38 @@ inline SpinLock _trackedResourcesMutex;
 inline std::mutex _trackedResourcesMutex;
 #endif
 
+// Smaller info for descriptor tracking
+struct DescriptorResourceInfo
+{
+    ID3D12Resource* buffer = nullptr;
+    UINT64 width = 0;
+    UINT height = 0;
+    DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+    D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE;
+    ResourceType type = SRV;
+
+    void Store(const ResourceInfo& source) noexcept
+    {
+        buffer = source.buffer;
+        width = source.width;
+        height = source.height;
+        format = source.format;
+        flags = source.flags;
+        type = source.type;
+    }
+
+    void Load(ResourceInfo& target) const noexcept
+    {
+        target = {};
+        target.buffer = buffer;
+        target.width = width;
+        target.height = height;
+        target.format = format;
+        target.flags = flags;
+        target.type = type;
+    }
+};
+
 struct HeapInfo : public std::enable_shared_from_this<HeapInfo>
 {
     // Avoiding one lock object per descriptor
@@ -157,7 +189,7 @@ struct HeapInfo : public std::enable_shared_from_this<HeapInfo>
     UINT numDescriptors = 0;
     UINT increment = 0;
     UINT type = 0;
-    std::shared_ptr<ResourceInfo[]> info;
+    std::shared_ptr<DescriptorResourceInfo[]> info;
     UINT lastOffset = 0;
     std::atomic<bool> active { true };
     std::atomic<uint64_t> version { 0 };
@@ -165,13 +197,10 @@ struct HeapInfo : public std::enable_shared_from_this<HeapInfo>
     HeapInfo(ID3D12DescriptorHeap* heap, SIZE_T cpuStart, SIZE_T cpuEnd, SIZE_T gpuStart, SIZE_T gpuEnd,
              UINT numResources, UINT increment, UINT type)
         : heap(heap), cpuStart(cpuStart), cpuEnd(cpuEnd), gpuStart(gpuStart), gpuEnd(gpuEnd),
-          numDescriptors(numResources), increment(increment), type(type), info(new ResourceInfo[numResources])
+          numDescriptors(numResources), increment(increment), type(type), info(new DescriptorResourceInfo[numResources])
     {
         static std::atomic<uint64_t> globalHeapVersion { 1 };
         version.store(globalHeapVersion.fetch_add(1, std::memory_order_relaxed), std::memory_order_relaxed);
-
-        for (size_t i = 0; i < numDescriptors; i++)
-            info[i].buffer = nullptr;
     }
 
     bool GetCpuIndex(SIZE_T cpuHandle, UINT& index) const
@@ -256,7 +285,7 @@ struct HeapInfo : public std::enable_shared_from_this<HeapInfo>
         if (!active.load(std::memory_order_acquire) || info[index].buffer == nullptr)
             return false;
 
-        outInfo = info[index];
+        info[index].Load(outInfo);
 
 #ifdef DEBUG_TRACKING
         TestResource(&outInfo);
@@ -278,7 +307,7 @@ struct HeapInfo : public std::enable_shared_from_this<HeapInfo>
         if (!active.load(std::memory_order_acquire) || info[index].buffer == nullptr)
             return false;
 
-        outInfo = info[index];
+        info[index].Load(outInfo);
 
 #ifdef DEBUG_TRACKING
         TestResource(&outInfo);
@@ -307,12 +336,12 @@ struct HeapInfo : public std::enable_shared_from_this<HeapInfo>
         if (info[index].buffer != setInfo.buffer)
         {
             DetachFromOldResourceLocked(index);
-            info[index] = setInfo;
+            info[index].Store(setInfo);
             AttachToNewResourceLocked(index);
         }
         else
         {
-            info[index] = setInfo;
+            info[index].Store(setInfo);
         }
     }
 
@@ -336,12 +365,12 @@ struct HeapInfo : public std::enable_shared_from_this<HeapInfo>
         if (info[index].buffer != setInfo.buffer)
         {
             DetachFromOldResourceLocked(index);
-            info[index] = setInfo;
+            info[index].Store(setInfo);
             AttachToNewResourceLocked(index);
         }
         else
         {
-            info[index] = setInfo;
+            info[index].Store(setInfo);
         }
     }
 
@@ -387,7 +416,6 @@ struct HeapInfo : public std::enable_shared_from_this<HeapInfo>
             return;
 
         info[index].buffer = nullptr;
-        info[index].lastUsedFrame = 0;
     }
 
     bool DeactivateAndClear()
@@ -419,7 +447,6 @@ struct HeapInfo : public std::enable_shared_from_this<HeapInfo>
             }
 
             info[index].buffer = nullptr;
-            info[index].lastUsedFrame = 0;
         }
 
         info.reset();
@@ -445,7 +472,6 @@ struct HeapInfo : public std::enable_shared_from_this<HeapInfo>
         }
 
         info[index].buffer = nullptr;
-        info[index].lastUsedFrame = 0;
     }
 };
 
