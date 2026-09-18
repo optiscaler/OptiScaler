@@ -84,7 +84,7 @@ DXGI_FORMAT ResolveBufferFormat(IDXGISwapChain* swapchain, IDXGISwapChain1* swap
     return DXGI_FORMAT_UNKNOWN;
 }
 
-bool IsChanged(IDXGISwapChain* swapchain, UINT bufferCount, UINT width, UINT height, DXGI_FORMAT format, UINT flags)
+bool IsSame(IDXGISwapChain* swapchain, UINT bufferCount, UINT width, UINT height, DXGI_FORMAT format, UINT flags)
 {
     if (swapchain == nullptr)
         return false;
@@ -443,7 +443,7 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::ResizeBuffers(UINT BufferCount, UINT Widt
     LOG_DEBUG("Dx11wDx12SC ResizeBuffers: count {}, size {}x{}, format {}, flags {:X}", BufferCount, Width, Height,
               (UINT) NewFormat, SwapChainFlags);
 
-    const bool skipFgResize = IsChanged(_fgSwapChain, BufferCount, Width, Height, NewFormat, SwapChainFlags);
+    const bool skipFgResize = IsSame(_fgSwapChain, BufferCount, Width, Height, NewFormat, SwapChainFlags);
 
     if (!_WaitForCopyQueueIdle())
         LOG_WARN("continuing ResizeBuffers after copy fence wait failure");
@@ -664,7 +664,7 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::ResizeBuffers1(UINT BufferCount, UINT Wid
     LOG_DEBUG("Dx11wDx12SC ResizeBuffers1: count {}, size {}x{}, format {}, flags {:X}", BufferCount, Width, Height,
               (UINT) Format, SwapChainFlags);
 
-    const bool skipFgResize = IsChanged(_fgSwapChain, BufferCount, Width, Height, Format, SwapChainFlags);
+    const bool skipFgResize = IsSame(_fgSwapChain, BufferCount, Width, Height, Format, SwapChainFlags);
 
     if (!_WaitForCopyQueueIdle())
         LOG_WARN("continuing ResizeBuffers1 after copy fence wait failure");
