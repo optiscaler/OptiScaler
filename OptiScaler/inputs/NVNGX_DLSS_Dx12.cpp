@@ -1047,11 +1047,11 @@ static NVSDK_NGX_Result TryEvaluateOptiFeature(ID3D12GraphicsCommandList* InCmdL
     // Evaluate the feature
     bool evalSuccess = false;
     {
-        // Resource tracking
-        UpscalerInputsDx12::UpscaleEnd(InCmdList, InParameters, feature);
-
         ScopedSkipHeapCapture skip {};
         evalSuccess = feature->Evaluate(InCmdList, InParameters);
+
+        // Resource tracking
+        UpscalerInputsDx12::UpscaleEnd(InCmdList, InParameters, feature);
     }
 
     if (!evalSuccess)
