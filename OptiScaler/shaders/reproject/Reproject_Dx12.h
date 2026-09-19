@@ -11,7 +11,7 @@
 
 #define Reproject_NUM_OF_HEAPS 2
 
-struct alignas(256) ReprojectionParams
+struct alignas(16) ReprojectionParams
 {
     float UiDiffThreshold;
     uint32_t ScreenWidth;
@@ -22,6 +22,10 @@ struct alignas(256) ReprojectionParams
     float TanHalfFovY;
     float InvTanHalfFovX;
     float InvTanHalfFovY;
+
+    float DepthCutoff;
+    uint32_t InvertedDepth;
+    float Pad0[2];
 
     // Inverse reprojection rotation matrix
     DirectX::XMFLOAT4 ReprojectionRow0;

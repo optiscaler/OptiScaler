@@ -353,6 +353,9 @@ void Reprojection_Dx12::FilloutStruct(ReprojectionParams& params, float diffThre
     params.ScreenWidth = resX;
     params.ScreenHeight = resY;
 
+    params.DepthCutoff = Config::Instance()->ReprojectionDepthCutoff.value_or_default();
+    params.InvertedDepth = _constants.flags[FG_Flags::InvertedDepth];
+
     auto fillMode = Config::Instance()->ReprojectionFillMode.value_or_default();
     if (fillMode == ReprojectionFill::Black)
         params.EdgeMode = 0;
@@ -360,6 +363,8 @@ void Reprojection_Dx12::FilloutStruct(ReprojectionParams& params, float diffThre
         params.EdgeMode = 1;
     else if (fillMode == ReprojectionFill::Dithering)
         params.EdgeMode = 2;
+    else if (fillMode == ReprojectionFill::Noise)
+        params.EdgeMode = 3;
 
     const float tanHalfFovY = std::tan(_cameraVFov[currIndex] * 0.5f);
     const float pixelAngle = 2.0f * std::atan(tanHalfFovY / resY);

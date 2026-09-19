@@ -10,11 +10,19 @@ cbuffer Params : register(b0)
     float InvTanHalfFovX;
     float InvTanHalfFovY;
 
-    row_major float3x3 ReprojectionMatrix;
+    float DepthCutoff;
+    uint InvertedDepth;
+    float2 Pad0;
+    
+    float4 ReprojectionMatrixRow0;
+    float4 ReprojectionMatrixRow1;
+    float4 ReprojectionMatrixRow2;
 };
 
 Texture2D<float3> Hudless : register(t0);
 Texture2D<float3> PresentCopy : register(t1);
+Texture2D<float> Depth : register(t2);
+
 RWTexture2D<float3> Present : register(u0);
 SamplerState LinearClampSampler : register(s0);
 
@@ -64,7 +72,11 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     float3 ray = float3(ndc * float2(TanHalfFovX, TanHalfFovY), 1.0f);
 
     // Reproject Ray using matrix multiplication
-    float3 sourceRay = mul(ReprojectionMatrix, ray);
+    float3 sourceRay = float3(
+        dot(ReprojectionMatrixRow0.xyz, ray),
+        dot(ReprojectionMatrixRow1.xyz, ray),
+        dot(ReprojectionMatrixRow2.xyz, ray)
+    );
 
     // Perspective Divide & Source UV Calculation
     float2 sourceUV = 0.0f;
@@ -78,6 +90,7 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
 
     // Bounds & Reprojection
     bool inside = isValidDepth && all(sourceUV >= 0.0f) && all(sourceUV <= 1.0f);
+    bool modeWithBackground = EdgeMode == 2 || EdgeMode == 3;
 
     float3 reprojectedGame = 0.0f;
     if (inside)
@@ -88,13 +101,13 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     {
         reprojectedGame = Hudless.SampleLevel(LinearClampSampler, saturate(sourceUV), 0.0f);
     }
-    else if (EdgeMode == 2)
+    else if (modeWithBackground)
     {
         float3 background = Hudless.Load(int3(pixelCoord, 0));
         reprojectedGame = inside ? lerp(background, reprojectedGame, 1.0f) : background;
     }
 
-    if (EdgeMode == 2 && inside)
+    if (modeWithBackground && inside)
     {
         const float ditherWidthPx = ScreenHeight / 16.0f;
 
@@ -107,8 +120,12 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
         float edgeDistancePx = min(min(distLeft, distRight), min(distTop, distBottom));
         float projectedProbability = smoothstep(0.0f, ditherWidthPx, edgeDistancePx);
         
-        // float dither = Bayer4x4(pixelCoord);
-        float dither = HashNoise(pixelCoord);
+        float dither = 0.0f;
+        if (EdgeMode == 2)
+            dither = Bayer4x4(pixelCoord);
+        else if (EdgeMode == 3)
+            dither = HashNoise(pixelCoord);
+        
         float3 background = Hudless.Load(int3(pixelCoord, 0));
 
         reprojectedGame = dither < projectedProbability ? reprojectedGame : background;
