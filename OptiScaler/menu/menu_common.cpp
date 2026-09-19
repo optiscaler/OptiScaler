@@ -4290,16 +4290,23 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             ShowHelpMarker("Enable reprojection");
 
             ImGui::TableNextColumn();
+            // clang-format off
             static std::vector<MenuOption<ReprojectionFill>> fillModes = {
                 { ReprojectionFill::StrechEdge, "Strech edge" },
                 { ReprojectionFill::Black, "Black" },
-                { ReprojectionFill::Dithering, "Dithering" }
+                { ReprojectionFill::Dithering, "Dithering" },
+                { ReprojectionFill::Noise, "Noise" }
             };
+            // clang-format on
 
             PopulateCombo("Edge fill mode", config->ReprojectionFillMode, fillModes);
 
             ImGui::EndTable();
         }
+
+        float cutoff = config->ReprojectionDepthCutoff.value_or_default();
+        if (ImGui::SliderFloat("Depth cutoff", &cutoff, 0.0f, 1.0f, "%.10f"))
+            config->ReprojectionDepthCutoff = cutoff;
     }
 
     // OptiFG

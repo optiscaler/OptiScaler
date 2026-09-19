@@ -149,10 +149,13 @@ bool CreateConstantsBuffer(ID3D12Device* device, ID3D12Resource* constantBuffer,
     memcpy(pCBDataBegin, &constants, sizeof(constants));
     constantBuffer->Unmap(0, nullptr);
 
+    constexpr UINT alignTo = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1;
+    UINT alignedSize = (sizeof(constants) + alignTo) & ~alignTo;
+
     // Create CBV for Constants
     D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
     cbvDesc.BufferLocation = constantBuffer->GetGPUVirtualAddress();
-    cbvDesc.SizeInBytes = sizeof(constants);
+    cbvDesc.SizeInBytes = alignedSize;
 
     device->CreateConstantBufferView(&cbvDesc, destDescriptor);
 

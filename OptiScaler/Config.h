@@ -226,6 +226,7 @@ enum class ReprojectionFill : uint32_t
     Black,
     StrechEdge,
     Dithering,
+    Noise
 };
 
 template <> struct EnumConfig<ReprojectionFill>
@@ -235,7 +236,8 @@ template <> struct EnumConfig<ReprojectionFill>
     static constexpr std::pair<ReprojectionFill, std::string_view> mapping[] = {
         { ReprojectionFill::StrechEdge, "strech" },
         { ReprojectionFill::Black, "black" },
-        { ReprojectionFill::Dithering, "dithering" }
+        { ReprojectionFill::Dithering, "dithering" },
+        { ReprojectionFill::Noise, "noise" }
     };
 };
 
@@ -630,6 +632,7 @@ class Config
 
     // Reprojection
     CustomOptional<ReprojectionFill> ReprojectionFillMode { ReprojectionFill::StrechEdge };
+    CustomOptional<float> ReprojectionDepthCutoff { 0.1f };
 
     // As per
     // https://github.com/artur-graniszewski/dlss-enabler-main/blob/a92464d468eb0d91ae17befa66c6bf6229f20b9f/Utils/DlssgProxy.cpp#L1033
