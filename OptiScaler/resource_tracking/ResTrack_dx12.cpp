@@ -162,19 +162,15 @@ bool ResTrack_Dx12::CheckResource(ID3D12Resource* resource, ResourceInfo* outInf
 
     if (resDesc.Height != height || resDesc.Width != width)
     {
+        // Need to make these tolarances global
         const auto toleranceX = width / 20;
         const auto toleranceY = height / 20;
 
-        if (!(Config::Instance()->FGRelaxedResolutionCheck.value_or_default() &&
-              resDesc.Height >= height - toleranceY && resDesc.Height <= height + toleranceY &&
+        if (!(resDesc.Height >= height - toleranceY && resDesc.Height <= height + toleranceY &&
               resDesc.Width >= width - toleranceX && resDesc.Width <= width + toleranceX))
         {
             return false;
         }
-
-        // LOG_TRACK("Resource: {}x{} ({}), Swapchain: {}x{} ({}), Relaxed Result: {}", resDesc.Width, resDesc.Height,
-        //           (UINT) resDesc.Format, scDesc.BufferDesc.Width, scDesc.BufferDesc.Height,
-        //           (UINT) scDesc.BufferDesc.Format, result);
     }
 
     if (outInfo != nullptr)
@@ -418,6 +414,26 @@ std::shared_ptr<HeapInfo> ResTrack_Dx12::GetHeapByGpuHandleCR(SIZE_T gpuHandle)
 
 #pragma region Hudless methods
 
+static bool IsDescriptorEnabled(ResourceType type)
+{
+    auto* config = Config::Instance();
+
+    switch (type)
+    {
+    case RTV:
+        return !config->FGHudfixDisableRTV.value_or_default();
+
+    case SRV:
+        return !config->FGHudfixDisableSRV.value_or_default();
+
+    case UAV:
+        return !config->FGHudfixDisableUAV.value_or_default();
+
+    default:
+        return false;
+    }
+}
+
 bool ResTrack_Dx12::IsHudFixActive()
 {
     if (!Config::Instance()->FGEnabled.value_or_default() || !Config::Instance()->FGHUDFix.value_or_default())
@@ -489,9 +505,6 @@ void ResTrack_Dx12::hkCreateRenderTargetView(ID3D12Device* This, ID3D12Resource*
 
     o_CreateRenderTargetView(This, pResource, pDesc, DestDescriptor);
 
-    if (Config::Instance()->FGHudfixDisableRTV.value_or_default())
-        return;
-
     ResourceInfo resInfo {};
     if (pResource == nullptr || !CheckResource(pResource, &resInfo))
     {
@@ -542,9 +555,6 @@ void ResTrack_Dx12::hkCreateShaderResourceView(ID3D12Device* This, ID3D12Resourc
 
     o_CreateShaderResourceView(This, pResource, pDesc, DestDescriptor);
 
-    if (Config::Instance()->FGHudfixDisableSRV.value_or_default())
-        return;
-
     ResourceInfo resInfo {};
     if (pResource == nullptr || !CheckResource(pResource, &resInfo))
     {
@@ -594,9 +604,6 @@ void ResTrack_Dx12::hkCreateUnorderedAccessView(ID3D12Device* This, ID3D12Resour
     }
 
     o_CreateUnorderedAccessView(This, pResource, pCounterResource, pDesc, DestDescriptor);
-
-    if (Config::Instance()->FGHudfixDisableUAV.value_or_default())
-        return;
 
     ResourceInfo resInfo {};
     if (pResource == nullptr || !CheckResource(pResource, &resInfo))
@@ -981,6 +988,12 @@ void ResTrack_Dx12::hkSetGraphicsRootDescriptorTable(ID3D12GraphicsCommandList* 
         return;
     }
 
+    if (!IsDescriptorEnabled(capturedBuffer.type))
+    {
+        o_SetGraphicsRootDescriptorTable(This, RootParameterIndex, BaseDescriptor);
+        return;
+    }
+
     LOG_DEBUG_ONLY("CommandList: {:X}, Resource: {:X}", (size_t) This, (size_t) capturedBuffer.buffer);
 
     // Only proceed with tracking if we have a valid buffer
@@ -1097,6 +1110,9 @@ void ResTrack_Dx12::hkOMSetRenderTargets(ID3D12GraphicsCommandList* This, UINT N
             continue;
         }
 
+        if (!IsDescriptorEnabled(capturedBuffer.type))
+            continue;
+
         // Valid resource found, update state
         capturedBuffer.state = D3D12_RESOURCE_STATE_RENDER_TARGET;
         capturedBuffer.captureInfo = CaptureInfo::OMSetRTV;
@@ -1184,6 +1200,12 @@ void ResTrack_Dx12::hkSetComputeRootDescriptorTable(ID3D12GraphicsCommandList* T
     {
         LOG_DEBUG_ONLY("No resource at RootParameterIndex: {}, CommandList: {:X}, gpuHandle: {:X}", RootParameterIndex,
                        (SIZE_T) This, BaseDescriptor.ptr);
+        o_SetComputeRootDescriptorTable(This, RootParameterIndex, BaseDescriptor);
+        return;
+    }
+
+    if (!IsDescriptorEnabled(capturedBuffer.type))
+    {
         o_SetComputeRootDescriptorTable(This, RootParameterIndex, BaseDescriptor);
         return;
     }

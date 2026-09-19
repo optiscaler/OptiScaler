@@ -135,11 +135,7 @@ struct TrackedResourceSlot
 };
 
 inline ankerl::unordered_dense::map<ID3D12Resource*, std::vector<TrackedResourceSlot>> _trackedResources;
-#ifdef USE_SPINLOCK_MUTEX
-inline SpinLock _trackedResourcesMutex;
-#else
 inline std::mutex _trackedResourcesMutex;
-#endif
 
 // Smaller info for descriptor tracking
 struct DescriptorResourceInfo
@@ -249,8 +245,6 @@ struct HeapInfo : public std::enable_shared_from_this<HeapInfo>
         vec.erase(std::remove_if(vec.begin(), vec.end(), [currentVersion, index](const TrackedResourceSlot& slot)
                                  { return slot.heapVersion == currentVersion && slot.index == index; }),
                   vec.end());
-        if (vec.empty())
-            _trackedResources.erase(it);
     }
 
     void AttachToNewResourceLocked(UINT index)
@@ -442,8 +436,6 @@ struct HeapInfo : public std::enable_shared_from_this<HeapInfo>
                                          [currentVersion, index](const TrackedResourceSlot& slot)
                                          { return slot.heapVersion == currentVersion && slot.index == index; }),
                           vec.end());
-                if (vec.empty())
-                    _trackedResources.erase(it);
             }
 
             info[index].buffer = nullptr;
