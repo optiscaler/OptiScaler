@@ -4305,7 +4305,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         }
 
         float cutoff = config->ReprojectionDepthCutoff.value_or_default();
-        if (ImGui::SliderFloat("Depth cutoff", &cutoff, 0.0f, 1.0f, "%.10f"))
+        if (ImGui::SliderFloat("Depth cutoff", &cutoff, 0.0f, 1.0f, "%.3f"))
             config->ReprojectionDepthCutoff = cutoff;
     }
 

@@ -71,6 +71,8 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     float3 diff = abs(hudless - present);
     float delta = max(diff.x, max(diff.y, diff.z));
     float uiMask = smoothstep(UiDiffThreshold, UiDiffThreshold * 2.0f, delta);
+    
+    float3 reprojectedGame = float3(0.0f, 1.0f, 0.0f); // Green
 
     // Vectorized Camera Ray (un-normalized)
     float2 ndc = uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
@@ -85,55 +87,66 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
 
     // Perspective Divide & Source UV Calculation
     float2 sourceUV = 0.0f;
-    bool isValidDepth = sourceRay.z > 0.00001f;
-
-    if (isValidDepth)
+    if (sourceRay.z > 0.00001f)
     {
         float2 sourceNDC = (sourceRay.xy / sourceRay.z) * float2(InvTanHalfFovX, InvTanHalfFovY);
         sourceUV = sourceNDC * float2(0.5f, -0.5f) + 0.5f;
     }
+    else
+    {
+        Present[pixelCoord] = lerp(reprojectedGame, present, uiMask);
+        return;
+    }
 
-    // Bounds & Reprojection
-    bool inside = isValidDepth && all(sourceUV >= 0.0f) && all(sourceUV <= 1.0f);
+    bool inside = all(sourceUV >= 0.0f) && all(sourceUV <= 1.0f);
     bool modeWithBackground = EdgeMode == 2 || EdgeMode == 3;
-
-    float3 reprojectedGame = 0.0f;
+    
     if (inside)
     {
+        // Sample according to the reprojection
         reprojectedGame = Hudless.SampleLevel(LinearClampSampler, sourceUV, 0.0f);
-    }
-    else if (EdgeMode == 1 && isValidDepth)
-    {
-        reprojectedGame = Hudless.SampleLevel(LinearClampSampler, saturate(sourceUV), 0.0f);
-    }
-    else if (modeWithBackground)
-    {
-        float3 background = Hudless.Load(int3(pixelCoord, 0));
-        reprojectedGame = inside ? lerp(background, reprojectedGame, 1.0f) : background;
-    }
-
-    if (modeWithBackground && inside)
-    {
-        const float ditherWidthPx = ScreenHeight / 16.0f;
-
-        // Only measure distance to reprojected edges that fall inside the screen bounds
-        float distLeft = (sourceUV.x < uv.x) ? sourceUV.x * ScreenWidth : ditherWidthPx;
-        float distRight = (sourceUV.x > uv.x) ? (1.0f - sourceUV.x) * ScreenWidth : ditherWidthPx;
-        float distTop = (sourceUV.y < uv.y) ? sourceUV.y * ScreenHeight : ditherWidthPx;
-        float distBottom = (sourceUV.y > uv.y) ? (1.0f - sourceUV.y) * ScreenHeight : ditherWidthPx;
-
-        float edgeDistancePx = min(min(distLeft, distRight), min(distTop, distBottom));
-        float projectedProbability = smoothstep(0.0f, ditherWidthPx, edgeDistancePx);
         
-        float dither = 0.0f;
-        if (EdgeMode == 2)
-            dither = Bayer4x4(pixelCoord);
-        else if (EdgeMode == 3)
-            dither = HashNoise(pixelCoord);
-        
-        float3 background = Hudless.Load(int3(pixelCoord, 0));
+        if (modeWithBackground)
+        {
+            const float ditherWidthPx = ScreenHeight / 16.0f;
 
-        reprojectedGame = dither < projectedProbability ? reprojectedGame : background;
+            // Only measure distance to reprojected edges that fall inside the screen bounds
+            float distLeft = (sourceUV.x < uv.x) ? sourceUV.x * ScreenWidth : ditherWidthPx;
+            float distRight = (sourceUV.x > uv.x) ? (1.0f - sourceUV.x) * ScreenWidth : ditherWidthPx;
+            float distTop = (sourceUV.y < uv.y) ? sourceUV.y * ScreenHeight : ditherWidthPx;
+            float distBottom = (sourceUV.y > uv.y) ? (1.0f - sourceUV.y) * ScreenHeight : ditherWidthPx;
+
+            float edgeDistancePx = min(min(distLeft, distRight), min(distTop, distBottom));
+            float projectedProbability = smoothstep(0.0f, ditherWidthPx, edgeDistancePx);
+        
+            float pattern = 0.0f;
+            if (EdgeMode == 2) // Dither
+            {
+                pattern = Bayer4x4(pixelCoord);
+            }
+            else if (EdgeMode == 3) // Noise
+            {
+                pattern = HashNoise(pixelCoord);
+            }
+            
+            reprojectedGame = pattern < projectedProbability ? reprojectedGame : hudless;
+        }
+    }
+    else
+    {
+        // Outside the reprojection
+        if (EdgeMode == 0) // Black
+        {
+            reprojectedGame = 0.0f;
+        }
+        else if (EdgeMode == 1) // Strech
+        {
+            reprojectedGame = Hudless.SampleLevel(LinearClampSampler, saturate(sourceUV), 0.0f);
+        }
+        else if (modeWithBackground)
+        {
+            reprojectedGame = hudless;
+        }
     }
     
     // Final UI Blend
