@@ -13,8 +13,7 @@
 class VulkanDeviceFeatureState
 {
   public:
-    VulkanDeviceFeatureState(VkDeviceCreateInfo* createInfo,
-                             PFN_vkGetPhysicalDeviceFeatures2 getPhysicalDeviceFeatures2);
+    VulkanDeviceFeatureState(VkDeviceCreateInfo* pCreateInfo, PFN_vkGetPhysicalDeviceFeatures2 getFeatures2);
     ~VulkanDeviceFeatureState();
 
     VulkanDeviceFeatureState(const VulkanDeviceFeatureState&) = delete;
@@ -35,7 +34,7 @@ class VulkanSpoofing
 
     static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, VkDeviceCreateInfo* pCreateInfo,
                                      const VkAllocationCallbacks* pAllocator, VkDevice* pDevice,
-                                     VulkanDeviceFeatureState* featureState = nullptr);
+                                     VulkanDeviceFeatureState* featureState, uint32_t requestedApiVersion);
     static VkResult hkvkCreateInstance(VkInstanceCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator,
                                        VkInstance* pInstance);
 
