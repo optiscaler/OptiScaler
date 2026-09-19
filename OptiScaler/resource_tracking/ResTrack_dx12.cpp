@@ -960,9 +960,38 @@ void ResTrack_Dx12::hkCopyDescriptorsSimple(ID3D12Device* This, UINT NumDescript
     if (!Config::Instance()->FGAlwaysTrackHeaps.value_or_default() && !IsHudFixActive())
         return;
 
-    auto size = This->GetDescriptorHandleIncrementSize(DescriptorHeapsType);
+    if (NumDescriptors == 0)
+        return;
 
-    for (size_t i = 0; i < NumDescriptors; i++)
+    auto srcHeap = SrcDescriptorRangeStart.ptr != 0 ? GetHeapByCpuHandle(SrcDescriptorRangeStart.ptr) : nullptr;
+    auto dstHeap = GetHeapByCpuHandle(DestDescriptorRangeStart.ptr);
+
+    UINT srcBaseIndex = 0;
+    UINT dstBaseIndex = 0;
+    const bool srcRangeFits = SrcDescriptorRangeStart.ptr == 0 ||
+                              (srcHeap != nullptr && srcHeap->GetCpuIndex(SrcDescriptorRangeStart.ptr, srcBaseIndex) &&
+                               NumDescriptors <= srcHeap->numDescriptors - srcBaseIndex);
+    const bool dstRangeFits = dstHeap != nullptr && dstHeap->GetCpuIndex(DestDescriptorRangeStart.ptr, dstBaseIndex) &&
+                              NumDescriptors <= dstHeap->numDescriptors - dstBaseIndex;
+
+    if (srcRangeFits && dstRangeFits)
+    {
+        for (UINT i = 0; i < NumDescriptors; ++i)
+        {
+            ResourceInfo buffer {};
+            if (srcHeap != nullptr && srcHeap->GetByIndex(srcBaseIndex + i, buffer))
+                dstHeap->SetByIndex(dstBaseIndex + i, buffer);
+            else
+                dstHeap->ClearByIndex(dstBaseIndex + i);
+        }
+
+        return;
+    }
+
+    // Old behavior for malformed/cross ranges.
+    const auto size = This->GetDescriptorHandleIncrementSize(DescriptorHeapsType);
+
+    for (UINT i = 0; i < NumDescriptors; ++i)
     {
         std::shared_ptr<HeapInfo> srcHeap;
         SIZE_T srcHandle = 0;

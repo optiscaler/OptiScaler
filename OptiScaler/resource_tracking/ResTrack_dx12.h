@@ -227,6 +227,61 @@ struct HeapInfo : public std::enable_shared_from_this<HeapInfo>
         return true;
     }
 
+    bool GetByIndex(UINT index, ResourceInfo& outInfo) const
+    {
+        if (!active.load(std::memory_order_acquire) || index >= numDescriptors)
+            return false;
+
+        std::shared_lock lock(GetDescriptorLock(index));
+        if (!active.load(std::memory_order_acquire) || info[index].buffer == nullptr)
+            return false;
+
+        info[index].Load(outInfo);
+
+#ifdef DEBUG_TRACKING
+        TestResource(&outInfo);
+#endif
+
+        return true;
+    }
+
+    void SetByIndex(UINT index, const ResourceInfo& setInfo)
+    {
+        if (!active.load(std::memory_order_acquire) || index >= numDescriptors)
+            return;
+
+        std::unique_lock lock(GetDescriptorLock(index));
+        if (!active.load(std::memory_order_acquire))
+            return;
+
+#ifdef DEBUG_TRACKING
+        TestResource(&setInfo);
+#endif
+
+        if (info[index].buffer != setInfo.buffer)
+        {
+            DetachFromOldResourceLocked(index);
+            info[index].Store(setInfo);
+            AttachToNewResourceLocked(index);
+        }
+        else
+        {
+            info[index].Store(setInfo);
+        }
+    }
+
+    void ClearByIndex(UINT index)
+    {
+        if (!active.load(std::memory_order_acquire) || index >= numDescriptors)
+            return;
+
+        std::unique_lock lock(GetDescriptorLock(index));
+        if (!active.load(std::memory_order_acquire))
+            return;
+
+        ClearSlotLocked(index, true);
+    }
+
     // Caller must hold the descriptor stripe exclusively.
     void DetachFromOldResourceLocked(UINT index)
     {
