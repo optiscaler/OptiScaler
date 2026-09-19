@@ -6,6 +6,7 @@
 #include <Config.h>
 
 #include <framegen/IFGFeature_Dx12.h>
+#include <resource_tracking/ResTrack_dx12.h>
 
 namespace
 {
@@ -681,6 +682,7 @@ bool Hudfix_Dx12::CheckForHudless(ID3D12GraphicsCommandList* cmdList, ResourceIn
         if (it != s.capturedHudlesses.end())
         {
             capturedHudlessInfo = &it->second;
+            resource->lifetimeTracked = true;
 
             if (!capturedHudlessInfo->enabled)
             {
@@ -689,10 +691,23 @@ bool Hudfix_Dx12::CheckForHudless(ID3D12GraphicsCommandList* cmdList, ResourceIn
             }
         }
 
+        auto ensureResourceTracked = [&]() -> bool
+        {
+            if (resource->lifetimeTracked)
+                return true;
+
+            if (!ResTrack_Dx12::TrackResourceRelease(resource->buffer))
+                return false;
+
+            resource->lifetimeTracked = true;
+            return true;
+        };
+
         if (!ignoreBlocked && Config::Instance()->FGResourceBlocking.value_or_default())
         {
             if (_hudlessList.contains(resource->buffer))
             {
+                resource->lifetimeTracked = true;
                 auto info = &_hudlessList[resource->buffer];
 
                 // if game starts reusing the ignored resource & it's not banned
@@ -778,12 +793,24 @@ bool Hudfix_Dx12::CheckForHudless(ID3D12GraphicsCommandList* cmdList, ResourceIn
             }
             else
             {
+                if (!ensureResourceTracked())
+                {
+                    LOG_DEBUG("Can't track lifetime of HUDless candidate {:X}", (size_t) resource->buffer);
+                    break;
+                }
+
                 _hudlessList[resource->buffer] = { upscaleCounter, 0, 0, 0, 0, 1, false, false };
             }
         }
 
         if (!CheckCapture(fIndex))
             break;
+
+        if (!ensureResourceTracked())
+        {
+            LOG_DEBUG("Can't track lifetime of HUDless resource {:X}", (size_t) resource->buffer);
+            break;
+        }
 
         LOG_TRACE("Capture resource: {:X}, index: {}", (size_t) resource->buffer, fIndex);
 

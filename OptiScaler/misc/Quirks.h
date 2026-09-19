@@ -168,9 +168,8 @@ static const QuirkEntry quirkTable[] = {
 
     // The Last of Us Part I
     // Hudfix incompatible
-    QUIRK_ENTRY("tlou-i.exe", GameQuirk::AllowedFrameAhead2, GameQuirk::DisableDxgiSpoofing, GameQuirk::DisableHudfix),
-    QUIRK_ENTRY("tlou-i-l.exe", GameQuirk::AllowedFrameAhead2, GameQuirk::DisableDxgiSpoofing,
-                GameQuirk::DisableHudfix),
+    QUIRK_ENTRY("tlou-i.exe", GameQuirk::AllowedFrameAhead2, GameQuirk::DisableDxgiSpoofing),
+    QUIRK_ENTRY("tlou-i-l.exe", GameQuirk::AllowedFrameAhead2, GameQuirk::DisableDxgiSpoofing),
 
     // Horizon Forbidden West
     QUIRK_ENTRY("horizonforbiddenwest.exe", GameQuirk::AllowedFrameAhead2),

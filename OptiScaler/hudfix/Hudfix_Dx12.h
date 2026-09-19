@@ -44,6 +44,7 @@ typedef struct ResourceInfo
     ResourceType type = SRV;
     double lastUsedFrame = 0;
     bool extended = false;
+    bool lifetimeTracked = false;
     UINT captureInfo = 0;
 } resource_info;
 

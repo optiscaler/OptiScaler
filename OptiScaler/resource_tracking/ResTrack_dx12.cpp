@@ -10,9 +10,10 @@
 #include <algorithm>
 #include <future>
 
+#include <d3dcommon.h>
+#include <detours/detours.h>
 #include <magic_enum_utility.hpp>
 #include <include/d3dx/d3dx12.h>
-#include <detours/detours.h>
 
 #ifndef STDMETHODCALLTYPE
 #include <Unknwn.h> // or <objbase.h> to get STDMETHODCALLTYPE
@@ -80,7 +81,6 @@ typedef void(STDMETHODCALLTYPE* PFN_DrawInstanced)(ID3D12GraphicsCommandList* Th
                                                    UINT StartInstanceLocation);
 typedef void(STDMETHODCALLTYPE* PFN_Dispatch)(ID3D12GraphicsCommandList* This, UINT ThreadGroupCountX,
                                               UINT ThreadGroupCountY, UINT ThreadGroupCountZ);
-typedef ULONG(STDMETHODCALLTYPE* PFN_Release)(ID3D12Resource* This);
 
 // Original method calls for device
 static PFN_CreateRenderTargetView o_CreateRenderTargetView = nullptr;
@@ -99,7 +99,6 @@ static PFN_CopyDescriptorsSimple o_CopyDescriptorsSimple = nullptr;
 static PFN_Dispatch o_Dispatch = nullptr;
 static PFN_DrawInstanced o_DrawInstanced = nullptr;
 static PFN_DrawIndexedInstanced o_DrawIndexedInstanced = nullptr;
-static PFN_Release o_Release = nullptr;
 
 static PFN_OMSetRenderTargets o_OMSetRenderTargets = nullptr;
 static PFN_SetGraphicsRootDescriptorTable o_SetGraphicsRootDescriptorTable = nullptr;
@@ -131,6 +130,81 @@ static std::atomic<unsigned> gHeapGeneration { 1 };
 
 static thread_local HeapCacheTLS cacheGR;
 static thread_local HeapCacheTLS cacheCR;
+
+void __stdcall ResTrack_Dx12::ResourceDestroyed(void* data)
+{
+    if (data == nullptr || State::Instance().isShuttingDown)
+        return;
+
+    auto* resource = static_cast<ID3D12Resource*>(data);
+    std::vector<TrackedResourceSlot> toClean;
+
+    {
+        std::lock_guard lock(_trackedResourcesMutex);
+        if (auto it = _trackedResources.find(resource); it != _trackedResources.end())
+        {
+            toClean = std::move(it->second);
+            _trackedResources.erase(it);
+        }
+    }
+
+    Hudfix_Dx12::RemoveResourceFromTracking(resource);
+
+    // Clean descriptor slots
+    for (const auto& slot : toClean)
+    {
+        if (auto heap = slot.heap.lock())
+            heap->ClearSlotIfMatches(slot.index, resource);
+    }
+}
+
+bool ResTrack_Dx12::TrackResourceRelease(ID3D12Resource* resource)
+{
+    if (resource == nullptr || State::Instance().isShuttingDown)
+        return false;
+
+    {
+        std::lock_guard trackedLock(_trackedResourcesMutex);
+        if (_trackedResources.contains(resource))
+            return true;
+    }
+
+    // Only new registrations take this mutex
+    std::lock_guard lifetimeLock(_resourceLifetimeMutex);
+
+    {
+        std::lock_guard trackedLock(_trackedResourcesMutex);
+        if (_trackedResources.contains(resource))
+            return true;
+    }
+
+    ID3DDestructionNotifier* notifier = nullptr;
+    auto result = resource->QueryInterface(IID_PPV_ARGS(&notifier));
+    if (FAILED(result) || notifier == nullptr)
+    {
+        LOG_DEBUG("ID3DDestructionNotifier is not available for resource {:X}, result: {:X}", (size_t) resource,
+                  (UINT) result);
+        return false;
+    }
+
+    UINT callbackId = 0;
+    result = notifier->RegisterDestructionCallback(&ResTrack_Dx12::ResourceDestroyed, resource, &callbackId);
+    if (FAILED(result))
+    {
+        LOG_WARN("Can't register destruction callback for resource {:X}, result: {:X}", (size_t) resource,
+                 (UINT) result);
+        notifier->Release();
+        return false;
+    }
+
+    {
+        std::lock_guard trackedLock(_trackedResourcesMutex);
+        _trackedResources.try_emplace(resource);
+    }
+
+    notifier->Release();
+    return true;
+}
 
 bool ResTrack_Dx12::CheckResource(ID3D12Resource* resource, ResourceInfo* outInfo)
 {
@@ -175,11 +249,15 @@ bool ResTrack_Dx12::CheckResource(ID3D12Resource* resource, ResourceInfo* outInf
 
     if (outInfo != nullptr)
     {
+        if (!TrackResourceRelease(resource))
+            return false;
+
         outInfo->buffer = resource;
         outInfo->width = resDesc.Width;
         outInfo->height = resDesc.Height;
         outInfo->format = resDesc.Format;
         outInfo->flags = resDesc.Flags;
+        outInfo->lifetimeTracked = true;
     }
 
     return true;
@@ -759,44 +837,6 @@ HRESULT ResTrack_Dx12::hkCreateDescriptorHeap(ID3D12Device* This, D3D12_DESCRIPT
     }
 
     return result;
-}
-
-ULONG ResTrack_Dx12::hkRelease(ID3D12Resource* This)
-{
-    if (State::Instance().isShuttingDown)
-        return o_Release(This);
-
-    std::vector<TrackedResourceSlot> toClean;
-    bool finalRelease = false;
-    {
-        std::lock_guard lock(_trackedResourcesMutex);
-
-        This->AddRef();
-        auto refCount = o_Release(This);
-
-        if (refCount <= 1)
-        {
-            finalRelease = true;
-
-            if (auto it = _trackedResources.find(This); it != _trackedResources.end())
-            {
-                toClean = std::move(it->second);
-                _trackedResources.erase(it);
-            }
-        }
-    }
-
-    if (finalRelease)
-        Hudfix_Dx12::RemoveResourceFromTracking(This);
-
-    // Clean descriptor slots outside the reverse-index lock.
-    for (const auto& slot : toClean)
-    {
-        if (auto heap = slot.heap.lock())
-            heap->ClearSlotIfMatches(slot.index, This);
-    }
-
-    return o_Release(This);
 }
 
 void ResTrack_Dx12::hkCopyDescriptors(ID3D12Device* This, UINT NumDestDescriptorRanges,
@@ -1597,48 +1637,6 @@ void ResTrack_Dx12::hkDispatch(ID3D12GraphicsCommandList* This, UINT ThreadGroup
 
 #pragma endregion
 
-void ResTrack_Dx12::HookResource(ID3D12Device* InDevice)
-{
-    if (o_Release != nullptr)
-        return;
-
-    ID3D12Resource* tmp = nullptr;
-    auto d = CD3DX12_RESOURCE_DESC::Buffer(4);
-    auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-
-    HRESULT hr = InDevice->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &d,
-                                                   D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&tmp));
-
-    if (hr == S_OK)
-    {
-        PVOID* pVTable = *(PVOID**) tmp;
-        o_Release = (PFN_Release) pVTable[2];
-
-        if (o_Release != nullptr)
-        {
-            DetourTransactionBegin();
-            DetourUpdateThread(GetCurrentThread());
-            DetourAttach(&(PVOID&) o_Release, hkRelease);
-            auto detourResult = DetourTransactionCommit();
-
-            if (detourResult != NO_ERROR)
-            {
-                LOG_ERROR("Failed to hook Heap Release: {:X}", detourResult);
-                o_Release = nullptr;
-                tmp->Release();
-            }
-            else
-            {
-                o_Release(tmp); // drop temp
-            }
-        }
-        else
-        {
-            tmp->Release();
-        }
-    }
-}
-
 void ResTrack_Dx12::HookCommandList(ID3D12Device* InDevice)
 {
 
@@ -1805,7 +1803,6 @@ void ResTrack_Dx12::HookDevice(ID3D12Device* device)
     }
 
     HookCommandList(device);
-    HookResource(device);
 }
 
 void ResTrack_Dx12::ReleaseDeviceHooks()
@@ -1852,14 +1849,10 @@ void ResTrack_Dx12::ReleaseDeviceHooks()
     if (o_Dispatch != nullptr)
         DetourDetach(&(PVOID&) o_Dispatch, hkDispatch);
 
-    // Resource
-    if (o_Release != nullptr)
-        DetourDetach(&(PVOID&) o_Release, hkRelease);
-
     auto detourResult = DetourTransactionCommit();
     if (detourResult != NO_ERROR)
     {
-        LOG_ERROR("Failed to unhook Resource methods: {:X}", detourResult);
+        LOG_ERROR("Failed to unhook DX12 methods: {:X}", detourResult);
     }
     else
     {
@@ -1878,9 +1871,6 @@ void ResTrack_Dx12::ReleaseDeviceHooks()
         o_DrawIndexedInstanced = nullptr;
         o_DrawInstanced = nullptr;
         o_Dispatch = nullptr;
-
-        // Resource
-        o_Release = nullptr;
     }
 }
 
@@ -1915,11 +1905,6 @@ void ResTrack_Dx12::ReleaseHooks()
     // o_CreateUnorderedAccessView = nullptr;
     // o_CopyDescriptors = nullptr;
     // o_CopyDescriptorsSimple = nullptr;
-
-    // if (o_Release != nullptr)
-    //     DetourAttach(&(PVOID&) o_Release, hkRelease);
-
-    // o_Release = nullptr;
 
     if (o_OMSetRenderTargets != nullptr)
         DetourDetach(&(PVOID&) o_OMSetRenderTargets, hkOMSetRenderTargets);
