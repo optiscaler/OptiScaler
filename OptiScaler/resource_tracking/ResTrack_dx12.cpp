@@ -81,6 +81,9 @@ typedef void(STDMETHODCALLTYPE* PFN_DrawInstanced)(ID3D12GraphicsCommandList* Th
                                                    UINT StartInstanceLocation);
 typedef void(STDMETHODCALLTYPE* PFN_Dispatch)(ID3D12GraphicsCommandList* This, UINT ThreadGroupCountX,
                                               UINT ThreadGroupCountY, UINT ThreadGroupCountZ);
+typedef HRESULT(STDMETHODCALLTYPE* PFN_Reset)(ID3D12GraphicsCommandList* This, ID3D12CommandAllocator* pAllocator,
+                                              ID3D12PipelineState* pInitialState);
+typedef void(STDMETHODCALLTYPE* PFN_ClearState)(ID3D12GraphicsCommandList* This, ID3D12PipelineState* pPipelineState);
 
 // Original method calls for device
 static PFN_CreateRenderTargetView o_CreateRenderTargetView = nullptr;
@@ -99,6 +102,8 @@ static PFN_CopyDescriptorsSimple o_CopyDescriptorsSimple = nullptr;
 static PFN_Dispatch o_Dispatch = nullptr;
 static PFN_DrawInstanced o_DrawInstanced = nullptr;
 static PFN_DrawIndexedInstanced o_DrawIndexedInstanced = nullptr;
+static PFN_Reset o_Reset = nullptr;
+static PFN_ClearState o_ClearState = nullptr;
 
 static PFN_OMSetRenderTargets o_OMSetRenderTargets = nullptr;
 static PFN_SetGraphicsRootDescriptorTable o_SetGraphicsRootDescriptorTable = nullptr;
@@ -995,11 +1000,368 @@ void ResTrack_Dx12::hkCopyDescriptorsSimple(ID3D12Device* This, UINT NumDescript
 
 #pragma endregion
 
+#pragma region Commandlist state
+
+void ResTrack_Dx12::RemoveBindingState(ID3D12GraphicsCommandList* commandList)
+{
+    if (commandList == nullptr)
+        return;
+
+    if (!_useShards)
+    {
+        std::lock_guard<std::mutex> lock(_bindingStateMutex);
+        _bindingStates.erase(commandList);
+        return;
+    }
+
+    auto& shard = _bindingShards[GetShardIndex(commandList)];
+    std::lock_guard<BindingStateMutex> lock(shard.mutex);
+    shard.map.erase(commandList);
+}
+
+void ResTrack_Dx12::ClearBindingStates()
+{
+    if (!_useShards)
+    {
+        std::lock_guard<std::mutex> lock(_bindingStateMutex);
+        _bindingStates.clear();
+        return;
+    }
+
+    for (auto& shard : _bindingShards)
+    {
+        std::lock_guard<BindingStateMutex> lock(shard.mutex);
+        shard.map.clear();
+    }
+}
+
+CommandListBindingState* ResTrack_Dx12::GetOrCreateBindingState(ID3D12GraphicsCommandList* commandList)
+{
+    if (!_bindingTrackingEnabled.load(std::memory_order_acquire) || commandList == nullptr ||
+        State::Instance().isShuttingDown)
+        return nullptr;
+
+    CommandListBindingState* state = nullptr;
+    bool created = false;
+
+    if (!_useShards)
+    {
+        std::lock_guard<std::mutex> lock(_bindingStateMutex);
+        auto [it, inserted] = _bindingStates.try_emplace(commandList);
+        if (inserted)
+            it->second = std::make_unique<CommandListBindingState>();
+        state = it->second.get();
+        created = inserted;
+    }
+    else
+    {
+        auto& shard = _bindingShards[GetShardIndex(commandList)];
+        std::lock_guard<BindingStateMutex> lock(shard.mutex);
+        auto [it, inserted] = shard.map.try_emplace(commandList);
+        if (inserted)
+            it->second = std::make_unique<CommandListBindingState>();
+        state = it->second.get();
+        created = inserted;
+    }
+
+    if (!created)
+        return state;
+
+    ID3DDestructionNotifier* notifier = nullptr;
+    auto result = commandList->QueryInterface(IID_PPV_ARGS(&notifier));
+    if (FAILED(result) || notifier == nullptr)
+    {
+        LOG_DEBUG("ID3DDestructionNotifier is not available for commandlist {:X}, result: {:X}", (size_t) commandList,
+                  (UINT) result);
+        RemoveBindingState(commandList);
+        return nullptr;
+    }
+
+    UINT callbackId = 0;
+    result = notifier->RegisterDestructionCallback(&ResTrack_Dx12::CommandListDestroyed, commandList, &callbackId);
+    notifier->Release();
+
+    if (FAILED(result))
+    {
+        LOG_DEBUG("Can't register commandlist remove callback for {:X}, result: {:X}", (size_t) commandList,
+                  (UINT) result);
+        RemoveBindingState(commandList);
+        return nullptr;
+    }
+
+    return state;
+}
+
+CommandListBindingState* ResTrack_Dx12::FindBindingState(ID3D12GraphicsCommandList* commandList)
+{
+    if (commandList == nullptr)
+        return nullptr;
+
+    if (!_useShards)
+    {
+        std::lock_guard<std::mutex> lock(_bindingStateMutex);
+        auto it = _bindingStates.find(commandList);
+        return it != _bindingStates.end() ? it->second.get() : nullptr;
+    }
+
+    auto& shard = _bindingShards[GetShardIndex(commandList)];
+    std::lock_guard<BindingStateMutex> lock(shard.mutex);
+    auto it = shard.map.find(commandList);
+    return it != shard.map.end() ? it->second.get() : nullptr;
+}
+
+void ResTrack_Dx12::ResetBindingState(ID3D12GraphicsCommandList* commandList)
+{
+    auto* state = FindBindingState(commandList);
+    if (state == nullptr)
+        return;
+
+    state->graphicsTableMask = 0;
+    state->computeTableMask = 0;
+    state->renderTargetCount = 0;
+    state->renderTargetsContiguous = false;
+    state->graphicsRootSignature = nullptr;
+    state->computeRootSignature = nullptr;
+    state->cbvSrvUavHeap = nullptr;
+}
+
+void __stdcall ResTrack_Dx12::CommandListDestroyed(void* data)
+{
+    if (data == nullptr || State::Instance().isShuttingDown)
+        return;
+    RemoveBindingState(static_cast<ID3D12GraphicsCommandList*>(data));
+}
+
+void ResTrack_Dx12::OnSetDescriptorHeaps(ID3D12GraphicsCommandList* commandList, UINT numDescriptorHeaps,
+                                         ID3D12DescriptorHeap* const* descriptorHeaps)
+{
+    auto* state = GetOrCreateBindingState(commandList);
+    if (state == nullptr)
+        return;
+
+    ID3D12DescriptorHeap* cbvSrvUavHeap = nullptr;
+    if (descriptorHeaps != nullptr)
+    {
+        for (UINT i = 0; i < numDescriptorHeaps; ++i)
+        {
+            auto* heap = descriptorHeaps[i];
+            if (heap != nullptr && heap->GetDesc().Type == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)
+            {
+                cbvSrvUavHeap = heap;
+                break;
+            }
+        }
+    }
+
+    if (state->cbvSrvUavHeap != cbvSrvUavHeap)
+    {
+        state->graphicsTableMask = 0;
+        state->computeTableMask = 0;
+        state->cbvSrvUavHeap = cbvSrvUavHeap;
+    }
+}
+
+void ResTrack_Dx12::OnSetGraphicsRootSignature(ID3D12GraphicsCommandList* commandList,
+                                               ID3D12RootSignature* rootSignature)
+{
+    auto* state = GetOrCreateBindingState(commandList);
+    if (state == nullptr)
+        return;
+
+    if (state->graphicsRootSignature != rootSignature)
+    {
+        state->graphicsTableMask = 0;
+        state->graphicsRootSignature = rootSignature;
+    }
+}
+
+void ResTrack_Dx12::OnSetComputeRootSignature(ID3D12GraphicsCommandList* commandList,
+                                              ID3D12RootSignature* rootSignature)
+{
+    auto* state = GetOrCreateBindingState(commandList);
+    if (state == nullptr)
+        return;
+
+    if (state->computeRootSignature != rootSignature)
+    {
+        state->computeTableMask = 0;
+        state->computeRootSignature = rootSignature;
+    }
+}
+
+bool ResTrack_Dx12::ResolveGraphicsBinding(SIZE_T gpuHandle, ResourceInfo& outInfo)
+{
+    if (gpuHandle == 0)
+        return false;
+
+    auto heap = GetHeapByGpuHandleGR(gpuHandle);
+    if (heap == nullptr || !heap->GetByGpuHandle(gpuHandle, outInfo) || outInfo.buffer == nullptr ||
+        !IsDescriptorEnabled(outInfo.type))
+        return false;
+
+    outInfo.state =
+        outInfo.type == UAV ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS : D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    outInfo.captureInfo = CaptureInfo::SetGR;
+    return true;
+}
+
+bool ResTrack_Dx12::ResolveComputeBinding(SIZE_T gpuHandle, ResourceInfo& outInfo)
+{
+    if (gpuHandle == 0)
+        return false;
+
+    auto heap = GetHeapByGpuHandleCR(gpuHandle);
+    if (heap == nullptr || !heap->GetByGpuHandle(gpuHandle, outInfo) || outInfo.buffer == nullptr ||
+        !IsDescriptorEnabled(outInfo.type))
+        return false;
+
+    outInfo.state =
+        outInfo.type == UAV ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS : D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    outInfo.captureInfo = CaptureInfo::SetCR;
+    return true;
+}
+
+bool ResTrack_Dx12::ResolveRenderTargetBinding(SIZE_T cpuHandle, ResourceInfo& outInfo)
+{
+    if (cpuHandle == 0)
+        return false;
+
+    auto heap = GetHeapByCpuHandleRTV(cpuHandle);
+    if (heap == nullptr || !heap->GetByCpuHandle(cpuHandle, outInfo) || outInfo.buffer == nullptr ||
+        !IsDescriptorEnabled(outInfo.type))
+        return false;
+
+    outInfo.state = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    outInfo.captureInfo = CaptureInfo::OMSetRTV;
+    return true;
+}
+
+bool ResTrack_Dx12::ProcessGraphicsBindings(ID3D12GraphicsCommandList* commandList, UINT captureInfo)
+{
+    if (Config::Instance()->FGImmediateCapture.value_or_default())
+        return false;
+
+    auto* state = FindBindingState(commandList);
+    if (state == nullptr)
+        return false;
+
+    if (Hudfix_Dx12::SkipHudlessChecks())
+        return true;
+
+    if (!Config::Instance()->FGHudfixDisableSGR.value_or_default())
+    {
+        auto mask = state->graphicsTableMask;
+        for (UINT index = 0; mask != 0 && index < CommandListBindingState::MAX_ROOT_PARAMETERS; ++index, mask >>= 1)
+        {
+            if ((mask & 1) == 0)
+                continue;
+
+            ResourceInfo candidate {};
+            if (!ResolveGraphicsBinding(state->graphicsTables[index], candidate))
+                continue;
+            candidate.captureInfo |= captureInfo;
+            if (Hudfix_Dx12::CheckForHudless(commandList, &candidate, candidate.state))
+                return true;
+        }
+    }
+
+    if (!Config::Instance()->FGHudfixDisableOM.value_or_default() && state->renderTargetCount > 0)
+    {
+        if (state->renderTargetsContiguous)
+        {
+            const auto baseHandle = state->renderTargets[0];
+            auto heap = GetHeapByCpuHandleRTV(baseHandle);
+            if (heap != nullptr)
+            {
+                for (UINT i = 0; i < state->renderTargetCount; ++i)
+                {
+                    ResourceInfo candidate {};
+                    if (!ResolveRenderTargetBinding(baseHandle + (static_cast<SIZE_T>(i) * heap->increment), candidate))
+                        continue;
+                    candidate.captureInfo |= captureInfo;
+                    if (Hudfix_Dx12::CheckForHudless(commandList, &candidate, candidate.state))
+                        return true;
+                }
+            }
+        }
+        else
+        {
+            for (UINT i = 0; i < state->renderTargetCount; ++i)
+            {
+                ResourceInfo candidate {};
+                if (!ResolveRenderTargetBinding(state->renderTargets[i], candidate))
+                    continue;
+                candidate.captureInfo |= captureInfo;
+                if (Hudfix_Dx12::CheckForHudless(commandList, &candidate, candidate.state))
+                    return true;
+            }
+        }
+    }
+
+    return true;
+}
+
+bool ResTrack_Dx12::ProcessComputeBindings(ID3D12GraphicsCommandList* commandList, UINT captureInfo)
+{
+    if (Config::Instance()->FGImmediateCapture.value_or_default())
+        return false;
+
+    auto* state = FindBindingState(commandList);
+    if (state == nullptr)
+        return false;
+
+    if (Hudfix_Dx12::SkipHudlessChecks())
+        return true;
+
+    if (!Config::Instance()->FGHudfixDisableSCR.value_or_default())
+    {
+        auto mask = state->computeTableMask;
+        for (UINT index = 0; mask != 0 && index < CommandListBindingState::MAX_ROOT_PARAMETERS; ++index, mask >>= 1)
+        {
+            if ((mask & 1) == 0)
+                continue;
+
+            ResourceInfo candidate {};
+            if (!ResolveComputeBinding(state->computeTables[index], candidate))
+                continue;
+            candidate.captureInfo |= captureInfo;
+            if (Hudfix_Dx12::CheckForHudless(commandList, &candidate, candidate.state))
+                return true;
+        }
+    }
+
+    return true;
+}
+
+#pragma endregion
+
 #pragma region Shader input hooks
 
 void ResTrack_Dx12::hkSetGraphicsRootDescriptorTable(ID3D12GraphicsCommandList* This, UINT RootParameterIndex,
                                                      D3D12_GPU_DESCRIPTOR_HANDLE BaseDescriptor)
 {
+    bool persistentBinding = false;
+    if (This != MenuOverlayDx::MenuCommandList() && !Hudfix_Dx12::SkipHudlessChecks())
+    {
+        if (auto* state = GetOrCreateBindingState(This);
+            state != nullptr && RootParameterIndex < CommandListBindingState::MAX_ROOT_PARAMETERS)
+        {
+            persistentBinding = true;
+            state->graphicsTables[RootParameterIndex] = BaseDescriptor.ptr;
+            const auto bit = UINT64_C(1) << RootParameterIndex;
+            if (BaseDescriptor.ptr != 0)
+                state->graphicsTableMask |= bit;
+            else
+                state->graphicsTableMask &= ~bit;
+
+            if (state->cbvSrvUavHeap == nullptr && BaseDescriptor.ptr != 0)
+            {
+                if (auto heap = GetHeapByGpuHandleGR(BaseDescriptor.ptr))
+                    state->cbvSrvUavHeap = heap->heap;
+            }
+        }
+    }
+
     // Consistent early exit - always call original function
     auto shouldTrack = !Config::Instance()->FGHudfixDisableSGR.value_or_default() && BaseDescriptor.ptr != 0 &&
                        IsHudFixActive() && !Hudfix_Dx12::SkipHudlessChecks() &&
@@ -1047,7 +1409,7 @@ void ResTrack_Dx12::hkSetGraphicsRootDescriptorTable(ID3D12GraphicsCommandList* 
         capturedImmediately = Hudfix_Dx12::CheckForHudless(This, &capturedBuffer, capturedBuffer.state);
     }
 
-    if (!capturedImmediately)
+    if (!capturedImmediately && (!persistentBinding || Config::Instance()->FGImmediateCapture.value_or_default()))
     {
         auto fIndex = Hudfix_Dx12::ActivePresentFrame() % BUFFER_COUNT;
 
@@ -1098,6 +1460,30 @@ void ResTrack_Dx12::hkOMSetRenderTargets(ID3D12GraphicsCommandList* This, UINT N
                                          BOOL RTsSingleHandleToDescriptorRange,
                                          D3D12_CPU_DESCRIPTOR_HANDLE* pDepthStencilDescriptor)
 {
+    bool persistentBinding = false;
+    if (This != MenuOverlayDx::MenuCommandList() && !Hudfix_Dx12::SkipHudlessChecks())
+    {
+        if (auto* state = GetOrCreateBindingState(This); state != nullptr)
+        {
+            persistentBinding = true;
+            state->renderTargetCount = 0;
+            state->renderTargetsContiguous = false;
+
+            if (NumRenderTargetDescriptors > 0 && pRenderTargetDescriptors != nullptr)
+            {
+                state->renderTargetCount =
+                    std::min<UINT>(NumRenderTargetDescriptors, D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT);
+                state->renderTargetsContiguous = RTsSingleHandleToDescriptorRange != FALSE;
+
+                if (state->renderTargetsContiguous)
+                    state->renderTargets[0] = pRenderTargetDescriptors[0].ptr;
+                else
+                    for (UINT i = 0; i < state->renderTargetCount; ++i)
+                        state->renderTargets[i] = pRenderTargetDescriptors[i].ptr;
+            }
+        }
+    }
+
     // Consistent early exit validation
     auto shouldTrack = !Config::Instance()->FGHudfixDisableOM.value_or_default() && NumRenderTargetDescriptors > 0 &&
                        pRenderTargetDescriptors != nullptr && IsHudFixActive() && !Hudfix_Dx12::SkipHudlessChecks() &&
@@ -1167,7 +1553,7 @@ void ResTrack_Dx12::hkOMSetRenderTargets(ID3D12GraphicsCommandList* This, UINT N
         }
 
         // Track for later processing
-        if (!capturedImmediately)
+        if (!capturedImmediately && (!persistentBinding || Config::Instance()->FGImmediateCapture.value_or_default()))
         {
             if (!_useShards)
             {
@@ -1216,6 +1602,28 @@ void ResTrack_Dx12::hkOMSetRenderTargets(ID3D12GraphicsCommandList* This, UINT N
 void ResTrack_Dx12::hkSetComputeRootDescriptorTable(ID3D12GraphicsCommandList* This, UINT RootParameterIndex,
                                                     D3D12_GPU_DESCRIPTOR_HANDLE BaseDescriptor)
 {
+    bool persistentBinding = false;
+    if (This != MenuOverlayDx::MenuCommandList() && !Hudfix_Dx12::SkipHudlessChecks())
+    {
+        if (auto* state = GetOrCreateBindingState(This);
+            state != nullptr && RootParameterIndex < CommandListBindingState::MAX_ROOT_PARAMETERS)
+        {
+            persistentBinding = true;
+            state->computeTables[RootParameterIndex] = BaseDescriptor.ptr;
+            const auto bit = UINT64_C(1) << RootParameterIndex;
+            if (BaseDescriptor.ptr != 0)
+                state->computeTableMask |= bit;
+            else
+                state->computeTableMask &= ~bit;
+
+            if (state->cbvSrvUavHeap == nullptr && BaseDescriptor.ptr != 0)
+            {
+                if (auto heap = GetHeapByGpuHandleCR(BaseDescriptor.ptr))
+                    state->cbvSrvUavHeap = heap->heap;
+            }
+        }
+    }
+
     // Consistent early exit - always call original function
     auto shouldTrack = !Config::Instance()->FGHudfixDisableSCR.value_or_default() && BaseDescriptor.ptr != 0 &&
                        IsHudFixActive() && !Hudfix_Dx12::SkipHudlessChecks() &&
@@ -1267,7 +1675,7 @@ void ResTrack_Dx12::hkSetComputeRootDescriptorTable(ID3D12GraphicsCommandList* T
         capturedImmediately = Hudfix_Dx12::CheckForHudless(This, &capturedBuffer, capturedBuffer.state);
     }
 
-    if (!capturedImmediately)
+    if (!capturedImmediately && (!persistentBinding || Config::Instance()->FGImmediateCapture.value_or_default()))
     {
         auto fIndex = Hudfix_Dx12::ActivePresentFrame() % BUFFER_COUNT;
 
@@ -1311,6 +1719,21 @@ void ResTrack_Dx12::hkSetComputeRootDescriptorTable(ID3D12GraphicsCommandList* T
 
 #pragma endregion
 
+HRESULT ResTrack_Dx12::hkReset(ID3D12GraphicsCommandList* This, ID3D12CommandAllocator* pAllocator,
+                               ID3D12PipelineState* pInitialState)
+{
+    const auto result = o_Reset(This, pAllocator, pInitialState);
+    if (SUCCEEDED(result))
+        ResetBindingState(This);
+    return result;
+}
+
+void ResTrack_Dx12::hkClearState(ID3D12GraphicsCommandList* This, ID3D12PipelineState* pPipelineState)
+{
+    o_ClearState(This, pPipelineState);
+    ResetBindingState(This);
+}
+
 #pragma region Shader finalizer hooks
 
 // Capture if render target matches, wait for DrawIndexed
@@ -1326,6 +1749,10 @@ void ResTrack_Dx12::hkDrawInstanced(ID3D12GraphicsCommandList* This, UINT Vertex
     }
 
     LOG_TRACK("CmdList: {:X}", (size_t) This);
+
+    if (!Config::Instance()->FGHudfixDisableDI.value_or_default() &&
+        ProcessGraphicsBindings(This, CaptureInfo::DrawInstanced))
+        return;
 
     auto fIndex = Hudfix_Dx12::ActivePresentFrame() % BUFFER_COUNT;
 
@@ -1436,6 +1863,10 @@ void ResTrack_Dx12::hkDrawIndexedInstanced(ID3D12GraphicsCommandList* This, UINT
 
     LOG_TRACK("CmdList: {:X}", (size_t) This);
 
+    if (!Config::Instance()->FGHudfixDisableDII.value_or_default() &&
+        ProcessGraphicsBindings(This, CaptureInfo::DrawIndexedInstanced))
+        return;
+
     auto fIndex = Hudfix_Dx12::ActivePresentFrame() % BUFFER_COUNT;
 
     if (!_useShards)
@@ -1541,6 +1972,10 @@ void ResTrack_Dx12::hkDispatch(ID3D12GraphicsCommandList* This, UINT ThreadGroup
     }
 
     LOG_TRACK("CmdList: {:X}", (size_t) This);
+
+    if (!Config::Instance()->FGHudfixDisableDispatch.value_or_default() &&
+        ProcessComputeBindings(This, CaptureInfo::Dispatch))
+        return;
 
     auto fIndex = Hudfix_Dx12::ActivePresentFrame() % BUFFER_COUNT;
 
@@ -1658,6 +2093,10 @@ void ResTrack_Dx12::HookCommandList(ID3D12Device* InDevice)
             // Get the vtable pointer
             PVOID* pVTable = *(PVOID**) realCL;
 
+            // Persistent command-list binding invalidation
+            o_Reset = (PFN_Reset) pVTable[10];
+            o_ClearState = (PFN_ClearState) pVTable[11];
+
             // hudless shader
             o_OMSetRenderTargets = (PFN_OMSetRenderTargets) pVTable[46];
             o_SetGraphicsRootDescriptorTable = (PFN_SetGraphicsRootDescriptorTable) pVTable[32];
@@ -1677,6 +2116,11 @@ void ResTrack_Dx12::HookCommandList(ID3D12Device* InDevice)
                 // Only needed for hudfix
                 if (State::Instance().activeFgInput == FGInput::Upscaler)
                 {
+                    if (o_Reset != nullptr)
+                        DetourAttach(&(PVOID&) o_Reset, hkReset);
+                    if (o_ClearState != nullptr)
+                        DetourAttach(&(PVOID&) o_ClearState, hkClearState);
+
                     if (o_OMSetRenderTargets != nullptr)
                         DetourAttach(&(PVOID&) o_OMSetRenderTargets, hkOMSetRenderTargets);
 
@@ -1700,12 +2144,19 @@ void ResTrack_Dx12::HookCommandList(ID3D12Device* InDevice)
                 if (detourResult != NO_ERROR)
                 {
                     LOG_ERROR("Failed to hook CommandList methods: {:X}", detourResult);
+                    _bindingTrackingEnabled.store(false, std::memory_order_release);
+                    o_Reset = nullptr;
+                    o_ClearState = nullptr;
                     o_OMSetRenderTargets = nullptr;
                     o_SetGraphicsRootDescriptorTable = nullptr;
                     o_DrawInstanced = nullptr;
                     o_DrawIndexedInstanced = nullptr;
                     o_Dispatch = nullptr;
                     o_SetComputeRootDescriptorTable = nullptr;
+                }
+                else if (State::Instance().activeFgInput == FGInput::Upscaler)
+                {
+                    _bindingTrackingEnabled.store(true, std::memory_order_release);
                 }
             }
 
@@ -1739,8 +2190,25 @@ void ResTrack_Dx12::HookDevice(ID3D12Device* device)
     if (initializeTracking)
     {
         _useShards = Config::Instance()->FGUseShards.value_or_default();
-        std::scoped_lock lock(_trackedResourcesMutex);
-        _trackedResources.reserve(1024);
+
+        {
+            std::scoped_lock lock(_trackedResourcesMutex);
+            _trackedResources.reserve(1024);
+        }
+
+        if (!_useShards)
+        {
+            std::lock_guard<std::mutex> lock(_bindingStateMutex);
+            _bindingStates.reserve(256);
+        }
+        else
+        {
+            for (auto& shard : _bindingShards)
+            {
+                std::lock_guard<BindingStateMutex> lock(shard.mutex);
+                shard.map.reserve(32);
+            }
+        }
     }
 
     LOG_FUNC();
@@ -1831,6 +2299,11 @@ void ResTrack_Dx12::ReleaseDeviceHooks()
         DetourDetach(&(PVOID&) o_CopyDescriptorsSimple, hkCopyDescriptorsSimple);
 
     // CommandList
+    if (o_Reset != nullptr)
+        DetourDetach(&(PVOID&) o_Reset, hkReset);
+    if (o_ClearState != nullptr)
+        DetourDetach(&(PVOID&) o_ClearState, hkClearState);
+
     if (o_OMSetRenderTargets != nullptr)
         DetourDetach(&(PVOID&) o_OMSetRenderTargets, hkOMSetRenderTargets);
 
@@ -1865,12 +2338,17 @@ void ResTrack_Dx12::ReleaseDeviceHooks()
         o_CopyDescriptorsSimple = nullptr;
 
         // CommandList
+        o_Reset = nullptr;
+        o_ClearState = nullptr;
         o_OMSetRenderTargets = nullptr;
         o_SetGraphicsRootDescriptorTable = nullptr;
         o_SetComputeRootDescriptorTable = nullptr;
         o_DrawIndexedInstanced = nullptr;
         o_DrawInstanced = nullptr;
         o_Dispatch = nullptr;
+
+        _bindingTrackingEnabled.store(false, std::memory_order_release);
+        ClearBindingStates();
     }
 }
 
@@ -1906,6 +2384,12 @@ void ResTrack_Dx12::ReleaseHooks()
     // o_CopyDescriptors = nullptr;
     // o_CopyDescriptorsSimple = nullptr;
 
+    if (o_Reset != nullptr)
+        DetourDetach(&(PVOID&) o_Reset, hkReset);
+
+    if (o_ClearState != nullptr)
+        DetourDetach(&(PVOID&) o_ClearState, hkClearState);
+
     if (o_OMSetRenderTargets != nullptr)
         DetourDetach(&(PVOID&) o_OMSetRenderTargets, hkOMSetRenderTargets);
 
@@ -1931,12 +2415,18 @@ void ResTrack_Dx12::ReleaseHooks()
     }
     else
     {
+        o_Reset = nullptr;
+        o_ClearState = nullptr;
         o_OMSetRenderTargets = nullptr;
         o_SetGraphicsRootDescriptorTable = nullptr;
         o_SetComputeRootDescriptorTable = nullptr;
         o_DrawIndexedInstanced = nullptr;
         o_DrawInstanced = nullptr;
         o_Dispatch = nullptr;
+
+        _bindingTrackingEnabled.store(false, std::memory_order_release);
+
+        ClearBindingStates();
     }
 }
 

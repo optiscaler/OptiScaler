@@ -482,6 +482,37 @@ struct ResourceHeapInfo
     SIZE_T gpuStart = NULL;
 };
 
+// Command list info
+struct CommandListBindingState
+{
+    static constexpr size_t MAX_ROOT_PARAMETERS = 64;
+
+    std::array<SIZE_T, MAX_ROOT_PARAMETERS> graphicsTables {};
+    std::array<SIZE_T, MAX_ROOT_PARAMETERS> computeTables {};
+    uint64_t graphicsTableMask = 0;
+    uint64_t computeTableMask = 0;
+
+    std::array<SIZE_T, D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT> renderTargets {};
+    UINT renderTargetCount = 0;
+    bool renderTargetsContiguous = false;
+
+    ID3D12RootSignature* graphicsRootSignature = nullptr;
+    ID3D12RootSignature* computeRootSignature = nullptr;
+    ID3D12DescriptorHeap* cbvSrvUavHeap = nullptr;
+};
+
+#ifdef USE_SPINLOCK_MUTEX
+using BindingStateMutex = SpinLock;
+#else
+using BindingStateMutex = std::mutex;
+#endif
+
+struct alignas(CACHE_LINE_SIZE) BindingStateShard
+{
+    BindingStateMutex mutex;
+    ankerl::unordered_dense::map<ID3D12GraphicsCommandList*, std::unique_ptr<CommandListBindingState>> map;
+};
+
 #ifdef USE_SPINLOCK_MUTEX
 // Force each struct to start on a new cache line
 struct alignas(CACHE_LINE_SIZE) CommandListShard
@@ -510,6 +541,11 @@ class ResTrack_Dx12
   private:
     inline static bool _presentDone = true;
     inline static bool _useShards = false;
+    inline static std::atomic<bool> _bindingTrackingEnabled { false };
+
+    inline static std::mutex _bindingStateMutex;
+    inline static ankerl::unordered_dense::map<ID3D12GraphicsCommandList*, std::unique_ptr<CommandListBindingState>>
+        _bindingStates;
 
     inline static ULONG64 _lastHudlessFrame = 0;
     inline static std::mutex _hudlessMutex;
@@ -517,7 +553,18 @@ class ResTrack_Dx12
 
     static bool IsHudFixActive();
 
-    // static bool IsFGCommandList(IUnknown* cmdList);
+    static CommandListBindingState* GetOrCreateBindingState(ID3D12GraphicsCommandList* commandList);
+    static CommandListBindingState* FindBindingState(ID3D12GraphicsCommandList* commandList);
+    static void ResetBindingState(ID3D12GraphicsCommandList* commandList);
+    static void RemoveBindingState(ID3D12GraphicsCommandList* commandList);
+    static void ClearBindingStates();
+    static void __stdcall CommandListDestroyed(void* data);
+
+    static bool ResolveGraphicsBinding(SIZE_T gpuHandle, ResourceInfo& outInfo);
+    static bool ResolveComputeBinding(SIZE_T gpuHandle, ResourceInfo& outInfo);
+    static bool ResolveRenderTargetBinding(SIZE_T cpuHandle, ResourceInfo& outInfo);
+    static bool ProcessGraphicsBindings(ID3D12GraphicsCommandList* commandList, UINT captureInfo);
+    static bool ProcessComputeBindings(ID3D12GraphicsCommandList* commandList, UINT captureInfo);
 
     static void hkCopyDescriptors(ID3D12Device* This, UINT NumDestDescriptorRanges,
                                   D3D12_CPU_DESCRIPTOR_HANDLE* pDestDescriptorRangeStarts,
@@ -537,6 +584,9 @@ class ResTrack_Dx12
                                      D3D12_CPU_DESCRIPTOR_HANDLE* pDepthStencilDescriptor);
     static void hkSetComputeRootDescriptorTable(ID3D12GraphicsCommandList* This, UINT RootParameterIndex,
                                                 D3D12_GPU_DESCRIPTOR_HANDLE BaseDescriptor);
+    static HRESULT hkReset(ID3D12GraphicsCommandList* This, ID3D12CommandAllocator* pAllocator,
+                           ID3D12PipelineState* pInitialState);
+    static void hkClearState(ID3D12GraphicsCommandList* This, ID3D12PipelineState* pPipelineState);
 
     static void hkDrawInstanced(ID3D12GraphicsCommandList* This, UINT VertexCountPerInstance, UINT InstanceCount,
                                 UINT StartVertexLocation, UINT StartInstanceLocation);
@@ -586,6 +636,7 @@ class ResTrack_Dx12
     // Sharding
     inline static constexpr size_t SHARD_COUNT = 16;
     inline static CommandListShard _hudlessShards[BUFFER_COUNT][SHARD_COUNT];
+    inline static BindingStateShard _bindingShards[SHARD_COUNT];
 
     inline static size_t GetShardIndex(ID3D12GraphicsCommandList* ptr)
     {
@@ -594,6 +645,11 @@ class ResTrack_Dx12
     }
 
   public:
+    static void OnSetDescriptorHeaps(ID3D12GraphicsCommandList* commandList, UINT numDescriptorHeaps,
+                                     ID3D12DescriptorHeap* const* descriptorHeaps);
+    static void OnSetGraphicsRootSignature(ID3D12GraphicsCommandList* commandList, ID3D12RootSignature* rootSignature);
+    static void OnSetComputeRootSignature(ID3D12GraphicsCommandList* commandList, ID3D12RootSignature* rootSignature);
+
     static void HookDevice(ID3D12Device* device);
     static void ReleaseHooks();
     static void ReleaseDeviceHooks();
