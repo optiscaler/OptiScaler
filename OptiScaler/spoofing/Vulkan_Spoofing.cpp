@@ -560,6 +560,41 @@ struct VulkanDeviceFeatureState::Impl
             *modifiedFeature->value = modifiedFeature->original;
     }
 
+    void CopyOwnedFeatureChain()
+    {
+        pCreateInfo->pNext = CopyFeatureChain(
+            pCreateInfo->pNext, features2, vulkan12Features, vulkan13Features, shaderFloat16Int8, storage8Bit,
+            descriptorIndexing, bufferDeviceAddress, vulkanMemoryModel, synchronization2, subgroupSizeControl,
+            descriptorBuffer, shaderFloat8, cooperativeMatrix, cooperativeMatrix2, computeShaderDerivatives);
+    }
+
+    bool CanUpgradeExtBufferDeviceAddress(VkPhysicalDevice physicalDevice)
+    {
+        if (getFeatures2 == nullptr)
+            return false;
+
+        const auto* extFeatures = FindFeatureStruct<VkPhysicalDeviceBufferDeviceAddressFeaturesEXT>(
+            pCreateInfo->pNext, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_EXT);
+        if (extFeatures != nullptr)
+        {
+            LOG_INFO("Preserving VK_EXT_buffer_device_address because the application supplied its EXT feature struct "
+                     "(bufferDeviceAddress={}, captureReplay={}, multiDevice={})",
+                     extFeatures->bufferDeviceAddress == VK_TRUE,
+                     extFeatures->bufferDeviceAddressCaptureReplay == VK_TRUE,
+                     extFeatures->bufferDeviceAddressMultiDevice == VK_TRUE);
+            return false;
+        }
+
+        const auto supported = GetSupportedFeatureStruct(getFeatures2, physicalDevice, bufferDeviceAddress);
+        if (supported.bufferDeviceAddress != VK_TRUE)
+        {
+            LOG_DEBUG("Not upgrading VK_EXT_buffer_device_address because KHR/core bufferDeviceAddress is unsupported");
+            return false;
+        }
+
+        return true;
+    }
+
     void EnableCoreFeatures(VkPhysicalDevice physicalDevice)
     {
         VkPhysicalDeviceFeatures2 supported { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
@@ -796,10 +831,7 @@ struct VulkanDeviceFeatureState::Impl
         if (getFeatures2 == nullptr)
             return;
 
-        pCreateInfo->pNext = CopyFeatureChain(
-            pCreateInfo->pNext, features2, vulkan12Features, vulkan13Features, shaderFloat16Int8, storage8Bit,
-            descriptorIndexing, bufferDeviceAddress, vulkanMemoryModel, synchronization2, subgroupSizeControl,
-            descriptorBuffer, shaderFloat8, cooperativeMatrix, cooperativeMatrix2, computeShaderDerivatives);
+        CopyOwnedFeatureChain();
         EnableCoreFeatures(physicalDevice);
         EnableVulkan12Features(physicalDevice);
         EnableVulkan13Features(physicalDevice);
@@ -999,6 +1031,20 @@ VkResult VulkanSpoofing::hkvkCreateDevice(VkPhysicalDevice physicalDevice, VkDev
         newExtensionList.push_back(extension);
         return true;
     };
+
+    if (featureState != nullptr && effectiveApiVersion < VK_API_VERSION_1_2 &&
+        HasExtension(newExtensionList, VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME) &&
+        SupportsExtension(supportedDeviceExtensions, VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME) &&
+        featureState->impl->CanUpgradeExtBufferDeviceAddress(physicalDevice))
+    {
+        std::erase_if(newExtensionList, [](const char* extension)
+                      { return std::strcmp(extension, VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME) == 0; });
+
+        if (!HasExtension(newExtensionList, VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME))
+            newExtensionList.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
+
+        LOG_INFO("Replaced unused VK_EXT_buffer_device_address with VK_KHR_buffer_device_address");
+    }
 
     LOG_INFO("Adding NVNGX Vulkan extensions");
     if (effectiveApiVersion >= VK_API_VERSION_1_1 || addExtension(VK_KHR_MULTIVIEW_EXTENSION_NAME))
