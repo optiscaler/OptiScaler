@@ -1478,7 +1478,7 @@ class FfxApiProxy
         if (main_vk.dll == nullptr)
         {
             // Try new api first
-            std::vector<std::wstring> dllNames = { L"amd_fidelityfx_vk.dll" };
+            std::vector<std::wstring> dllNames = { L"amd_fidelityfx_upscaler_vk.dll", L"amd_fidelityfx_vk.dll" };
 
             auto optiPath = Config::Instance()->MainDllPath.value();
 
