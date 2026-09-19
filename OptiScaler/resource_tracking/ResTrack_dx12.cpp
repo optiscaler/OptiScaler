@@ -875,13 +875,17 @@ void ResTrack_Dx12::hkCopyDescriptors(ID3D12Device* This, UINT NumDestDescriptor
     UINT destRangeIndex = 0;
     UINT destOffsetInRange = 0;
 
-    // Cache for heap lookups to avoid repeated lookups within the same range
+    // Cache heap and direct-index state for each active range.
     std::shared_ptr<HeapInfo> cachedDestHeap;
     SIZE_T cachedDestRangeStart = 0;
     UINT cachedDestRangeSize = 0;
+    UINT cachedDestBaseIndex = 0;
+    bool cachedDestRangeFits = false;
     std::shared_ptr<HeapInfo> cachedSrcHeap;
     SIZE_T cachedSrcRangeStart = 0;
     UINT cachedSrcRangeSize = 0;
+    UINT cachedSrcBaseIndex = 0;
+    bool cachedSrcRangeFits = false;
 
     // Process all destination descriptors
     while (destRangeIndex < NumDestDescriptorRanges)
@@ -893,10 +897,10 @@ void ResTrack_Dx12::hkCopyDescriptors(ID3D12Device* This, UINT NumDestDescriptor
             cachedDestRangeSize =
                 (pDestDescriptorRangeSizes == nullptr) ? 1 : pDestDescriptorRangeSizes[destRangeIndex];
             cachedDestHeap = GetHeapByCpuHandle(cachedDestRangeStart);
+            cachedDestRangeFits = cachedDestHeap != nullptr &&
+                                  cachedDestHeap->GetCpuIndex(cachedDestRangeStart, cachedDestBaseIndex) &&
+                                  cachedDestRangeSize <= cachedDestHeap->numDescriptors - cachedDestBaseIndex;
         }
-
-        // Calculate current destination handle
-        const SIZE_T destHandle = cachedDestRangeStart + (static_cast<SIZE_T>(destOffsetInRange) * inc);
 
         // Get or update source information
         ResourceInfo srcInfo {};
@@ -910,13 +914,23 @@ void ResTrack_Dx12::hkCopyDescriptors(ID3D12Device* This, UINT NumDestDescriptor
                 cachedSrcRangeSize =
                     (pSrcDescriptorRangeSizes == nullptr) ? 1 : pSrcDescriptorRangeSizes[srcRangeIndex];
                 cachedSrcHeap = GetHeapByCpuHandle(cachedSrcRangeStart);
+                cachedSrcRangeFits = cachedSrcHeap != nullptr &&
+                                     cachedSrcHeap->GetCpuIndex(cachedSrcRangeStart, cachedSrcBaseIndex) &&
+                                     cachedSrcRangeSize <= cachedSrcHeap->numDescriptors - cachedSrcBaseIndex;
             }
 
-            // Calculate current source handle
-            const SIZE_T srcHandle = cachedSrcRangeStart + (static_cast<SIZE_T>(srcOffsetInRange) * inc);
-
             if (cachedSrcHeap != nullptr)
-                haveSrcInfo = cachedSrcHeap->GetByCpuHandle(srcHandle, srcInfo);
+            {
+                if (cachedSrcRangeFits)
+                {
+                    haveSrcInfo = cachedSrcHeap->GetByIndex(cachedSrcBaseIndex + srcOffsetInRange, srcInfo);
+                }
+                else
+                {
+                    const SIZE_T srcHandle = cachedSrcRangeStart + (static_cast<SIZE_T>(srcOffsetInRange) * inc);
+                    haveSrcInfo = cachedSrcHeap->GetByCpuHandle(srcHandle, srcInfo);
+                }
+            }
 
             // Advance source position
             srcOffsetInRange++;
@@ -929,10 +943,22 @@ void ResTrack_Dx12::hkCopyDescriptors(ID3D12Device* This, UINT NumDestDescriptor
 
         if (cachedDestHeap != nullptr)
         {
-            if (haveSrcInfo)
-                cachedDestHeap->SetByCpuHandle(destHandle, srcInfo);
+            if (cachedDestRangeFits)
+            {
+                const auto destIndex = cachedDestBaseIndex + destOffsetInRange;
+                if (haveSrcInfo)
+                    cachedDestHeap->SetByIndex(destIndex, srcInfo);
+                else
+                    cachedDestHeap->ClearByIndex(destIndex);
+            }
             else
-                cachedDestHeap->ClearByCpuHandle(destHandle);
+            {
+                const SIZE_T destHandle = cachedDestRangeStart + (static_cast<SIZE_T>(destOffsetInRange) * inc);
+                if (haveSrcInfo)
+                    cachedDestHeap->SetByCpuHandle(destHandle, srcInfo);
+                else
+                    cachedDestHeap->ClearByCpuHandle(destHandle);
+            }
         }
 
         // Advance destination position
