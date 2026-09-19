@@ -1178,6 +1178,7 @@ void ResTrack_Dx12::ResetBindingState(ID3D12GraphicsCommandList* commandList)
     state->graphicsRootSignature = nullptr;
     state->computeRootSignature = nullptr;
     state->cbvSrvUavHeap = nullptr;
+    state->cbvSrvUavHeapInfo.reset();
 }
 
 void __stdcall ResTrack_Dx12::CommandListDestroyed(void* data)
@@ -1208,11 +1209,39 @@ void ResTrack_Dx12::OnSetDescriptorHeaps(ID3D12GraphicsCommandList* commandList,
         }
     }
 
-    if (state->cbvSrvUavHeap != cbvSrvUavHeap)
+    if (state->cbvSrvUavHeap == cbvSrvUavHeap)
     {
-        state->graphicsTableMask = 0;
-        state->computeTableMask = 0;
-        state->cbvSrvUavHeap = cbvSrvUavHeap;
+        auto* trackedHeap = state->cbvSrvUavHeapInfo.get();
+        if (cbvSrvUavHeap == nullptr)
+        {
+            state->cbvSrvUavHeapInfo.reset();
+            return;
+        }
+
+        if (trackedHeap != nullptr && trackedHeap->active.load(std::memory_order_acquire) &&
+            trackedHeap->heap == cbvSrvUavHeap)
+            return;
+
+        const auto gpuStart = cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart().ptr;
+        auto heapInfo = gpuStart != 0 ? GetHeapByGpuHandleGR(gpuStart) : nullptr;
+        if (heapInfo != nullptr && heapInfo->heap != cbvSrvUavHeap)
+            heapInfo.reset();
+
+        state->cbvSrvUavHeapInfo = std::move(heapInfo);
+        return;
+    }
+
+    state->graphicsTableMask = 0;
+    state->computeTableMask = 0;
+    state->cbvSrvUavHeap = cbvSrvUavHeap;
+    state->cbvSrvUavHeapInfo.reset();
+
+    if (cbvSrvUavHeap != nullptr)
+    {
+        const auto gpuStart = cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart().ptr;
+        auto heapInfo = gpuStart != 0 ? GetHeapByGpuHandleGR(gpuStart) : nullptr;
+        if (heapInfo != nullptr && heapInfo->heap == cbvSrvUavHeap)
+            state->cbvSrvUavHeapInfo = std::move(heapInfo);
     }
 }
 
@@ -1244,12 +1273,20 @@ void ResTrack_Dx12::OnSetComputeRootSignature(ID3D12GraphicsCommandList* command
     }
 }
 
-bool ResTrack_Dx12::ResolveGraphicsBinding(SIZE_T gpuHandle, ResourceInfo& outInfo)
+bool ResTrack_Dx12::ResolveGraphicsBinding(const HeapInfo* boundHeap, SIZE_T gpuHandle, ResourceInfo& outInfo)
 {
     if (gpuHandle == 0)
         return false;
 
-    auto heap = GetHeapByGpuHandleGR(gpuHandle);
+    std::shared_ptr<HeapInfo> fallbackHeap;
+    auto* heap = boundHeap;
+    if (heap == nullptr || !heap->active.load(std::memory_order_acquire) || gpuHandle < heap->gpuStart ||
+        gpuHandle >= heap->gpuEnd)
+    {
+        fallbackHeap = GetHeapByGpuHandleGR(gpuHandle);
+        heap = fallbackHeap.get();
+    }
+
     if (heap == nullptr || !heap->GetByGpuHandle(gpuHandle, outInfo) || outInfo.buffer == nullptr ||
         !IsDescriptorEnabled(outInfo.type))
         return false;
@@ -1260,12 +1297,20 @@ bool ResTrack_Dx12::ResolveGraphicsBinding(SIZE_T gpuHandle, ResourceInfo& outIn
     return true;
 }
 
-bool ResTrack_Dx12::ResolveComputeBinding(SIZE_T gpuHandle, ResourceInfo& outInfo)
+bool ResTrack_Dx12::ResolveComputeBinding(const HeapInfo* boundHeap, SIZE_T gpuHandle, ResourceInfo& outInfo)
 {
     if (gpuHandle == 0)
         return false;
 
-    auto heap = GetHeapByGpuHandleCR(gpuHandle);
+    std::shared_ptr<HeapInfo> fallbackHeap;
+    auto* heap = boundHeap;
+    if (heap == nullptr || !heap->active.load(std::memory_order_acquire) || gpuHandle < heap->gpuStart ||
+        gpuHandle >= heap->gpuEnd)
+    {
+        fallbackHeap = GetHeapByGpuHandleCR(gpuHandle);
+        heap = fallbackHeap.get();
+    }
+
     if (heap == nullptr || !heap->GetByGpuHandle(gpuHandle, outInfo) || outInfo.buffer == nullptr ||
         !IsDescriptorEnabled(outInfo.type))
         return false;
@@ -1313,7 +1358,7 @@ bool ResTrack_Dx12::ProcessGraphicsBindings(ID3D12GraphicsCommandList* commandLi
                 continue;
 
             ResourceInfo candidate {};
-            if (!ResolveGraphicsBinding(state->graphicsTables[index], candidate))
+            if (!ResolveGraphicsBinding(state->cbvSrvUavHeapInfo.get(), state->graphicsTables[index], candidate))
                 continue;
             candidate.captureInfo |= captureInfo;
             if (Hudfix_Dx12::CheckForHudless(commandList, &candidate, candidate.state))
@@ -1379,7 +1424,7 @@ bool ResTrack_Dx12::ProcessComputeBindings(ID3D12GraphicsCommandList* commandLis
                 continue;
 
             ResourceInfo candidate {};
-            if (!ResolveComputeBinding(state->computeTables[index], candidate))
+            if (!ResolveComputeBinding(state->cbvSrvUavHeapInfo.get(), state->computeTables[index], candidate))
                 continue;
             candidate.captureInfo |= captureInfo;
             if (Hudfix_Dx12::CheckForHudless(commandList, &candidate, candidate.state))
@@ -1411,12 +1456,29 @@ void ResTrack_Dx12::hkSetGraphicsRootDescriptorTable(ID3D12GraphicsCommandList* 
             else
                 state->graphicsTableMask &= ~bit;
 
-            if (state->cbvSrvUavHeap == nullptr && BaseDescriptor.ptr != 0)
+            if (BaseDescriptor.ptr != 0 && (state->cbvSrvUavHeapInfo == nullptr ||
+                                            !state->cbvSrvUavHeapInfo->active.load(std::memory_order_acquire)))
             {
                 if (auto heap = GetHeapByGpuHandleGR(BaseDescriptor.ptr))
-                    state->cbvSrvUavHeap = heap->heap;
+                {
+                    if (state->cbvSrvUavHeap != nullptr && state->cbvSrvUavHeap != heap->heap)
+                        heap.reset();
+
+                    if (heap != nullptr)
+                    {
+                        state->cbvSrvUavHeap = heap->heap;
+                        state->cbvSrvUavHeapInfo = std::move(heap);
+                    }
+                }
             }
         }
+    }
+
+    const bool immediateCapture = Config::Instance()->FGImmediateCapture.value_or_default();
+    if (persistentBinding && !immediateCapture)
+    {
+        o_SetGraphicsRootDescriptorTable(This, RootParameterIndex, BaseDescriptor);
+        return;
     }
 
     // Consistent early exit - always call original function
@@ -1461,12 +1523,12 @@ void ResTrack_Dx12::hkSetGraphicsRootDescriptorTable(ID3D12GraphicsCommandList* 
 
     // Track the resource
     bool capturedImmediately = false;
-    if (Config::Instance()->FGImmediateCapture.value_or_default())
+    if (immediateCapture)
     {
         capturedImmediately = Hudfix_Dx12::CheckForHudless(This, &capturedBuffer, capturedBuffer.state);
     }
 
-    if (!capturedImmediately && (!persistentBinding || Config::Instance()->FGImmediateCapture.value_or_default()))
+    if (!capturedImmediately && (!persistentBinding || immediateCapture))
     {
         auto fIndex = Hudfix_Dx12::ActivePresentFrame() % BUFFER_COUNT;
 
@@ -1541,6 +1603,14 @@ void ResTrack_Dx12::hkOMSetRenderTargets(ID3D12GraphicsCommandList* This, UINT N
         }
     }
 
+    const bool immediateCapture = Config::Instance()->FGImmediateCapture.value_or_default();
+    if (persistentBinding && !immediateCapture)
+    {
+        o_OMSetRenderTargets(This, NumRenderTargetDescriptors, pRenderTargetDescriptors,
+                             RTsSingleHandleToDescriptorRange, pDepthStencilDescriptor);
+        return;
+    }
+
     // Consistent early exit validation
     auto shouldTrack = !Config::Instance()->FGHudfixDisableOM.value_or_default() && NumRenderTargetDescriptors > 0 &&
                        pRenderTargetDescriptors != nullptr && IsHudFixActive() && !Hudfix_Dx12::SkipHudlessChecks() &&
@@ -1602,7 +1672,7 @@ void ResTrack_Dx12::hkOMSetRenderTargets(ID3D12GraphicsCommandList* This, UINT N
 
         // Check for immediate capture
         bool capturedImmediately = false;
-        if (Config::Instance()->FGImmediateCapture.value_or_default())
+        if (immediateCapture)
         {
             capturedImmediately = Hudfix_Dx12::CheckForHudless(This, &capturedBuffer, capturedBuffer.state);
             if (capturedImmediately)
@@ -1610,7 +1680,7 @@ void ResTrack_Dx12::hkOMSetRenderTargets(ID3D12GraphicsCommandList* This, UINT N
         }
 
         // Track for later processing
-        if (!capturedImmediately && (!persistentBinding || Config::Instance()->FGImmediateCapture.value_or_default()))
+        if (!capturedImmediately && (!persistentBinding || immediateCapture))
         {
             if (!_useShards)
             {
@@ -1673,12 +1743,29 @@ void ResTrack_Dx12::hkSetComputeRootDescriptorTable(ID3D12GraphicsCommandList* T
             else
                 state->computeTableMask &= ~bit;
 
-            if (state->cbvSrvUavHeap == nullptr && BaseDescriptor.ptr != 0)
+            if (BaseDescriptor.ptr != 0 && (state->cbvSrvUavHeapInfo == nullptr ||
+                                            !state->cbvSrvUavHeapInfo->active.load(std::memory_order_acquire)))
             {
                 if (auto heap = GetHeapByGpuHandleCR(BaseDescriptor.ptr))
-                    state->cbvSrvUavHeap = heap->heap;
+                {
+                    if (state->cbvSrvUavHeap != nullptr && state->cbvSrvUavHeap != heap->heap)
+                        heap.reset();
+
+                    if (heap != nullptr)
+                    {
+                        state->cbvSrvUavHeap = heap->heap;
+                        state->cbvSrvUavHeapInfo = std::move(heap);
+                    }
+                }
             }
         }
+    }
+
+    const bool immediateCapture = Config::Instance()->FGImmediateCapture.value_or_default();
+    if (persistentBinding && !immediateCapture)
+    {
+        o_SetComputeRootDescriptorTable(This, RootParameterIndex, BaseDescriptor);
+        return;
     }
 
     // Consistent early exit - always call original function
@@ -1727,12 +1814,12 @@ void ResTrack_Dx12::hkSetComputeRootDescriptorTable(ID3D12GraphicsCommandList* T
 
     // Track the resource
     bool capturedImmediately = false;
-    if (Config::Instance()->FGImmediateCapture.value_or_default())
+    if (immediateCapture)
     {
         capturedImmediately = Hudfix_Dx12::CheckForHudless(This, &capturedBuffer, capturedBuffer.state);
     }
 
-    if (!capturedImmediately && (!persistentBinding || Config::Instance()->FGImmediateCapture.value_or_default()))
+    if (!capturedImmediately && (!persistentBinding || immediateCapture))
     {
         auto fIndex = Hudfix_Dx12::ActivePresentFrame() % BUFFER_COUNT;
 

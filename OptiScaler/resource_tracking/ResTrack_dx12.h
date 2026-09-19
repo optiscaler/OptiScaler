@@ -554,6 +554,7 @@ struct CommandListBindingState
     ID3D12RootSignature* graphicsRootSignature = nullptr;
     ID3D12RootSignature* computeRootSignature = nullptr;
     ID3D12DescriptorHeap* cbvSrvUavHeap = nullptr;
+    std::shared_ptr<HeapInfo> cbvSrvUavHeapInfo;
 };
 
 #ifdef USE_SPINLOCK_MUTEX
@@ -615,8 +616,8 @@ class ResTrack_Dx12
     static void ClearBindingStates();
     static void __stdcall CommandListDestroyed(void* data);
 
-    static bool ResolveGraphicsBinding(SIZE_T gpuHandle, ResourceInfo& outInfo);
-    static bool ResolveComputeBinding(SIZE_T gpuHandle, ResourceInfo& outInfo);
+    static bool ResolveGraphicsBinding(const HeapInfo* boundHeap, SIZE_T gpuHandle, ResourceInfo& outInfo);
+    static bool ResolveComputeBinding(const HeapInfo* boundHeap, SIZE_T gpuHandle, ResourceInfo& outInfo);
     static bool ResolveRenderTargetBinding(SIZE_T cpuHandle, ResourceInfo& outInfo);
     static bool ProcessGraphicsBindings(ID3D12GraphicsCommandList* commandList, UINT captureInfo);
     static bool ProcessComputeBindings(ID3D12GraphicsCommandList* commandList, UINT captureInfo);
