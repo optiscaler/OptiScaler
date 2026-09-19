@@ -1238,7 +1238,8 @@ bool ResTrack_Dx12::ResolveRenderTargetBinding(SIZE_T cpuHandle, ResourceInfo& o
 
 bool ResTrack_Dx12::ProcessGraphicsBindings(ID3D12GraphicsCommandList* commandList, UINT captureInfo)
 {
-    if (Config::Instance()->FGImmediateCapture.value_or_default())
+    if (!_bindingTrackingEnabled.load(std::memory_order_acquire) ||
+        Config::Instance()->FGImmediateCapture.value_or_default())
         return false;
 
     auto* state = FindBindingState(commandList);
@@ -1303,7 +1304,8 @@ bool ResTrack_Dx12::ProcessGraphicsBindings(ID3D12GraphicsCommandList* commandLi
 
 bool ResTrack_Dx12::ProcessComputeBindings(ID3D12GraphicsCommandList* commandList, UINT captureInfo)
 {
-    if (Config::Instance()->FGImmediateCapture.value_or_default())
+    if (!_bindingTrackingEnabled.load(std::memory_order_acquire) ||
+        Config::Instance()->FGImmediateCapture.value_or_default())
         return false;
 
     auto* state = FindBindingState(commandList);
@@ -2092,10 +2094,14 @@ void ResTrack_Dx12::HookCommandList(ID3D12Device* InDevice)
 
             // Get the vtable pointer
             PVOID* pVTable = *(PVOID**) realCL;
+            const bool persistentBindings = Config::Instance()->FGHudfixPersistentBindings.value_or_default();
 
             // Persistent command-list binding invalidation
-            o_Reset = (PFN_Reset) pVTable[10];
-            o_ClearState = (PFN_ClearState) pVTable[11];
+            if (persistentBindings)
+            {
+                o_Reset = (PFN_Reset) pVTable[10];
+                o_ClearState = (PFN_ClearState) pVTable[11];
+            }
 
             // hudless shader
             o_OMSetRenderTargets = (PFN_OMSetRenderTargets) pVTable[46];
@@ -2156,7 +2162,7 @@ void ResTrack_Dx12::HookCommandList(ID3D12Device* InDevice)
                 }
                 else if (State::Instance().activeFgInput == FGInput::Upscaler)
                 {
-                    _bindingTrackingEnabled.store(true, std::memory_order_release);
+                    _bindingTrackingEnabled.store(persistentBindings, std::memory_order_release);
                 }
             }
 
@@ -2196,17 +2202,20 @@ void ResTrack_Dx12::HookDevice(ID3D12Device* device)
             _trackedResources.reserve(1024);
         }
 
-        if (!_useShards)
+        if (Config::Instance()->FGHudfixPersistentBindings.value_or_default())
         {
-            std::lock_guard<std::mutex> lock(_bindingStateMutex);
-            _bindingStates.reserve(256);
-        }
-        else
-        {
-            for (auto& shard : _bindingShards)
+            if (!_useShards)
             {
-                std::lock_guard<BindingStateMutex> lock(shard.mutex);
-                shard.map.reserve(32);
+                std::lock_guard<std::mutex> lock(_bindingStateMutex);
+                _bindingStates.reserve(256);
+            }
+            else
+            {
+                for (auto& shard : _bindingShards)
+                {
+                    std::lock_guard<BindingStateMutex> lock(shard.mutex);
+                    shard.map.reserve(32);
+                }
             }
         }
     }
