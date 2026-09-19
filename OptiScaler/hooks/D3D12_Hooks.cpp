@@ -424,6 +424,41 @@ UINT GetRootParameterCount(ID3D12RootSignature* pRootSignature)
     return (it != rootSigParameterCount.end()) ? it->second : 0;
 }
 
+static UINT GetSerializedRootParameterCount(const D3D12_VERSIONED_ROOT_SIGNATURE_DESC* desc)
+{
+    if (desc == nullptr)
+        return 0;
+
+    switch (desc->Version)
+    {
+    case D3D_ROOT_SIGNATURE_VERSION_1_0:
+        return desc->Desc_1_0.NumParameters;
+    case D3D_ROOT_SIGNATURE_VERSION_1_1:
+        return desc->Desc_1_1.NumParameters;
+    case D3D_ROOT_SIGNATURE_VERSION_1_2:
+        return desc->Desc_1_2.NumParameters;
+    default:
+        return 0;
+    }
+}
+
+static void TrackCreatedRootSignature(ID3D12RootSignature* rootSignature,
+                                      const D3D12_VERSIONED_ROOT_SIGNATURE_DESC* desc, bool trackParameterCount,
+                                      bool trackHudfix)
+{
+    if (rootSignature == nullptr || desc == nullptr)
+        return;
+
+    if (trackParameterCount)
+    {
+        std::unique_lock<std::shared_mutex> lock(rootSigParameterCountMutex);
+        rootSigParameterCount.insert_or_assign(rootSignature, GetSerializedRootParameterCount(desc));
+    }
+
+    if (trackHudfix)
+        ResTrack_Dx12::RegisterRootSignature(rootSignature, desc);
+}
+
 VALIDATE_HOOK(hkSetComputeRootSignature, PFN_SetComputeRootSignature)
 static void hkSetComputeRootSignature(ID3D12GraphicsCommandList* commandList, ID3D12RootSignature* pRootSignature)
 {
@@ -2013,8 +2048,15 @@ VALIDATE_HOOK(hkCreateRootSignature, PFN_CreateRootSignature)
 static HRESULT hkCreateRootSignature(ID3D12Device* device, UINT nodeMask, const void* pBlobWithRootSignature,
                                      SIZE_T blobLengthInBytes, REFIID riid, void** ppvRootSignature)
 {
-    if (!Config::Instance()->MipmapBiasOverride.has_value() && !Config::Instance()->AnisotropyOverride.has_value() &&
-        !Config::Instance()->ExtendedStateRestore.value_or_default())
+    auto* config = Config::Instance();
+    const bool extendedStateRestore = config->ExtendedStateRestore.value_or_default();
+    const bool samplerOverride = config->MipmapBiasOverride.has_value() || config->AnisotropyOverride.has_value();
+    const bool trackRootParameterCount = extendedStateRestore || samplerOverride;
+    const bool trackHudfixRootSignature = config->FGHudfixPersistentBindings.value_or_default() &&
+                                          State::Instance().activeFgInput == FGInput::Upscaler &&
+                                          !config->FGDisableHUDFix.value_or_default();
+
+    if (!samplerOverride && !extendedStateRestore && !trackHudfixRootSignature)
     {
         return o_CreateRootSignature(device, nodeMask, pBlobWithRootSignature, blobLengthInBytes, riid,
                                      ppvRootSignature);
@@ -2034,30 +2076,16 @@ static HRESULT hkCreateRootSignature(ID3D12Device* device, UINT nodeMask, const 
 
     const D3D12_VERSIONED_ROOT_SIGNATURE_DESC* desc = deserializer->GetUnconvertedRootSignatureDesc();
 
-    // Only ExtendedStateRestore is set, return early
-    if (!Config::Instance()->MipmapBiasOverride.has_value() && !Config::Instance()->AnisotropyOverride.has_value())
+    // No sampler override is needed; create the original signature and only record requested metadata.
+    if (!samplerOverride)
     {
         auto result =
             o_CreateRootSignature(device, nodeMask, pBlobWithRootSignature, blobLengthInBytes, riid, ppvRootSignature);
 
-        if (SUCCEEDED(result))
+        if (SUCCEEDED(result) && ppvRootSignature != nullptr && *ppvRootSignature != nullptr)
         {
-            std::unique_lock<std::shared_mutex> lock(rootSigParameterCountMutex);
-            if (desc->Version == D3D_ROOT_SIGNATURE_VERSION_1_0)
-            {
-                rootSigParameterCount.insert_or_assign((ID3D12RootSignature*) *ppvRootSignature,
-                                                       desc->Desc_1_0.NumParameters);
-            }
-            else if (desc->Version == D3D_ROOT_SIGNATURE_VERSION_1_1)
-            {
-                rootSigParameterCount.insert_or_assign((ID3D12RootSignature*) *ppvRootSignature,
-                                                       desc->Desc_1_1.NumParameters);
-            }
-            else if (desc->Version == D3D_ROOT_SIGNATURE_VERSION_1_2)
-            {
-                rootSigParameterCount.insert_or_assign((ID3D12RootSignature*) *ppvRootSignature,
-                                                       desc->Desc_1_2.NumParameters);
-            }
+            TrackCreatedRootSignature(static_cast<ID3D12RootSignature*>(*ppvRootSignature), desc,
+                                      trackRootParameterCount, trackHudfixRootSignature);
         }
 
         deserializer->Release();
@@ -2074,12 +2102,6 @@ static HRESULT hkCreateRootSignature(ID3D12Device* device, UINT nodeMask, const 
     // Modify Samplers based on Version
     if (descCopy.Version == D3D_ROOT_SIGNATURE_VERSION_1_0)
     {
-        {
-            std::unique_lock<std::shared_mutex> lock(rootSigParameterCountMutex);
-            rootSigParameterCount.insert_or_assign((ID3D12RootSignature*) *ppvRootSignature,
-                                                   desc->Desc_1_0.NumParameters);
-        }
-
         if (descCopy.Desc_1_0.NumStaticSamplers > 0)
         {
             samplers.assign(descCopy.Desc_1_0.pStaticSamplers,
@@ -2093,12 +2115,6 @@ static HRESULT hkCreateRootSignature(ID3D12Device* device, UINT nodeMask, const 
     }
     else if (descCopy.Version == D3D_ROOT_SIGNATURE_VERSION_1_1)
     {
-        {
-            std::unique_lock<std::shared_mutex> lock(rootSigParameterCountMutex);
-            rootSigParameterCount.insert_or_assign((ID3D12RootSignature*) *ppvRootSignature,
-                                                   desc->Desc_1_1.NumParameters);
-        }
-
         if (descCopy.Desc_1_1.NumStaticSamplers > 0)
         {
             samplers.assign(descCopy.Desc_1_1.pStaticSamplers,
@@ -2112,12 +2128,6 @@ static HRESULT hkCreateRootSignature(ID3D12Device* device, UINT nodeMask, const 
     }
     else if (descCopy.Version == D3D_ROOT_SIGNATURE_VERSION_1_2)
     {
-        {
-            std::unique_lock<std::shared_mutex> lock(rootSigParameterCountMutex);
-            rootSigParameterCount.insert_or_assign((ID3D12RootSignature*) *ppvRootSignature,
-                                                   desc->Desc_1_2.NumParameters);
-        }
-
         if (descCopy.Desc_1_2.NumStaticSamplers > 0)
         {
             samplers1.assign(descCopy.Desc_1_2.pStaticSamplers,
@@ -2159,6 +2169,12 @@ static HRESULT hkCreateRootSignature(ID3D12Device* device, UINT nodeMask, const 
         // Fallback to original blob
         result =
             o_CreateRootSignature(device, nodeMask, pBlobWithRootSignature, blobLengthInBytes, riid, ppvRootSignature);
+    }
+
+    if (SUCCEEDED(result) && ppvRootSignature != nullptr && *ppvRootSignature != nullptr)
+    {
+        TrackCreatedRootSignature(static_cast<ID3D12RootSignature*>(*ppvRootSignature), desc, trackRootParameterCount,
+                                  trackHudfixRootSignature);
     }
 
     deserializer->Release();

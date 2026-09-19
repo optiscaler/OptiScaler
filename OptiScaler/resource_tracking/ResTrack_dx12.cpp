@@ -1165,6 +1165,137 @@ CommandListBindingState* ResTrack_Dx12::FindBindingState(ID3D12GraphicsCommandLi
     return it != shard.map.end() ? it->second.get() : nullptr;
 }
 
+template <typename RootParameterT>
+static void BuildRootSignatureInfo(RootSignatureInfo& info, UINT numParameters, const RootParameterT* parameters)
+{
+    if (parameters == nullptr)
+        return;
+
+    const auto parameterCount =
+        std::min<UINT>(numParameters, static_cast<UINT>(CommandListBindingState::MAX_ROOT_PARAMETERS));
+
+    for (UINT parameterIndex = 0; parameterIndex < parameterCount; ++parameterIndex)
+    {
+        const auto& parameter = parameters[parameterIndex];
+        if (parameter.ParameterType != D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE ||
+            parameter.DescriptorTable.NumDescriptorRanges == 0 ||
+            parameter.DescriptorTable.pDescriptorRanges == nullptr)
+            continue;
+
+        auto& tableInfo = info.parameters[parameterIndex];
+        tableInfo.firstRange = static_cast<UINT>(info.ranges.size());
+        tableInfo.visibility = parameter.ShaderVisibility;
+
+        UINT nextOffset = 0;
+        bool nextOffsetValid = true;
+
+        for (UINT rangeIndex = 0; rangeIndex < parameter.DescriptorTable.NumDescriptorRanges; ++rangeIndex)
+        {
+            const auto& range = parameter.DescriptorTable.pDescriptorRanges[rangeIndex];
+
+            UINT offset = range.OffsetInDescriptorsFromTableStart;
+            bool offsetValid = true;
+            if (offset == D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND)
+            {
+                offsetValid = nextOffsetValid;
+                offset = nextOffset;
+            }
+
+            if (offsetValid && (range.RangeType == D3D12_DESCRIPTOR_RANGE_TYPE_SRV ||
+                                range.RangeType == D3D12_DESCRIPTOR_RANGE_TYPE_UAV))
+            {
+                info.ranges.push_back({ offset, range.NumDescriptors, range.RangeType });
+            }
+
+            if (!offsetValid || range.NumDescriptors == UINT_MAX || offset > UINT_MAX - range.NumDescriptors)
+            {
+                nextOffsetValid = false;
+            }
+            else
+            {
+                nextOffset = offset + range.NumDescriptors;
+                nextOffsetValid = true;
+            }
+        }
+
+        tableInfo.rangeCount = static_cast<UINT>(info.ranges.size()) - tableInfo.firstRange;
+    }
+}
+
+std::shared_ptr<RootSignatureInfo> ResTrack_Dx12::FindRootSignatureInfo(ID3D12RootSignature* rootSignature)
+{
+    if (rootSignature == nullptr)
+        return nullptr;
+
+    std::lock_guard<std::mutex> lock(_rootSignatureInfoMutex);
+    auto it = _rootSignatureInfos.find(rootSignature);
+    return it != _rootSignatureInfos.end() ? it->second : nullptr;
+}
+
+void __stdcall ResTrack_Dx12::RootSignatureDestroyed(void* data)
+{
+    if (data == nullptr || State::Instance().isShuttingDown)
+        return;
+
+    std::lock_guard<std::mutex> lock(_rootSignatureInfoMutex);
+    _rootSignatureInfos.erase(static_cast<ID3D12RootSignature*>(data));
+}
+
+void ResTrack_Dx12::RegisterRootSignature(ID3D12RootSignature* rootSignature,
+                                          const D3D12_VERSIONED_ROOT_SIGNATURE_DESC* desc)
+{
+    if (rootSignature == nullptr || desc == nullptr)
+        return;
+
+    auto info = std::make_shared<RootSignatureInfo>();
+    switch (desc->Version)
+    {
+    case D3D_ROOT_SIGNATURE_VERSION_1_0:
+        BuildRootSignatureInfo(*info, desc->Desc_1_0.NumParameters, desc->Desc_1_0.pParameters);
+        info->pixelShaderRootAccess =
+            (desc->Desc_1_0.Flags & D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS) == 0;
+        break;
+
+    case D3D_ROOT_SIGNATURE_VERSION_1_1:
+        BuildRootSignatureInfo(*info, desc->Desc_1_1.NumParameters, desc->Desc_1_1.pParameters);
+        info->pixelShaderRootAccess =
+            (desc->Desc_1_1.Flags & D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS) == 0;
+        break;
+
+    case D3D_ROOT_SIGNATURE_VERSION_1_2:
+        BuildRootSignatureInfo(*info, desc->Desc_1_2.NumParameters, desc->Desc_1_2.pParameters);
+        info->pixelShaderRootAccess =
+            (desc->Desc_1_2.Flags & D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS) == 0;
+        break;
+
+    default:
+        return;
+    }
+
+    ID3DDestructionNotifier* notifier = nullptr;
+    auto result = rootSignature->QueryInterface(IID_PPV_ARGS(&notifier));
+    if (FAILED(result) || notifier == nullptr)
+    {
+        LOG_DEBUG("ID3DDestructionNotifier is not available for root signature {:X}, result: {:X}",
+                  (size_t) rootSignature, (UINT) result);
+        return;
+    }
+
+    UINT callbackId = 0;
+    result = notifier->RegisterDestructionCallback(&ResTrack_Dx12::RootSignatureDestroyed, rootSignature, &callbackId);
+    notifier->Release();
+
+    if (FAILED(result))
+    {
+        LOG_DEBUG("Can't register root signature remove callback for {:X}, result: {:X}", (size_t) rootSignature,
+                  (UINT) result);
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(_rootSignatureInfoMutex);
+    _rootSignatureInfos.insert_or_assign(rootSignature, std::move(info));
+}
+
 void ResTrack_Dx12::ResetBindingState(ID3D12GraphicsCommandList* commandList)
 {
     auto* state = FindBindingState(commandList);
@@ -1177,6 +1308,8 @@ void ResTrack_Dx12::ResetBindingState(ID3D12GraphicsCommandList* commandList)
     state->renderTargetsContiguous = false;
     state->graphicsRootSignature = nullptr;
     state->computeRootSignature = nullptr;
+    state->graphicsRootSignatureInfo.reset();
+    state->computeRootSignatureInfo.reset();
     state->cbvSrvUavHeap = nullptr;
     state->cbvSrvUavHeapInfo.reset();
 }
@@ -1256,6 +1389,7 @@ void ResTrack_Dx12::OnSetGraphicsRootSignature(ID3D12GraphicsCommandList* comman
     {
         state->graphicsTableMask = 0;
         state->graphicsRootSignature = rootSignature;
+        state->graphicsRootSignatureInfo = FindRootSignatureInfo(rootSignature);
     }
 }
 
@@ -1270,6 +1404,7 @@ void ResTrack_Dx12::OnSetComputeRootSignature(ID3D12GraphicsCommandList* command
     {
         state->computeTableMask = 0;
         state->computeRootSignature = rootSignature;
+        state->computeRootSignatureInfo = FindRootSignatureInfo(rootSignature);
     }
 }
 
@@ -1321,6 +1456,130 @@ bool ResTrack_Dx12::ResolveComputeBinding(const HeapInfo* boundHeap, SIZE_T gpuH
     return true;
 }
 
+bool ResTrack_Dx12::ProcessDescriptorTableBinding(ID3D12GraphicsCommandList* commandList,
+                                                  const RootSignatureInfo* rootInfo, UINT rootParameterIndex,
+                                                  const HeapInfo* boundHeap, SIZE_T baseHandle, UINT captureInfo,
+                                                  bool graphics)
+{
+    if (baseHandle == 0)
+        return false;
+
+    // Missing metadata keeps the pre-F14 base-descriptor behavior.
+    if (rootInfo == nullptr)
+    {
+        ResourceInfo candidate {};
+        const bool resolved = graphics ? ResolveGraphicsBinding(boundHeap, baseHandle, candidate)
+                                       : ResolveComputeBinding(boundHeap, baseHandle, candidate);
+        if (!resolved)
+            return false;
+
+        candidate.captureInfo |= captureInfo;
+        return Hudfix_Dx12::CheckForHudless(commandList, &candidate, candidate.state);
+    }
+
+    if (rootParameterIndex >= CommandListBindingState::MAX_ROOT_PARAMETERS)
+        return false;
+
+    const auto& tableInfo = rootInfo->parameters[rootParameterIndex];
+    if (tableInfo.rangeCount == 0)
+        return false;
+
+    if (graphics && (!rootInfo->pixelShaderRootAccess || (tableInfo.visibility != D3D12_SHADER_VISIBILITY_ALL &&
+                                                          tableInfo.visibility != D3D12_SHADER_VISIBILITY_PIXEL)))
+        return false;
+
+    std::shared_ptr<HeapInfo> fallbackHeap;
+    auto* heap = boundHeap;
+    if (heap == nullptr || !heap->active.load(std::memory_order_acquire) || baseHandle < heap->gpuStart ||
+        baseHandle >= heap->gpuEnd)
+    {
+        fallbackHeap = graphics ? GetHeapByGpuHandleGR(baseHandle) : GetHeapByGpuHandleCR(baseHandle);
+        heap = fallbackHeap.get();
+    }
+
+    UINT baseIndex = 0;
+    if (heap == nullptr || !heap->GetGpuIndex(baseHandle, baseIndex))
+        return false;
+
+    auto* config = Config::Instance();
+    const bool srvEnabled = !config->FGHudfixDisableSRV.value_or_default();
+    const bool uavEnabled = !config->FGHudfixDisableUAV.value_or_default();
+
+    // Bound the complete descriptor table, not each individual range. A root table can contain many
+    // ranges, so a per-range cap can still create large Draw/Dispatch spikes.
+    static constexpr UINT MAX_DESCRIPTORS_PER_TABLE = 16;
+    UINT remainingDescriptorBudget = MAX_DESCRIPTORS_PER_TABLE;
+
+    // Descriptor tables often alias the same resource in multiple slots/ranges. Avoid sending the
+    // same resource/type pair through the HUDless policy more than once during this table scan.
+    std::array<ID3D12Resource*, MAX_DESCRIPTORS_PER_TABLE> seenResources {};
+    std::array<ResourceType, MAX_DESCRIPTORS_PER_TABLE> seenTypes {};
+    UINT seenCount = 0;
+
+    const UINT rangeEnd = tableInfo.firstRange + tableInfo.rangeCount;
+    for (UINT rangeIndex = tableInfo.firstRange; rangeIndex < rangeEnd && remainingDescriptorBudget > 0; ++rangeIndex)
+    {
+        const auto& range = rootInfo->ranges[rangeIndex];
+        if ((range.type == D3D12_DESCRIPTOR_RANGE_TYPE_SRV && !srvEnabled) ||
+            (range.type == D3D12_DESCRIPTOR_RANGE_TYPE_UAV && !uavEnabled))
+            continue;
+
+        const uint64_t firstIndex64 = static_cast<uint64_t>(baseIndex) + range.offset;
+        if (firstIndex64 >= heap->numDescriptors)
+            continue;
+
+        const auto firstIndex = static_cast<UINT>(firstIndex64);
+        const UINT available = heap->numDescriptors - firstIndex;
+
+        // Unbounded bindless ranges stay at one descriptor. Bounded ranges consume the shared table
+        // budget so many small ranges cannot multiply the hot-path cost.
+        const UINT descriptorCount =
+            range.count == UINT_MAX ? 1
+                                    : std::min<UINT>(std::min<UINT>(range.count, available), remainingDescriptorBudget);
+
+        for (UINT descriptorOffset = 0; descriptorOffset < descriptorCount; ++descriptorOffset)
+        {
+            ResourceInfo candidate {};
+            if (!heap->GetByIndex(firstIndex + descriptorOffset, candidate) || candidate.buffer == nullptr)
+                continue;
+
+            if ((range.type == D3D12_DESCRIPTOR_RANGE_TYPE_SRV && candidate.type != SRV) ||
+                (range.type == D3D12_DESCRIPTOR_RANGE_TYPE_UAV && candidate.type != UAV))
+                continue;
+
+            bool duplicate = false;
+            for (UINT seenIndex = 0; seenIndex < seenCount; ++seenIndex)
+            {
+                if (seenResources[seenIndex] == candidate.buffer && seenTypes[seenIndex] == candidate.type)
+                {
+                    duplicate = true;
+                    break;
+                }
+            }
+
+            if (duplicate)
+                continue;
+
+            seenResources[seenCount] = candidate.buffer;
+            seenTypes[seenCount] = candidate.type;
+            ++seenCount;
+
+            candidate.state = candidate.type == UAV ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+                                                    : (graphics ? D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+                                                                : D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            candidate.captureInfo = graphics ? CaptureInfo::SetGR : CaptureInfo::SetCR;
+            candidate.captureInfo |= captureInfo;
+
+            if (Hudfix_Dx12::CheckForHudless(commandList, &candidate, candidate.state))
+                return true;
+        }
+
+        remainingDescriptorBudget -= descriptorCount;
+    }
+
+    return false;
+}
+
 bool ResTrack_Dx12::ResolveRenderTargetBinding(SIZE_T cpuHandle, ResourceInfo& outInfo)
 {
     if (cpuHandle == 0)
@@ -1357,11 +1616,9 @@ bool ResTrack_Dx12::ProcessGraphicsBindings(ID3D12GraphicsCommandList* commandLi
             if ((mask & 1) == 0)
                 continue;
 
-            ResourceInfo candidate {};
-            if (!ResolveGraphicsBinding(state->cbvSrvUavHeapInfo.get(), state->graphicsTables[index], candidate))
-                continue;
-            candidate.captureInfo |= captureInfo;
-            if (Hudfix_Dx12::CheckForHudless(commandList, &candidate, candidate.state))
+            if (ProcessDescriptorTableBinding(commandList, state->graphicsRootSignatureInfo.get(), index,
+                                              state->cbvSrvUavHeapInfo.get(), state->graphicsTables[index], captureInfo,
+                                              true))
                 return true;
         }
     }
@@ -1423,11 +1680,9 @@ bool ResTrack_Dx12::ProcessComputeBindings(ID3D12GraphicsCommandList* commandLis
             if ((mask & 1) == 0)
                 continue;
 
-            ResourceInfo candidate {};
-            if (!ResolveComputeBinding(state->cbvSrvUavHeapInfo.get(), state->computeTables[index], candidate))
-                continue;
-            candidate.captureInfo |= captureInfo;
-            if (Hudfix_Dx12::CheckForHudless(commandList, &candidate, candidate.state))
+            if (ProcessDescriptorTableBinding(commandList, state->computeRootSignatureInfo.get(), index,
+                                              state->cbvSrvUavHeapInfo.get(), state->computeTables[index], captureInfo,
+                                              false))
                 return true;
         }
     }

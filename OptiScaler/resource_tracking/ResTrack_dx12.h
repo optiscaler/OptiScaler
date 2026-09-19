@@ -538,6 +538,8 @@ struct ResourceHeapInfo
 };
 
 // Command list info
+struct RootSignatureInfo;
+
 struct CommandListBindingState
 {
     static constexpr size_t MAX_ROOT_PARAMETERS = 64;
@@ -553,8 +555,31 @@ struct CommandListBindingState
 
     ID3D12RootSignature* graphicsRootSignature = nullptr;
     ID3D12RootSignature* computeRootSignature = nullptr;
+    std::shared_ptr<RootSignatureInfo> graphicsRootSignatureInfo;
+    std::shared_ptr<RootSignatureInfo> computeRootSignatureInfo;
     ID3D12DescriptorHeap* cbvSrvUavHeap = nullptr;
     std::shared_ptr<HeapInfo> cbvSrvUavHeapInfo;
+};
+
+struct RootDescriptorRangeInfo
+{
+    UINT offset = 0;
+    UINT count = 0;
+    D3D12_DESCRIPTOR_RANGE_TYPE type = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+};
+
+struct RootParameterTableInfo
+{
+    UINT firstRange = 0;
+    UINT rangeCount = 0;
+    D3D12_SHADER_VISIBILITY visibility = D3D12_SHADER_VISIBILITY_ALL;
+};
+
+struct RootSignatureInfo
+{
+    std::array<RootParameterTableInfo, CommandListBindingState::MAX_ROOT_PARAMETERS> parameters {};
+    std::vector<RootDescriptorRangeInfo> ranges;
+    bool pixelShaderRootAccess = true;
 };
 
 #ifdef USE_SPINLOCK_MUTEX
@@ -603,6 +628,10 @@ class ResTrack_Dx12
     inline static ankerl::unordered_dense::map<ID3D12GraphicsCommandList*, std::unique_ptr<CommandListBindingState>>
         _bindingStates;
 
+    inline static std::mutex _rootSignatureInfoMutex;
+    inline static ankerl::unordered_dense::map<ID3D12RootSignature*, std::shared_ptr<RootSignatureInfo>>
+        _rootSignatureInfos;
+
     inline static ULONG64 _lastHudlessFrame = 0;
     inline static std::mutex _hudlessMutex;
     inline static void* _hudlessMutexQueue = nullptr;
@@ -615,10 +644,15 @@ class ResTrack_Dx12
     static void RemoveBindingState(ID3D12GraphicsCommandList* commandList);
     static void ClearBindingStates();
     static void __stdcall CommandListDestroyed(void* data);
+    static std::shared_ptr<RootSignatureInfo> FindRootSignatureInfo(ID3D12RootSignature* rootSignature);
+    static void __stdcall RootSignatureDestroyed(void* data);
 
     static bool ResolveGraphicsBinding(const HeapInfo* boundHeap, SIZE_T gpuHandle, ResourceInfo& outInfo);
     static bool ResolveComputeBinding(const HeapInfo* boundHeap, SIZE_T gpuHandle, ResourceInfo& outInfo);
     static bool ResolveRenderTargetBinding(SIZE_T cpuHandle, ResourceInfo& outInfo);
+    static bool ProcessDescriptorTableBinding(ID3D12GraphicsCommandList* commandList, const RootSignatureInfo* rootInfo,
+                                              UINT rootParameterIndex, const HeapInfo* boundHeap, SIZE_T baseHandle,
+                                              UINT captureInfo, bool graphics);
     static bool ProcessGraphicsBindings(ID3D12GraphicsCommandList* commandList, UINT captureInfo);
     static bool ProcessComputeBindings(ID3D12GraphicsCommandList* commandList, UINT captureInfo);
 
@@ -701,6 +735,8 @@ class ResTrack_Dx12
     }
 
   public:
+    static void RegisterRootSignature(ID3D12RootSignature* rootSignature,
+                                      const D3D12_VERSIONED_ROOT_SIGNATURE_DESC* desc);
     static void OnSetDescriptorHeaps(ID3D12GraphicsCommandList* commandList, UINT numDescriptorHeaps,
                                      ID3D12DescriptorHeap* const* descriptorHeaps);
     static void OnSetGraphicsRootSignature(ID3D12GraphicsCommandList* commandList, ID3D12RootSignature* rootSignature);
