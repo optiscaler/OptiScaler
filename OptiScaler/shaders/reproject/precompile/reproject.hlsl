@@ -67,13 +67,18 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     float delta = max(diff.x, max(diff.y, diff.z));
     float uiMask = smoothstep(UiDiffThreshold, UiDiffThreshold * 2.0f, delta);
     
+    // Add depth cutout mask to the uiMask
+    float depth = Depth.Load(int3(pixelCoord, 0));
+    bool isCutout = InvertedDepth ? depth > (1.0f - DepthCutoff) : depth < DepthCutoff;
+    uiMask = max(uiMask, isCutout ? 1.0f : 0.0f);
+       
     float3 reprojectedGame = float3(0.0f, 1.0f, 0.0f); // Green
 
     // Vectorized Camera Ray (un-normalized)
     float2 ndc = uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
     float3 ray = float3(ndc * float2(TanHalfFovX, TanHalfFovY), 1.0f);
 
-    // Reproject Ray using matrix multiplication
+    // sourceUV is the reprojected position of the pixel that we want
     float3 sourceRay = float3(
         dot(ReprojectionMatrixRow0.xyz, ray),
         dot(ReprojectionMatrixRow1.xyz, ray),
@@ -98,9 +103,15 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     
     if (inside)
     {
-        // Sample according to the reprojection
-        reprojectedGame = Hudless.SampleLevel(LinearClampSampler, sourceUV, 0.0f);
+        // Depth cutoff
+        float reprojectedDepth = Depth.SampleLevel(LinearClampSampler, sourceUV, 0.0f);
+        bool isCutoutReprojected = InvertedDepth ? reprojectedDepth > DepthCutoff : reprojectedDepth < DepthCutoff;
         
+        if (isCutoutReprojected)
+            reprojectedGame = hudless; // try to fill gap with unprojected hudless
+        else
+            reprojectedGame = Hudless.SampleLevel(LinearClampSampler, sourceUV, 0.0f); // the fun part
+                
         if (modeWithBackground)
         {
             const float ditherWidthPx = ScreenHeight / 16.0f;
