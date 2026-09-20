@@ -90,12 +90,11 @@ bool Reproject_Dx12::CreateBufferResource(UINT index, ID3D12Device* InDevice, ID
 
     auto resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
-    auto result = Shader_Dx12::CreateBufferResource(InDevice, InSource, InState, &_buffer[index], resourceFlags);
+    auto result = Shader_Dx12::CreateBufferResource(InDevice, InSource, InState, &_buffer, resourceFlags);
 
     if (result)
     {
-        _buffer[index]->SetName(L"Reproject_Buffer");
-        _bufferState[index] = InState;
+        _buffer->SetName(L"Reproject_Buffer");
     }
 
     return result;
@@ -114,16 +113,6 @@ void Reproject_Dx12::ResourceBarrier(ID3D12GraphicsCommandList* cmdList, ID3D12R
     barrier.Transition.StateAfter = afterState;
     barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     cmdList->ResourceBarrier(1, &barrier);
-}
-
-void Reproject_Dx12::SetBufferState(UINT index, ID3D12GraphicsCommandList* InCommandList, D3D12_RESOURCE_STATES InState)
-{
-    if (_bufferState[index] == InState)
-        return;
-
-    ResourceBarrier(InCommandList, _buffer[index], _bufferState[index], InState);
-
-    _bufferState[index] = InState;
 }
 
 Reproject_Dx12::Reproject_Dx12(std::string InName, ID3D12Device* InDevice) : Shader_Dx12(InName, InDevice)
@@ -199,7 +188,7 @@ bool Reproject_Dx12::Dispatch(IDXGISwapChain3* sc, ID3D12GraphicsCommandList* cm
     _counter++;
     _counter = _counter % Reproject_NUM_OF_HEAPS;
     FrameDescriptorHeap& currentHeap = _frameHeaps[_counter];
-    auto& currentBuffer = _buffer[_counter];
+    auto& currentBuffer = _buffer;
 
     if (!currentBuffer)
     {

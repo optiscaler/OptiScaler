@@ -39,8 +39,7 @@ class Reproject_Dx12 : public Shader_Dx12
   private:
     FrameDescriptorHeap _frameHeaps[Reproject_NUM_OF_HEAPS];
 
-    ID3D12Resource* _buffer[Reproject_NUM_OF_HEAPS] = {};
-    D3D12_RESOURCE_STATES _bufferState[Reproject_NUM_OF_HEAPS] {};
+    ID3D12Resource* _buffer {};
 
     uint32_t InNumThreadsX = 16;
     uint32_t InNumThreadsY = 16;
