@@ -17,7 +17,8 @@ cbuffer Params : register(b0)
 
     float DepthCutoff;
     uint InvertedDepth;
-    float2 Pad0;
+    uint ShowStaticElements;
+    float Pad0;
     
     float4 ReprojectionMatrixRow0;
     float4 ReprojectionMatrixRow1;
@@ -74,7 +75,7 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     
     // Add depth cutout mask to the uiMask
     float depth = Depth.Load(int3(pixelCoord, 0));
-    bool isCutout = InvertedDepth ? depth > (1.0f - DepthCutoff) : depth < DepthCutoff;
+    bool isCutout = InvertedDepth ? depth > DepthCutoff : depth < DepthCutoff;
     uiMask = max(uiMask, isCutout ? 1.0f : 0.0f);
        
     float3 reprojectedGame = float3(0.0f, 1.0f, 0.0f); // Green
@@ -161,7 +162,9 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     }
     
     // Final UI Blend
-    Present[pixelCoord] = lerp(reprojectedGame, present, uiMask);
+    float3 composedImage = lerp(reprojectedGame, present, uiMask);
+    
+    const float3 pink = float3(1.0, 0.4, 0.6);
+    Present[pixelCoord] = lerp(composedImage, pink, uiMask * 0.6f * ShowStaticElements);
 }
-
 )";
