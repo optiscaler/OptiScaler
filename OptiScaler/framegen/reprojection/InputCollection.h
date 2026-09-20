@@ -21,7 +21,11 @@ struct InputDelta
 class InputCollection
 {
     std::shared_mutex mutex;
-    InputDelta inputDeltas[9] {}; // 8 sim -> present + 1 present -> next present
+    std::shared_mutex simDeltasMutex;
+
+    InputDelta simToPresentDeltas[8] {};
+    InputDelta inProgressSimToSimDelta {}; // assumes only one in-flight sim
+    InputDelta simToSimDeltas[8] {};       // just for reading
 
   public:
     static InputCollection& getInstance()
@@ -32,11 +36,15 @@ class InputCollection
 
     void addNewDelta(InputDelta delta);
 
-    // To be called just after the game polled user input
+    // Used to calculate mouse movement for a given sim frameid
+    // To be called just before game pulled user input
     void markFrameStart(uint32_t frameId);
 
-    InputDelta readDelta(uint32_t frameId);
+    InputDelta readSimDelta(uint32_t frameId);
 
-    // For autocalibration
-    InputDelta readPresentDelta();
+    // To be called just after the game polled user input
+    void startCollectingForFrame(uint32_t frameId);
+
+    // To be used in Present, calling resets the provided frame id
+    InputDelta readDelta(uint32_t frameId);
 };

@@ -239,12 +239,11 @@ bool Reprojection_Dx12::Present()
 
                 float diffThreshold = 0.01f;
 
-                auto presentToPresentMouseDelta = InputCollection::getInstance().readPresentDelta();
+                auto mouseDeltaSimToSim = InputCollection::getInstance().readSimDelta(_frameCount);
 
                 ReprojectionParams params {};
                 FilloutStruct(params, diffThreshold, (uint32_t) _interpolationWidth[fIndex],
-                              (uint32_t) _interpolationHeight[fIndex], fIndex, mouseDeltaSinceSim,
-                              presentToPresentMouseDelta);
+                              (uint32_t) _interpolationHeight[fIndex], fIndex, mouseDeltaSinceSim, mouseDeltaSimToSim);
 
                 _reproject->Dispatch((IDXGISwapChain3*) _swapChain, commandList, params, hudless->GetResource(),
                                      hudless->state, depth->GetResource(), depth->state);
@@ -349,6 +348,14 @@ bool Reprojection_Dx12::SetResource(Dx12Resource* inputResource)
 void Reprojection_Dx12::FilloutStruct(ReprojectionParams& params, float diffThreshold, uint32_t resX, uint32_t resY,
                                       int currIndex, DirectX::XMINT2 direction, DirectX::XMINT2 fullFrameMouseDelta)
 {
+    if (Config::Instance()->ReprojectionCollectFromSimStart.value_or_default())
+    {
+        // We assume that sim start was called before user input when this setting is enabled
+        // Therefore we need to subtract the mouse movement capture between sim threads
+        direction.x -= fullFrameMouseDelta.x;
+        direction.y -= fullFrameMouseDelta.y;
+    }
+
     params.UiDiffThreshold = diffThreshold;
     params.ScreenWidth = resX;
     params.ScreenHeight = resY;
