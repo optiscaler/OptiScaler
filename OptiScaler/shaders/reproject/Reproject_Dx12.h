@@ -25,7 +25,8 @@ struct alignas(16) ReprojectionParams
 
     float DepthCutoff;
     uint32_t InvertedDepth;
-    float Pad0[2];
+    uint32_t ShowStaticElements;
+    float Pad0;
 
     // Inverse reprojection rotation matrix
     DirectX::XMFLOAT4 ReprojectionRow0;

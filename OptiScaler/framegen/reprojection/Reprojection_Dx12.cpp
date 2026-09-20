@@ -355,6 +355,7 @@ void Reprojection_Dx12::FilloutStruct(ReprojectionParams& params, float diffThre
 
     params.DepthCutoff = Config::Instance()->ReprojectionDepthCutoff.value_or_default();
     params.InvertedDepth = _constants.flags[FG_Flags::InvertedDepth];
+    params.ShowStaticElements = State::Instance().fgHudlessCompare;
 
     auto fillMode = Config::Instance()->ReprojectionFillMode.value_or_default();
     if (fillMode == ReprojectionFill::Black)
