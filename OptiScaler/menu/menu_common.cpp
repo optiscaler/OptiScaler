@@ -4309,6 +4309,14 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             config->ReprojectionDepthCutoff = cutoff;
 
         ImGui::Checkbox("Show static elements", &state.fgHudlessCompare);
+
+        bool collectFromSimStart = config->ReprojectionCollectFromSimStart.value_or_default();
+        if (ImGui::Checkbox("Collect from sim start", &collectFromSimStart))
+            config->ReprojectionCollectFromSimStart = collectFromSimStart;
+
+        ShowHelpMarker("As opposed to after sim end\n\n"
+                       "Using this setting REQUIRES that sim start happens before input poll\n"
+                       "but in exchange *can* be more accurate");
     }
 
     // OptiFG
