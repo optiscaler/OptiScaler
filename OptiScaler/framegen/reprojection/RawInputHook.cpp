@@ -2,6 +2,42 @@
 #include "RawInputHook.h"
 #include "InputCollection.h"
 
+HWND RawInputHook::FindGameWindow()
+{
+    DWORD foregroundPid = 0;
+    HWND fgWnd = GetForegroundWindow();
+    GetWindowThreadProcessId(fgWnd, &foregroundPid);
+    if (foregroundPid == GetCurrentProcessId())
+    {
+        return fgWnd;
+    }
+
+    struct EnumData
+    {
+        DWORD pid;
+        HWND hwnd;
+    } data = { GetCurrentProcessId(), NULL };
+
+    EnumWindows(
+        [](HWND hWnd, LPARAM lParam) -> BOOL
+        {
+            EnumData* pData = reinterpret_cast<EnumData*>(lParam);
+            DWORD pid = 0;
+            GetWindowThreadProcessId(hWnd, &pid);
+
+            // Find the top-level main window (no owner, visible)
+            if (pid == pData->pid && GetWindow(hWnd, GW_OWNER) == NULL && IsWindowVisible(hWnd))
+            {
+                pData->hwnd = hWnd;
+                return FALSE; // Stop enumeration
+            }
+            return TRUE;
+        },
+        reinterpret_cast<LPARAM>(&data));
+
+    return data.hwnd;
+}
+
 void RawInputHook::PollingThreadLoop()
 {
     WNDCLASSEX wc = { 0 };
@@ -39,6 +75,12 @@ LRESULT RawInputHook::HiddenWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
     if (msg == WM_INPUT && instance)
     {
+        // Resolve the game window if it hasn't been set yet
+        if (instance->gameWindow == NULL)
+        {
+            instance->gameWindow = instance->FindGameWindow();
+        }
+
         UINT dwSize = 0;
         o_GetRawInputData((HRAWINPUT) lp, RID_INPUT, NULL, &dwSize, sizeof(RAWINPUTHEADER));
 
@@ -54,11 +96,8 @@ LRESULT RawInputHook::HiddenWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
                     {
                         std::lock_guard<std::mutex> lock(instance->dataMutex);
-
                         instance->fakeMouseDataMap[fakeHandle] = raw->data.mouse;
 
-                        // Rolling buffer: Keep the last 64 events.
-                        // Because std::map is ordered by the incrementing handle, begin() is always the oldest.
                         while (instance->fakeMouseDataMap.size() > 64)
                         {
                             instance->fakeMouseDataMap.erase(instance->fakeMouseDataMap.begin());
@@ -67,7 +106,11 @@ LRESULT RawInputHook::HiddenWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                         InputCollection::getInstance().addNewDelta({ raw->data.mouse.lLastX, raw->data.mouse.lLastY });
                     }
 
-                    PostMessage(instance->gameWindow, WM_INPUT, RIM_INPUT, (LPARAM) fakeHandle);
+                    // Only post if we have a valid target window
+                    if (instance->gameWindow != NULL)
+                    {
+                        PostMessage(instance->gameWindow, WM_INPUT, RIM_INPUT, (LPARAM) fakeHandle);
+                    }
                 }
             }
             delete[] lpb;

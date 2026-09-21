@@ -1876,6 +1876,9 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         if (State::Instance().activeFgInput == FGInput::NvngxFG)
             State::Instance().activeFgOutput = FGOutput::NoFG;
 
+        if (State::Instance().activeFgOutput == FGOutput::Reprojection)
+            RawInputHook::getInstance().start();
+
         // Init Kernel proxies
         NtdllProxy::Init();
         KernelBaseProxy::Init();
@@ -2130,11 +2133,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         {
             LOG_WARN("Unity detected with Upscaler input, but FGResourceFlip is not set. Enabling it");
             Config::Instance()->FGResourceFlip.set_volatile_value(true);
-        }
-
-        if (State::Instance().activeFgOutput == FGOutput::Reprojection)
-        {
-            RawInputHook::getInstance().start();
         }
 
         for (size_t i = 0; i < 300; i++)
