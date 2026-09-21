@@ -348,14 +348,6 @@ bool Reprojection_Dx12::SetResource(Dx12Resource* inputResource)
 void Reprojection_Dx12::FilloutStruct(ReprojectionParams& params, float diffThreshold, uint32_t resX, uint32_t resY,
                                       int currIndex, DirectX::XMINT2 direction, DirectX::XMINT2 fullFrameMouseDelta)
 {
-    if (Config::Instance()->ReprojectionCollectFromSimStart.value_or_default())
-    {
-        // We assume that sim start was called before user input when this setting is enabled
-        // Therefore we need to subtract the mouse movement capture between sim threads
-        direction.x -= fullFrameMouseDelta.x;
-        direction.y -= fullFrameMouseDelta.y;
-    }
-
     params.UiDiffThreshold = diffThreshold;
     params.ScreenWidth = resX;
     params.ScreenHeight = resY;

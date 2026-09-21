@@ -633,7 +633,6 @@ class Config
     // Reprojection
     CustomOptional<ReprojectionFill> ReprojectionFillMode { ReprojectionFill::StrechEdge };
     CustomOptional<float> ReprojectionDepthCutoff { 0.1f };
-    CustomOptional<bool> ReprojectionCollectFromSimStart { false }; // as opposed to after sim end
 
     // As per
     // https://github.com/artur-graniszewski/dlss-enabler-main/blob/a92464d468eb0d91ae17befa66c6bf6229f20b9f/Utils/DlssgProxy.cpp#L1033
