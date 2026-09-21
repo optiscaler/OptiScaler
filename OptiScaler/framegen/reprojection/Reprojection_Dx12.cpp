@@ -423,8 +423,33 @@ void Reprojection_Dx12::FilloutStruct(ReprojectionParams& params, float diffThre
     XMMATRIX viewToWorld = XMMATRIX(camRight, camUp, camForward, XMVectorSet(0, 0, 0, 1));
     XMMATRIX worldToView = XMMatrixTranspose(viewToWorld);
 
-    XMMATRIX rotPitch = XMMatrixRotationAxis(camRight, -pitch);
-    XMMATRIX rotYaw = XMMatrixRotationAxis(XMVectorSet(0, 0, 1, 0), yaw);
+    constexpr float TEST_ANGLE = 0.001f;
+
+    // Find which matrix rotation direction corresponds to positive camera motion.
+    XMVECTOR testPitchForward =
+        XMVector3Normalize(XMVector3TransformNormal(camForward, XMMatrixRotationAxis(camRight, TEST_ANGLE)));
+
+    float pitchTest = std::asin(std::clamp(XMVectorGetZ(testPitchForward), -1.0f, 1.0f)) -
+                      std::asin(std::clamp(XMVectorGetZ(camForward), -1.0f, 1.0f));
+
+    int pitchSign = (pitchTest >= 0.0f) ? 1 : -1;
+
+    XMVECTOR testYawForward = XMVector3Normalize(
+        XMVector3TransformNormal(camForward, XMMatrixRotationAxis(XMVectorSet(0, 0, 1, 0), TEST_ANGLE)));
+
+    float yawTest = std::atan2(XMVectorGetY(testYawForward), XMVectorGetX(testYawForward)) -
+                    std::atan2(XMVectorGetY(camForward), XMVectorGetX(camForward));
+
+    if (yawTest > std::numbers::pi_v<float>)
+        yawTest -= 2.0f * std::numbers::pi_v<float>;
+
+    if (yawTest < -std::numbers::pi_v<float>)
+        yawTest += 2.0f * std::numbers::pi_v<float>;
+
+    int yawSign = (std::abs(yawTest) >= 1e-8f && yawTest >= 0.0f) ? 1 : -1;
+
+    XMMATRIX rotPitch = XMMatrixRotationAxis(camRight, pitch * pitchSign);
+    XMMATRIX rotYaw = XMMatrixRotationAxis(XMVectorSet(0, 0, 1, 0), yaw * yawSign);
 
     XMMATRIX rotation = XMMatrixTranspose(viewToWorld * rotPitch * rotYaw * worldToView);
 

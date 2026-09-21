@@ -17,7 +17,6 @@ class RawInputHook
   private:
     std::thread pollThread;
     std::atomic<bool> isRunning = false;
-    int pollingRateHz = 500;
     HWND hiddenWindow = nullptr;
 
     // Thread-safe storage for discrete spoofed mouse events
@@ -88,6 +87,7 @@ class RawInputHook
     }
 
   private:
+    HWND FindGameWindow();
     void PollingThreadLoop();
 
     static LRESULT CALLBACK HiddenWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
