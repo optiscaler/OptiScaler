@@ -133,24 +133,16 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_SetLatencyMarker(IUnknown* pDev,
     _lastFrameId[pSetLatencyMarkerParams->markerType] = pSetLatencyMarkerParams->frameID;
     _lastDev[pSetLatencyMarkerParams->markerType] = pDev;
 
-    static bool skip[20] = {};
-
-    const bool collectFromSimStart = Config::Instance()->ReprojectionCollectFromSimStart.value_or_default();
-
     if (pSetLatencyMarkerParams->markerType == SIMULATION_START)
     {
-        InputCollection::getInstance().markFrameStart(pSetLatencyMarkerParams->frameID);
-
-        if (collectFromSimStart)
-            InputCollection::getInstance().startCollectingForFrame(pSetLatencyMarkerParams->frameID);
+        InputCollection::getInstance().startCollectingForFrame(pSetLatencyMarkerParams->frameID);
     }
     else if (pSetLatencyMarkerParams->markerType == SIMULATION_END)
     {
         _lastMarkerFrame = State::Instance().fgLastFrame;
-
-        if (!collectFromSimStart)
-            InputCollection::getInstance().startCollectingForFrame(pSetLatencyMarkerParams->frameID);
     }
+
+    static bool skip[20] = {};
 
     if (State::Instance().activeFgOutput == FGOutput::DLSSG && StreamlineProxy::IsD3D12Inited() &&
         Config::Instance()->FGDLSSGUseGamesReflexMarkers.value_or_default() && State::Instance().currentFG &&
