@@ -357,7 +357,7 @@ void Reprojection_Dx12::FilloutStruct(ReprojectionParams& params, float diffThre
     params.ShowStaticElements = State::Instance().fgHudlessCompare;
 
     auto fillMode = Config::Instance()->ReprojectionFillMode.value_or_default();
-    if (fillMode == ReprojectionFill::Black)
+    if (fillMode == ReprojectionFill::Debug)
         params.EdgeMode = 0;
     else if (fillMode == ReprojectionFill::StrechEdge)
         params.EdgeMode = 1;

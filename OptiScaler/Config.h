@@ -223,10 +223,10 @@ enum class LowLatencyMode : uint32_t
 
 enum class ReprojectionFill : uint32_t
 {
-    Black,
     StrechEdge,
     Dithering,
-    Noise
+    Noise,
+    Debug,
 };
 
 template <> struct EnumConfig<ReprojectionFill>
@@ -235,9 +235,9 @@ template <> struct EnumConfig<ReprojectionFill>
 
     static constexpr std::pair<ReprojectionFill, std::string_view> mapping[] = {
         { ReprojectionFill::StrechEdge, "strech" },
-        { ReprojectionFill::Black, "black" },
         { ReprojectionFill::Dithering, "dithering" },
-        { ReprojectionFill::Noise, "noise" }
+        { ReprojectionFill::Noise, "noise" },
+        { ReprojectionFill::Debug, "debug" }
     };
 };
 
@@ -631,7 +631,7 @@ class Config
     CustomOptional<float> FGDLSSGFramerateTargetDMFG { 0.0f }; // 0.0 means auto-detects the display refresh rate
 
     // Reprojection
-    CustomOptional<ReprojectionFill> ReprojectionFillMode { ReprojectionFill::StrechEdge };
+    CustomOptional<ReprojectionFill> ReprojectionFillMode { ReprojectionFill::Dithering };
     CustomOptional<float> ReprojectionDepthCutoff { 0.1f };
 
     // As per
