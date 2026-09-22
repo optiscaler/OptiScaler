@@ -355,7 +355,8 @@ void Reprojection_Dx12::FilloutStruct(ReprojectionParams& params, float diffThre
 
     params.UiDiffThreshold = diffThreshold;
     params.DepthCutoff = Config::Instance()->ReprojectionDepthCutoff.value_or_default();
-    params.DitherWidthPx = resY / 16.0f;
+    params.DitherWidthPx = resY / 16.0f; // TODO: configurable
+    params.CutoffExpandPx = Config::Instance()->ReprojectionCutoffExpand.value_or_default();
 
     params.InvertedDepth = _constants.flags[FG_Flags::InvertedDepth];
     params.ShowStaticElements = State::Instance().fgHudlessCompare;

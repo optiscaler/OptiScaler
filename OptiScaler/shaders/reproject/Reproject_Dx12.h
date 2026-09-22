@@ -21,7 +21,7 @@ struct alignas(16) ReprojectionParams
     float UiDiffThreshold;
     float DepthCutoff;
     float DitherWidthPx;
-    float Pad0;
+    uint32_t CutoffExpandPx;
 
     uint32_t EdgeMode;
     uint32_t ShowStaticElements;
