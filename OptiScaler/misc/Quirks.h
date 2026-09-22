@@ -429,6 +429,10 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("acblackflag.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("acblackflag_plus.exe", GameQuirk::DisableDxgiSpoofing),
 
+    // FBC: Firebreak
+    // SL spoof enough to unlock everything DLSS
+    QUIRK_ENTRY("fbcfirebreak.exe", GameQuirk::DisableDxgiSpoofing),
+
     // SL spoof enough to unlock everything DLSS/No spoof needed for DLSS inputs
     //
     // The Witcher 3, Alan Wake 2, Crysis 3 Remastered, Marvel's Guardians of the Galaxy, UNCHARTED: Legacy of Thieves
