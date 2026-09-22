@@ -125,6 +125,9 @@ class MenuCommon
 
     inline static void SeparatorWithHelpMarker(const char* label, const char* tip);
 
+    inline static bool SliderUInt(const char* label, uint32_t* v, uint32_t v_min, uint32_t v_max,
+                                  const char* format = "%d", ImGuiSliderFlags flags = 0);
+
     static Upscaler GetBackendCode(const API api);
     static void GetCurrentBackendInfo(const API api, Upscaler& upscaler, std::string* name);
     static void RenderUpscalerCombo(const API api, Upscaler currentUpscaler, const std::vector<Upscaler>& options);

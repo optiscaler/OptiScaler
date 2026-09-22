@@ -13,7 +13,7 @@ cbuffer Params : register(b0)
     float UiDiffThreshold;
     float DepthCutoff;
     float DitherWidthPx;
-    float Pad0;
+    uint CutoffExpandPx;
     
     uint EdgeMode;
     uint ShowStaticElements;
@@ -59,6 +59,37 @@ float HashNoise(uint2 p)
     return n * (1.0f / 4294967295.0f);
 }
 
+bool IsDepthCutoutExpanded(float2 uv, int radius)
+{
+    int2 depthDimension;
+    Depth.GetDimensions(depthDimension.x, depthDimension.y);
+    int2 basePixel = int2(uv * float2(depthDimension));
+    
+    if (radius == 0)
+    {
+        float d = Depth.Load(int3(basePixel, 0));
+        return InvertedDepth ? (d > DepthCutoff) : (d < DepthCutoff);
+    }
+
+    for (int y = -radius; y <= radius; ++y)
+    {
+        for (int x = -radius; x <= radius; ++x)
+        {
+            // Clamp coordinates to prevent reading outside the texture
+            int2 sampleCoord = clamp(basePixel + int2(x, y), int2(0, 0), int2(depthDimension.x - 1, depthDimension.y - 1));
+            
+            float d = Depth.Load(int3(sampleCoord, 0));
+            bool isCutout = InvertedDepth ? (d > DepthCutoff) : (d < DepthCutoff);
+            
+            if (isCutout)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 [numthreads(16, 16, 1)]
 void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
@@ -79,8 +110,7 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     
     // Add depth cutout mask to the uiMask
     // float depth = Depth.Load(int3(pixelCoord, 0));
-    float depth = Depth.SampleLevel(LinearClampSampler, uv, 0.0f);
-    bool isCutout = InvertedDepth ? depth > DepthCutoff : depth < DepthCutoff;
+    bool isCutout = IsDepthCutoutExpanded(uv, CutoffExpandPx);
     uiMask = max(uiMask, isCutout ? 1.0f : 0.0f);
        
     float3 reprojectedGame = 0.0f; // Black
@@ -118,8 +148,7 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     if (inside)
     {
         // Depth cutoff
-        float reprojectedDepth = Depth.SampleLevel(LinearClampSampler, sourceUV, 0.0f);
-        bool isCutoutReprojected = InvertedDepth ? reprojectedDepth > DepthCutoff : reprojectedDepth < DepthCutoff;
+        bool isCutoutReprojected = IsDepthCutoutExpanded(sourceUV, CutoffExpandPx);
         
         if (isCutoutReprojected)
             reprojectedGame = lerp(hudless, green, EdgeMode == 0); // try to fill gap with unprojected hudless, or green for debug

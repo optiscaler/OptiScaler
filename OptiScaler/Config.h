@@ -633,6 +633,7 @@ class Config
     // Reprojection
     CustomOptional<ReprojectionFill> ReprojectionFillMode { ReprojectionFill::Dithering };
     CustomOptional<float> ReprojectionDepthCutoff { 0.1f };
+    CustomOptional<uint32_t> ReprojectionCutoffExpand { 0 };
 
     // As per
     // https://github.com/artur-graniszewski/dlss-enabler-main/blob/a92464d468eb0d91ae17befa66c6bf6229f20b9f/Utils/DlssgProxy.cpp#L1033
