@@ -73,7 +73,7 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     bool isCutout = InvertedDepth ? depth > DepthCutoff : depth < DepthCutoff;
     uiMask = max(uiMask, isCutout ? 1.0f : 0.0f);
        
-    float3 reprojectedGame = float3(0.0f, 1.0f, 0.0f); // Green
+    float3 reprojectedGame = 0.0f; // Black
 
     // Vectorized Camera Ray (un-normalized)
     float2 ndc = uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
@@ -102,6 +102,9 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     bool inside = all(sourceUV >= 0.0f) && all(sourceUV <= 1.0f);
     bool modeWithBackground = EdgeMode == 2 || EdgeMode == 3;
     
+    const float3 pink = float3(1.0, 0.4, 0.6);
+    const float3 green = float3(0.0f, 1.0f, 0.0f);
+    
     if (inside)
     {
         // Depth cutoff
@@ -109,7 +112,7 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
         bool isCutoutReprojected = InvertedDepth ? reprojectedDepth > DepthCutoff : reprojectedDepth < DepthCutoff;
         
         if (isCutoutReprojected)
-            reprojectedGame = hudless; // try to fill gap with unprojected hudless
+            reprojectedGame = lerp(hudless, green, EdgeMode == 0); // try to fill gap with unprojected hudless, or green for debug
         else
             reprojectedGame = Hudless.SampleLevel(LinearClampSampler, sourceUV, 0.0f); // the fun part
                 
@@ -142,9 +145,9 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     else
     {
         // Outside the reprojection
-        if (EdgeMode == 0) // Black
+        if (EdgeMode == 0) // Debug
         {
-            reprojectedGame = 0.0f;
+            reprojectedGame = green;
         }
         else if (EdgeMode == 1) // Strech
         {
@@ -159,6 +162,5 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     // Final UI Blend
     float3 composedImage = lerp(reprojectedGame, present, uiMask);
     
-    const float3 pink = float3(1.0, 0.4, 0.6);
     Present[pixelCoord] = lerp(composedImage, pink, uiMask * 0.6f * ShowStaticElements);
 }
