@@ -1,19 +1,24 @@
 cbuffer Params : register(b0)
 {
-    float UiDiffThreshold;
     uint ScreenWidth;
     uint ScreenHeight;
+    float InvScreenWidth;
+    float InvScreenHeight;
+    
+    float UiDiffThreshold;
+    float DepthCutoff;
+    float DitherWidthPx;
+    float Pad0;
+    
     uint EdgeMode;
+    uint ShowStaticElements;
+    uint InvertedDepth;
+    float Pad1;
 
     float TanHalfFovX;
     float TanHalfFovY;
     float InvTanHalfFovX;
     float InvTanHalfFovY;
-
-    float DepthCutoff;
-    uint InvertedDepth;
-    uint ShowStaticElements;
-    float Pad0;
     
     float4 ReprojectionMatrixRow0;
     float4 ReprojectionMatrixRow1;
@@ -56,10 +61,9 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
 
     if (pixelCoord.x >= ScreenWidth || pixelCoord.y >= ScreenHeight)
         return;
-
+    
     // Screen UV calculation
-    float2 invScreenSize = 1.0f / float2(ScreenWidth, ScreenHeight);
-    float2 uv = (float2(pixelCoord) + 0.5f) * invScreenSize;
+    float2 uv = (float2(pixelCoord) + 0.5f) * float2(InvScreenWidth, InvScreenHeight);
 
     // UI Mask extraction
     float3 hudless = Hudless.Load(int3(pixelCoord, 0));
@@ -69,12 +73,13 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     float uiMask = smoothstep(UiDiffThreshold, UiDiffThreshold * 2.0f, delta);
     
     // Add depth cutout mask to the uiMask
-    float depth = Depth.Load(int3(pixelCoord, 0));
+    // float depth = Depth.Load(int3(pixelCoord, 0));
+    float depth = Depth.SampleLevel(LinearClampSampler, uv, 0.0f);
     bool isCutout = InvertedDepth ? depth > DepthCutoff : depth < DepthCutoff;
     uiMask = max(uiMask, isCutout ? 1.0f : 0.0f);
        
     float3 reprojectedGame = 0.0f; // Black
-
+    
     // Vectorized Camera Ray (un-normalized)
     float2 ndc = uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
     float3 ray = float3(ndc * float2(TanHalfFovX, TanHalfFovY), 1.0f);
@@ -118,16 +123,14 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
                 
         if (modeWithBackground)
         {
-            const float ditherWidthPx = ScreenHeight / 16.0f;
-
             // Only measure distance to reprojected edges that fall inside the screen bounds
-            float distLeft = (sourceUV.x < uv.x) ? sourceUV.x * ScreenWidth : ditherWidthPx;
-            float distRight = (sourceUV.x > uv.x) ? (1.0f - sourceUV.x) * ScreenWidth : ditherWidthPx;
-            float distTop = (sourceUV.y < uv.y) ? sourceUV.y * ScreenHeight : ditherWidthPx;
-            float distBottom = (sourceUV.y > uv.y) ? (1.0f - sourceUV.y) * ScreenHeight : ditherWidthPx;
+            float distLeft = (sourceUV.x < uv.x) ? sourceUV.x * ScreenWidth : DitherWidthPx;
+            float distRight = (sourceUV.x > uv.x) ? (1.0f - sourceUV.x) * ScreenWidth : DitherWidthPx;
+            float distTop = (sourceUV.y < uv.y) ? sourceUV.y * ScreenHeight : DitherWidthPx;
+            float distBottom = (sourceUV.y > uv.y) ? (1.0f - sourceUV.y) * ScreenHeight : DitherWidthPx;
 
             float edgeDistancePx = min(min(distLeft, distRight), min(distTop, distBottom));
-            float projectedProbability = smoothstep(0.0f, ditherWidthPx, edgeDistancePx);
+            float projectedProbability = smoothstep(0.0f, DitherWidthPx, edgeDistancePx);
         
             float pattern = 0.0f;
             if (EdgeMode == 2) // Dither

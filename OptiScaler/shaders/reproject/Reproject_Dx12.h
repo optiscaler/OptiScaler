@@ -13,20 +13,25 @@
 
 struct alignas(16) ReprojectionParams
 {
-    float UiDiffThreshold;
     uint32_t ScreenWidth;
     uint32_t ScreenHeight;
+    float InvScreenWidth;
+    float InvScreenHeight;
+
+    float UiDiffThreshold;
+    float DepthCutoff;
+    float DitherWidthPx;
+    float Pad0;
+
     uint32_t EdgeMode;
+    uint32_t ShowStaticElements;
+    uint32_t InvertedDepth;
+    float Pad1;
 
     float TanHalfFovX;
     float TanHalfFovY;
     float InvTanHalfFovX;
     float InvTanHalfFovY;
-
-    float DepthCutoff;
-    uint32_t InvertedDepth;
-    uint32_t ShowStaticElements;
-    float Pad0;
 
     // Inverse reprojection rotation matrix
     DirectX::XMFLOAT4 ReprojectionRow0;
