@@ -90,6 +90,8 @@ class Reprojection_Dx12 : public virtual IFGFeature_Dx12
     void* FrameGenerationContext() override final;
     void* SwapchainContext() override final;
 
+    std::optional<double> ReadGpuTime(void* commandQueue) override final;
+
     Reprojection_Dx12() : IFGFeature_Dx12(), IFGFeature() { _framesToInterpolate = 0; }
 
     ~Reprojection_Dx12() {};

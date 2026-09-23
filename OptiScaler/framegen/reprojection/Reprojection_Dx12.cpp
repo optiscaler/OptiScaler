@@ -186,6 +186,15 @@ void Reprojection_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgCons
     }
 }
 
+std::optional<double> Reprojection_Dx12::ReadGpuTime(void* commandQueue)
+{
+    // In the future we might not be able to use this provided commandQueue
+    if (_reproject && _reproject->IsInit() && commandQueue)
+    {
+        return _reproject->ReadGpuTime((ID3D12CommandQueue*) commandQueue);
+    }
+}
+
 bool Reprojection_Dx12::Present()
 {
     auto fIndex = GetIndex();
@@ -213,13 +222,13 @@ bool Reprojection_Dx12::Present()
         }
     }
 
-    if (_reproject && _reproject->IsInit() && _gameCommandQueue)
-    {
-        if (auto result = _reproject->ReadGpuTime(_gameCommandQueue))
-        {
-            LOG_DEBUG("Reprojection GPU time: {} ms", result.value());
-        }
-    }
+    // if (_reproject && _reproject->IsInit() && _gameCommandQueue)
+    //{
+    //     if (auto result = _reproject->ReadGpuTime(_gameCommandQueue))
+    //     {
+    //         LOG_DEBUG("Reprojection GPU time: {} ms", result.value());
+    //     }
+    // }
 
     if (IsActive() && !IsPaused())
     {

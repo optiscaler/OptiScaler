@@ -1199,7 +1199,7 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
                 state.currentD3D11Device->GetImmediateContext(&context);
 
                 if (upscalerTimeOpt = currentFeature->ReadUpscalerTime(context); upscalerTimeOpt.has_value())
-                    currentFeature->ReadDetailedGpuTimes(context, State::Instance().detailedGpuTimes);
+                    currentFeature->ReadDetailedGpuTimes(context, state.detailedGpuTimes);
 
                 context->Release();
             }
@@ -1209,6 +1209,11 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
                     upscalerTimeOpt.has_value())
                 {
                     currentFeature->ReadDetailedGpuTimes(state.currentCommandQueue, state.detailedGpuTimes);
+                }
+
+                if (auto fgGpuTime = fg->ReadGpuTime(state.currentCommandQueue))
+                {
+                    state.detailedGpuTimes.emplace_back(DetailedGpuTime { fg->Name(), fgGpuTime.value(), false });
                 }
             }
 
