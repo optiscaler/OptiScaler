@@ -78,8 +78,8 @@ void Reprojection_Dx12::CreateObjects(ID3D12Device* InDevice)
     }
 }
 
-bool Reprojection_Dx12::CreateSwapchain(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue, DXGI_SWAP_CHAIN_DESC* desc,
-                                        IDXGISwapChain** swapChain, bool readyToRelease)
+bool Reprojection_Dx12::CreateSwapchainInternal(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue,
+                                                DXGI_SWAP_CHAIN_DESC* desc, IDXGISwapChain** swapChain)
 {
     // Normal swapchain creation, no proxy upgrades
     auto result = factory->CreateSwapChain(cmdQueue, desc, swapChain);
@@ -94,9 +94,10 @@ bool Reprojection_Dx12::CreateSwapchain(IDXGIFactory* factory, ID3D12CommandQueu
     return false;
 }
 
-bool Reprojection_Dx12::CreateSwapchain1(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue, HWND hwnd,
-                                         DXGI_SWAP_CHAIN_DESC1* desc, DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pFullscreenDesc,
-                                         IDXGISwapChain1** swapChain, bool readyToRelease)
+bool Reprojection_Dx12::CreateSwapchain1Internal(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue, HWND hwnd,
+                                                 DXGI_SWAP_CHAIN_DESC1* desc,
+                                                 DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pFullscreenDesc,
+                                                 IDXGISwapChain1** swapChain)
 {
     IDXGIFactory2* factory2 = nullptr;
     if (factory->QueryInterface(IID_PPV_ARGS(&factory2)) != S_OK)
