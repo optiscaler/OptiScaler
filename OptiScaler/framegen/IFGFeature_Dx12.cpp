@@ -534,3 +534,91 @@ bool IFGFeature_Dx12::CopyResource(ID3D12GraphicsCommandList* cmdList, ID3D12Res
 
     return result;
 }
+
+bool IFGFeature_Dx12::CreateSwapchain(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue, DXGI_SWAP_CHAIN_DESC* desc,
+                                      IDXGISwapChain** swapChain, bool readyToRelease)
+{
+    if (State::Instance().currentFGSwapchain != nullptr && _hwnd == desc->OutputWindow)
+    {
+        if (Config::Instance()->FGPreserveSwapChain.value_or_default())
+        {
+            LOG_WARN("FG swapchain already created for the same output window!");
+            auto result = State::Instance().currentFGSwapchain->ResizeBuffers(
+                              desc->BufferCount, desc->BufferDesc.Width, desc->BufferDesc.Height,
+                              desc->BufferDesc.Format, desc->Flags) == S_OK;
+
+            *swapChain = State::Instance().currentFGSwapchain;
+            return result;
+        }
+        // Game is creating new swapchain without releasing old one,
+        // we need to release it to avoid errors
+        else if (readyToRelease)
+        {
+            LOG_INFO("Releasing old swapchain");
+            ReleaseSwapchain(_hwnd);
+
+            // Not sure why but XeFG sometimes doesn't release the swapchain properly
+            // so we force release it here to be able to recreate swapchain for same hwnd
+            if (State::Instance().currentRealSwapchain != nullptr)
+            {
+                UINT release = 0;
+                do
+                {
+                    release = State::Instance().currentRealSwapchain->Release();
+                    LOG_DEBUG("Releasing swapchain, ref count: {}", release);
+                } while (release > 0);
+            }
+        }
+        else
+        {
+            LOG_WARN("FG swapchain already exists for the same output window and is not ready to release!");
+            return false;
+        }
+    }
+
+    return CreateSwapchainInternal(factory, cmdQueue, desc, swapChain);
+}
+
+bool IFGFeature_Dx12::CreateSwapchain1(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue, HWND hwnd,
+                                       DXGI_SWAP_CHAIN_DESC1* desc, DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pFullscreenDesc,
+                                       IDXGISwapChain1** swapChain, bool readyToRelease)
+{
+    if (State::Instance().currentFGSwapchain != nullptr && _hwnd == hwnd)
+    {
+        if (Config::Instance()->FGPreserveSwapChain.value_or_default())
+        {
+            LOG_WARN("FG swapchain already created for the same output window!");
+            auto result = State::Instance().currentFGSwapchain->ResizeBuffers(
+                              desc->BufferCount, desc->Width, desc->Height, desc->Format, desc->Flags) == S_OK;
+
+            *swapChain = (IDXGISwapChain1*) State::Instance().currentFGSwapchain;
+            return result;
+        }
+        // Game is creating new swapchain without releasing old one,
+        // we need to release it to avoid errors
+        else if (readyToRelease)
+        {
+            LOG_INFO("Releasing old swapchain");
+            ReleaseSwapchain(_hwnd);
+
+            // Not sure why but XeFG sometimes doesn't release the swapchain properly
+            // so we force release it here to be able to recreate swapchain for same hwnd
+            if (State::Instance().currentRealSwapchain != nullptr)
+            {
+                UINT release = 0;
+                do
+                {
+                    release = State::Instance().currentRealSwapchain->Release();
+                    LOG_DEBUG("Releasing swapchain, ref count: {}", release);
+                } while (release > 0);
+            }
+        }
+        else
+        {
+            LOG_WARN("FG swapchain already exists for the same output window and is not ready to release!");
+            return false;
+        }
+    }
+
+    return CreateSwapchain1Internal(factory, cmdQueue, hwnd, desc, pFullscreenDesc, swapChain);
+}

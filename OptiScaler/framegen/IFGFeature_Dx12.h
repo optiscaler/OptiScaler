@@ -99,6 +99,12 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     void NewFrame() override final;
     void FlipResource(Dx12Resource* resource);
 
+    virtual bool CreateSwapchainInternal(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue,
+                                         DXGI_SWAP_CHAIN_DESC* desc, IDXGISwapChain** swapChain) = 0;
+    virtual bool CreateSwapchain1Internal(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue, HWND hwnd,
+                                          DXGI_SWAP_CHAIN_DESC1* desc, DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pFullscreenDesc,
+                                          IDXGISwapChain1** swapChain) = 0;
+
   protected:
     virtual void ReleaseObjects() = 0;
     virtual void CreateObjects(ID3D12Device* InDevice) = 0;
@@ -108,11 +114,11 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     virtual void* SwapchainContext() = 0;
     virtual HWND Hwnd() = 0;
 
-    virtual bool CreateSwapchain(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue, DXGI_SWAP_CHAIN_DESC* desc,
-                                 IDXGISwapChain** swapChain, bool readyToRelease) = 0;
-    virtual bool CreateSwapchain1(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue, HWND hwnd,
-                                  DXGI_SWAP_CHAIN_DESC1* desc, DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pFullscreenDesc,
-                                  IDXGISwapChain1** swapChain, bool readyToRelease) = 0;
+    bool CreateSwapchain(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue, DXGI_SWAP_CHAIN_DESC* desc,
+                         IDXGISwapChain** swapChain, bool readyToRelease);
+    bool CreateSwapchain1(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue, HWND hwnd, DXGI_SWAP_CHAIN_DESC1* desc,
+                          DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pFullscreenDesc, IDXGISwapChain1** swapChain,
+                          bool readyToRelease);
 
     virtual void CreateContext(ID3D12Device* device, FG_Constants& fgConstants) = 0;
     virtual void EvaluateState(ID3D12Device* device, FG_Constants& fgConstants) = 0;
