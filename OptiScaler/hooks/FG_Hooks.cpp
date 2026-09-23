@@ -350,6 +350,11 @@ void FGHooks::SetFGSwapchain(IDXGISwapChain* pSwapChain, HWND hWnd)
     if (pSwapChain == nullptr)
         return;
 
+    // Recreation may return the preserved object. It is active, not retired,
+    // so hkFGRelease must not suppress releases against this pointer.
+    if (oldSwapChain == pSwapChain)
+        oldSwapChain = nullptr;
+
     _hwnd = hWnd;
 
     if (_dx12InteropPresentSC == pSwapChain)

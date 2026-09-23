@@ -81,6 +81,27 @@ void Reprojection_Dx12::CreateObjects(ID3D12Device* InDevice)
 bool Reprojection_Dx12::CreateSwapchain(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue, DXGI_SWAP_CHAIN_DESC* desc,
                                         IDXGISwapChain** swapChain, bool readyToRelease)
 {
+    // The release hook can preserve this object when the game recreates its
+    // swapchain. Reuse it, as the other FG backends do, rather than creating
+    // a second flip-model swapchain for the same window.
+    if (State::Instance().currentFGSwapchain != nullptr && _hwnd == desc->OutputWindow &&
+        Config::Instance()->FGPreserveSwapChain.value_or_default())
+    {
+        const auto result = State::Instance().currentFGSwapchain->ResizeBuffers(
+            desc->BufferCount, desc->BufferDesc.Width, desc->BufferDesc.Height, desc->BufferDesc.Format, desc->Flags);
+        if (FAILED(result))
+        {
+            LOG_ERROR("Failed to resize preserved Reprojection swapchain: {:X}", (UINT) result);
+            return false;
+        }
+
+        _gameCommandQueue = cmdQueue;
+        _swapChain = State::Instance().currentFGSwapchain;
+        *swapChain = State::Instance().currentFGSwapchain;
+        LOG_INFO("Reusing preserved Reprojection swapchain for the same output window");
+        return true;
+    }
+
     // Normal swapchain creation, no proxy upgrades
     auto result = factory->CreateSwapChain(cmdQueue, desc, swapChain);
 
@@ -98,6 +119,24 @@ bool Reprojection_Dx12::CreateSwapchain1(IDXGIFactory* factory, ID3D12CommandQue
                                          DXGI_SWAP_CHAIN_DESC1* desc, DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pFullscreenDesc,
                                          IDXGISwapChain1** swapChain, bool readyToRelease)
 {
+    if (State::Instance().currentFGSwapchain != nullptr && _hwnd == hwnd &&
+        Config::Instance()->FGPreserveSwapChain.value_or_default())
+    {
+        const auto result = State::Instance().currentFGSwapchain->ResizeBuffers(
+            desc->BufferCount, desc->Width, desc->Height, desc->Format, desc->Flags);
+        if (FAILED(result))
+        {
+            LOG_ERROR("Failed to resize preserved Reprojection swapchain: {:X}", (UINT) result);
+            return false;
+        }
+
+        _gameCommandQueue = cmdQueue;
+        _swapChain = State::Instance().currentFGSwapchain;
+        *swapChain = (IDXGISwapChain1*) State::Instance().currentFGSwapchain;
+        LOG_INFO("Reusing preserved Reprojection swapchain for the same output window");
+        return true;
+    }
+
     IDXGIFactory2* factory2 = nullptr;
     if (factory->QueryInterface(IID_PPV_ARGS(&factory2)) != S_OK)
         return false;
