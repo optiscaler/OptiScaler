@@ -83,23 +83,6 @@ inline static bool CompareResourceFormats(DXGI_FORMAT sc, DXGI_FORMAT hudless)
     return scGroup == hudlessGroup;
 }
 
-bool Reproject_Dx12::CreateBufferResource(UINT index, ID3D12Device* InDevice, ID3D12Resource* InSource,
-                                          D3D12_RESOURCE_STATES InState)
-{
-    LOG_DEBUG("[{0}] Start!", _name);
-
-    auto resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
-
-    auto result = Shader_Dx12::CreateBufferResource(InDevice, InSource, InState, &_buffer, resourceFlags);
-
-    if (result)
-    {
-        _buffer->SetName(L"Reproject_Buffer");
-    }
-
-    return result;
-}
-
 void Reproject_Dx12::ResourceBarrier(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* resource,
                                      D3D12_RESOURCE_STATES beforeState, D3D12_RESOURCE_STATES afterState)
 {
@@ -188,7 +171,7 @@ bool Reproject_Dx12::Dispatch(IDXGISwapChain3* sc, ID3D12GraphicsCommandList* cm
     _counter++;
     _counter = _counter % Reproject_NUM_OF_HEAPS;
     FrameDescriptorHeap& currentHeap = _frameHeaps[_counter];
-    auto& currentBuffer = _buffer;
+    auto& currentBuffer = _buffer[_counter];
 
     if (!currentBuffer)
     {
