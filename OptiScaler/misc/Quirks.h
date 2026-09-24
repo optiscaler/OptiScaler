@@ -433,6 +433,10 @@ static const QuirkEntry quirkTable[] = {
     // SL spoof enough to unlock everything DLSS
     QUIRK_ENTRY("fbcfirebreak.exe", GameQuirk::DisableDxgiSpoofing),
 
+    // CONTROL Resonant
+    // SL spoof enough to unlock everything DLSS
+    QUIRK_ENTRY("controlresonant.exe", GameQuirk::DisableDxgiSpoofing),
+
     // SL spoof enough to unlock everything DLSS/No spoof needed for DLSS inputs
     //
     // The Witcher 3, Alan Wake 2, Crysis 3 Remastered, Marvel's Guardians of the Galaxy, UNCHARTED: Legacy of Thieves
