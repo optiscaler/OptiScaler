@@ -7,9 +7,6 @@
 
 #include <magic_enum.hpp>
 #include "InputCollection.h"
-#include <numbers>
-
-using namespace DirectX;
 
 void Reprojection_Dx12::ReleaseObjects()
 {
@@ -265,14 +262,26 @@ bool Reprojection_Dx12::Present()
                 auto commandList = GetSCCommandList(fIndex);
                 auto previousIndex = (fIndex + BUFFER_COUNT - 1) % BUFFER_COUNT;
 
-                float diffThreshold = 0.01f;
-
                 auto mouseDeltaSimToSim = InputCollection::getInstance().readSimDelta(_frameCount);
 
                 ReprojectionParams params {};
-                FilloutStruct(params, diffThreshold, (uint32_t) _interpolationWidth[fIndex],
-                              (uint32_t) _interpolationHeight[fIndex], fIndex, mouseDeltaSinceSim, mouseDeltaSimToSim);
 
+                FilloutData data {};
+                data.diffThreshold = 0.01f;
+                data.mouseDeltaSinceSim = mouseDeltaSinceSim;
+                data.mouseDeltaSimToSim = mouseDeltaSimToSim;
+                data.screenWidth = (uint32_t) _interpolationWidth[fIndex];
+                data.screenHeight = (uint32_t) _interpolationHeight[fIndex];
+                data.invertedDepth = _constants.flags[FG_Flags::InvertedDepth];
+
+                data.cameraVFov = _cameraVFov[fIndex];
+                data.cameraAspectRatio = _cameraAspectRatio[fIndex];
+                std::memcpy(data.cameraUp, _cameraUp[fIndex], 3 * sizeof(float));
+                std::memcpy(data.cameraRight, _cameraRight[fIndex], 3 * sizeof(float));
+                std::memcpy(data.cameraForward, _cameraForward[fIndex], 3 * sizeof(float));
+                std::memcpy(data.cameraPrevForward, _cameraForward[previousIndex], 3 * sizeof(float));
+
+                _reproject->FilloutStruct(data, params);
                 _reproject->Dispatch((IDXGISwapChain3*) _swapChain, commandList, params, hudless->GetResource(),
                                      hudless->state, depth->GetResource(), depth->state);
             }
@@ -371,124 +380,6 @@ bool Reprojection_Dx12::SetResource(Dx12Resource* inputResource)
 
     SetResourceReady(type, fIndex);
     return true;
-}
-
-void Reprojection_Dx12::FilloutStruct(ReprojectionParams& params, float diffThreshold, uint32_t resX, uint32_t resY,
-                                      int currIndex, DirectX::XMINT2 direction, DirectX::XMINT2 fullFrameMouseDelta)
-{
-    params.ScreenWidth = resX;
-    params.ScreenHeight = resY;
-    params.InvScreenWidth = 1.0f / resX;
-    params.InvScreenHeight = 1.0f / resY;
-
-    params.UiDiffThreshold = diffThreshold;
-    params.DepthCutoff = Config::Instance()->ReprojectionDepthCutoff.value_or_default();
-    params.DitherWidthPx = resY / 16.0f; // TODO: configurable
-    params.CutoffExpandPx = Config::Instance()->ReprojectionCutoffExpand.value_or_default();
-
-    params.InvertedDepth = _constants.flags[FG_Flags::InvertedDepth];
-    params.ShowStaticElements = State::Instance().fgHudlessCompare;
-
-    auto fillMode = Config::Instance()->ReprojectionFillMode.value_or_default();
-    if (fillMode == ReprojectionFill::Debug)
-        params.EdgeMode = 0;
-    else if (fillMode == ReprojectionFill::StrechEdge)
-        params.EdgeMode = 1;
-    else if (fillMode == ReprojectionFill::Dithering)
-        params.EdgeMode = 2;
-    else if (fillMode == ReprojectionFill::Noise)
-        params.EdgeMode = 3;
-
-    const float tanHalfFovY = std::tan(_cameraVFov[currIndex] * 0.5f);
-    const float pixelAngle = 2.0f * std::atan(tanHalfFovY / resY);
-
-    params.TanHalfFovY = tanHalfFovY;
-    params.TanHalfFovX = tanHalfFovY * _cameraAspectRatio[currIndex];
-    params.InvTanHalfFovY = 1.0f / tanHalfFovY;
-    params.InvTanHalfFovX = 1.0f / params.TanHalfFovX;
-
-    const float mouseX = fullFrameMouseDelta.x * pixelAngle;
-    const float mouseY = fullFrameMouseDelta.y * pixelAngle;
-
-    // Compute actual camera rotation deltas between frames
-    if (!_isFirstFrame)
-    {
-        const int prevIndex = (currIndex == 0) ? (BUFFER_COUNT - 1) : (currIndex - 1);
-
-        XMVECTOR prevFwd =
-            XMVector3Normalize(XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(_cameraForward[prevIndex])));
-        XMVECTOR currFwd =
-            XMVector3Normalize(XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(_cameraForward[currIndex])));
-
-        XMFLOAT3 p, c;
-        XMStoreFloat3(&p, prevFwd);
-        XMStoreFloat3(&c, currFwd);
-
-        // Yaw delta (wrapped to [-pi, pi])
-        float camYawDelta = std::atan2(c.y, c.x) - std::atan2(p.y, p.x);
-
-        if (camYawDelta > std::numbers::pi_v<float>)
-            camYawDelta -= 2.0f * std::numbers::pi_v<float>;
-
-        if (camYawDelta < -std::numbers::pi_v<float>)
-            camYawDelta += 2.0f * std::numbers::pi_v<float>;
-
-        // Pitch delta
-        const float camPitchDelta = std::asin(std::clamp(c.z, -1.0f, 1.0f)) - std::asin(std::clamp(p.z, -1.0f, 1.0f));
-
-        _calibration.Update(mouseX, mouseY, camYawDelta, camPitchDelta);
-    }
-    _isFirstFrame = false;
-
-    // Transform mouse input using calibrated coefficients
-    const float curMouseX = direction.x * pixelAngle;
-    const float curMouseY = direction.y * pixelAngle;
-
-    const float yaw = curMouseX * _calibration.yawFromX + curMouseY * _calibration.yawFromY;
-    const float pitch = curMouseX * _calibration.pitchFromX + curMouseY * _calibration.pitchFromY;
-
-    // Compute camera reprojection matrix
-    XMVECTOR camRight = XMVector3Normalize(XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(_cameraRight[currIndex])));
-    XMVECTOR camUp = XMVector3Normalize(XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(_cameraUp[currIndex])));
-    XMVECTOR camForward =
-        XMVector3Normalize(XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(_cameraForward[currIndex])));
-
-    XMMATRIX viewToWorld = XMMATRIX(camRight, camUp, camForward, XMVectorSet(0, 0, 0, 1));
-    XMMATRIX worldToView = XMMatrixTranspose(viewToWorld);
-
-    constexpr float TEST_ANGLE = 0.001f;
-
-    // Find which matrix rotation direction corresponds to positive camera motion.
-    XMVECTOR testPitchForward =
-        XMVector3Normalize(XMVector3TransformNormal(camForward, XMMatrixRotationAxis(camRight, TEST_ANGLE)));
-
-    float pitchTest = std::asin(std::clamp(XMVectorGetZ(testPitchForward), -1.0f, 1.0f)) -
-                      std::asin(std::clamp(XMVectorGetZ(camForward), -1.0f, 1.0f));
-
-    int pitchSign = (pitchTest >= 0.0f) ? 1 : -1;
-
-    XMVECTOR testYawForward = XMVector3Normalize(
-        XMVector3TransformNormal(camForward, XMMatrixRotationAxis(XMVectorSet(0, 0, 1, 0), TEST_ANGLE)));
-
-    float yawTest = std::atan2(XMVectorGetY(testYawForward), XMVectorGetX(testYawForward)) -
-                    std::atan2(XMVectorGetY(camForward), XMVectorGetX(camForward));
-
-    if (yawTest > std::numbers::pi_v<float>)
-        yawTest -= 2.0f * std::numbers::pi_v<float>;
-
-    if (yawTest < -std::numbers::pi_v<float>)
-        yawTest += 2.0f * std::numbers::pi_v<float>;
-
-    int yawSign = (std::abs(yawTest) >= 1e-8f && yawTest >= 0.0f) ? 1 : -1;
-
-    XMMATRIX rotPitch = XMMatrixRotationAxis(camRight, pitch * pitchSign);
-    XMMATRIX rotYaw = XMMatrixRotationAxis(XMVectorSet(0, 0, 1, 0), yaw * yawSign);
-
-    XMMATRIX rotation = XMMatrixTranspose(viewToWorld * rotPitch * rotYaw * worldToView);
-
-    XMStoreFloat4(&params.ReprojectionRow0, rotation.r[0]);
-    XMStoreFloat4(&params.ReprojectionRow1, rotation.r[1]);
-    XMStoreFloat4(&params.ReprojectionRow2, rotation.r[2]);
 }
 
 void Reprojection_Dx12::SetCommandQueue(FG_ResourceType type, ID3D12CommandQueue* queue) { _gameCommandQueue = queue; }
