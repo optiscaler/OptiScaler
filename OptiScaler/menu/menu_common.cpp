@@ -4338,7 +4338,8 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         if (currentFeature != nullptr && !currentFeature->IsFrozen() &&
             ((state.activeFgOutput == FGOutput::FSRFG && FfxApiProxy::IsFGReady()) ||
              (state.activeFgOutput == FGOutput::XeFG && XeFGProxy::Module() != nullptr) ||
-             (state.activeFgOutput == FGOutput::DLSSG && StreamlineProxy::Module() != nullptr)))
+             (state.activeFgOutput == FGOutput::DLSSG && StreamlineProxy::Module() != nullptr) ||
+             state.activeFgOutput == FGOutput::Reprojection))
         {
             const bool dx11HudfixTracking = state.swapchainInteropApi == SwapchainInteropApi::Dx11wDx12;
             const bool hudfixTrackingSupported =

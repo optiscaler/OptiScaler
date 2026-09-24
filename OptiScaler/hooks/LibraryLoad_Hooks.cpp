@@ -582,16 +582,24 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
         auto module = NtdllProxy::LoadLibraryExW_Ldr(libName.c_str(), NULL, NULL);
 
-        auto setTickStartCallback =
-            (PFN_setTickCallback) KernelBaseProxy::GetProcAddress_()(module, "setTickStartCallback");
-        auto setTickEndCallback =
-            (PFN_setTickCallback) KernelBaseProxy::GetProcAddress_()(module, "setTickEndCallback");
+        if (module)
+        {
+            auto setTickStartCallback =
+                (PFN_setTickCallback) KernelBaseProxy::GetProcAddress_()(module, "setTickStartCallback");
+            auto setTickEndCallback =
+                (PFN_setTickCallback) KernelBaseProxy::GetProcAddress_()(module, "setTickEndCallback");
+            auto setCameraUpdateCallback =
+                (PFN_setCameraUpdateExternal) KernelBaseProxy::GetProcAddress_()(module, "setCameraUpdateCallback");
 
-        if (setTickStartCallback)
-            setTickStartCallback(InputUeLowLatency::tickStart);
+            if (setTickStartCallback)
+                setTickStartCallback(InputUeLowLatency::tickStart);
 
-        if (setTickEndCallback)
-            setTickEndCallback(InputUeLowLatency::tickEnd);
+            if (setTickEndCallback)
+                setTickEndCallback(InputUeLowLatency::tickEnd);
+
+            if (setCameraUpdateCallback)
+                setCameraUpdateCallback(InputUeLowLatency::cameraUpdate);
+        }
 
         return module;
     }

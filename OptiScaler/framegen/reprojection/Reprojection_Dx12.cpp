@@ -2,6 +2,7 @@
 #include "Reprojection_Dx12.h"
 
 #include <hudfix/Hudfix_Dx12.h>
+#include <hudfix/Hudfix_Dx11.h>
 #include <menu/menu_overlay_dx.h>
 
 #include <magic_enum.hpp>
@@ -184,6 +185,23 @@ void Reprojection_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgCons
     else
     {
         Deactivate();
+    }
+
+    if (State::Instance().fgChanged)
+    {
+        LOG_DEBUG("FGchanged");
+
+        State::Instance().fgChanged = false;
+
+        Hudfix_Dx12::ResetCounters();
+        Hudfix_Dx11::ResetCounters();
+
+        // Pause for 10 frames
+        UpdateTarget();
+
+        // Release FG mutex
+        if (Mutex.getOwner() == 2)
+            Mutex.unlockThis(2);
     }
 }
 
