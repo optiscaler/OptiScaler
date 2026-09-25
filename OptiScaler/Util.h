@@ -57,6 +57,7 @@ void LoadProxyLibrary(const std::wstring& name, const std::wstring& optiPath, co
                       HMODULE* memoryModule, HMODULE* loadedModule);
 
 std::map<Luid, std::filesystem::path> GetDriverStore();
+uint64_t GetTimestamp();
 
 template <typename T> void DelayedDestroy(std::unique_ptr<T> ptr)
 {

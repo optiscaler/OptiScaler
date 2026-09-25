@@ -933,3 +933,13 @@ std::map<Util::Luid, std::filesystem::path> Util::GetDriverStore()
 
     return result;
 }
+
+uint64_t Util::GetTimestamp()
+{
+    FILETIME fileTime;
+    GetSystemTimePreciseAsFileTime(&fileTime);
+
+    uint64_t time = (static_cast<uint64_t>(fileTime.dwHighDateTime) << 32) | fileTime.dwLowDateTime;
+
+    return time * 100;
+}

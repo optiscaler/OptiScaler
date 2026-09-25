@@ -56,16 +56,6 @@ void tonvss(NvAPI_ShortString nvss, std::string str);
     if (std::string(it->func) == #method)                                                                              \
         return fakenvapi::idToFuncMapping.insert({ id, (void*) nvapi_calls::method }).first->second;
 
-static inline uint64_t get_timestamp()
-{
-    FILETIME fileTime;
-    GetSystemTimePreciseAsFileTime(&fileTime);
-
-    uint64_t time = (static_cast<uint64_t>(fileTime.dwHighDateTime) << 32) | fileTime.dwLowDateTime;
-
-    return time * 100;
-}
-
 // https://learn.microsoft.com/en-us/windows/win32/sync/using-waitable-timer-objects
 inline int timer_sleep(int64_t hundred_ns)
 {
@@ -88,11 +78,11 @@ inline int timer_sleep(int64_t hundred_ns)
 
 inline int busywait_sleep(int64_t ns)
 {
-    auto current_time = get_timestamp();
+    auto current_time = Util::GetTimestamp();
     auto wait_until = current_time + ns;
     while (current_time < wait_until)
     {
-        current_time = get_timestamp();
+        current_time = Util::GetTimestamp();
     }
     return 0;
 }
@@ -103,13 +93,13 @@ inline int eepy(int64_t ns)
 
     int status;
 
-    auto current_time = get_timestamp();
+    auto current_time = Util::GetTimestamp();
     if (ns <= busywait_threshold)
         status = busywait_sleep(ns);
     else
         status = timer_sleep((ns - busywait_threshold) / 100);
 
-    if (int64_t sleep_deviation = ns - (get_timestamp() - current_time); sleep_deviation > 0 && !status)
+    if (int64_t sleep_deviation = ns - (Util::GetTimestamp() - current_time); sleep_deviation > 0 && !status)
         status = busywait_sleep(sleep_deviation);
 
     return status;
