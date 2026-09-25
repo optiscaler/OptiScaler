@@ -94,7 +94,7 @@ void Reproject_Dx12::FilloutStruct(const FilloutData& data, ReprojectionParams& 
 
     params.UiDiffThreshold = data.diffThreshold;
     params.DepthCutoff = Config::Instance()->ReprojectionDepthCutoff.value_or_default();
-    params.DitherWidthPx = data.screenWidth / 16.0f; // TODO: configurable
+    params.DitherWidthPx = data.screenHeight / 16.0f; // TODO: configurable
     params.CutoffExpandPx = Config::Instance()->ReprojectionCutoffExpand.value_or_default();
 
     params.InvertedDepth = data.invertedDepth;
