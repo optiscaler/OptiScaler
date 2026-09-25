@@ -215,8 +215,10 @@ bool Reprojection_Dx12::Present()
 {
     auto fIndex = GetIndex();
 
-    auto mouseDeltaSinceSim = InputCollection::getInstance().readDelta(_frameCount);
-    LOG_DEBUG("mouseDeltaSinceSim: x:{}, y:{}", mouseDeltaSinceSim.x, mouseDeltaSinceSim.y);
+    auto mouseDeltaSinceSim = InputCollection::getInstance().readDeltaSinceSim(_frameCount);
+    LOG_TRACE("mouseDeltaSinceSim: x:{}, y:{}", mouseDeltaSinceSim.x, mouseDeltaSinceSim.y);
+
+    timeSinceSimStart = Util::GetTimestamp() - mouseDeltaSinceSim.startTimestampNs;
 
     // 1. Dispatch custom UI and Hudless shaders
     if (Config::Instance()->FGDrawUIOverFG.value_or_default())
@@ -262,7 +264,7 @@ bool Reprojection_Dx12::Present()
                 auto commandList = GetSCCommandList(fIndex);
                 auto previousIndex = (fIndex + BUFFER_COUNT - 1) % BUFFER_COUNT;
 
-                auto mouseDeltaSimToSim = InputCollection::getInstance().readSimDelta(_frameCount);
+                auto mouseDeltaSimToSim = InputCollection::getInstance().readSimsDelta(_frameCount);
 
                 ReprojectionParams params {};
 

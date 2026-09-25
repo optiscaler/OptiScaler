@@ -7,6 +7,7 @@ struct InputDelta
 {
     int32_t x;
     int32_t y;
+    uint64_t startTimestampNs;
 
     constexpr InputDelta& operator+=(const InputDelta& other)
     {
@@ -38,9 +39,9 @@ class InputCollection
 
     void startCollectingForFrame(uint32_t frameId);
 
-    // Returns the mouse delta between previous and the provided frame id
-    InputDelta readSimDelta(uint32_t frameId);
+    // Returns the mouse delta between sim starts of frameId-1 and frameId
+    InputDelta readSimsDelta(uint32_t frameId);
 
     // Returns the mouse delta since sim start of the provided frame id
-    InputDelta readDelta(uint32_t frameId);
+    InputDelta readDeltaSinceSim(uint32_t frameId);
 };

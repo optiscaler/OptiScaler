@@ -11,6 +11,7 @@
 #include <proxies/Streamline_Proxy.h>
 
 #include <framegen/nvngx/Nvngx_FG.h>
+#include <framegen/reprojection/Reprojection_Dx12.h>
 
 #include <nvapi/fakenvapi.h>
 #include <hooks/Reflex_Hooks.h>
@@ -3207,7 +3208,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
         { FGOutput::FSRFG, "FSR FG", "FSR3/4-FG, RDNA4 autoupgrades to FSR4-FG\n\nFSR4-FG sometimes better/worse than XeFG" },
         { FGOutput::DLSSG, "DLSSG", "DLSSG output\nCan be used in conjuction with Nukem's for example" },
         { FGOutput::XeFG, "XeFG", "XeFG - heaviest, but best universal FG\n\nXeFG 3 overall deals best with HUD\n\nEnable UI Composition if HUD ghosting" },
-        { FGOutput::Reprojection, "Reprojection", "Reprojection" },
+        { FGOutput::Reprojection, "Reprojection (WIP)", "Reprojects the game image using new mouse data\nKinda like Reflex 2, perceived latency improvement\n\n- REQUIRES DLSSG VIA STREAMLINE AS INPUT\n- Only works with first person perspective games\n- Only mouse, no controller\n- If possible, disable any mouse/camera smoothing in the game\n" },
     };
 
     // clang-format on
@@ -4281,53 +4282,70 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
     {
         ImGui::SeparatorText("Reprojection");
 
-        if (ImGui::BeginTable("reprojection1", 2, ImGuiTableFlags_SizingStretchProp))
+        if (fgOutput->IsActive())
         {
-            ImGui::TableNextColumn();
-            bool fgActive = config->FGEnabled.value_or_default();
-            if (ImGui::Checkbox("Active##2", &fgActive))
-            {
-                config->FGEnabled = fgActive;
-                LOG_DEBUG("Reprojection enabled: {}", fgActive);
-
-                if (config->FGEnabled.value_or_default())
-                    state.fgChanged = true;
-            }
-            ShowHelpMarker("Enable reprojection");
-
-            ImGui::TableNextColumn();
-            // clang-format off
-            static std::vector<MenuOption<ReprojectionFill>> fillModes = {
-                { ReprojectionFill::StrechEdge, "Strech edge" },
-                { ReprojectionFill::Dithering, "Dithering" },
-                { ReprojectionFill::Noise, "Noise" },
-                { ReprojectionFill::Debug, "Debug" }
-            };
-            // clang-format on
-
-            // need to have a value before combo
-            if (!config->ReprojectionFillMode.has_value())
-                config->ReprojectionFillMode = config->ReprojectionFillMode.value_or_default();
-
-            PopulateCombo("Edge fill mode", config->ReprojectionFillMode, fillModes);
-
-            ImGui::EndTable();
+            auto reprojection = dynamic_cast<Reprojection_Dx12*>(fgOutput);
+            ImGui::Text("Updated camera position by: %.1fms",
+                        (float) reprojection->GetLastTimeSinceSimStartNs() / 1'000'000.f);
         }
+        else
+        {
+            ImGui::TextDisabled("Not updating camera position");
+        }
+
+        bool fgActive = config->FGEnabled.value_or_default();
+        if (ImGui::Checkbox("Active##2", &fgActive))
+        {
+            config->FGEnabled = fgActive;
+            LOG_DEBUG("Reprojection enabled: {}", fgActive);
+
+            if (config->FGEnabled.value_or_default())
+                state.fgChanged = true;
+        }
+        ShowHelpMarker("Enable reprojection");
+
+        ImGui::SameLine();
+
+        ImGui::Checkbox("Show static elements", &state.fgHudlessCompare);
+        ShowHelpMarker("For fine tuning the depth cutoff\n"
+                       "Shows UI and depth cutoff areas\n"
+                       "Adjust depth cutoff so that only stuff like your gun and hands are marked");
+
+        ImGui::Spacing();
+
+        // clang-format off
+        static std::vector<MenuOption<ReprojectionFill>> fillModes = {
+            { ReprojectionFill::StrechEdge, "Strech edge" },
+            { ReprojectionFill::Dithering, "Dithering" },
+            { ReprojectionFill::Noise, "Noise" },
+            { ReprojectionFill::Debug, "Debug" }
+        };
+        // clang-format on
+
+        // need to have a value before combo
+        if (!config->ReprojectionFillMode.has_value())
+            config->ReprojectionFillMode = config->ReprojectionFillMode.value_or_default();
+
+        PopulateCombo("Edge fill mode", config->ReprojectionFillMode, fillModes);
+        ShowHelpMarker("You want either dither or noise\n"
+                       "Those two use the unprojected image as fill\n"
+                       "and then some blending on the edges to fool the eye");
 
         float cutoff = config->ReprojectionDepthCutoff.value_or_default();
         if (ImGui::SliderFloat("Depth cutoff", &cutoff, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_Logarithmic))
             config->ReprojectionDepthCutoff = cutoff;
+        ShowHelpMarker("Selects how many elements close to the camera\n"
+                       "should be shown over the reprojected image.\n"
+                       "This prevents your gun from being moved in weird ways.\n\n"
+                       "Use \"Show static elements\" to help you adjust it\n"
+                       "Unreal Engine games are usually around 0.10\n"
+                       "Cyberpunk is around 0.02");
 
         uint32_t cutoffExpandPx = config->ReprojectionCutoffExpand.value_or_default();
         if (SliderUInt("Cutoff expand", &cutoffExpandPx, 0, 2))
             config->ReprojectionCutoffExpand = cutoffExpandPx;
         ShowHelpMarker("A toddler implemented this so it's super slow\n"
                        "Use only when you see an outline left by the cutoff process");
-
-        ImGui::Checkbox("Show static elements", &state.fgHudlessCompare);
-        ShowHelpMarker("For fine tuning the depth cutoff\n"
-                       "Shows UI and depth cutoff areas\n"
-                       "Adjust depth cutoff so that only stuff like your gun and hands are marked");
     }
 
     // OptiFG

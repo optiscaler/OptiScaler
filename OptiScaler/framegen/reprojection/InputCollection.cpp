@@ -18,7 +18,7 @@ void InputCollection::addNewDelta(InputDelta delta)
     inProgressSimToSimDelta += delta;
 }
 
-InputDelta InputCollection::readSimDelta(uint32_t frameId)
+InputDelta InputCollection::readSimsDelta(uint32_t frameId)
 {
     std::shared_lock<std::shared_mutex> lock(simDeltasMutex);
 
@@ -32,7 +32,7 @@ void InputCollection::startCollectingForFrame(uint32_t frameId)
         std::unique_lock<std::shared_mutex> lock(mutex);
 
         auto index = frameId % 8;
-        simToPresentDeltas[index] = { 0, 0 };
+        simToPresentDeltas[index] = { 0, 0, Util::GetTimestamp() };
     }
 
     std::unique_lock<std::shared_mutex> lock(simDeltasMutex);
@@ -42,7 +42,7 @@ void InputCollection::startCollectingForFrame(uint32_t frameId)
     inProgressSimToSimDelta = { 0, 0 };
 }
 
-InputDelta InputCollection::readDelta(uint32_t frameId)
+InputDelta InputCollection::readDeltaSinceSim(uint32_t frameId)
 {
     std::shared_lock<std::shared_mutex> lock(mutex);
 
