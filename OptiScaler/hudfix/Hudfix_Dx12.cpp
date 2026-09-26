@@ -904,8 +904,7 @@ bool Hudfix_Dx12::CheckForHudless(ID3D12GraphicsCommandList* cmdList, ResourceIn
             {
                 LOG_DEBUG("Format change, recreate the FormatTransfer");
 
-                if (_formatTransfer[fIndex] != nullptr)
-                    delete _formatTransfer[fIndex];
+                delete _formatTransfer[fIndex];
 
                 _formatTransfer[fIndex] = nullptr;
 
