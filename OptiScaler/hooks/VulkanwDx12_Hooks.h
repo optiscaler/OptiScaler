@@ -5,6 +5,7 @@
 #include "CommandBuffer_StateTracker.h"
 
 #include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_beta.h>
 
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 #include <vulkan/vulkan_win32.h>
