@@ -40,8 +40,6 @@
 #include <hooks/Advapi32_Hooks.h>
 #include <hooks/Streamline_Hooks.h>
 
-#include <framegen/reprojection/RawInputHook.h>
-
 #include <nvapi/NvApiHooks.h>
 
 #include "spoofing/User32_Spoofing.h"
@@ -1875,9 +1873,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 
         if (State::Instance().activeFgInput == FGInput::NvngxFG)
             State::Instance().activeFgOutput = FGOutput::NoFG;
-
-        if (State::Instance().activeFgOutput == FGOutput::Reprojection)
-            RawInputHook::getInstance().start();
 
         // Init Kernel proxies
         NtdllProxy::Init();

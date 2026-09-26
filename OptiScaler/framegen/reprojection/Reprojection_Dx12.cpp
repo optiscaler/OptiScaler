@@ -6,7 +6,6 @@
 #include <menu/menu_overlay_dx.h>
 
 #include <magic_enum.hpp>
-#include "InputCollection.h"
 
 void Reprojection_Dx12::ReleaseObjects()
 {
@@ -218,7 +217,9 @@ bool Reprojection_Dx12::Present()
     auto mouseDeltaSinceSim = InputCollection::getInstance().readDeltaSinceSim(_frameCount);
     LOG_TRACE("mouseDeltaSinceSim: x:{}, y:{}", mouseDeltaSinceSim.x, mouseDeltaSinceSim.y);
 
-    timeSinceSimStart = Util::GetTimestamp() - mouseDeltaSinceSim.startTimestampNs;
+    _timeSinceSimStart = Util::GetTimestamp() - mouseDeltaSinceSim.startTimestampNs;
+
+    _reprojectionActive = IsActive();
 
     // 1. Dispatch custom UI and Hudless shaders
     if (Config::Instance()->FGDrawUIOverFG.value_or_default())

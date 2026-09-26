@@ -4278,29 +4278,40 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         ImGui::EndDisabled();
     }
 
-    if (state.activeFgOutput == FGOutput::Reprojection && fgOutput)
+    if (fgOutput && fgOutput->HasReprojection())
     {
         ImGui::SeparatorText("Reprojection");
 
-        if (fgOutput->IsActive())
+        if (fgOutput->IsActive() && fgOutput->IsReprojectionActive())
         {
-            auto reprojection = dynamic_cast<Reprojection_Dx12*>(fgOutput);
-            ImGui::Text("Updated camera position by: %.1fms",
-                        (float) reprojection->GetLastTimeSinceSimStartNs() / 1'000'000.f);
+            ImGui::Text("Updated camera rotation by: %.1fms",
+                        (float) fgOutput->GetLastTimeSinceSimStartNs() / 1'000'000.f);
         }
         else
         {
-            ImGui::TextDisabled("Not updating camera position");
+            ImGui::TextDisabled("Not updating camera rotation");
         }
 
-        bool fgActive = config->FGEnabled.value_or_default();
-        if (ImGui::Checkbox("Active##2", &fgActive))
+        if (state.activeFgOutput == FGOutput::Reprojection)
         {
-            config->FGEnabled = fgActive;
-            LOG_DEBUG("Reprojection enabled: {}", fgActive);
+            bool fgActive = config->FGEnabled.value_or_default();
+            if (ImGui::Checkbox("Active##2", &fgActive))
+            {
+                config->FGEnabled = fgActive;
+                LOG_DEBUG("Reprojection enabled: {}", fgActive);
 
-            if (config->FGEnabled.value_or_default())
-                state.fgChanged = true;
+                if (config->FGEnabled.value_or_default())
+                    state.fgChanged = true;
+            }
+        }
+        else
+        {
+            bool reprojectionActive = config->FGReprojectionEnabled.value_or_default();
+            if (ImGui::Checkbox("Active##5", &reprojectionActive))
+            {
+                config->FGReprojectionEnabled = reprojectionActive;
+                LOG_DEBUG("Reprojection enabled: {}", reprojectionActive);
+            }
         }
         ShowHelpMarker("Enable reprojection");
 

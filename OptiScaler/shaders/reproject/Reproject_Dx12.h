@@ -9,6 +9,8 @@
 #include <shaders/Shader_Dx12.h>
 #include <DirectXMath.h>
 
+#include "mouseInputs/InputCollection.h"
+
 #define Reproject_NUM_OF_HEAPS 3
 
 struct alignas(16) ReprojectionParams
@@ -26,7 +28,7 @@ struct alignas(16) ReprojectionParams
     uint32_t EdgeMode;
     uint32_t ShowStaticElements;
     uint32_t InvertedDepth;
-    float Pad1;
+    uint32_t FakeFrame; // need to provide fakePresent
 
     float TanHalfFovX;
     float TanHalfFovY;
@@ -45,6 +47,7 @@ struct FilloutData
     uint32_t screenWidth;
     uint32_t screenHeight;
     bool invertedDepth;
+    bool fakeFrame;
 
     float cameraVFov;
     float cameraAspectRatio;
@@ -118,9 +121,19 @@ class Reproject_Dx12 : public Shader_Dx12
   public:
     void FilloutStruct(const FilloutData& data, ReprojectionParams& params);
 
+    // Leaves present unmodified, new image available via GetCurrentBuffer
+    bool Dispatch(ID3D12GraphicsCommandList* cmdList, ReprojectionParams& params, ID3D12Resource* realPresent,
+                  D3D12_RESOURCE_STATES realPresentState, ID3D12Resource* fakePresent,
+                  D3D12_RESOURCE_STATES fakePresentState, ID3D12Resource* hudless, D3D12_RESOURCE_STATES hudlessState,
+                  ID3D12Resource* depth, D3D12_RESOURCE_STATES depthState);
+
     bool Dispatch(IDXGISwapChain3* sc, ID3D12GraphicsCommandList* cmdList, ReprojectionParams& params,
                   ID3D12Resource* hudless, D3D12_RESOURCE_STATES state, ID3D12Resource* depth,
                   D3D12_RESOURCE_STATES depthState);
+
+    // Can be called only after Dispatch
+    // Expected to be in D3D12_RESOURCE_STATE_COPY_SOURCE
+    ID3D12Resource* GetCurrentBuffer();
 
     Reproject_Dx12(std::string InName, ID3D12Device* InDevice);
 

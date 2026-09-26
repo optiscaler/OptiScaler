@@ -18,7 +18,7 @@ cbuffer Params : register(b0)
     uint EdgeMode;
     uint ShowStaticElements;
     uint InvertedDepth;
-    float Pad1;
+    uint FakeFrame; // need to provide fakePresent
 
     float TanHalfFovX;
     float TanHalfFovY;
@@ -33,6 +33,7 @@ cbuffer Params : register(b0)
 Texture2D<float3> Hudless : register(t0);
 Texture2D<float3> PresentCopy : register(t1);
 Texture2D<float> Depth : register(t2);
+Texture2D<float3> FakePresent : register(t3);
 
 RWTexture2D<float3> Present : register(u0);
 SamplerState LinearClampSampler : register(s0);
@@ -145,15 +146,26 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     const float3 pink = float3(1.0, 0.4, 0.6);
     const float3 green = float3(0.0f, 1.0f, 0.0f);
     
+    if (FakeFrame == 1)
+        hudless = FakePresent.Load(int3(pixelCoord, 0));
+    
     if (inside)
     {
         // Depth cutoff
         bool isCutoutReprojected = IsDepthCutoutExpanded(sourceUV, CutoffExpandPx);
-        
+                
         if (isCutoutReprojected)
+        {
             reprojectedGame = lerp(hudless, green, EdgeMode == 0); // try to fill gap with unprojected hudless, or green for debug
+        }
         else
-            reprojectedGame = Hudless.SampleLevel(LinearClampSampler, sourceUV, 0.0f); // the fun part
+        {
+            // the fun part
+            if (FakeFrame == 1)
+                reprojectedGame = FakePresent.SampleLevel(LinearClampSampler, sourceUV, 0.0f);
+            else
+                reprojectedGame = Hudless.SampleLevel(LinearClampSampler, sourceUV, 0.0f);
+        }
                 
         if (modeWithBackground)
         {
@@ -188,7 +200,10 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
         }
         else if (EdgeMode == 1) // Strech
         {
-            reprojectedGame = Hudless.SampleLevel(LinearClampSampler, saturate(sourceUV), 0.0f);
+            if (FakeFrame == 1)
+                reprojectedGame = FakePresent.SampleLevel(LinearClampSampler, saturate(sourceUV), 0.0f);
+            else
+                reprojectedGame = Hudless.SampleLevel(LinearClampSampler, saturate(sourceUV), 0.0f);
         }
         else if (modeWithBackground)
         {
@@ -198,6 +213,10 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     
     // Final UI Blend
     float3 composedImage = lerp(reprojectedGame, present, uiMask);
+    
+    // Pink line on fake frames
+    if (FakeFrame == 1 && EdgeMode == 0)
+        composedImage = lerp(composedImage, pink, uv.x < 0.02);
     
     Present[pixelCoord] = lerp(composedImage, pink, uiMask * 0.6f * ShowStaticElements);
 }

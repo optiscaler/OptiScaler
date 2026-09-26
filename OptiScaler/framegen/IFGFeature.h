@@ -29,6 +29,7 @@ enum FG_ResourceType : uint32_t
     HudlessColor,
     UIColor,
     Distortion,
+    Color, // Hudless + UI
 
     ResourceTypeCOUNT
 };

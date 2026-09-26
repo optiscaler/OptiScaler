@@ -7,6 +7,7 @@
 #include <shaders/resource_flip/RF_Dx12.h>
 #include <shaders/hudless_compare/HC_Dx12.h>
 #include <shaders/render_ui/RUI_Dx12.h>
+#include <shaders/reproject/Reproject_Dx12.h>
 
 #include <dxgi1_6.h>
 #include <d3d12.h>
@@ -82,10 +83,14 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     std::unordered_map<FG_ResourceType, ID3D12Resource*> _resourceCopy[BUFFER_COUNT] {};
     std::shared_mutex _resourceMutex[BUFFER_COUNT];
 
+    uint64_t _timeSinceSimStart = 0;
+    bool _reprojectionActive = false;
+
     std::unique_ptr<RF_Dx12> _mvFlip;
     std::unique_ptr<RF_Dx12> _depthFlip;
     std::unique_ptr<HC_Dx12> _hudlessCompare;
     std::unique_ptr<RUI_Dx12> _renderUI;
+    std::unique_ptr<Reproject_Dx12> _reproject;
 
     bool CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InSource, D3D12_RESOURCE_STATES InState,
                               ID3D12Resource** OutResource, bool UAV = false, bool depth = false);
@@ -134,6 +139,10 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     ID3D12CommandQueue* GetCommandQueue();
 
     bool HasResource(FG_ResourceType type, int index = -1) override final;
+
+    virtual bool HasReprojection() { return false; };
+    bool IsReprojectionActive() const { return _reprojectionActive; };
+    uint64_t GetLastTimeSinceSimStartNs() const { return _timeSinceSimStart; };
 
     IFGFeature_Dx12() = default;
     virtual ~IFGFeature_Dx12() { DestroyCopyCmdList(); }

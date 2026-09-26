@@ -11,7 +11,7 @@
 
 #include <math.h>
 #include <imgui/ImGuiNotify.hpp>
-#include <framegen/reprojection/InputCollection.h>
+#include <shaders/reproject/mouseInputs/InputCollection.h>
 
 static inline uint64_t _lastFrameId[20] = { 0 };
 static inline IUnknown* _lastDev[20] = { 0 };

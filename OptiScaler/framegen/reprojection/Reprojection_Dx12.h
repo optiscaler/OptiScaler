@@ -1,13 +1,9 @@
 #pragma once
 
 #include <framegen/IFGFeature_Dx12.h>
-#include <shaders/reproject/Reproject_Dx12.h>
 
 class Reprojection_Dx12 : public virtual IFGFeature_Dx12
 {
-    std::unique_ptr<Reproject_Dx12> _reproject;
-    std::atomic<uint64_t> timeSinceSimStart;
-
   protected:
     void ReleaseObjects() override final;
     void CreateObjects(ID3D12Device* InDevice) override final;
@@ -51,6 +47,5 @@ class Reprojection_Dx12 : public virtual IFGFeature_Dx12
 
     // Inherited via IFGFeature_Dx12
     bool SetInterpolatedFrameCount(UINT interpolatedFrameCount) override { return true; };
-
-    uint64_t GetLastTimeSinceSimStartNs() { return timeSinceSimStart; };
+    bool HasReprojection() override final { return true; };
 };

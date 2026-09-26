@@ -6,6 +6,7 @@
 #include "precompile/reproject_Shader.h"
 
 #include <numbers>
+#include "mouseInputs/RawInputHook.h"
 
 using namespace DirectX;
 using Microsoft::WRL::ComPtr;
@@ -99,6 +100,7 @@ void Reproject_Dx12::FilloutStruct(const FilloutData& data, ReprojectionParams& 
 
     params.InvertedDepth = data.invertedDepth;
     params.ShowStaticElements = State::Instance().fgHudlessCompare;
+    params.FakeFrame = data.fakeFrame;
 
     auto fillMode = Config::Instance()->ReprojectionFillMode.value_or_default();
     if (fillMode == ReprojectionFill::Debug)
@@ -119,7 +121,7 @@ void Reproject_Dx12::FilloutStruct(const FilloutData& data, ReprojectionParams& 
     params.InvTanHalfFovX = 1.0f / params.TanHalfFovX;
 
     // Compute actual camera rotation deltas between frames
-    if (!_isFirstFrame)
+    if (!_isFirstFrame && !data.fakeFrame)
     {
         XMVECTOR prevFwd = XMVector3Normalize(XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(data.cameraPrevForward)));
         XMVECTOR currFwd = XMVector3Normalize(XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(data.cameraForward)));
@@ -145,7 +147,10 @@ void Reproject_Dx12::FilloutStruct(const FilloutData& data, ReprojectionParams& 
 
         _calibration.Update(mouseX, mouseY, camYawDelta, camPitchDelta);
     }
-    _isFirstFrame = false;
+    else
+    {
+        _isFirstFrame = false;
+    }
 
     // Transform mouse input using calibrated coefficients
     const float curMouseX = data.mouseDeltaSinceSim.x * pixelAngle;
@@ -227,7 +232,7 @@ Reproject_Dx12::Reproject_Dx12(std::string InName, ID3D12Device* InDevice) : Sha
     sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     sampler.AddressU = sampler.AddressV = sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
 
-    if (!SetupRootSignature(InDevice, 3, 1, 1, 0, 0, 1, &sampler))
+    if (!SetupRootSignature(InDevice, 4, 1, 1, 0, 0, 1, &sampler))
     {
         LOG_ERROR("Failed to setup root signature");
         return;
@@ -253,34 +258,22 @@ Reproject_Dx12::Reproject_Dx12(std::string InName, ID3D12Device* InDevice) : Sha
     }
 
     _init = InitHeaps(InDevice, _frameHeaps, Reproject_NUM_OF_HEAPS);
+
+    // TODO: make this owned or something, so that hooks stay in place if there are
+    // two instances of this shader and one gets destroyed
+    RawInputHook::getInstance().start();
 }
 
-bool Reproject_Dx12::Dispatch(IDXGISwapChain3* sc, ID3D12GraphicsCommandList* cmdList, ReprojectionParams& params,
+bool Reproject_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ReprojectionParams& params,
+                              ID3D12Resource* realPresent, D3D12_RESOURCE_STATES realPresentState,
+                              ID3D12Resource* fakePresent, D3D12_RESOURCE_STATES fakePresentState,
                               ID3D12Resource* hudless, D3D12_RESOURCE_STATES hudlessState, ID3D12Resource* depth,
                               D3D12_RESOURCE_STATES depthState)
 {
-    if (!_init || !sc || !_device || !hudless || !cmdList || !depth)
+    if (!_init || !_device || !realPresent || !hudless || !cmdList || !depth)
         return false;
 
     ScopedGpuTime_Dx12 scopedGpuTime(GpuTime.get(), cmdList);
-
-    DXGI_SWAP_CHAIN_DESC scDesc {};
-    if (sc->GetDesc(&scDesc) != S_OK)
-    {
-        LOG_WARN("Can't get swapchain desc!");
-        return false;
-    }
-
-    // Get SwapChain Buffer
-    ComPtr<ID3D12Resource> scBuffer;
-    auto scIndex = sc->GetCurrentBackBufferIndex();
-    auto result = sc->GetBuffer(scIndex, IID_PPV_ARGS(&scBuffer));
-
-    if (result != S_OK)
-    {
-        LOG_ERROR("sc->GetBuffer({}) error: {:X}", scIndex, (unsigned long) result);
-        return false;
-    }
 
     _counter++;
     _counter = _counter % Reproject_NUM_OF_HEAPS;
@@ -294,7 +287,7 @@ bool Reproject_Dx12::Dispatch(IDXGISwapChain3* sc, ID3D12GraphicsCommandList* cm
         auto resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS |
                              D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS;
 
-        auto result = Shader_Dx12::CreateBufferResource(_device, scBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
+        auto result = Shader_Dx12::CreateBufferResource(_device, realPresent, D3D12_RESOURCE_STATE_COPY_DEST,
                                                         &currentBuffer, resourceFlags);
 
         if (result)
@@ -303,25 +296,29 @@ bool Reproject_Dx12::Dispatch(IDXGISwapChain3* sc, ID3D12GraphicsCommandList* cm
         return result;
     }
 
-    ResourceBarrier(cmdList, scBuffer.Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    ResourceBarrier(cmdList, currentBuffer, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+    ResourceBarrier(cmdList, realPresent, realPresentState, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
-    cmdList->CopyResource(currentBuffer, scBuffer.Get());
+    cmdList->CopyResource(currentBuffer, realPresent);
 
     // Make sure present is in D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
-    ResourceBarrier(cmdList, scBuffer.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+    if (fakePresent)
+        ResourceBarrier(cmdList, fakePresent, fakePresentState, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    ResourceBarrier(cmdList, realPresent, D3D12_RESOURCE_STATE_COPY_SOURCE,
                     D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    ResourceBarrier(cmdList, currentBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-    ResourceBarrier(cmdList, depth, depthState, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-
     ResourceBarrier(cmdList, hudless, hudlessState, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    ResourceBarrier(cmdList, depth, depthState, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    ResourceBarrier(cmdList, currentBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
     // Create views
-    auto pDesc = scBuffer.Get()->GetDesc();
+    auto presentDesc = realPresent->GetDesc();
 
     // Because of HudlessTransfer, the format of hudless is the same as present
-    CreateShaderResourceView(_device, hudless, currentHeap.GetSrvCPU(0), pDesc.Format);
-    CreateShaderResourceView(_device, scBuffer.Get(), currentHeap.GetSrvCPU(1));
+    CreateShaderResourceView(_device, hudless, currentHeap.GetSrvCPU(0), presentDesc.Format);
+    CreateShaderResourceView(_device, realPresent, currentHeap.GetSrvCPU(1));
     CreateShaderResourceView(_device, depth, currentHeap.GetSrvCPU(2));
+    if (fakePresent)
+        CreateShaderResourceView(_device, fakePresent, currentHeap.GetSrvCPU(3));
 
     CreateUnorderedAccessView(_device, currentBuffer, currentHeap.GetUavCPU(0), 0);
 
@@ -339,27 +336,65 @@ bool Reproject_Dx12::Dispatch(IDXGISwapChain3* sc, ID3D12GraphicsCommandList* cm
 
     cmdList->SetComputeRootDescriptorTable(0, currentHeap.GetTableGPUStart());
 
-    auto presentDesc = scBuffer.Get()->GetDesc();
     UINT dispatchWidth = static_cast<UINT>((presentDesc.Width + InNumThreadsX - 1) / InNumThreadsX);
     UINT dispatchHeight = (presentDesc.Height + InNumThreadsY - 1) / InNumThreadsY;
 
     cmdList->Dispatch(dispatchWidth, dispatchHeight, 1);
 
-    ResourceBarrier(cmdList, currentBuffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
-    ResourceBarrier(cmdList, scBuffer.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-                    D3D12_RESOURCE_STATE_COPY_DEST);
-
-    cmdList->CopyResource(scBuffer.Get(), currentBuffer);
-
-    // Restore resource states
-    ResourceBarrier(cmdList, scBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT);
+    if (fakePresent)
+        ResourceBarrier(cmdList, fakePresent, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, fakePresentState);
+    ResourceBarrier(cmdList, realPresent, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, realPresentState);
     ResourceBarrier(cmdList, hudless, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, hudlessState);
     ResourceBarrier(cmdList, depth, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, depthState);
-
-    ResourceBarrier(cmdList, currentBuffer, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+    ResourceBarrier(cmdList, currentBuffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
     return true;
 }
+
+bool Reproject_Dx12::Dispatch(IDXGISwapChain3* sc, ID3D12GraphicsCommandList* cmdList, ReprojectionParams& params,
+                              ID3D12Resource* hudless, D3D12_RESOURCE_STATES hudlessState, ID3D12Resource* depth,
+                              D3D12_RESOURCE_STATES depthState)
+{
+    if (!_init || !sc)
+        return false;
+
+    DXGI_SWAP_CHAIN_DESC scDesc {};
+    if (sc->GetDesc(&scDesc) != S_OK)
+    {
+        LOG_WARN("Can't get swapchain desc!");
+        return false;
+    }
+
+    // Get SwapChain Buffer
+    ComPtr<ID3D12Resource> scBuffer;
+    auto scIndex = sc->GetCurrentBackBufferIndex();
+    if (auto result = sc->GetBuffer(scIndex, IID_PPV_ARGS(&scBuffer)); result != S_OK)
+    {
+        LOG_ERROR("sc->GetBuffer({}) error: {:X}", scIndex, (unsigned long) result);
+        return false;
+    }
+
+    auto present = scBuffer.Get();
+    auto presentState = D3D12_RESOURCE_STATE_PRESENT;
+    auto result = Dispatch(cmdList, params, present, presentState, nullptr, D3D12_RESOURCE_STATE_COMMON, hudless,
+                           hudlessState, depth, depthState);
+
+    if (result)
+    {
+        // Already in D3D12_RESOURCE_STATE_COPY_SOURCE
+        auto currentBuffer = GetCurrentBuffer();
+
+        ResourceBarrier(cmdList, present, presentState, D3D12_RESOURCE_STATE_COPY_DEST);
+
+        cmdList->CopyResource(present, currentBuffer);
+
+        ResourceBarrier(cmdList, present, D3D12_RESOURCE_STATE_COPY_DEST, presentState);
+    }
+
+    return result;
+}
+
+ID3D12Resource* Reproject_Dx12::GetCurrentBuffer() { return _buffer[_counter]; }
 
 Reproject_Dx12::~Reproject_Dx12()
 {
@@ -373,4 +408,6 @@ Reproject_Dx12::~Reproject_Dx12()
     {
         _frameHeaps[i].ReleaseHeaps();
     }
+
+    RawInputHook::getInstance().stop();
 }

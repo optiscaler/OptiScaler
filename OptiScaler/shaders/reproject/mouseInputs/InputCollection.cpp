@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "InputCollection.h"
+#include <Util.h>
 
 #include <thread>
 

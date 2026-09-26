@@ -3,13 +3,16 @@
 #include "FSRFG_Dx12.h"
 
 #include <State.h>
+#include <Util.h>
 
 #include <hudfix/Hudfix_Dx11.h>
 #include <hudfix/Hudfix_Dx12.h>
-
 #include <menu/menu_overlay_dx.h>
 
 #include <magic_enum.hpp>
+#include <DirectXMath.h>
+
+using namespace DirectX;
 
 #define FFX_FRAMEGENERATION_SWAPCHAIN_DX12_VERSION_MAJOR 3
 #define FFX_FRAMEGENERATION_SWAPCHAIN_DX12_VERSION_MINOR 1
@@ -345,6 +348,8 @@ bool FSRFG_Dx12::Dispatch()
     if (state.fsrfgFramePaceTuningChanged)
         ConfigureFramePaceTuning();
 
+    _reprojectionActive = config->FGReprojectionEnabled.value_or_default() && HasReprojection();
+
     LOG_DEBUG("_frameCount: {}, willDispatchFrame: {}, fIndex: {}", _frameCount, willDispatchFrame, fIndex);
 
     if (!_resourceReady[fIndex].contains(FG_ResourceType::Depth) ||
@@ -461,6 +466,28 @@ bool FSRFG_Dx12::Dispatch()
         fgConfig.generationRect.width = config->FGRectWidth.value_or(defaultWidth);
         fgConfig.generationRect.height = config->FGRectHeight.value_or(defaultHeight);
     }
+
+    if (_reprojectionActive)
+    {
+        fgConfig.presentCallbackUserContext = this;
+        fgConfig.presentCallback = [](ffxCallbackDescFrameGenerationPresent* params, void* pUserCtx) -> ffxReturnCode_t
+        {
+            FSRFG_Dx12* fsrFG = nullptr;
+
+            if (pUserCtx != nullptr)
+                fsrFG = reinterpret_cast<FSRFG_Dx12*>(pUserCtx);
+
+            if (fsrFG != nullptr)
+                return fsrFG->PresentCallback(params);
+
+            return FFX_API_RETURN_ERROR;
+        };
+    }
+    // else
+    //{
+    //     // Disables raw input hooks on destroy
+    //     Util::DelayedDestroy(std::move(_reproject));
+    // }
 
     fgConfig.frameGenerationCallbackUserContext = this;
     fgConfig.frameGenerationCallback = [](ffxDispatchDescFrameGeneration* params, void* pUserCtx) -> ffxReturnCode_t
@@ -613,18 +640,243 @@ bool FSRFG_Dx12::Dispatch()
     return dispatchResult;
 }
 
+void InterpolateCameraBasis(const float cameraUp[3], const float cameraRight[3], const float cameraForward[3],
+                            const float cameraPrevUp[3], const float cameraPrevRight[3],
+                            const float cameraPrevForward[3], float t, float outUp[3], float outRight[3],
+                            float outForward[3])
+{
+    t = std::clamp(t, 0.0f, 1.0f);
+
+    const XMVECTOR up0 = XMVector3Normalize(XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(cameraUp)));
+    const XMVECTOR right0 = XMVector3Normalize(XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(cameraRight)));
+    const XMVECTOR forward0 = XMVector3Normalize(XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(cameraForward)));
+
+    const XMVECTOR up1 = XMVector3Normalize(XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(cameraPrevUp)));
+    const XMVECTOR right1 = XMVector3Normalize(XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(cameraPrevRight)));
+    const XMVECTOR forward1 = XMVector3Normalize(XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(cameraPrevForward)));
+
+    const XMMATRIX m0 =
+        XMMatrixSet(XMVectorGetX(right0), XMVectorGetX(up0), XMVectorGetX(forward0), 0.0f, XMVectorGetY(right0),
+                    XMVectorGetY(up0), XMVectorGetY(forward0), 0.0f, XMVectorGetZ(right0), XMVectorGetZ(up0),
+                    XMVectorGetZ(forward0), 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+
+    const XMMATRIX m1 =
+        XMMatrixSet(XMVectorGetX(right1), XMVectorGetX(up1), XMVectorGetX(forward1), 0.0f, XMVectorGetY(right1),
+                    XMVectorGetY(up1), XMVectorGetY(forward1), 0.0f, XMVectorGetZ(right1), XMVectorGetZ(up1),
+                    XMVectorGetZ(forward1), 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+
+    XMVECTOR q0 = XMQuaternionRotationMatrix(m0);
+    XMVECTOR q1 = XMQuaternionRotationMatrix(m1);
+
+    if (XMVectorGetX(XMVector4Dot(q0, q1)) < 0.0f)
+        q1 = XMVectorNegate(q1);
+
+    const XMVECTOR q = XMQuaternionSlerp(q0, q1, t);
+
+    const XMMATRIX result = XMMatrixRotationQuaternion(q);
+
+    const XMVECTOR right =
+        XMVectorSet(XMVectorGetX(result.r[0]), XMVectorGetX(result.r[1]), XMVectorGetX(result.r[2]), 0.0f);
+    const XMVECTOR up =
+        XMVectorSet(XMVectorGetY(result.r[0]), XMVectorGetY(result.r[1]), XMVectorGetY(result.r[2]), 0.0f);
+    const XMVECTOR forward =
+        XMVectorSet(XMVectorGetZ(result.r[0]), XMVectorGetZ(result.r[1]), XMVectorGetZ(result.r[2]), 0.0f);
+
+    XMStoreFloat3(reinterpret_cast<XMFLOAT3*>(outRight), right);
+    XMStoreFloat3(reinterpret_cast<XMFLOAT3*>(outUp), up);
+    XMStoreFloat3(reinterpret_cast<XMFLOAT3*>(outForward), forward);
+}
+
+ffxReturnCode_t FSRFG_Dx12::PresentCallback(ffxCallbackDescFrameGenerationPresent* params)
+{
+    LOG_TRACE("frameID: {}, isGeneratedFrame: {}", params->frameID, params->isGeneratedFrame);
+
+    // It goes:
+    // frame 1, generated true  so (0 -> 1)
+    // frame 1, generated false
+    // frame 2, generated true  so (1 -> 2)
+    // frame 2, generated false
+
+    auto fIndex = params->frameID % BUFFER_COUNT;
+    auto cmdList = (ID3D12GraphicsCommandList*) params->commandList;
+
+    auto mouseDeltaSimToSim = InputCollection::getInstance().readSimsDelta(_frameCount);
+    auto mouseDeltaSinceSim = InputCollection::getInstance().readDeltaSinceSim(_frameCount);
+    LOG_DEBUG("pre mouseDeltaSinceSim: x:{}, y:{}", mouseDeltaSinceSim.x, mouseDeltaSinceSim.y);
+
+    if (params->isGeneratedFrame)
+    {
+        _deltaSimToFake[fIndex] = { mouseDeltaSinceSim, Util::GetTimestamp() };
+
+        _timeSinceSimStart = _deltaSimToFake[fIndex].second - mouseDeltaSinceSim.startTimestampNs;
+        LOG_DEBUG("_timeSinceSimStart :{}", (float) _timeSinceSimStart / 1'000'000);
+
+        mouseDeltaSimToSim = InputCollection::getInstance().readSimsDelta(_frameCount);
+        mouseDeltaSinceSim = InputCollection::getInstance().readDeltaSinceSim(_frameCount - 1);
+
+        // Half the motion already shown
+        mouseDeltaSinceSim -= mouseDeltaSimToSim / 2;
+    }
+    else if (_deltaSimToFake[fIndex].second != 0)
+    {
+        // We ignore the read mouseDeltaSinceSim
+
+        auto& deltaToPrevFake = _deltaSimToFake[fIndex];
+        auto timeDiffPrev = (float) (deltaToPrevFake.second - deltaToPrevFake.first.startTimestampNs) / 1'000'000;
+        auto timeDeltaFromFake = (float) (Util::GetTimestamp() - deltaToPrevFake.second) / 1'000'000;
+
+        // we dont have mouse data for the "_ftDelta[fIndex] / 2" that happens after this function is called but
+        // before the image is presented
+        auto timeDiffCurrent = timeDiffPrev + _ftDelta[fIndex] / 2 - timeDeltaFromFake;
+        // auto timeDiffCurrent = timeDiffPrev + _ftDelta[fIndex] / 2;
+
+        float ratio = timeDiffCurrent / (float) timeDiffPrev;
+        mouseDeltaSinceSim *= ratio;
+        // mouseDeltaSinceSim = deltaToPrevFake.first * ratio;
+
+        _deltaSimToFake[fIndex].second = 0;
+    }
+
+    LOG_DEBUG("post mouseDeltaSinceSim: x:{}, y:{}", mouseDeltaSinceSim.x, mouseDeltaSinceSim.y);
+
+    auto hudless = GetResource(FG_ResourceType::HudlessColor, fIndex);
+    auto depth = GetResource(FG_ResourceType::Depth, fIndex);
+    if (depth && depth->copy && hudless && hudless->copy)
+    {
+        if (_reproject.get() == nullptr)
+        {
+            _reproject = std::make_unique<Reproject_Dx12>("Reproject", _device);
+        }
+
+        if (_reproject->IsInit())
+        {
+            auto previousIndex = (fIndex + BUFFER_COUNT - 1) % BUFFER_COUNT;
+
+            ReprojectionParams reprojectionParams {};
+
+            FilloutData data {};
+            data.diffThreshold = 0.01f;
+
+            // TODO: change something about this
+            // FSRFG calls PresentCallback quickly back to back
+            // Maybe try creating a difference between fake frame's mouseDeltaSinceSim and real frame's
+            // mouseDeltaSinceSim and using that
+            data.mouseDeltaSinceSim = mouseDeltaSinceSim;
+            data.mouseDeltaSimToSim = mouseDeltaSimToSim;
+
+            data.screenWidth = (uint32_t) _interpolationWidth[fIndex];
+            data.screenHeight = (uint32_t) _interpolationHeight[fIndex];
+            data.invertedDepth = _constants.flags[FG_Flags::InvertedDepth];
+            data.fakeFrame = params->isGeneratedFrame;
+
+            data.cameraVFov = _cameraVFov[fIndex];
+            data.cameraAspectRatio = _cameraAspectRatio[fIndex];
+
+            if (params->isGeneratedFrame)
+            {
+                auto lerpDistance = 0.5f;
+
+                // Half way between real frames
+                // No cameraPrevForward, reprojection should skip trying to calibrate based on that frame
+                InterpolateCameraBasis(_cameraUp[fIndex], _cameraRight[fIndex], _cameraForward[fIndex],
+                                       _cameraUp[previousIndex], _cameraRight[previousIndex],
+                                       _cameraForward[previousIndex], lerpDistance, data.cameraUp, data.cameraRight,
+                                       data.cameraForward);
+
+                // data.mouseDeltaSinceSim.x -= data.mouseDeltaSimToSim.x / 2;
+                // data.mouseDeltaSinceSim.y -= data.mouseDeltaSimToSim.y / 2;
+            }
+            else
+            {
+                std::memcpy(data.cameraUp, _cameraUp[fIndex], 3 * sizeof(float));
+                std::memcpy(data.cameraRight, _cameraRight[fIndex], 3 * sizeof(float));
+                std::memcpy(data.cameraForward, _cameraForward[fIndex], 3 * sizeof(float));
+                std::memcpy(data.cameraPrevForward, _cameraForward[previousIndex], 3 * sizeof(float));
+            }
+
+            _reproject->FilloutStruct(data, reprojectionParams);
+            //_reproject->Dispatch(cmdList, reprojectionParams, (ID3D12Resource*) params->currentBackBuffer.resource,
+            //                     GetD3D12State((FfxApiResourceState) params->currentBackBuffer.state), hudless->copy,
+            //                     D3D12_RESOURCE_STATE_COPY_DEST, depth->copy, D3D12_RESOURCE_STATE_COPY_DEST);
+
+            // Can be either a fake or real present
+            auto backBufferState = GetD3D12State((FfxApiResourceState) params->currentBackBuffer.state);
+            auto backBufferResource = (ID3D12Resource*) params->currentBackBuffer.resource;
+
+            // Last real present
+            auto realPresentState = D3D12_RESOURCE_STATE_COPY_DEST;
+            auto realPresentResource = _resourceCopy[fIndex][FG_ResourceType::Color];
+
+            _reproject->Dispatch(cmdList, reprojectionParams, realPresentResource, realPresentState, backBufferResource,
+                                 backBufferState, hudless->copy, D3D12_RESOURCE_STATE_COPY_DEST, depth->copy,
+                                 D3D12_RESOURCE_STATE_COPY_DEST);
+
+            auto output = (ID3D12Resource*) params->outputSwapChainBuffer.resource;
+            auto outputState = GetD3D12State((FfxApiResourceState) params->outputSwapChainBuffer.state);
+            ResourceBarrier(cmdList, output, outputState, D3D12_RESOURCE_STATE_COPY_DEST);
+
+            // GetCurrentBuffer already in D3D12_RESOURCE_STATE_COPY_SOURCE
+            cmdList->CopyResource(output, _reproject->GetCurrentBuffer());
+
+            ResourceBarrier(cmdList, output, D3D12_RESOURCE_STATE_COPY_DEST, outputState);
+        }
+    }
+
+    return FFX_API_RETURN_OK;
+}
+
 ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* params)
 {
     const int fIndex = params->frameID % BUFFER_COUNT;
+    auto cmdList = (ID3D12GraphicsCommandList*) params->commandList;
 
     auto& state = State::Instance();
+
+    if (cmdList && _reprojectionActive)
+    {
+        // Save the original game image with UI for later so that we can compose back the UI
+        ID3D12Resource* copyOutput = nullptr;
+        auto type = FG_ResourceType::Color;
+
+        if (_resourceCopy[fIndex].contains(type))
+            copyOutput = _resourceCopy[fIndex].at(type);
+
+        auto presentColorState = GetD3D12State((FfxApiResourceState) params->presentColor.state);
+        auto presentColorResource = (ID3D12Resource*) params->presentColor.resource;
+
+        if (!CopyResource(cmdList, presentColorResource, &copyOutput, presentColorState))
+        {
+            LOG_ERROR("{}, CopyResource error!", magic_enum::enum_name(type));
+            return false;
+        }
+
+        copyOutput->SetName(std::format(L"_resourceCopy[{}][{}]", fIndex, (UINT) type).c_str());
+
+        _resourceCopy[fIndex][type] = copyOutput;
+
+        LOG_TRACE("Made a copy: {:X} of presentColor", (size_t) copyOutput);
+
+        // For reprojection we need to interpolate without UI
+        auto hudlessResource = _resourceCopy[fIndex][FG_ResourceType::HudlessColor];
+        auto hudlessState = D3D12_RESOURCE_STATE_COPY_DEST;
+        if (hudlessResource)
+        {
+            ResourceBarrier(cmdList, presentColorResource, presentColorState, D3D12_RESOURCE_STATE_COPY_DEST);
+            ResourceBarrier(cmdList, hudlessResource, hudlessState, D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+            cmdList->CopyResource(presentColorResource, hudlessResource);
+
+            ResourceBarrier(cmdList, presentColorResource, D3D12_RESOURCE_STATE_COPY_DEST, presentColorState);
+            ResourceBarrier(cmdList, hudlessResource, D3D12_RESOURCE_STATE_COPY_SOURCE, hudlessState);
+        }
+    }
 
     if (!Config::Instance()->FGSkipReset.value_or_default())
         params->reset = (_reset[fIndex] != 0);
     else
         params->reset = 0;
 
-    LOG_DEBUG("frameID: {}, commandList: {:X}, numGeneratedFrames: {}", params->frameID, (size_t) params->commandList,
+    LOG_DEBUG("frameID: {}, commandList: {:X}, numGeneratedFrames: {}", params->frameID, (size_t) cmdList,
               params->numGeneratedFrames);
 
     // check for status
@@ -713,8 +965,6 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
 
         if (presentWithHud && hudlessResource)
         {
-            auto cmdList = (ID3D12GraphicsCommandList*) params->commandList;
-
             // Do not blindly trust the cached _device for callback helper creation
             ID3D12Device* callbackDevice = nullptr;
             HRESULT callbackDeviceResult = E_POINTER;

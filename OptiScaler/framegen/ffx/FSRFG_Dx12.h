@@ -5,6 +5,7 @@
 #include <shaders/format_transfer/FT_Dx12.h>
 #include <shaders/hud_copy/HudCopy_Dx12.h>
 #include <shaders/hudless_compare_compute/HCC_Dx12.h>
+#include <shaders/reproject/Reproject_Dx12.h>
 
 #include <ffx_framegeneration.h>
 
@@ -29,6 +30,8 @@ class FSRFG_Dx12 : public virtual IFGFeature_Dx12
     ID3D12Resource* _hudlessCopyResource[BUFFER_COUNT] {};
     std::unique_ptr<FT_Dx12> _uiTransfer[BUFFER_COUNT];
     ID3D12Resource* _uiCopyResource[BUFFER_COUNT] {};
+
+    std::pair<InputDelta, uint64_t> _deltaSimToFake[BUFFER_COUNT];
 
     ID3D12GraphicsCommandList* _fgCommandList[BUFFER_COUNT] {};
     ID3D12CommandAllocator* _fgCommandAllocator[BUFFER_COUNT] {};
@@ -102,6 +105,7 @@ class FSRFG_Dx12 : public virtual IFGFeature_Dx12
     bool SetResource(Dx12Resource* inputResource) override final;
     void SetCommandQueue(FG_ResourceType type, ID3D12CommandQueue* queue) override final;
 
+    ffxReturnCode_t PresentCallback(ffxCallbackDescFrameGenerationPresent* params);
     ffxReturnCode_t DispatchCallback(ffxDispatchDescFrameGeneration* params);
 
     FSRFG_Dx12() : IFGFeature_Dx12(), IFGFeature()
@@ -113,4 +117,5 @@ class FSRFG_Dx12 : public virtual IFGFeature_Dx12
 
     // Inherited via IFGFeature_Dx12
     bool SetInterpolatedFrameCount(UINT interpolatedFrameCount) override;
+    // bool HasReprojection() override final { return true; };
 };
