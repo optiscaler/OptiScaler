@@ -197,6 +197,7 @@ class StreamlineHooks
     inline static decltype(&slGetFeatureRequirements) o_slGetFeatureRequirements = nullptr;
     inline static decltype(&slGetFeatureVersion) o_slGetFeatureVersion = nullptr;
     inline static decltype(&slGetFeatureFunction) o_slGetFeatureFunction = nullptr;
+    inline static decltype(&slSetFeatureLoaded) o_slSetFeatureLoaded = nullptr;
 
     inline static decltype(&sl1::slInit) o_slInit_sl1 = nullptr;
     inline static decltype(&sl1::slSetTag) o_slSetTag_sl1 = nullptr;
@@ -212,6 +213,7 @@ class StreamlineHooks
     static sl::Result hkslGetFeatureRequirements(sl::Feature feature, sl::FeatureRequirements& requirements);
     static sl::Result hkslGetFeatureVersion(sl::Feature feature, sl::FeatureVersion& version);
     static sl::Result hkslGetFeatureFunction(sl::Feature feature, const char* functionName, void*& function);
+    static sl::Result hkslSetFeatureLoaded(sl::Feature feature, bool loaded);
     static bool hkslInit_sl1(const sl1::Preferences& pref, int applicationId);
     static bool hkslSetTag_sl1(const sl1::Resource* resource, sl1::BufferType tag, uint32_t id,
                                const sl1::Extent* extent);

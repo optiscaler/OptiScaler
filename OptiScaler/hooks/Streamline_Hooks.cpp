@@ -344,6 +344,16 @@ sl::Result StreamlineHooks::hkslGetFeatureFunction(sl::Feature feature, const ch
     return o_slGetFeatureFunction(feature, functionName, function);
 }
 
+sl::Result StreamlineHooks::hkslSetFeatureLoaded(sl::Feature feature, bool loaded)
+{
+    if (feature == sl::kFeatureDLSS_G)
+    {
+        return sl::Result::eOk;
+    }
+
+    return o_slSetFeatureLoaded(feature, loaded);
+}
+
 sl::Result StreamlineHooks::hkslSetTag(const sl::ViewportHandle& viewport, const sl::ResourceTag* tags,
                                        uint32_t numTags, sl::CommandBuffer* cmdBuffer)
 {
@@ -1908,6 +1918,9 @@ void StreamlineHooks::hookInterposer(HMODULE slInterposer)
 
                     if (o_slGetFeatureFunction != nullptr)
                         DetourAttach(&(PVOID&) o_slGetFeatureFunction, hkslGetFeatureFunction);
+
+                    if (o_slSetFeatureLoaded != nullptr)
+                        DetourAttach(&(PVOID&) o_slSetFeatureLoaded, hkslSetFeatureLoaded);
                 }
 
                 // if (o_slAllocateResources != nullptr)
