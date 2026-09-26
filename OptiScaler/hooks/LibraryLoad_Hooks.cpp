@@ -961,8 +961,6 @@ HMODULE LibraryLoadHooks::LoadNvngxDlss(std::wstring originalPath)
 
 void LibraryLoadHooks::CheckModulesInMemory()
 {
-    LOG_FUNC();
-
     if (!StreamlineHooks::isInterposerHooked())
     {
         // hook streamline right away if it's already loaded
