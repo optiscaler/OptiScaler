@@ -146,21 +146,27 @@ class StreamlineHooks
 
     static void unhookDlss();
     static void hookDlss(HMODULE slDlss);
+    static inline std::mutex mutexHookDlss;
 
     static void unhookDlssg();
     static void hookDlssg(HMODULE slDlssg);
+    static inline std::mutex mutexHookDlssg;
 
     static void unhookLocalDlssg();
     static void hookLocalDlssg(HMODULE slDlssg);
+    static inline std::mutex mutexHookLocalDlssg;
 
     static void unhookReflex();
     static void hookReflex(HMODULE slReflex);
+    static inline std::mutex mutexHookReflex;
 
     static void unhookPcl();
     static void hookPcl(HMODULE slPcl);
+    static inline std::mutex mutexHookPcl;
 
     static void unhookCommon();
     static void hookCommon(HMODULE slCommon);
+    static inline std::mutex mutexHookCommon;
 
     static bool isInterposerHooked();
     static bool isDlssHooked();
