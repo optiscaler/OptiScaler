@@ -455,8 +455,8 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("fbcfirebreak.exe", GameQuirk::DisableDxgiSpoofing),
 
     // CONTROL Resonant
-    // SL spoof enough to unlock everything DLSS
-    QUIRK_ENTRY("controlresonant.exe", GameQuirk::DisableDxgiSpoofing),
+    // SL spoof enough to unlock everything DLSS, Preserve FG Swapchain just crashes the DLSSG inputs
+    QUIRK_ENTRY("controlresonant.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::DoNotPreserveFGSwapChain),
 
     // SL spoof enough to unlock everything DLSS/No spoof needed for DLSS inputs
     //
