@@ -256,11 +256,11 @@ sl::Result StreamlineHooks::hkslInit(const sl::Preferences& pref, uint64_t sdkVe
     //     localPref->flags &= ~(sl::PreferenceFlags::eAllowOTA | sl::PreferenceFlags::eLoadDownloadedPlugins);
 
     // To prevent mixed up OTA situations
-    // if (State::Instance().activeFgOutput == FGOutput::DLSSG)
-    //{
-    //    localPref.flags &= ~sl::PreferenceFlags::eAllowOTA;
-    //    localPref.flags &= ~sl::PreferenceFlags::eLoadDownloadedPlugins;
-    //}
+    if (Config::Instance()->DisableOTA.value_or_default())
+    {
+        localPref.flags &= ~sl::PreferenceFlags::eAllowOTA;
+        localPref.flags &= ~sl::PreferenceFlags::eLoadDownloadedPlugins;
+    }
 
     return o_slInit(localPref, sdkVersion);
 }

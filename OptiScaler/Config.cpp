@@ -5,7 +5,6 @@
 #include "Util.h"
 
 #include "nvapi/fakenvapi.h"
-#include <hooks/Streamline_Hooks.h>
 #include <misc/IdentifyGpu.h>
 
 #include <SimpleIni.h>
@@ -685,6 +684,7 @@ bool Config::Reload(std::filesystem::path iniPath)
         // NvApi
         {
             DisableFlipMetering.set_from_config(readBool("NvApi", "DisableFlipMetering"));
+            DisableOTA.set_from_config(readBool("NvApi", "DisableOTA"));
         }
 
         // Spoofing
@@ -1465,6 +1465,7 @@ bool Config::SaveIni()
     {
         ini.SetValue("NvApi", "DisableFlipMetering",
                      GetBoolValue(Instance()->DisableFlipMetering.value_for_config()).c_str());
+        ini.SetValue("NvApi", "DisableOTA", GetBoolValue(Instance()->DisableOTA.value_for_config()).c_str());
     }
 
     // DRS
