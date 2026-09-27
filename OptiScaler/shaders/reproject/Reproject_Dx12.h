@@ -20,6 +20,10 @@ struct alignas(16) ReprojectionParams
     float InvScreenWidth;
     float InvScreenHeight;
 
+    uint32_t DepthWidth;
+    uint32_t DepthHeight;
+    float _Pad0[2];
+
     float UiDiffThreshold;
     float DepthCutoff;
     float DitherWidthPx;
@@ -46,6 +50,8 @@ struct FilloutData
     float diffThreshold;
     uint32_t screenWidth;
     uint32_t screenHeight;
+    uint32_t depthWidth;
+    uint32_t depthHeight;
     bool invertedDepth;
     bool fakeFrame;
 

@@ -275,6 +275,8 @@ bool Reprojection_Dx12::Present()
                 data.mouseDeltaSimToSim = mouseDeltaSimToSim;
                 data.screenWidth = (uint32_t) _interpolationWidth[fIndex];
                 data.screenHeight = (uint32_t) _interpolationHeight[fIndex];
+                data.depthWidth = (uint32_t) depth->width;
+                data.depthHeight = (uint32_t) depth->height;
                 data.invertedDepth = _constants.flags[FG_Flags::InvertedDepth];
 
                 data.cameraVFov = _cameraVFov[fIndex];
@@ -357,6 +359,11 @@ bool Reprojection_Dx12::SetResource(Dx12Resource* inputResource)
     fResource->validity = inputResource->validity;
     fResource->resource = inputResource->resource;
     fResource->cmdList = inputResource->cmdList;
+
+    fResource->top = inputResource->top;
+    fResource->left = inputResource->left;
+    fResource->width = inputResource->width;
+    fResource->height = inputResource->height;
 
     if (inputResource->cmdList != nullptr && fResource->validity == FG_ResourceValidity::ValidButMakeCopy)
     {

@@ -5,6 +5,10 @@ cbuffer Params : register(b0)
     float InvScreenWidth;
     float InvScreenHeight;
     
+    uint DepthWidth;
+    uint DepthHeight;
+    float2 _Pad0;
+    
     float UiDiffThreshold;
     float DepthCutoff;
     float DitherWidthPx;
@@ -57,9 +61,7 @@ float HashNoise(uint2 p)
 
 bool IsDepthCutoutExpanded(float2 uv, int radius)
 {
-    int2 depthDimension;
-    Depth.GetDimensions(depthDimension.x, depthDimension.y);
-    int2 basePixel = int2(uv * float2(depthDimension));
+    int2 basePixel = int2(uv * float2(DepthWidth - 1, DepthHeight - 1));
     
     if (radius == 0)
     {
@@ -72,7 +74,7 @@ bool IsDepthCutoutExpanded(float2 uv, int radius)
         for (int x = -radius; x <= radius; ++x)
         {
             // Clamp coordinates to prevent reading outside the texture
-            int2 sampleCoord = clamp(basePixel + int2(x, y), int2(0, 0), int2(depthDimension.x - 1, depthDimension.y - 1));
+            int2 sampleCoord = clamp(basePixel + int2(x, y), int2(0, 0), int2(DepthWidth - 1, DepthHeight - 1));
             
             float d = Depth.Load(int3(sampleCoord, 0));
             bool isCutout = InvertedDepth ? (d > DepthCutoff) : (d < DepthCutoff);
