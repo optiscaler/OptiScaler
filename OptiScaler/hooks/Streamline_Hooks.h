@@ -194,6 +194,7 @@ class StreamlineHooks
     inline static decltype(&slSetTagForFrame) o_slSetTagForFrame = nullptr;
     inline static decltype(&slEvaluateFeature) o_slEvaluateFeature = nullptr;
     inline static decltype(&slAllocateResources) o_slAllocateResources = nullptr;
+    inline static decltype(&slFreeResources) o_slFreeResources = nullptr;
     inline static decltype(&slSetConstants) o_slSetConstants = nullptr;
     inline static decltype(&slGetNativeInterface) o_slGetNativeInterface = nullptr;
     inline static decltype(&slSetD3DDevice) o_slSetD3DDevice = nullptr;
@@ -239,6 +240,8 @@ class StreamlineHooks
 
     static sl::Result hkslAllocateResources(sl::CommandBuffer* cmdBuffer, sl::Feature feature,
                                             const sl::ViewportHandle& viewport);
+
+    static sl::Result hkslFreeResources(sl::Feature feature, const sl::ViewportHandle& viewport);
 
     static sl::Result hkslGetNativeInterface(void* proxyInterface, void** baseInterface);
 

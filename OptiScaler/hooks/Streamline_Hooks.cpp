@@ -556,9 +556,18 @@ sl::Result StreamlineHooks::hkslEvaluateFeature(sl::Feature feature, const sl::F
 sl::Result StreamlineHooks::hkslAllocateResources(sl::CommandBuffer* cmdBuffer, sl::Feature feature,
                                                   const sl::ViewportHandle& viewport)
 {
-    LOG_FUNC();
-    auto result = o_slAllocateResources(cmdBuffer, feature, viewport);
-    return result;
+    if (feature == sl::kFeatureDLSS_G)
+        return sl::Result::eOk;
+
+    return o_slAllocateResources(cmdBuffer, feature, viewport);
+}
+
+sl::Result StreamlineHooks::hkslFreeResources(sl::Feature feature, const sl::ViewportHandle& viewport)
+{
+    if (feature == sl::kFeatureDLSS_G)
+        return sl::Result::eOk;
+
+    return o_slFreeResources(feature, viewport);
 }
 
 sl::Result StreamlineHooks::hkslGetNativeInterface(void* proxyInterface, void** baseInterface)
@@ -1854,8 +1863,6 @@ void StreamlineHooks::hookInterposer(HMODULE slInterposer)
             o_slInit = reinterpret_cast<decltype(&slInit)>(KernelBaseProxy::GetProcAddress_()(slInterposer, "slInit"));
             o_slEvaluateFeature = reinterpret_cast<decltype(&slEvaluateFeature)>(
                 KernelBaseProxy::GetProcAddress_()(slInterposer, "slEvaluateFeature"));
-            o_slAllocateResources = reinterpret_cast<decltype(&slAllocateResources)>(
-                KernelBaseProxy::GetProcAddress_()(slInterposer, "slAllocateResources"));
             o_slSetConstants = reinterpret_cast<decltype(&slSetConstants)>(
                 KernelBaseProxy::GetProcAddress_()(slInterposer, "slSetConstants"));
             o_slGetNativeInterface = reinterpret_cast<decltype(&slGetNativeInterface)>(
@@ -1877,6 +1884,10 @@ void StreamlineHooks::hookInterposer(HMODULE slInterposer)
                 KernelBaseProxy::GetProcAddress_()(slInterposer, "slGetFeatureVersion"));
             o_slGetFeatureFunction = reinterpret_cast<decltype(&slGetFeatureFunction)>(
                 KernelBaseProxy::GetProcAddress_()(slInterposer, "slGetFeatureFunction"));
+            o_slAllocateResources = reinterpret_cast<decltype(&slAllocateResources)>(
+                KernelBaseProxy::GetProcAddress_()(slInterposer, "slAllocateResources"));
+            o_slFreeResources = reinterpret_cast<decltype(&slFreeResources)>(
+                KernelBaseProxy::GetProcAddress_()(slInterposer, "slFreeResources"));
 
             if (o_slInit != nullptr)
             {
@@ -1921,10 +1932,13 @@ void StreamlineHooks::hookInterposer(HMODULE slInterposer)
 
                     if (o_slSetFeatureLoaded != nullptr)
                         DetourAttach(&(PVOID&) o_slSetFeatureLoaded, hkslSetFeatureLoaded);
-                }
 
-                // if (o_slAllocateResources != nullptr)
-                //     DetourAttach(&(PVOID&) o_slAllocateResources, hkslAllocateResources);
+                    if (o_slAllocateResources != nullptr)
+                        DetourAttach(&(PVOID&) o_slAllocateResources, hkslAllocateResources);
+
+                    if (o_slFreeResources != nullptr)
+                        DetourAttach(&(PVOID&) o_slFreeResources, hkslFreeResources);
+                }
 
                 // if (o_slGetNativeInterface != nullptr)
                 //     DetourAttach(&(PVOID&) o_slGetNativeInterface, hkslGetNativeInterface);
