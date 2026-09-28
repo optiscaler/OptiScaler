@@ -5,8 +5,6 @@
 #include "FFXFeature_Vk.h"
 #include "FFXVkPresetReporting.h"
 #include "ffx_vk_native_inputs.h"
-#include "ffx_vk_cooperative_matrix.h"
-#include "FFXVkCooperativeDevice.h"
 #include "nvsdk_ngx_vk.h"
 #include "MathUtils.h"
 
@@ -207,16 +205,6 @@ bool FFXFeatureVk::InitFFX(const NVSDK_NGX_Parameter* InParameters)
         nativeQuery.header.type = FSR4VK_QUERY_DESC_TYPE_NATIVE_INPUTS;
         _nativeInputsSupported =
             FfxApiProxy::VULKAN_Query()(nullptr, &nativeQuery.header) == FFX_API_RETURN_OK && nativeQuery.version == 1;
-        Fsr4VkCreateCooperativeMatrix cooperative {};
-        if (_nativeInputsSupported)
-        {
-            cooperative.header = { FSR4VK_CREATE_DESC_TYPE_COOPERATIVE_MATRIX, backendDesc.header.pNext };
-            const auto gipa = GIPA ? GIPA : vkGetInstanceProcAddr;
-            cooperative.getProperties = reinterpret_cast<PFN_vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR>(
-                gipa(Instance, "vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR"));
-            cooperative.deviceFeaturesEnabled = FFXVkCooperativeDevice::Enabled(Device);
-            backendDesc.header.pNext = &cooperative.header;
-        }
 
         LOG_DEBUG("_createContext!");
         auto ret = FfxApiProxy::VULKAN_CreateContext()(&_context, &_contextDesc.header, NULL);
