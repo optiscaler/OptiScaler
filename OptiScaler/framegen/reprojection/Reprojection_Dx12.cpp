@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "Reprojection_Dx12.h"
+#include "swapchain/reprojectionSwapchain.h"
 
 #include <hudfix/Hudfix_Dx12.h>
 #include <hudfix/Hudfix_Dx11.h>
@@ -78,11 +79,16 @@ void Reprojection_Dx12::CreateObjects(ID3D12Device* InDevice)
 bool Reprojection_Dx12::CreateSwapchainInternal(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue,
                                                 DXGI_SWAP_CHAIN_DESC* desc, IDXGISwapChain** swapChain)
 {
-    // Normal swapchain creation, no proxy upgrades
-    auto result = factory->CreateSwapChain(cmdQueue, desc, swapChain);
+    IDXGISwapChain* realSwapchain {};
+    auto result = factory->CreateSwapChain(cmdQueue, desc, &realSwapchain);
 
-    if (result == S_OK)
+    if (result == S_OK && swapChain)
     {
+        auto reprojectionSwapchain =
+            new ReprojectionDXGISwapChain(realSwapchain, _device, desc->OutputWindow, 0, false);
+
+        *swapChain = reprojectionSwapchain;
+
         _gameCommandQueue = cmdQueue;
         _swapChain = *swapChain;
         _hwnd = desc->OutputWindow;
@@ -100,12 +106,17 @@ bool Reprojection_Dx12::CreateSwapchain1Internal(IDXGIFactory* factory, ID3D12Co
     if (factory->QueryInterface(IID_PPV_ARGS(&factory2)) != S_OK)
         return false;
 
-    // Normal swapchain creation
-    auto result = factory2->CreateSwapChainForHwnd(cmdQueue, hwnd, desc, pFullscreenDesc, nullptr, swapChain);
+    IDXGISwapChain1* realSwapchain1 {};
+
+    auto result = factory2->CreateSwapChainForHwnd(cmdQueue, hwnd, desc, pFullscreenDesc, nullptr, &realSwapchain1);
     factory2->Release();
 
-    if (result == S_OK)
+    if (result == S_OK && swapChain)
     {
+        auto reprojectionSwapchain1 = new ReprojectionDXGISwapChain(realSwapchain1, _device, hwnd, 0, false);
+
+        *swapChain = reprojectionSwapchain1;
+
         _gameCommandQueue = cmdQueue;
         _swapChain = *swapChain;
         _hwnd = hwnd;

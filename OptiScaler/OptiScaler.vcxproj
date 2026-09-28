@@ -303,6 +303,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="framegen\nvngx\Nvngx_Combo.h" />
+    <ClInclude Include="framegen\reprojection\swapchain\reprojectionSwapchain.h" />
     <ClInclude Include="fsr4\FSR4Upgrade.h" />
     <ClInclude Include="gpu_time\GpuTime_Dx11.h" />
     <ClInclude Include="gpu_time\GpuTime_Dx12.h" />
@@ -609,6 +610,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="framegen\nvngx\Nvngx_Combo.cpp" />
+    <ClCompile Include="framegen\reprojection\swapchain\reprojectionSwapchain.cpp" />
     <ClCompile Include="fsr4\FSR4Upgrade.cpp" />
     <ClCompile Include="gpu_time\GpuTime_Dx11.cpp" />
     <ClCompile Include="gpu_time\GpuTime_Dx12.cpp" />
