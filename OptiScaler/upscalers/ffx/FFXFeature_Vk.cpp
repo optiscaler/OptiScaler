@@ -205,8 +205,8 @@ bool FFXFeatureVk::InitFFX(const NVSDK_NGX_Parameter* InParameters)
         // unchanged create/dispatch chains. No name/version-string guessing.
         Fsr4VkQueryNativeInputs nativeQuery {};
         nativeQuery.header.type = FSR4VK_QUERY_DESC_TYPE_NATIVE_INPUTS;
-        _nativeInputsSupported = FfxApiProxy::VULKAN_Query()(nullptr, &nativeQuery.header) == FFX_API_RETURN_OK &&
-                                 nativeQuery.version == 1;
+        _nativeInputsSupported =
+            FfxApiProxy::VULKAN_Query()(nullptr, &nativeQuery.header) == FFX_API_RETURN_OK && nativeQuery.version == 1;
         Fsr4VkCreateCooperativeMatrix cooperative {};
         if (_nativeInputsSupported)
         {
