@@ -4,6 +4,9 @@
 #include <proxies/FfxApi_Proxy.h>
 #include "FFXFeature_Vk.h"
 #include "FFXVkPresetReporting.h"
+#include "ffx_vk_native_inputs.h"
+#include "ffx_vk_cooperative_matrix.h"
+#include "FFXVkCooperativeDevice.h"
 #include "nvsdk_ngx_vk.h"
 #include "MathUtils.h"
 
@@ -162,6 +165,7 @@ bool FFXFeatureVk::InitFFX(const NVSDK_NGX_Parameter* InParameters)
 
     State::Instance().currentFsr4Preset.reset();
     _presetQuerySupported = true;
+    _nativeInputsSupported = false;
 
     if (PhysicalDevice == nullptr)
     {
@@ -196,6 +200,23 @@ bool FFXFeatureVk::InitFFX(const NVSDK_NGX_Parameter* InParameters)
         ov.header.type = FFX_API_DESC_TYPE_OVERRIDE_VERSION;
         ov.versionId = State::Instance().ffxUpscalerVersionIds[Config::Instance()->FfxUpscalerIndex.value_or_default()];
         backendDesc.header.pNext = &ov.header;
+
+        // Optional provider capability: old/other FFX providers keep their
+        // unchanged create/dispatch chains. No name/version-string guessing.
+        Fsr4VkQueryNativeInputs nativeQuery {};
+        nativeQuery.header.type = FSR4VK_QUERY_DESC_TYPE_NATIVE_INPUTS;
+        _nativeInputsSupported = FfxApiProxy::VULKAN_Query()(nullptr, &nativeQuery.header) == FFX_API_RETURN_OK &&
+                                 nativeQuery.version == 1;
+        Fsr4VkCreateCooperativeMatrix cooperative {};
+        if (_nativeInputsSupported)
+        {
+            cooperative.header = { FSR4VK_CREATE_DESC_TYPE_COOPERATIVE_MATRIX, backendDesc.header.pNext };
+            const auto gipa = GIPA ? GIPA : vkGetInstanceProcAddr;
+            cooperative.getProperties = reinterpret_cast<PFN_vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR>(
+                gipa(Instance, "vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR"));
+            cooperative.deviceFeaturesEnabled = FFXVkCooperativeDevice::Enabled(Device);
+            backendDesc.header.pNext = &cooperative.header;
+        }
 
         LOG_DEBUG("_createContext!");
         auto ret = FfxApiProxy::VULKAN_CreateContext()(&_context, &_contextDesc.header, NULL);
@@ -257,6 +278,7 @@ bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Param
     const auto& ngxParams = *InParameters;
 
     struct ffxDispatchDescUpscale params = { 0 };
+    Fsr4VkDispatchNativeInputs nativeInputs {};
     params.header.type = FFX_API_DISPATCH_DESC_TYPE_UPSCALE;
 
     if (Config::Instance()->FsrDebugView.value_or_default())
@@ -307,6 +329,12 @@ bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Param
         params.motionVectors = ffxApiGetResourceVK(paramVelocity->Resource.ImageViewInfo.Image,
                                                    ffxApiGetImageResourceDescriptionVKLocal(paramVelocity),
                                                    FFX_API_RESOURCE_STATE_COMPUTE_READ);
+        if (_nativeInputsSupported)
+        {
+            nativeInputs.header = { FSR4VK_DISPATCH_DESC_TYPE_NATIVE_INPUTS, params.header.pNext };
+            nativeInputs.motionFormat = paramVelocity->Resource.ImageViewInfo.Format;
+            params.header.pNext = &nativeInputs.header;
+        }
     }
     else
     {

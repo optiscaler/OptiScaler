@@ -8,6 +8,7 @@
 
 #include <inputs/FfxApi_Vk_DeviceRequirements.h>
 #include <proxies/FfxApi_Proxy.h>
+#include <upscalers/ffx/FFXVkCooperativeDevice.h>
 
 #include <menu/menu_overlay_vk.h>
 #include <proxies/KernelBase_Proxy.h>
@@ -307,6 +308,7 @@ static VkResult hkvkCreateInstance(const VkInstanceCreateInfo* pCreateInfo, cons
 VALIDATE_HOOK(hkvkDestroyInstance, PFN_vkDestroyInstance)
 static void hkvkDestroyInstance(VkInstance instance, const VkAllocationCallbacks* pAllocator)
 {
+    FFXVkCooperativeDevice::Forget(instance);
     UntrackInstance(instance);
     o_vkDestroyInstance(instance, pAllocator);
 }
@@ -392,6 +394,8 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
             }
         }
         result = o_vkCreateDevice(physicalDevice, deviceCreateInfo, pAllocator, pDevice);
+        if (result == VK_SUCCESS)
+            FFXVkCooperativeDevice::Record(physicalDeviceInstance, *pDevice, *deviceCreateInfo);
 
         if (providerRequirements.token)
         {

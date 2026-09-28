@@ -10,6 +10,7 @@ class FFXFeatureVk : public FFXFeature, public IFeature_Vk
   private:
     bool _resourceContractLogged = false;
     bool _presetQuerySupported = true;
+    bool _nativeInputsSupported = false;
 
   protected:
     bool InitFFX(const NVSDK_NGX_Parameter* InParameters);
