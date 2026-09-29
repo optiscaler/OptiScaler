@@ -2427,11 +2427,11 @@ void MenuCommon::RenderMainMenuHeaderMessages(RenderMenuContext& ctx)
         ImGui::Spacing();
 
         if (config->UseHQFont.value_or_default())
-            ImGui::PushFontSize(std::round(fontSize * menuResScale * 3.0f));
+            ImGui::PushFontSize(std::round(fontSize * menuResScale * 2.5f));
         else
-            ImGui::SetWindowFontScale(menuResScale * 3.0f);
+            ImGui::SetWindowFontScale(menuResScale * 2.5f);
 
-        ImGui::Text("%s is active, but not currently used by the game\nPlease enter the game",
+        ImGui::Text("%s active, but currently not used by the game\nPlease load into the game",
                     currentFeature->Name().c_str());
 
         if (config->UseHQFont.value_or_default())
@@ -5471,9 +5471,9 @@ void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)
 
         float featuresCurrentSharpness = currentFeature->Sharpness();
         if (featuresCurrentSharpness > 0.0f)
-            ImGui::TextDisabled("(Current sharpness: %.3f)", featuresCurrentSharpness);
+            ImGui::TextDisabled("(Current: %.3f)", featuresCurrentSharpness);
         else
-            ImGui::TextDisabled("(Current sharpness: disabled)");
+            ImGui::TextDisabled("(Current: disabled)");
 
         ImGui::BeginDisabled(!config->OverrideSharpness.value_or_default());
 
