@@ -3015,11 +3015,11 @@ bool MenuCommon::RenderMenu()
                 ImGui::Spacing();
 
                 if (config->UseHQFont.value_or_default())
-                    ImGui::PushFontSize(std::round(fontSize * menuResScale * 3.0f));
+                    ImGui::PushFontSize(std::round(fontSize * menuResScale * 2.5f));
                 else
-                    ImGui::SetWindowFontScale(menuResScale * 3.0f);
+                    ImGui::SetWindowFontScale(menuResScale * 2.5f);
 
-                ImGui::Text("%s is active, but not currently used by the game\nPlease enter the game",
+                ImGui::Text("%s active, but currently not used by the game\nPlease load into the game",
                             currentFeature->Name().c_str());
 
                 if (config->UseHQFont.value_or_default())
