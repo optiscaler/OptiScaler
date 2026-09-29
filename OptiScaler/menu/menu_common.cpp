@@ -4460,6 +4460,21 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             {
                 ScopedIndent indent {};
 
+                ImGui::Spacing();
+
+                auto disablehudfix = config->FGDisableHUDFix.value_or_default();
+                {
+                    if (ImGui::Checkbox("Disable HUDFix Resource Tracking", &disablehudfix))
+                    {
+                        config->FGDisableHUDFix = disablehudfix;
+                        LOG_DEBUG("Enabled FGDisableHUDFix: {}", disablehudfix);
+                    }
+                    ShowHelpMarker("Disables HUDFix resource tracking and\n"
+                                   "reduces CPU overhead.\n"
+                                   "Useful for MLFG which deals well with the HUD.\n\n"
+                                   "After changing, please Save Settings and restart.");
+                }
+
                 if (hudfixTrackingSupported)
                 {
                     ImGui::Spacing();
@@ -6190,6 +6205,123 @@ void MenuCommon::RenderAdvancedSettings(RenderMenuContext& ctx)
         // Non-DLSS hotfixes -----------------------------
         if (currentFeature != nullptr && !currentFeature->IsFrozen() && currentBackend != Upscaler::DLSS)
         {
+            // SPOOFING/HOOKING -----------------------------
+            ImGui::Spacing();
+            if (auto ch = ScopedCollapsingHeader("Spoofing/Hooking"); ch.IsHeaderOpen())
+            {
+                ScopedIndent indent {};
+                ImGui::Spacing();
+
+                auto dxgiSpoofing = config->DxgiSpoofing.value_or_default();
+                {
+                    if (ImGui::Checkbox("DXGI Spoofing", &dxgiSpoofing))
+                    {
+                        config->DxgiSpoofing = dxgiSpoofing;
+                    }
+                    ShowHelpMarker("Enable Nvidia GPU spoofing for DXGI adapter\n"
+                                   "Detailed modifications available in the INI\n\n"
+                                   "After changing this option, please Save Settings.\n"
+                                   "It will be applied on next launch.");
+                }
+
+                if (state.api == Vulkan)
+                {
+                    auto VlkSpoof = config->VulkanSpoofing.value_or_default();
+                    {
+                        if (ImGui::Checkbox("VLK Spoofing", &VlkSpoof))
+                        {
+                            config->VulkanSpoofing = VlkSpoof;
+                        }
+                        ShowHelpMarker("Enable Nvidia GPU spoofing for Vulkan\n"
+                                       "Detailed modifications available in the INI\n\n"
+                                       "After changing this option, please Save Settings.\n"
+                                       "It will be applied on next launch.");
+                    }
+
+                    ImGui::SameLine(0.0f, 16.0f);
+
+                    auto VlkExtSpoof = config->VulkanExtensionSpoofing.value_or_default();
+                    {
+                        if (ImGui::Checkbox("VLK Extension Spoofing", &VlkExtSpoof))
+                        {
+                            config->VulkanExtensionSpoofing = VlkExtSpoof;
+                        }
+                        ShowHelpMarker("Enable Nvidia Extension spoofing for Vulkan\n"
+                                       "Detailed modifications available in the INI\n\n"
+                                       "After changing this option, please Save Settings.\n"
+                                       "It will be applied on next launch.");
+                    }
+                }
+
+                auto NtdllHooks = config->UseNtdllHooks.value_or_default();
+                {
+                    if (ImGui::Checkbox("Ntdll Hooks", &NtdllHooks))
+                    {
+                        config->UseNtdllHooks = NtdllHooks;
+                    }
+                    ShowHelpMarker("Only hook ntdll.dll methods\n"
+                                   "Disable for switching back to kernel hooks\n\n"
+                                   "After changing this option, please Save Settings.\n"
+                                   "It will be applied on next launch.");
+                }
+
+                auto DisableOverlays = config->DisableOverlays.value_or_default();
+                {
+                    if (ImGui::Checkbox("Disable Overlays", &DisableOverlays))
+                    {
+                        config->DisableOverlays = DisableOverlays;
+                    }
+                    ShowHelpMarker("Disable supported overlays (autoenabled with OptiFG)\n"
+                                   "Including Steam Input (controller issues)\n\n"
+                                   "After changing this option, please Save Settings.\n"
+                                   "It will be applied on next launch.");
+                }
+            }
+
+            // PLUGINS/MISC -----------------------------
+            ImGui::Spacing();
+            if (auto ch = ScopedCollapsingHeader("Plugins/Misc"); ch.IsHeaderOpen())
+            {
+                ScopedIndent indent {};
+                ImGui::Spacing();
+
+                auto LoadAsiPlugins = config->LoadAsiPlugins.value_or_default();
+                {
+                    if (ImGui::Checkbox("Load ASI plugins", &LoadAsiPlugins))
+                    {
+                        config->LoadAsiPlugins = LoadAsiPlugins;
+                    }
+                    ShowHelpMarker("Let OptiScaler load *.asi files from plugins folder\n\n"
+                                   "After changing this option, please Save Settings.\n"
+                                   "It will be applied on next launch.");
+                }
+
+                auto DisableSplash = config->DisableSplash.value_or_default();
+                {
+                    if (ImGui::Checkbox("Disable Splash message", &DisableSplash))
+                    {
+                        config->DisableSplash = DisableSplash;
+                    }
+                    ShowHelpMarker("Disables Startup Splash message (bottom left corner)\n\n"
+                                   "After changing this option, please Save Settings.\n"
+                                   "It will be applied on next launch.");
+                }
+
+                ImGui::SameLine(0.0f, 16.0f);
+
+                auto CheckForUpdate = config->CheckForUpdate.value_or_default();
+                {
+                    if (ImGui::Checkbox("Check for Update", &CheckForUpdate))
+                    {
+                        config->CheckForUpdate = CheckForUpdate;
+                    }
+                    ShowHelpMarker("Enable checking Github for latest version\n"
+                                   "Only works on stable/final releases\n\n"
+                                   "After changing this option, please Save Settings.\n"
+                                   "It will be applied on next launch.");
+                }
+            }
+
             // BARRIERS -----------------------------
             ImGui::Spacing();
             if (auto ch = ScopedCollapsingHeader("Resource Barriers"); ch.IsHeaderOpen())
@@ -6254,6 +6386,13 @@ void MenuCommon::RenderLoggingSettings(RenderMenuContext& ctx)
         if (bool toConsole = config->LogToConsole.value_or_default(); ImGui::Checkbox("To Console", &toConsole))
         {
             config->LogToConsole = toConsole;
+            PrepareLogger();
+        }
+
+        ImGui::SameLine(0.0f, 6.0f);
+        if (auto SingleFile = config->LogSingleFile.value_or_default(); ImGui::Checkbox("Single File", &SingleFile))
+        {
+            config->LogSingleFile = SingleFile;
             PrepareLogger();
         }
 
@@ -6865,6 +7004,19 @@ void MenuCommon::RenderApiAndTextureSettings(RenderMenuContext& ctx)
         {
             ScopedIndent indent {};
             ImGui::Spacing();
+
+            auto OverrideVsync = config->OverrideVsync.value_or_default();
+            {
+                if (ImGui::Checkbox("Override Vsync", &OverrideVsync))
+                {
+                    config->OverrideVsync = OverrideVsync;
+                    LOG_DEBUG("Enabled OverrideVsync: {}", OverrideVsync);
+                }
+                ShowHelpMarker("Force override the game's V-Sync settings.\n\n"
+                               "Useful for example when XeFG is locked to V-sync\n"
+                               "frame cap despite toggling Vsync off (e.g. Nioh 3)\n\n"
+                               "After changing, please Save Settings and restart.");
+            }
 
             auto forceVsyncOn = config->ForceVsync.has_value() && config->ForceVsync.value();
             auto forceVsyncOff = config->ForceVsync.has_value() && !config->ForceVsync.value();
