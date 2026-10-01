@@ -8,6 +8,7 @@
 
 #include "upscalers/fsr2/FSR2Feature_Vk.h"
 #include "upscalers/dlss/DLSSFeature_Vk.h"
+#include "upscalers/dlss/DLSSFeature_VkOnDx12.h"
 #include "upscalers/dlssd/DLSSDFeature_Vk.h"
 #include "upscalers/fsr2_212/FSR2Feature_Vk_212.h"
 #include "upscalers/fsr2_212/FSR2Feature_VkOnDx12_212.h"
@@ -53,6 +54,19 @@ bool FeatureProvider_Vk::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NGX_
         if (primaryGpu.dlssCapable && state.NVNGX_DLSS_Path.has_value())
         {
             *feature = std::make_unique<DLSSFeatureVk>(handleId, parameters);
+            break;
+        }
+        else
+        {
+            *feature = std::make_unique<FSR2FeatureVk>(handleId, parameters);
+            upscaler = Upscaler::FSR22;
+            break;
+        }
+
+    case Upscaler::DLSS_on12:
+        if (primaryGpu.dlssCapable && state.NVNGX_DLSS_Path.has_value())
+        {
+            *feature = std::make_unique<DLSSFeatureVkOnDx12>(handleId, parameters);
             break;
         }
         else
@@ -109,7 +123,8 @@ bool FeatureProvider_Vk::ChangeFeature(Upscaler upscaler, VkInstance instance, V
     State& state = State::Instance();
     Config& cfg = *Config::Instance();
 
-    const bool dlssOnNonCapable = !IdentifyGpu::getPrimaryGpu().dlssCapable && state.newBackend == Upscaler::DLSS;
+    const bool dlssOnNonCapable = !IdentifyGpu::getPrimaryGpu().dlssCapable &&
+                                  (state.newBackend == Upscaler::DLSS || state.newBackend == Upscaler::DLSS_on12);
     if (state.newBackend == Upscaler::Reset || dlssOnNonCapable)
         state.newBackend = cfg.VulkanUpscaler.value_or_default();
 
@@ -126,7 +141,8 @@ bool FeatureProvider_Vk::ChangeFeature(Upscaler upscaler, VkInstance instance, V
 
             auto* dc = contextData->feature.get();
             // Use given params if using DLSS passthrough
-            const bool isPassthrough = state.newBackend == Upscaler::DLSSD || state.newBackend == Upscaler::DLSS;
+            const bool isPassthrough = state.newBackend == Upscaler::DLSSD || state.newBackend == Upscaler::DLSS ||
+                                       state.newBackend == Upscaler::DLSS_on12;
 
             contextData->createParams = isPassthrough ? parameters : GetNGXParameters(API::Vulkan, false);
             contextData->createParams->Set(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags, dc->GetFeatureFlags());
@@ -204,7 +220,7 @@ bool FeatureProvider_Vk::ChangeFeature(Upscaler upscaler, VkInstance instance, V
 
             if (state.newBackend != Upscaler::DLSSD)
             {
-                if (cfg.VulkanUpscaler == Upscaler::DLSS)
+                if (cfg.VulkanUpscaler == Upscaler::DLSS || cfg.VulkanUpscaler == Upscaler::DLSS_on12)
                 {
                     state.newBackend = Upscaler::XeSS;
                     ImGui::InsertNotification({ ImGuiToastType::Warning, 10000, "Falling back to XeSS" });

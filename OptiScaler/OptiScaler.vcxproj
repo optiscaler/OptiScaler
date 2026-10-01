@@ -438,6 +438,8 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="shaders\Shader_Vk.h" />
     <ClInclude Include="shaders\Shader_VkUtils.h" />
     <ClInclude Include="low_latency\input\input_uell.h" />
+    <ClInclude Include="upscalers\dlss\DLSSFeature_Dx11On12.h" />
+    <ClInclude Include="upscalers\dlss\DLSSFeature_VkOnDx12.h" />
     <ClInclude Include="upscalers\fsr2_212\FSR2Feature_VkOnDx12_212.h" />
     <ClInclude Include="upscalers\ffx\FFXFeature_VkOn12.h" />
     <ClInclude Include="upscalers\fsr31\FSR31Feature.h" />
@@ -700,6 +702,8 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="spoofing\User32_Spoofing.cpp" />
     <ClCompile Include="spoofing\Vulkan_Spoofing.cpp" />
     <ClCompile Include="low_latency\input\input_uell.cpp" />
+    <ClCompile Include="upscalers\dlss\DLSSFeature_Dx11On12.cpp" />
+    <ClCompile Include="upscalers\dlss\DLSSFeature_VkOnDx12.cpp" />
     <ClCompile Include="upscalers\fsr2_212\FSR2Feature_VkOnDx12_212.cpp" />
     <ClCompile Include="upscalers\ffx\FFXFeature_VkOn12.cpp" />
     <ClCompile Include="upscalers\fsr31\FSR31Feature.cpp" />

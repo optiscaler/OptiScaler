@@ -64,6 +64,8 @@ enum class Upscaler
 
     DLSS, // "dlss", used for the DLSS upscaler backend
 
+    DLSS_on12, // DX12 dlss using interops
+
     DLSSD, // "dlssd", used for the DLSS-D/Ray Reconstruction upscaler+denoiser backend
     Reset
 };

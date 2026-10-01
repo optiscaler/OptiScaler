@@ -485,7 +485,7 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
         for (auto opt : options)
         {
             // Check if GPU is capable of a given backend
-            if (opt == Upscaler::DLSS && !primaryGpu.dlssCapable)
+            if ((opt == Upscaler::DLSS || opt == Upscaler::DLSS_on12) && !primaryGpu.dlssCapable)
                 continue;
 
             // Not all Intel GPUs support native DX11 XeSS but don't think we have a good way to check exactly
@@ -506,7 +506,7 @@ void MenuCommon::AddDx11Backends(Upscaler upscaler)
 {
     RenderUpscalerCombo(API::DX11, upscaler,
                         { Upscaler::XeSS, Upscaler::FSR22, Upscaler::FSR31, Upscaler::XeSS_on12, Upscaler::FSR21_on12,
-                          Upscaler::FSR22_on12, Upscaler::FFX_on12, Upscaler::DLSS });
+                          Upscaler::FSR22_on12, Upscaler::FFX_on12, Upscaler::DLSS, Upscaler::DLSS_on12 });
 }
 
 void MenuCommon::AddDx12Backends(Upscaler upscaler)
@@ -519,7 +519,7 @@ void MenuCommon::AddVulkanBackends(Upscaler upscaler)
 {
     RenderUpscalerCombo(API::Vulkan, upscaler,
                         { Upscaler::XeSS, Upscaler::FSR21, Upscaler::FSR22, Upscaler::FFX, Upscaler::FSR21_on12,
-                          Upscaler::FFX_on12, Upscaler::DLSS });
+                          Upscaler::FFX_on12, Upscaler::DLSS, Upscaler::DLSS_on12 });
 }
 
 template <HasDefaultValue B> void MenuCommon::AddResourceBarrier(std::string name, CustomOptional<int32_t, B>* value)
@@ -1502,9 +1502,11 @@ void MenuCommon::HandleMenuShortcuts(RenderMenuContext& ctx)
 
                 if (State::Instance().currentFeature != nullptr)
                 {
-                    if (State::Instance().currentFeature->GetUpscalerType() == Upscaler::DLSSD)
+                    auto upscalerType = State::Instance().currentFeature->GetUpscalerType();
+
+                    if (upscalerType == Upscaler::DLSSD)
                         comboPreset = config->DLSSDRenderPresetForAll.value_or_default();
-                    else if (State::Instance().currentFeature->GetUpscalerType() == Upscaler::DLSS)
+                    else if (upscalerType == Upscaler::DLSS || upscalerType == Upscaler::DLSS_on12)
                         comboPreset = config->RenderPresetForAll.value_or_default();
                 }
             }
@@ -2975,7 +2977,8 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
         }
 
         // DLSS -----------------
-        if ((config->DLSSEnabled.value_or_default() && currentBackend == Upscaler::DLSS &&
+        if ((config->DLSSEnabled.value_or_default() &&
+             (currentBackend == Upscaler::DLSS || currentBackend == Upscaler::DLSS_on12) &&
              currentFeature->Version().major > 2) ||
             usesDlssd)
         {
@@ -5473,7 +5476,8 @@ void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)
         {
             config->OverrideSharpness = overrideSharpness;
 
-            if (currentBackend == Upscaler::DLSS && currentFeature->Version().major < 3)
+            if ((currentBackend == Upscaler::DLSS || currentBackend == Upscaler::DLSS_on12) &&
+                currentFeature->Version().major < 3)
             {
                 state.newBackend = currentBackend;
                 MARK_ALL_BACKENDS_CHANGED();
@@ -5504,8 +5508,9 @@ void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)
         {
             // xess or dlss version >= 2.5.1
             constexpr feature_version requiredDlssVersion = { 2, 5, 1 };
-            rcasEnabled = (currentBackend == Upscaler::XeSS ||
-                           (currentBackend == Upscaler::DLSS && currentFeature->Version() >= requiredDlssVersion));
+            const bool isDlss = currentBackend == Upscaler::DLSS || currentBackend == Upscaler::DLSS_on12;
+            rcasEnabled =
+                currentBackend == Upscaler::XeSS || (isDlss && currentFeature->Version() >= requiredDlssVersion);
 
             ImGui::Spacing();
             ImGui::Spacing();
@@ -5808,7 +5813,8 @@ void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)
                     _ssDownsampler = config->OutputScalingDownscaler.value_or_default();
                 }
 
-                ImGui::BeginDisabled((currentBackend == Upscaler::XeSS || currentBackend == Upscaler::DLSS) &&
+                ImGui::BeginDisabled((currentBackend == Upscaler::XeSS || currentBackend == Upscaler::DLSS ||
+                                      currentBackend == Upscaler::DLSS_on12) &&
                                      currentFeature->RenderWidth() > currentFeature->DisplayWidth());
                 ImGui::Checkbox("Enable", &_ssEnabled);
                 ImGui::EndDisabled();
@@ -5936,7 +5942,7 @@ void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)
             ImGui::BeginDisabled(!accessToReactiveMask);
 
             bool canUseReactiveMask =
-                accessToReactiveMask && currentBackend != Upscaler::DLSS &&
+                accessToReactiveMask && currentBackend != Upscaler::DLSS && currentBackend != Upscaler::DLSS_on12 &&
                 (currentBackend != Upscaler::XeSS || currentFeature->Version() >= feature_version { 2, 0, 1 });
 
             bool disableReactiveMask = config->DisableReactiveMask.value_or(!canUseReactiveMask);
@@ -6022,7 +6028,8 @@ void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)
                     ImGui::EndTable();
                 }
 
-                if (currentFeature->AccessToReactiveMask() && currentBackend != Upscaler::DLSS)
+                if (currentFeature->AccessToReactiveMask() && currentBackend != Upscaler::DLSS &&
+                    currentBackend != Upscaler::DLSS_on12)
                 {
                     ImGui::BeginDisabled(config->DisableReactiveMask.value_or(currentBackend == Upscaler::XeSS));
 
@@ -6203,7 +6210,8 @@ void MenuCommon::RenderAdvancedSettings(RenderMenuContext& ctx)
         }
 
         // Non-DLSS hotfixes -----------------------------
-        if (currentFeature != nullptr && !currentFeature->IsFrozen() && currentBackend != Upscaler::DLSS)
+        if (currentFeature != nullptr && !currentFeature->IsFrozen() && currentBackend != Upscaler::DLSS &&
+            currentBackend != Upscaler::DLSS_on12)
         {
             // SPOOFING/HOOKING -----------------------------
             ImGui::Spacing();

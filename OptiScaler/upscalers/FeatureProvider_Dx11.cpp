@@ -7,6 +7,7 @@
 #include "NVNGX_Parameter.h"
 
 #include "upscalers/dlss/DLSSFeature_Dx11.h"
+#include "upscalers/dlss/DLSSFeature_Dx11On12.h"
 #include "upscalers/dlssd/DLSSDFeature_Dx11.h"
 #include "upscalers/fsr2/FSR2Feature_Dx11.h"
 #include "upscalers/fsr2/FSR2Feature_Dx11On12.h"
@@ -68,6 +69,19 @@ bool FeatureProvider_Dx11::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NG
             break;
         }
 
+    case Upscaler::DLSS_on12:
+        if (primaryGpu.dlssCapable && state.NVNGX_DLSS_Path.has_value())
+        {
+            *feature = std::make_unique<DLSSFeatureDx11On12>(handleId, parameters);
+            break;
+        }
+        else
+        {
+            *feature = std::make_unique<FSR2FeatureDx11>(handleId, parameters);
+            upscaler = Upscaler::FSR22;
+            break;
+        }
+
     case Upscaler::DLSSD:
         if (primaryGpu.dlssCapable && state.NVNGX_DLSSD_Path.has_value())
         {
@@ -114,7 +128,8 @@ bool FeatureProvider_Dx11::ChangeFeature(Upscaler upscaler, ID3D11Device* device
     State& state = State::Instance();
     Config& cfg = *Config::Instance();
 
-    const bool dlssOnNonCapable = !IdentifyGpu::getPrimaryGpu().dlssCapable && state.newBackend == Upscaler::DLSS;
+    const bool dlssOnNonCapable = !IdentifyGpu::getPrimaryGpu().dlssCapable &&
+                                  (state.newBackend == Upscaler::DLSS || state.newBackend == Upscaler::DLSS_on12);
     if (state.newBackend == Upscaler::Reset || dlssOnNonCapable)
         state.newBackend = cfg.Dx11Upscaler.value_or_default();
 
@@ -135,7 +150,8 @@ bool FeatureProvider_Dx11::ChangeFeature(Upscaler upscaler, ID3D11Device* device
 
             auto* dc = contextData->feature.get();
             // Use given params if using DLSS passthrough
-            const bool isPassthrough = state.newBackend == Upscaler::DLSSD || state.newBackend == Upscaler::DLSS;
+            const bool isPassthrough = state.newBackend == Upscaler::DLSSD || state.newBackend == Upscaler::DLSS ||
+                                       state.newBackend == Upscaler::DLSS_on12;
 
             contextData->createParams = isPassthrough ? parameters : GetNGXParameters(API::DX11, false);
             contextData->createParams->Set(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags, dc->GetFeatureFlags());

@@ -983,6 +983,12 @@
     <ClInclude Include="framegen\reprojection\swapchain\reprojectionSwapchain.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="upscalers\dlss\DLSSFeature_Dx11On12.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="upscalers\dlss\DLSSFeature_VkOnDx12.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Config.cpp">
@@ -1590,6 +1596,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="framegen\reprojection\swapchain\reprojectionSwapchain.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="upscalers\dlss\DLSSFeature_Dx11On12.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="upscalers\dlss\DLSSFeature_VkOnDx12.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
