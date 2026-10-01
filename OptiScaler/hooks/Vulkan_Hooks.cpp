@@ -38,17 +38,23 @@ static HWND _hwnd = nullptr;
 static std::mutex _vkApiVersionMutex;
 static std::unordered_map<VkInstance, uint32_t> _instanceApiVersions;
 static std::unordered_map<VkPhysicalDevice, VkInstance> _physicalDeviceInstances;
-struct CreatedDeviceFeatures { VkPhysicalDevice physical; uint32_t flags,apiVersion,queueFamilyIndex; };
-static std::unordered_map<VkDevice,CreatedDeviceFeatures> _createdDeviceFeatures;
+struct CreatedDeviceFeatures
+{
+    VkPhysicalDevice physical;
+    uint32_t flags, apiVersion, queueFamilyIndex;
+};
+static std::unordered_map<VkDevice, CreatedDeviceFeatures> _createdDeviceFeatures;
 
-bool VulkanHooks::GetCreatedDeviceFeatures(VkDevice device,uint32_t& flags,uint32_t& apiVersion,uint32_t& queueFamilyIndex)
+bool VulkanHooks::GetCreatedDeviceFeatures(VkDevice device, uint32_t& flags, uint32_t& apiVersion,
+                                           uint32_t& queueFamilyIndex)
 {
     std::scoped_lock lock(_vkApiVersionMutex);
-    const auto found=_createdDeviceFeatures.find(device);
-    if(found==_createdDeviceFeatures.end()) return false;
-    flags=found->second.flags;
-    apiVersion=found->second.apiVersion;
-    queueFamilyIndex=found->second.queueFamilyIndex;
+    const auto found = _createdDeviceFeatures.find(device);
+    if (found == _createdDeviceFeatures.end())
+        return false;
+    flags = found->second.flags;
+    apiVersion = found->second.apiVersion;
+    queueFamilyIndex = found->second.queueFamilyIndex;
     return true;
 }
 
@@ -191,11 +197,13 @@ static uint32_t GetPhysicalDeviceApiVersion(VkPhysicalDevice physicalDevice, VkI
 static void UntrackInstance(VkInstance instance)
 {
     std::scoped_lock lock(_vkApiVersionMutex);
-    for(auto it=_createdDeviceFeatures.begin();it!=_createdDeviceFeatures.end();)
+    for (auto it = _createdDeviceFeatures.begin(); it != _createdDeviceFeatures.end();)
     {
-        const auto owner=_physicalDeviceInstances.find(it->second.physical);
-        if(owner!=_physicalDeviceInstances.end() && owner->second==instance) it=_createdDeviceFeatures.erase(it);
-        else ++it;
+        const auto owner = _physicalDeviceInstances.find(it->second.physical);
+        if (owner != _physicalDeviceInstances.end() && owner->second == instance)
+            it = _createdDeviceFeatures.erase(it);
+        else
+            ++it;
     }
     _instanceApiVersions.erase(instance);
 
@@ -413,21 +421,23 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
             }
         }
         result = o_vkCreateDevice(physicalDevice, deviceCreateInfo, pAllocator, pDevice);
-        if(result==VK_SUCCESS)
+        if (result == VK_SUCCESS)
         {
             try
             {
-                const auto enabled=fsr4vk::read_enabled_device_state(*deviceCreateInfo,requestedApiVersion);
-                const uint32_t flags=(enabled.robust_buffer_access ? FSR4VK_DEVICE_ROBUST_BUFFER_ACCESS : 0u) |
-                                     (enabled.native_mixed_dot ? FSR4VK_DEVICE_NATIVE_MIXED_DOT : 0u);
+                const auto enabled = fsr4vk::read_enabled_device_state(*deviceCreateInfo, requestedApiVersion);
+                const uint32_t flags = (enabled.robust_buffer_access ? FSR4VK_DEVICE_ROBUST_BUFFER_ACCESS : 0u) |
+                                       (enabled.native_mixed_dot ? FSR4VK_DEVICE_NATIVE_MIXED_DOT : 0u);
                 std::scoped_lock lock(_vkApiVersionMutex);
                 // Multiple created families do not identify the family of a
                 // later command buffer; leave optional profiling unknown.
-                const uint32_t queueFamily=deviceCreateInfo->queueCreateInfoCount==1 ?
-                    deviceCreateInfo->pQueueCreateInfos[0].queueFamilyIndex : UINT32_MAX;
-                _createdDeviceFeatures.insert_or_assign(*pDevice,CreatedDeviceFeatures{physicalDevice,flags,requestedApiVersion,queueFamily});
+                const uint32_t queueFamily = deviceCreateInfo->queueCreateInfoCount == 1
+                                                 ? deviceCreateInfo->pQueueCreateInfos[0].queueFamilyIndex
+                                                 : UINT32_MAX;
+                _createdDeviceFeatures.insert_or_assign(
+                    *pDevice, CreatedDeviceFeatures { physicalDevice, flags, requestedApiVersion, queueFamily });
             }
-            catch(...)
+            catch (...)
             {
                 LOG_WARN("Unable to snapshot successful Vulkan device features; optional provider handoff unavailable");
             }

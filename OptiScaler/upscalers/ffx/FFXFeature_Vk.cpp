@@ -209,14 +209,16 @@ bool FFXFeatureVk::InitFFX(const NVSDK_NGX_Parameter* InParameters)
         _nativeInputsSupported =
             FfxApiProxy::VULKAN_Query()(nullptr, &nativeQuery.header) == FFX_API_RETURN_OK && nativeQuery.version == 1;
 
-        Fsr4VkQueryDeviceFeatures deviceQuery{};
-        deviceQuery.header.type=FSR4VK_QUERY_DESC_TYPE_DEVICE_FEATURES;
-        Fsr4VkCreateDeviceFeatures enabledDevice{};
-        if(FfxApiProxy::VULKAN_Query()(nullptr,&deviceQuery.header)==FFX_API_RETURN_OK && deviceQuery.version==1 &&
-           VulkanHooks::GetCreatedDeviceFeatures(Device,enabledDevice.enabledFlags,enabledDevice.apiVersion,enabledDevice.queueFamilyIndex))
+        Fsr4VkQueryDeviceFeatures deviceQuery {};
+        deviceQuery.header.type = FSR4VK_QUERY_DESC_TYPE_DEVICE_FEATURES;
+        Fsr4VkCreateDeviceFeatures enabledDevice {};
+        if (FfxApiProxy::VULKAN_Query()(nullptr, &deviceQuery.header) == FFX_API_RETURN_OK &&
+            deviceQuery.version == 1 &&
+            VulkanHooks::GetCreatedDeviceFeatures(Device, enabledDevice.enabledFlags, enabledDevice.apiVersion,
+                                                  enabledDevice.queueFamilyIndex))
         {
-            enabledDevice.header={FSR4VK_CREATE_DESC_TYPE_DEVICE_FEATURES,backendDesc.header.pNext};
-            backendDesc.header.pNext=&enabledDevice.header;
+            enabledDevice.header = { FSR4VK_CREATE_DESC_TYPE_DEVICE_FEATURES, backendDesc.header.pNext };
+            backendDesc.header.pNext = &enabledDevice.header;
         }
 
         LOG_DEBUG("_createContext!");
@@ -293,8 +295,7 @@ bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Param
     InParameters->Get(NVSDK_NGX_Parameter_Jitter_Offset_X, &params.jitterOffset.x);
     InParameters->Get(NVSDK_NGX_Parameter_Jitter_Offset_Y, &params.jitterOffset.y);
 
-    const auto reset = FFXVkInputReads::Optional(InParameters, NVSDK_NGX_Parameter_Reset,
-                                               NVSDK_NGX_Result_Success, 0u);
+    const auto reset = FFXVkInputReads::Optional(InParameters, NVSDK_NGX_Parameter_Reset, NVSDK_NGX_Result_Success, 0u);
     params.reset = (reset == 1);
 
     GetRenderResolution(InParameters, &params.renderSize.width, &params.renderSize.height);
@@ -303,7 +304,7 @@ bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Param
 
     params.commandList = InCmdBuffer;
 
-    NVSDK_NGX_Resource_VK* paramColor=nullptr;
+    NVSDK_NGX_Resource_VK* paramColor = nullptr;
     if (FFXVkInputReads::Required(InParameters, NVSDK_NGX_Parameter_Color, NVSDK_NGX_Result_Success, paramColor))
     {
         LOG_DEBUG("Color exist..");
@@ -318,8 +319,9 @@ bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Param
         return false;
     }
 
-    NVSDK_NGX_Resource_VK* paramVelocity=nullptr;
-    if (FFXVkInputReads::Required(InParameters, NVSDK_NGX_Parameter_MotionVectors, NVSDK_NGX_Result_Success, paramVelocity))
+    NVSDK_NGX_Resource_VK* paramVelocity = nullptr;
+    if (FFXVkInputReads::Required(InParameters, NVSDK_NGX_Parameter_MotionVectors, NVSDK_NGX_Result_Success,
+                                  paramVelocity))
     {
         LOG_DEBUG("MotionVectors exist..");
 
@@ -339,7 +341,7 @@ bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Param
         return false;
     }
 
-    NVSDK_NGX_Resource_VK* paramOutput=nullptr;
+    NVSDK_NGX_Resource_VK* paramOutput = nullptr;
     if (FFXVkInputReads::Required(InParameters, NVSDK_NGX_Parameter_Output, NVSDK_NGX_Result_Success, paramOutput))
     {
         LOG_DEBUG("Output exist..");
