@@ -70,7 +70,7 @@ DEFINE_NAME_VECTORS(blockOverlay, "eosovh-win32-shipping",
                                   "overlay64"
 );
 
-inline std::vector<std::wstring> blockedDllNamesW = { L"windhawk.dll", L"mactype.dll", L"mactype64.dll" };
+inline std::vector<std::wstring> blockedDllNamesW = { L"windhawk.dll", L"mactype.dll", L"mactype64.dll", L"overlayenginex64.dll", L"overlayreleasex64.dll" };
 
 DEFINE_NAME_VECTORS(skipDxgiWrapping, "eosovh-win32-shipping",
                                       "eosovh-win64-shipping",
