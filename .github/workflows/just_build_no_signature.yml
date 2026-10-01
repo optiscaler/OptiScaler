@@ -8,7 +8,7 @@ name: Build (No Signing)
 on:
   workflow_dispatch:
   push:
-    branches: [ "codex/fsr4-vulkan-provider-integration", "codex/fsr-4.1.1-int8", "codex/native-motion-coop-host" ]
+    branches: [ "codex/fsr4-vulkan-provider-integration", "codex/fsr-4.1.1-int8", "codex/native-motion-coop-host", "codex/audit-host-boundary-20261001" ]
 #  push:
 #    branches: [ "master" ]
 #  pull_request:
@@ -24,7 +24,7 @@ env:
   BUILD_CONFIGURATION: Release
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
