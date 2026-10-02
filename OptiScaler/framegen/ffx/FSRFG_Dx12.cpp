@@ -722,15 +722,15 @@ ffxReturnCode_t FSRFG_Dx12::PresentCallback(ffxCallbackDescFrameGenerationPresen
         // We ignore the read mouseDeltaSinceSim
 
         auto& deltaToPrevFake = _deltaSimToFake[fIndex];
-        auto timeDiffPrev = (float) (deltaToPrevFake.second - deltaToPrevFake.first.startTimestampNs) / 1'000'000;
-        auto timeDeltaFromFake = (float) (Util::GetTimestamp() - deltaToPrevFake.second) / 1'000'000;
+        auto timeDiffPrev = (double) (deltaToPrevFake.second - deltaToPrevFake.first.startTimestampNs) / 1'000'000;
+        auto timeDeltaFromFake = (double) (Util::GetTimestamp() - deltaToPrevFake.second) / 1'000'000;
 
         // we dont have mouse data for the "_ftDelta[fIndex] / 2" that happens after this function is called but
         // before the image is presented
         auto timeDiffCurrent = timeDiffPrev + _ftDelta[fIndex] / 2 - timeDeltaFromFake;
         // auto timeDiffCurrent = timeDiffPrev + _ftDelta[fIndex] / 2;
 
-        float ratio = timeDiffCurrent / (float) timeDiffPrev;
+        double ratio = timeDiffCurrent / timeDiffPrev;
         mouseDeltaSinceSim *= ratio;
         // mouseDeltaSinceSim = deltaToPrevFake.first * ratio;
 
@@ -739,8 +739,8 @@ ffxReturnCode_t FSRFG_Dx12::PresentCallback(ffxCallbackDescFrameGenerationPresen
 
     LOG_DEBUG("post mouseDeltaSinceSim: x:{}, y:{}", mouseDeltaSinceSim.x, mouseDeltaSinceSim.y);
 
-    auto hudless = GetResource(FG_ResourceType::HudlessColor, fIndex);
-    auto depth = GetResource(FG_ResourceType::Depth, fIndex);
+    auto hudless = GetResource(FG_ResourceType::HudlessColor, (int) fIndex);
+    auto depth = GetResource(FG_ResourceType::Depth, (int) fIndex);
     if (depth && depth->copy && hudless && hudless->copy)
     {
         if (_reproject.get() == nullptr)

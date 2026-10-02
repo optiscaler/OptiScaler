@@ -243,7 +243,7 @@ sl::Result StreamlineHooks::hkslInit(const sl::Preferences& pref, uint64_t sdkVe
         std::erase(localFeaturesToLoad, sl::kFeatureDLSS_G);
 
         localPref.featuresToLoad = localFeaturesToLoad.data();
-        localPref.numFeaturesToLoad = localFeaturesToLoad.size();
+        localPref.numFeaturesToLoad = (uint32_t) localFeaturesToLoad.size();
 
         // return so that localFeaturesToLoad is valid
         return o_slInit(localPref, sdkVersion);

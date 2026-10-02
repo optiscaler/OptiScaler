@@ -5,10 +5,12 @@ cbuffer MagnifierCB : register(b0)
 #endif
 {
     float2 Resolution; // Screen or texture resolution in pixels
-    float2 CursorPos; // Cursor position in pixel coordinates
+    int2 CursorPos; // Cursor position in pixel coordinates
+    
     float2 Offset; // Offset of the lens relative to the cursor (in pixels)
     float Radius; // Radius of the magnifying glass (in pixels)
     int ZoomFactor; // Integer scaling multiplier (e.g., 2, 3, 4)
+    
     float BorderThickness; // Thickness of the black border (in pixels)
     float3 Padding; // Padding to maintain 16-byte alignment
 };
@@ -37,7 +39,7 @@ void CSMain(uint3 dispatchThreadId : SV_DispatchThreadID)
     float2 currentPixel = float2(currentPixelInt);
     
     // 3. Calculate the center of the magnifying lens
-    float2 lensCenter = CursorPos + Offset;
+    float2 lensCenter = float2(CursorPos) + Offset;
     
     // 4. Find the distance from the current pixel to the lens center
     float2 vecToCenter = currentPixel - lensCenter;
@@ -59,10 +61,10 @@ void CSMain(uint3 dispatchThreadId : SV_DispatchThreadID)
     else
     {
         int maxZoom = max(1, ZoomFactor); // Prevent division by zero
-        float2 scaledOffset = floor(vecToCenter / (float) maxZoom);
+        int2 scaledOffset = int2(floor(vecToCenter / (float) maxZoom));
         
         // Calculate the source pixel coordinate around the actual cursor position
-        int2 srcPixel = int2(CursorPos + scaledOffset);
+        int2 srcPixel = CursorPos + scaledOffset;
         
         // Clamp coordinates to ensure we don't sample outside the texture bounds
         srcPixel = clamp(srcPixel, int2(0, 0), int2(Resolution) - int2(1, 1));

@@ -28,15 +28,15 @@ void Magnifier_Common::FilloutStruct(float Width, float Height, InternalMagnifie
 
     if (staticMode)
     {
-        internalStruct.CursorPosX = Config::Instance()->MagnifierStaticPosX.value_or(50.f);
-        internalStruct.CursorPosY = Config::Instance()->MagnifierStaticPosY.value_or(50.f);
+        const auto percentX = Config::Instance()->MagnifierStaticPosX.value_or(50.f);
+        const auto percentY = Config::Instance()->MagnifierStaticPosY.value_or(50.f);
 
-        internalStruct.CursorPosX = internalStruct.CursorPosX * internalStruct.ResolutionX / 100;
-        internalStruct.CursorPosY = internalStruct.CursorPosY * internalStruct.ResolutionY / 100;
+        internalStruct.CursorPosX = (int) (percentX * internalStruct.ResolutionX / 100);
+        internalStruct.CursorPosY = (int) (percentY * internalStruct.ResolutionY / 100);
     }
     else
     {
-        auto mouseScreenPos = OptiInput::GetMouseScreenPos();
+        const auto mouseScreenPos = OptiInput::GetMouseScreenPos();
         internalStruct.CursorPosX = mouseScreenPos.x;
         internalStruct.CursorPosY = mouseScreenPos.y;
 

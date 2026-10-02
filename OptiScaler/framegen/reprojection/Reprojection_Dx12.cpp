@@ -219,6 +219,8 @@ std::optional<double> Reprojection_Dx12::ReadGpuTime(void* commandQueue)
     {
         return _reproject->ReadGpuTime((ID3D12CommandQueue*) commandQueue);
     }
+
+    return std::nullopt;
 }
 
 bool Reprojection_Dx12::Present()

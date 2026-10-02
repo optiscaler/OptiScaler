@@ -24,14 +24,14 @@ struct InputDelta
         return *this;
     }
 
-    constexpr InputDelta& operator*=(float mul)
+    constexpr InputDelta& operator*=(double mul)
     {
         x = static_cast<int32_t>(x * mul);
         y = static_cast<int32_t>(y * mul);
         return *this;
     }
 
-    constexpr InputDelta& operator/=(float div)
+    constexpr InputDelta& operator/=(double div)
     {
         x = static_cast<int32_t>(x / div);
         y = static_cast<int32_t>(y / div);
@@ -42,12 +42,12 @@ struct InputDelta
 
     constexpr InputDelta operator-(const InputDelta& other) const { return InputDelta { x - other.x, y - other.y }; }
 
-    constexpr InputDelta operator*(float mul) const
+    constexpr InputDelta operator*(double mul) const
     {
         return InputDelta { static_cast<int32_t>(x * mul), static_cast<int32_t>(y * mul) };
     }
 
-    constexpr InputDelta operator/(float div) const
+    constexpr InputDelta operator/(double div) const
     {
         return InputDelta { static_cast<int32_t>(x / div), static_cast<int32_t>(y / div) };
     }
@@ -74,11 +74,11 @@ class InputCollection
 
     void addNewDelta(InputDelta delta);
 
-    void startCollectingForFrame(uint32_t frameId);
+    void startCollectingForFrame(uint64_t frameId);
 
     // Returns the mouse delta between sim starts of frameId-1 and frameId
-    InputDelta readSimsDelta(uint32_t frameId);
+    InputDelta readSimsDelta(uint64_t frameId);
 
     // Returns the mouse delta since sim start of the provided frame id
-    InputDelta readDeltaSinceSim(uint32_t frameId);
+    InputDelta readDeltaSinceSim(uint64_t frameId);
 };

@@ -15,6 +15,14 @@ class DLSSFeatureDx11 : public DLSSFeature, public IFeature_Dx11
     Upscaler GetUpscalerType() const final { return DLSSFeature::GetUpscalerType(); }
     API Api() const override { return IFeature_Dx11::Api(); }
     bool CallsUpscalerEndByItself() override { return IFeature_Dx11::CallsUpscalerEndByItself(); }
+    std::optional<double> ReadUpscalerTime(void* commandQueue) override
+    {
+        return IFeature_Dx11::ReadUpscalerTime(commandQueue);
+    };
+    void ReadDetailedGpuTimes(void* commandQueue, std::vector<DetailedGpuTime>& detailedGpuTimes) override
+    {
+        return IFeature_Dx11::ReadDetailedGpuTimes(commandQueue, detailedGpuTimes);
+    };
 
     bool IsWithDx12() override { return false; }
 

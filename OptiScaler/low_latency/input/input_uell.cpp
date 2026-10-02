@@ -45,7 +45,8 @@ void InputUeLowLatency::tickStart(int64_t frameId, float DeltaSeconds, bool bIdl
     if (!inited)
         InputUeLowLatency::init();
 
-    auto result = InputCommon::sleep(inputContext, device, frameId);
+    // Most backends use 32bit frameId so it is what it is
+    auto result = InputCommon::sleep(inputContext, device, (uint32_t) frameId);
 
     if (result == InputResult::UsingDifferentInput)
         return;
@@ -117,7 +118,7 @@ void InputUeLowLatency::cameraUpdate(int64_t frameId, float cameraPosition[3], f
 
     if (auto fg = State::Instance().currentFG)
     {
-        auto index = frameId % BUFFER_COUNT;
+        auto index = (int) (frameId % BUFFER_COUNT);
 
         float cameraUp[3];
         float cameraRight[3];

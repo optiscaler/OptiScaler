@@ -12,6 +12,14 @@ class XeSSFeatureDx12 : public XeSSFeature, public IFeature_Dx12
     Upscaler GetUpscalerType() const final { return Upscaler::XeSS; }
     API Api() const override { return IFeature_Dx12::Api(); }
     bool CallsUpscalerEndByItself() override { return IFeature_Dx12::CallsUpscalerEndByItself(); }
+    std::optional<double> ReadUpscalerTime(void* commandQueue) override
+    {
+        return IFeature_Dx12::ReadUpscalerTime(commandQueue);
+    };
+    void ReadDetailedGpuTimes(void* commandQueue, std::vector<DetailedGpuTime>& detailedGpuTimes) override
+    {
+        return IFeature_Dx12::ReadDetailedGpuTimes(commandQueue, detailedGpuTimes);
+    };
 
     XeSSFeatureDx12(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters)
         : IFeature(InHandleId, InParameters), IFeature_Dx12(InHandleId, InParameters),
