@@ -14,7 +14,7 @@ class DLSSFeatureDx12 : public DLSSFeature, public IFeature_Dx12
     bool InitInternal(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters) override;
     bool EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters) override;
 
-    static void Shutdown(ID3D12Device* InDevice);
+    void Shutdown(ID3D12Device* InDevice);
 
     feature_version Version() override { return DLSSFeature::Version(); }
     Upscaler GetUpscalerType() const final { return DLSSFeature::GetUpscalerType(); }
