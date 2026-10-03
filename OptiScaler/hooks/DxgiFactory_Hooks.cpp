@@ -427,7 +427,8 @@ HRESULT DxgiFactoryHooks::CreateSwapChain(IDXGIFactory* realFactory, IUnknown* p
         return res;
     }
 
-    if (pDesc->BufferDesc.Height < 100 || pDesc->BufferDesc.Width < 100)
+    if ((pDesc->BufferDesc.Height != 0 && pDesc->BufferDesc.Height < 100) ||
+        (pDesc->BufferDesc.Width != 0 && pDesc->BufferDesc.Width < 100))
     {
         LOG_WARN("Overlay call!");
 
@@ -796,7 +797,7 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
         return result;
     }
 
-    if (pDesc->Height < 100 || pDesc->Width < 100)
+    if ((pDesc->Height != 0 && pDesc->Height < 100) || (pDesc->Width != 0 && pDesc->Width < 100))
     {
         LOG_WARN("Overlay call!");
         HRESULT result;
@@ -1302,7 +1303,8 @@ HRESULT DxgiFactoryHooks::DLSSGCreateSwapChain(IDXGIFactory* realFactory, IUnkno
         return res;
     }
 
-    if (pDesc->BufferDesc.Height < 100 || pDesc->BufferDesc.Width < 100)
+    if ((pDesc->BufferDesc.Height != 0 && pDesc->BufferDesc.Height < 100) ||
+        (pDesc->BufferDesc.Width != 0 && pDesc->BufferDesc.Width < 100))
     {
         LOG_WARN("Overlay call!");
 
@@ -1596,7 +1598,7 @@ HRESULT DxgiFactoryHooks::DLSSGCreateSwapChainForHwnd(IDXGIFactory2* realFactory
         return result;
     }
 
-    if (pDesc->Height < 100 || pDesc->Width < 100)
+    if ((pDesc->Height != 0 && pDesc->Height < 100) || (pDesc->Width != 0 && pDesc->Width < 100))
     {
         LOG_WARN("Overlay call!");
         HRESULT result;
