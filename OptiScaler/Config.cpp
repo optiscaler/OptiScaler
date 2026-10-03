@@ -685,6 +685,8 @@ bool Config::Reload(std::filesystem::path iniPath)
         {
             DisableFlipMetering.set_from_config(readBool("NvApi", "DisableFlipMetering"));
             DisableOTA.set_from_config(readBool("NvApi", "DisableOTA"));
+            ImASillyGooseThatIsAboutToMisuseReflex.set_from_config(
+                readBool("NvApi", "ImASillyGooseThatIsAboutToMisuseReflex"));
         }
 
         // Spoofing

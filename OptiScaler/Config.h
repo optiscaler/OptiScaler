@@ -501,6 +501,7 @@ class Config
     // NVAPI Override
     CustomOptional<bool> DisableFlipMetering { false };
     CustomOptional<bool> DisableOTA { false };
+    CustomOptional<bool> ImASillyGooseThatIsAboutToMisuseReflex { false };
 
     // Spoofing
     CustomOptional<bool, SoftDefault> DxgiSpoofing { true };
