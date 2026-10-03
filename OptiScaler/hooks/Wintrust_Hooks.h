@@ -25,7 +25,8 @@ static LONG hkWinVerifyTrust(HWND hwnd, GUID* pgActionID, LPVOID pWVTData)
     auto path = wstring_to_string(std::wstring(data->pFile->pcwszFilePath));
     to_lower_in_place(path);
 
-    if (path.contains("amd_fidelityfx_dx12.dll") || path.contains("amd_fidelityfx_vk.dll"))
+    if (path.contains("amd_fidelityfx_dx12.dll") || path.contains("amd_fidelityfx_upscaler_vk.dll") ||
+        path.contains("amd_fidelityfx_vk.dll"))
     {
         return ERROR_SUCCESS;
     }
