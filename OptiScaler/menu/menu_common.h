@@ -16,6 +16,49 @@ class ScopedIndent
     float m_indent;
 };
 
+class ScopedID
+{
+  public:
+    explicit ScopedID(const char* id) { ImGui::PushID(id); }
+
+    ~ScopedID() { ImGui::PopID(); }
+};
+
+struct ImGuiWindow;
+
+// Draws a rectangle around everything drawn while it is alive. Nothing is drawn when it stays empty
+class ScopedCard
+{
+  public:
+    explicit ScopedCard(const char* title = nullptr);
+    ~ScopedCard();
+
+    ScopedCard(const ScopedCard&) = delete;
+    ScopedCard& operator=(const ScopedCard&) = delete;
+
+    // Turns a separator text into the title of the card when it's the first thing in it
+    static bool TryTitle(const char* label);
+
+    // With a filter set, only the box with the same id is drawn
+    static bool Shows(const char* id);
+    static void SetFilter(const char* id);
+
+  private:
+    inline static ScopedCard* _current = nullptr;
+    inline static const char* _filter = nullptr;
+
+    ImGuiWindow* _window = nullptr;
+    ImDrawListSplitter _splitter;
+    ImVec2 _min {};
+    ImVec2 _pad {};
+    float _width = 0.0f;
+    float _contentStartY = 0.0f;
+    float _oldWorkRectMaxX = 0.0f;
+    float _oldContentRectMaxX = 0.0f;
+    bool _active = false;
+    bool _hasTitle = false;
+};
+
 class ScopedCollapsingHeader
 {
   public:
@@ -119,7 +162,6 @@ class MenuCommon
 
     inline static void ShowTooltip(const char* tip);
 
-    inline static void ShowHelpMarker(const char* tip);
     inline static void ShowResetButton(CustomOptional<bool, NoDefault>* initFlag, std::string buttonName);
     inline static void ReInitUpscaler();
 
@@ -135,6 +177,9 @@ class MenuCommon
     static void AddDx12Backends(Upscaler upscaler);
     static void AddVulkanBackends(Upscaler upscaler);
     template <HasDefaultValue B> static void AddResourceBarrier(std::string name, CustomOptional<int32_t, B>* value);
+    template <typename TOption>
+    static bool ConfigCheckbox(const char* label, TOption& option, const char* tip = nullptr,
+                               bool needsRestart = false);
     template <HasDefaultValue B> static void AddDLSSRenderPreset(std::string name, CustomOptional<uint32_t, B>* value);
     template <HasDefaultValue B> static void AddDLSSDRenderPreset(std::string name, CustomOptional<uint32_t, B>* value);
     template <typename TStorage, typename T>
@@ -159,15 +204,35 @@ class MenuCommon
     // RenderMainMenuWindow section helpers. These keep the main window flow readable
     // without changing the existing ImGui layout, labels, or setting side effects.
     static void RenderMainMenuHeaderMessages(RenderMenuContext& ctx);
-    static void RenderMainMenuTable(RenderMenuContext& ctx);
+    static void RenderUpscalerStateMessage(RenderMenuContext& ctx);
+    static void RenderMainMenuTabs(RenderMenuContext& ctx);
+    static void PlotLinesWithFancyText(const char* label, float (*values_getter)(void* data, int idx), void* data,
+                                       int values_count, int values_offset, const char* overlay_text, float scale_min,
+                                       float scale_max, ImVec2 graph_size, float padding);
+    static void RenderCard(RenderMenuContext& ctx, void (*render)(RenderMenuContext&));
+
+    // Custom tab
+    struct MenuBox;
+    static const MenuBox* GetMenuBoxes(size_t& count);
+    static void RenderMenuBox(RenderMenuContext& ctx, const MenuBox& box);
+    static void RenderCustomTab(RenderMenuContext& ctx);
+    static void RenderCustomTabSettings(RenderMenuContext& ctx);
+    static void RenderStatusInfo(RenderMenuContext& ctx);
+    static void RenderDetectedInfo(RenderMenuContext& ctx);
+    static void RenderDetectedCard(RenderMenuContext& ctx);
+    static void RenderMenuScaleSettings(RenderMenuContext& ctx);
     static void RenderActiveUpscalerSettings(RenderMenuContext& ctx);
     static void RenderFrameGenerationSelection(RenderMenuContext& ctx);
     static void RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx);
     static void RenderFsrCommonSettings(RenderMenuContext& ctx);
     static void RenderFramerateSettings(RenderMenuContext& ctx);
+    static void RenderVsyncSettings(RenderMenuContext& ctx);
     static void RenderFakenvapiSettings(RenderMenuContext& ctx);
     static void RenderLowLatencySettings(RenderMenuContext& ctx);
     static void RenderActiveImageSettings(RenderMenuContext& ctx);
+    static void RenderUpscaleRatioSettings(RenderMenuContext& ctx);
+    static void RenderOutputScalingSettings(RenderMenuContext& ctx);
+    static void RenderInitFlagsSettings(RenderMenuContext& ctx);
     static void RenderMagnifierSettings(RenderMenuContext& ctx);
     static void RenderQuirksSettings(RenderMenuContext& ctx);
     static void RenderAdvancedSettings(RenderMenuContext& ctx);
@@ -177,7 +242,10 @@ class MenuCommon
     static void RenderUpscalerInputsSettings(RenderMenuContext& ctx);
     static void RenderApiAndTextureSettings(RenderMenuContext& ctx);
     static void RenderKeybindSettings(RenderMenuContext& ctx);
-    static void RenderMainMenuGraphs(RenderMenuContext& ctx);
+    static void RenderMainMenuFooter(RenderMenuContext& ctx);
+    static void RenderFrameTimeGraph(RenderMenuContext& ctx);
+    static void RenderUpscalerTimeGraph(RenderMenuContext& ctx);
+    static void RenderShaderTimes(RenderMenuContext& ctx);
     static void RenderMainMenuBottomBar(RenderMenuContext& ctx);
     static void RenderMipmapBiasWindow(RenderMenuContext& ctx, ImGuiWindowFlags flags);
     static void RenderHudlessResourcesWindow(RenderMenuContext& ctx, ImGuiWindowFlags flags);

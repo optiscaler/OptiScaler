@@ -267,13 +267,18 @@ template <typename T> std::string EnumToCode(T value)
     return "";
 }
 
+constexpr char ToLower(char c) { return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c; }
+
 // String Code to Enum
 template <typename T> T CodeToEnum(std::string_view code)
 {
-    for (const auto& pair : EnumConfig<T>::mapping)
+    for (const auto& [value, mappedCode] : EnumConfig<T>::mapping)
     {
-        if (pair.second == code)
-            return pair.first;
+        if (std::ranges::equal(mappedCode, code, std::ranges::equal_to {}, ToLower, ToLower))
+        {
+            return value;
+        }
     }
+
     return EnumConfig<T>::default_value;
 }
