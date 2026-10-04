@@ -457,8 +457,7 @@ static const QuirkEntry quirkTable[] = {
 
     // CONTROL Resonant
     // SL spoof enough to unlock everything DLSS, Preserve FG Swapchain just crashes the DLSSG inputs
-    QUIRK_ENTRY("controlresonant.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::DoNotPreserveFGSwapChain,
-                GameQuirk::DisableOTA),
+    QUIRK_ENTRY("controlresonant.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::DoNotPreserveFGSwapChain),
 
     // SL spoof enough to unlock everything DLSS/No spoof needed for DLSS inputs
     //

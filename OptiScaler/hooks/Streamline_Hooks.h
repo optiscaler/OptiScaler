@@ -143,30 +143,48 @@ class StreamlineHooks
 
     static void unhookInterposer();
     static void hookInterposer(HMODULE slInterposer);
+    static inline HMODULE hookedInterposerModule = nullptr;
+
+    // Plugin hooks
+    // Every loaded copy of a plugin (game folder, OTA, Opti's local streamline folder...) gets its own detour slot.
+    // Streamline can load a newer copy, reject it (e.g. OTA denylist) and keep using the older one,
+    // so hooking a new copy must never remove the hook from a copy that is still loaded.
+    // A slot is released only after the loader really unmapped its module (see onModuleFreed).
+    // Callers of hook*/unhook* must hold the matching mutexHook* (same as before).
 
     static void unhookDlss();
     static void hookDlss(HMODULE slDlss);
     static inline std::mutex mutexHookDlss;
+    static inline HMODULE hookedDlssModule = nullptr; // most recently hooked live copy
 
     static void unhookDlssg();
     static void hookDlssg(HMODULE slDlssg);
     static inline std::mutex mutexHookDlssg;
+    static inline HMODULE hookedDlssgModule = nullptr;
 
     static void unhookLocalDlssg();
     static void hookLocalDlssg(HMODULE slDlssg);
     static inline std::mutex mutexHookLocalDlssg;
+    static inline HMODULE hookedLocalDlssgModule = nullptr;
 
     static void unhookReflex();
     static void hookReflex(HMODULE slReflex);
     static inline std::mutex mutexHookReflex;
+    static inline HMODULE hookedReflexModule = nullptr;
 
     static void unhookPcl();
     static void hookPcl(HMODULE slPcl);
     static inline std::mutex mutexHookPcl;
+    static inline HMODULE hookedPclModule = nullptr;
 
     static void unhookCommon();
     static void hookCommon(HMODULE slCommon);
     static inline std::mutex mutexHookCommon;
+    static inline HMODULE hookedCommonModule = nullptr;
+
+    // Call AFTER the original FreeLibrary/LdrUnloadDll returned (loader lock released).
+    // Releases slots of plugin copies that are no longer mapped, without touching their memory.
+    static void onModuleFreed(PVOID module);
 
     static bool isInterposerHooked();
     static bool isDlssHooked();
@@ -177,6 +195,52 @@ class StreamlineHooks
     static bool isReflexHooked();
 
   private:
+    enum class SlPlugin : size_t
+    {
+        Dlss = 0,
+        Dlssg,
+        LocalDlssg,
+        Reflex,
+        Pcl,
+        Common,
+        Count
+    };
+
+    static constexpr size_t kMaxPluginInstances = 4;
+    static constexpr size_t kPatchBytes = 8;
+
+    // No default member initializers: the slots live in static storage (zero-initialized),
+    // and default member initializers would not be usable for a static member of the enclosing class.
+    struct PluginHookSlot
+    {
+        PFN_slGetPluginFunction original; // Detours trampoline after attach
+        void* target;                     // slGetPluginFunction inside the plugin
+        HMODULE module;
+        size_t imageSize;
+        std::wstring path;
+        uint8_t patchBytes[kPatchBytes]; // bytes at target right after attaching, to detect a fresh image
+    };
+
+    inline static PluginHookSlot pluginSlots[(size_t) SlPlugin::Count][kMaxPluginInstances];
+
+    static const char* pluginName(SlPlugin plugin);
+    static std::mutex& pluginMutex(SlPlugin plugin);
+    static HMODULE& activePluginModule(SlPlugin plugin);
+
+    static void hookPlugin(SlPlugin plugin, HMODULE module);
+    static void unhookPlugin(SlPlugin plugin);
+    static bool isPluginHooked(SlPlugin plugin);
+    static bool isSlotAlive(const PluginHookSlot& slot);
+    static void releaseSlot(SlPlugin plugin, size_t index, bool detach);
+    static void releaseDeadSlots(SlPlugin plugin);
+    static void clearPluginPointersInRange(uintptr_t base, size_t size);
+
+    // One detour per slot, so each one knows which trampoline to call
+    template <SlPlugin P, size_t I> static void* slotGetPluginFunction(const char* functionName);
+    static void* dispatchGetPluginFunction(SlPlugin plugin, PFN_slGetPluginFunction original, const char* functionName,
+                                           void* caller);
+    static PFN_slGetPluginFunction slotDetour(SlPlugin plugin, size_t index);
+
     inline static sl::RenderAPI renderApi = sl::RenderAPI::eCount;
     inline static std::mutex setConstantsMutex {};
 
@@ -248,16 +312,14 @@ class StreamlineHooks
     static sl::Result hkslSetD3DDevice(void* d3dDevice);
 
     // DLSS
-    inline static PFN_slGetPluginFunction o_dlss_slGetPluginFunction = nullptr;
     inline static PFN_slOnPluginLoad o_dlss_slOnPluginLoad = nullptr;
     inline static decltype(&slDLSSGetOptimalSettings) o_slDLSSGetOptimalSettings = nullptr;
 
     static bool hkdlss_slOnPluginLoad(sl::param::IParameters* params, const char* loaderJSON, const char** pluginJSON);
     static sl::Result hkslDLSSGetOptimalSettings(const sl::DLSSOptions& options, sl::DLSSOptimalSettings& settings);
-    static void* hkdlss_slGetPluginFunction(const char* functionName);
+    static void* hkdlss_slGetPluginFunction(PFN_slGetPluginFunction original, const char* functionName, void* caller);
 
     // DLSSG
-    inline static PFN_slGetPluginFunction o_dlssg_slGetPluginFunction = nullptr;
     inline static PFN_slOnPluginLoad o_dlssg_slOnPluginLoad = nullptr;
     inline static PFN_slGetPluginJSONConfig_sl1 o_dlssg_slGetPluginJSONConfig_sl1 = nullptr;
     inline static decltype(&slDLSSGSetOptions) o_slDLSSGSetOptions = nullptr;
@@ -271,20 +333,19 @@ class StreamlineHooks
     static sl::Result hkslDLSSGSetOptions(const sl::ViewportHandle& viewport, const sl::DLSSGOptions& options);
     static sl::Result hkslDLSSGGetState(const sl::ViewportHandle& viewport, sl::DLSSGState& state,
                                         const sl::DLSSGOptions* options);
-    static void* hkdlssg_slGetPluginFunction(const char* functionName);
+    static void* hkdlssg_slGetPluginFunction(PFN_slGetPluginFunction original, const char* functionName, void* caller);
     static const char* hkdlssg_slGetPluginJSONConfig_sl1();
 
     // Local DLSSG
-    inline static PFN_slGetPluginFunction o_local_dlssg_slGetPluginFunction = nullptr;
     inline static PFN_slOnPluginLoad o_local_dlssg_slOnPluginLoad = nullptr;
 
     static bool hklocal_dlssg_slOnPluginLoad(sl::param::IParameters* params, const char* loaderJSON,
                                              const char** pluginJSON);
-    static void* hklocal_dlssg_slGetPluginFunction(const char* functionName);
+    static void* hklocal_dlssg_slGetPluginFunction(PFN_slGetPluginFunction original, const char* functionName,
+                                                   void* caller);
 
     // Reflex
     inline static sl::ReflexMode reflexGamesLastMode = sl::ReflexMode::eOff;
-    inline static PFN_slGetPluginFunction o_reflex_slGetPluginFunction = nullptr;
     inline static PFN_slSetConstants_sl1 o_reflex_slSetConstants_sl1 = nullptr;
     inline static PFN_slOnPluginLoad o_reflex_slOnPluginLoad = nullptr;
     inline static decltype(&slReflexSetOptions) o_slReflexSetOptions = nullptr;
@@ -295,26 +356,24 @@ class StreamlineHooks
     static sl::Result hkslReflexSetOptions(const sl::ReflexOptions& options);
     static sl::Result hkslReflexSleep(const sl::FrameToken& frame);
     static bool hkreflex_slSetConstants_sl1(const void* data, uint32_t frameIndex, uint32_t id);
-    static void* hkreflex_slGetPluginFunction(const char* functionName);
+    static void* hkreflex_slGetPluginFunction(PFN_slGetPluginFunction original, const char* functionName, void* caller);
 
     // PCL
-    inline static PFN_slGetPluginFunction o_pcl_slGetPluginFunction = nullptr;
     inline static PFN_slOnPluginLoad o_pcl_slOnPluginLoad = nullptr;
     inline static decltype(&slPCLSetMarker) o_slPCLSetMarker = nullptr;
 
     static bool hkpcl_slOnPluginLoad(sl::param::IParameters* params, const char* loaderJSON, const char** pluginJSON);
-    static void* hkpcl_slGetPluginFunction(const char* functionName);
+    static void* hkpcl_slGetPluginFunction(PFN_slGetPluginFunction original, const char* functionName, void* caller);
     static sl::Result hkslPCLSetMarker(sl::PCLMarker marker, const sl::FrameToken& frame);
 
     // Common
-    inline static PFN_slGetPluginFunction o_common_slGetPluginFunction = nullptr;
     inline static PFN_slOnPluginLoad o_common_slOnPluginLoad = nullptr;
     inline static PFN_slSetParameters_sl1 o_common_slSetParameters_sl1 = nullptr;
     inline static PFN_setVoid o_setVoid = nullptr;
 
     static bool hkcommon_slOnPluginLoad(sl::param::IParameters* params, const char* loaderJSON,
                                         const char** pluginJSON);
-    static void* hkcommon_slGetPluginFunction(const char* functionName);
+    static void* hkcommon_slGetPluginFunction(PFN_slGetPluginFunction original, const char* functionName, void* caller);
     static void hkcommon_slSetParameters_sl1(void* params);
     static bool hk_setVoid(void* self, const char* key, void** value);
 
@@ -337,21 +396,16 @@ class StreamlineHooks
     VALIDATE_MEMBER_HOOK(hkslSetD3DDevice, decltype(&slSetD3DDevice))
     VALIDATE_MEMBER_HOOK(hkdlss_slOnPluginLoad, PFN_slOnPluginLoad)
     VALIDATE_MEMBER_HOOK(hkslDLSSGetOptimalSettings, decltype(&slDLSSGetOptimalSettings))
-    VALIDATE_MEMBER_HOOK(hkdlss_slGetPluginFunction, PFN_slGetPluginFunction)
     VALIDATE_MEMBER_HOOK(hkdlssg_slOnPluginLoad, PFN_slOnPluginLoad)
     VALIDATE_MEMBER_HOOK(hkslSetConstants, decltype(&slSetConstants))
     VALIDATE_MEMBER_HOOK(hkslDLSSGSetOptions, decltype(&slDLSSGSetOptions))
     VALIDATE_MEMBER_HOOK(hkslDLSSGGetState, decltype(&slDLSSGGetState))
-    VALIDATE_MEMBER_HOOK(hkdlssg_slGetPluginFunction, PFN_slGetPluginFunction)
     VALIDATE_MEMBER_HOOK(hkreflex_slOnPluginLoad, PFN_slOnPluginLoad)
     VALIDATE_MEMBER_HOOK(hkslReflexSetOptions, decltype(&slReflexSetOptions))
     VALIDATE_MEMBER_HOOK(hkreflex_slSetConstants_sl1, PFN_slSetConstants_sl1)
-    VALIDATE_MEMBER_HOOK(hkreflex_slGetPluginFunction, PFN_slGetPluginFunction)
     VALIDATE_MEMBER_HOOK(hkpcl_slOnPluginLoad, PFN_slOnPluginLoad)
-    VALIDATE_MEMBER_HOOK(hkpcl_slGetPluginFunction, PFN_slGetPluginFunction)
     VALIDATE_MEMBER_HOOK(hkslPCLSetMarker, decltype(&slPCLSetMarker))
     VALIDATE_MEMBER_HOOK(hkcommon_slOnPluginLoad, PFN_slOnPluginLoad)
-    VALIDATE_MEMBER_HOOK(hkcommon_slGetPluginFunction, PFN_slGetPluginFunction)
     VALIDATE_MEMBER_HOOK(hkcommon_slSetParameters_sl1, PFN_slSetParameters_sl1)
     VALIDATE_MEMBER_HOOK(hk_setVoid, PFN_setVoid)
 };

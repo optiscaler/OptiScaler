@@ -715,6 +715,16 @@ std::optional<NTSTATUS> LibraryLoadHooks::FreeLibrary(PVOID lpLibrary)
     return result;
 }
 
+void LibraryLoadHooks::AfterFreeLibrary(PVOID lpLibrary)
+{
+    if (lpLibrary == nullptr || State::Instance().isShuttingDown)
+        return;
+
+    // Streamline may unload a plugin copy it rejected (e.g. denylisted OTA plugin) while it keeps using
+    // another copy of the same plugin. Hooks of copies that are really gone get dropped here.
+    StreamlineHooks::onModuleFreed(lpLibrary);
+}
+
 HMODULE LibraryLoadHooks::LoadNvApi()
 {
     LOG_FUNC();

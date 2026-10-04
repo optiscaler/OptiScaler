@@ -12,6 +12,9 @@ class LibraryLoadHooks
     static HMODULE LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibFullPath);
     static std::optional<NTSTATUS> FreeLibrary(PVOID library);
 
+    // Call after the original FreeLibrary / LdrUnloadDll returned
+    static void AfterFreeLibrary(PVOID library);
+
     static HMODULE LoadNvApi();
     // static HMODULE LoadFfxapiVk(std::wstring originalPath);
     // static HMODULE LoadFfxapiDx12(std::wstring originalPath);
