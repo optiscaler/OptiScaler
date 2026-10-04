@@ -142,6 +142,17 @@ NvAPI_Status __stdcall NvApiHooks::hkNvAPI_DRS_GetSetting(NvDRSSessionHandle hSe
             }
         }
 
+        // We just crash when OTA is applied to our DLSSG output
+        // We set that we don't want OTA in slInit
+        // But nvidia just has a config to override us
+        if (settingId == 0x10e41e06)
+        {
+            if (State::Instance().activeFgOutput == FGOutput::DLSSG)
+            {
+                pSetting->u32CurrentValue = 0;
+            }
+        }
+
         if (settingId == NGX_DLSS_SR_OVERRIDE_RENDER_PRESET_SELECTION_ID)
         {
             State::Instance().dlssRenderPresetExternal = pSetting->u32CurrentValue;

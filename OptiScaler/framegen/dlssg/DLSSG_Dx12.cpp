@@ -83,6 +83,7 @@ bool DLSSG_Dx12::CreateSwapchainInternal(IDXGIFactory* factory, ID3D12CommandQue
     sl::DLSSGOptions dlssgOptions {};
     if (StreamlineProxy::DLSSGGetState()(viewport, dlssgState, &dlssgOptions) == sl::Result::eOk)
     {
+        State::Instance().dlssgMfgMax = dlssgState.numFramesToGenerateMax;
         _maxInterpolationCount = dlssgState.numFramesToGenerateMax;
         LOG_INFO("Max supported interpolations: {}", dlssgState.numFramesToGenerateMax);
 
@@ -155,6 +156,7 @@ bool DLSSG_Dx12::CreateSwapchain1Internal(IDXGIFactory* factory, ID3D12CommandQu
     sl::DLSSGOptions dlssgOptions {};
     if (StreamlineProxy::DLSSGGetState()(viewport, dlssgState, &dlssgOptions) == sl::Result::eOk)
     {
+        State::Instance().dlssgMfgMax = dlssgState.numFramesToGenerateMax;
         _maxInterpolationCount = dlssgState.numFramesToGenerateMax;
         LOG_INFO("Max supported interpolations: {}", dlssgState.numFramesToGenerateMax);
 

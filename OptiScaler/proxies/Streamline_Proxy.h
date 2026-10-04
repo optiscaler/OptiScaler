@@ -70,8 +70,7 @@ class StreamlineProxy
             return true;
 
         auto owner = State::GetOwner();
-        if (State::Instance().activeFgOutput == FGOutput::DLSSG &&
-            State::Instance().activeFgNvngx != FGNvngxReplacement::None)
+        if (State::Instance().activeFgOutput == FGOutput::DLSSG)
         {
             State::DisableChecks(owner, "sl.");
         }
@@ -392,8 +391,7 @@ class StreamlineProxy
         pref.numPathsToPlugins = (uint32_t) paths.size();
 
         auto owner = State::GetOwner();
-        if (State::Instance().activeFgOutput == FGOutput::DLSSG &&
-            State::Instance().activeFgNvngx != FGNvngxReplacement::None)
+        if (State::Instance().activeFgOutput == FGOutput::DLSSG)
         {
             State::DisableChecks(owner, "sl.");
         }
