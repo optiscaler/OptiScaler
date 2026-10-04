@@ -373,13 +373,15 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Shutdown(void)
 
     D3D12Device = nullptr;
 
-    const auto feature = State::Instance().currentFeature;
-    const bool usesDx12Dlss = feature->GetUpscalerType() == Upscaler::DLSS && feature->Api() == API::DX12;
-
-    if (usesDx12Dlss)
+    if (const auto feature = State::Instance().currentFeature)
     {
-        const auto dlssFeature = dynamic_cast<DLSSFeatureDx12*>(feature);
-        dlssFeature->Shutdown(D3D12Device);
+        const bool usesDx12Dlss = feature->GetUpscalerType() == Upscaler::DLSS && feature->Api() == API::DX12;
+
+        if (usesDx12Dlss)
+        {
+            const auto dlssFeature = dynamic_cast<DLSSFeatureDx12*>(feature);
+            dlssFeature->Shutdown(D3D12Device);
+        }
     }
 
     State::Instance().currentFeature = nullptr;
