@@ -363,6 +363,21 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
     backendDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_DX12;
     backendDesc.device = InOurHandle->device;
 
+    auto backbufferFormatFfx = ffxApiGetSurfaceFormatDX12(backbuffer->GetDesc().Format);
+    uint32_t hudlessFormatFfx = 0;
+    static auto expectedHudlessFormatFfx = backbufferFormatFfx;
+    if (hudless)
+    {
+        hudlessFormatFfx = ffxApiGetSurfaceFormatDX12(hudless->GetDesc().Format);
+    }
+
+    if (expectedHudlessFormatFfx != hudlessFormatFfx)
+    {
+        State::Instance().fgChanged = true;
+        expectedHudlessFormatFfx = hudlessFormatFfx;
+        LOG_DEBUG("Hudless format different than expected, reiniting to adjust");
+    }
+
     const bool outputMismatch = outputFfx.description.width != InOurHandle->swapchainWidth ||
                                 outputFfx.description.height != InOurHandle->swapchainHeight;
 
@@ -448,7 +463,15 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
         createFg.backBufferFormat = ffxApiGetSurfaceFormatDX12(backbuffer->GetDesc().Format);
         createFg.header.pNext = &backendDesc.header;
 
-        // TODO: add code for hudless with different formats
+        if (hudlessFormatFfx != 0 && backbufferFormatFfx != hudlessFormatFfx)
+        {
+            ffxCreateContextDescFrameGenerationHudless hudlessFormat {};
+            hudlessFormat.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION_HUDLESS;
+            hudlessFormat.hudlessBackBufferFormat = hudlessFormatFfx;
+
+            hudlessFormat.header.pNext = createFg.header.pNext;
+            createFg.header.pNext = &hudlessFormat.header;
+        }
 
         {
             // Currently 0 is non-ML FG and 1 is ML FG
