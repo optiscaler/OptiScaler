@@ -15,6 +15,7 @@
 #include <misc/IdentifyGpu.h>
 
 #include "Hook_Utils.h"
+#include <proxies/XeLL_Proxy.h>
 
 #include "Amdxc64_Hooks.h"
 #pragma intrinsic(_ReturnAddress)
@@ -194,8 +195,16 @@ BOOL WINAPI KernelHooks::hk_K32_GetModuleHandleExA(DWORD dwFlags, LPCSTR lpModul
 {
     if (lpModuleName && dwFlags == 0 && strcmp("libxell.dll", lpModuleName) == 0 && phModule)
     {
+#ifdef LOW_LATENCY_INPUTS
         *phModule = dllModule;
         return true;
+#else
+        if (const auto module = XeLLProxy::Module())
+        {
+            return o_K32_GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, reinterpret_cast<LPCSTR>(module),
+                                            phModule);
+        }
+#endif
     }
 
     return o_K32_GetModuleHandleExA(dwFlags, lpModuleName, phModule);

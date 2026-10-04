@@ -179,13 +179,6 @@ class XeLLProxy
 
             if (mainModule != nullptr)
             {
-                // We don't control which XeLL dll XeFG will pick
-                // Detouring GetModuleHandleExA seemingly isn't enough
-#ifndef LOW_LATENCY_INPUTS
-                if (_memoryDll && mainModule != _memoryDll)
-                    RedirectAllExports(_memoryDll, mainModule);
-#endif
-
                 break;
             }
         }
