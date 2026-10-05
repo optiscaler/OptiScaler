@@ -7,6 +7,7 @@
 #include "resource.h"
 #include "DllNames.h"
 #include "BuildInfo.h"
+#include "misc/GameConfigs.h"
 
 #include "proxies/Dxgi_Proxy.h"
 #include "proxies/Kernel32_Proxy.h"
@@ -1185,62 +1186,11 @@ static void printQuirks(flag_set<GameQuirk>& quirks)
     if (quirks & GameQuirk::ForceUnrealEngine)
         stringQuirks.push_back("Force detected engine as Unreal Engine");
 
-    if (quirks & GameQuirk::DisableHudfix)
-        stringQuirks.push_back("Disabling Hudfix due to known issues");
-
-    if (quirks & GameQuirk::ForceAutoExposure)
-        stringQuirks.push_back("Enabling AutoExposure");
-
-    if (quirks & GameQuirk::DisableFFXInputs)
-        stringQuirks.push_back("Disable FFX Inputs");
-
-    if (quirks & GameQuirk::DisableFSR3Inputs)
-        stringQuirks.push_back("Disable FSR 3.0 Inputs");
-
-    if (quirks & GameQuirk::DisableFSR2Inputs)
-        stringQuirks.push_back("Disable FSR 2.X Inputs");
-
-    if (quirks & GameQuirk::DisableReactiveMasks)
-        stringQuirks.push_back("Disable Reactive Masks");
-
-    if (quirks & GameQuirk::RestoreComputeSigOnNonNvidia)
-        stringQuirks.push_back("Enabling restore compute signature on AMD/Intel");
-
-    if (quirks & GameQuirk::RestoreComputeSigOnNvidia)
-        stringQuirks.push_back("Enabling restore compute signature on Nvidia");
-
-    if (quirks & GameQuirk::ExtendedSigRestore)
-        stringQuirks.push_back("Extended signatures restore");
-
-    if (quirks & GameQuirk::DisableDxgiSpoofing)
-        stringQuirks.push_back("Dxgi spoofing disabled by default");
-
-    if (quirks & GameQuirk::DisableUseFsrInputValues)
-        stringQuirks.push_back("Disable Use FSR Input Values");
-
-    if (quirks & GameQuirk::DisableOptiXessPipelineCreation)
-        stringQuirks.push_back("Disable custom pipeline creation for XeSS");
-
-    if (quirks & GameQuirk::DontUseNTShared)
-        stringQuirks.push_back("Don't use NTShared enabled");
-
-    if (quirks & GameQuirk::DontUseUnrealColorBarriers)
-        stringQuirks.push_back("Don't use color resource barrier fix for Unreal Engine games");
-
-    if (quirks & GameQuirk::DontUseUnrealMVBarriers)
-        stringQuirks.push_back("Don't use motion vector resource barrier fix for Unreal Engine games");
-
-    if (quirks & GameQuirk::SkipFirst10Frames)
-        stringQuirks.push_back("Skipping upscaling for first 10 frames");
-
     if (quirks & GameQuirk::NoFSRFGFirstSwapchain)
         stringQuirks.push_back("Skip turning the first swapchain created into an FSR swapchain");
 
     if (quirks & GameQuirk::FixSlSimulationMarkers)
         stringQuirks.push_back("Correct simulation start marker's frame id");
-
-    if (quirks & GameQuirk::DisableVsyncOverride)
-        stringQuirks.push_back("Don't use V-Sync overrides");
 
     if (quirks & GameQuirk::HitmanReflexHacks)
         stringQuirks.push_back("Hack for broken Hitman reflex");
@@ -1248,59 +1198,17 @@ static void printQuirks(flag_set<GameQuirk>& quirks)
     if (quirks & GameQuirk::SkipD3D11FeatureLevelElevation)
         stringQuirks.push_back("Skipping D3D11 feature level elevation, native FSR3.1 will be disabled!");
 
-    if (quirks & GameQuirk::DontUseNtDllHooks)
-        stringQuirks.push_back("Using kernel hooks instead of NTdll ones");
-
-    if (quirks & GameQuirk::UseFSR2PatternMatching)
-        stringQuirks.push_back("Use FSR2 pattern matching");
-
-    if (quirks & GameQuirk::AlwaysCaptureFSRFGSwapchain)
-        stringQuirks.push_back("Always capture FSR-FG swapchain");
-
-    if (quirks & GameQuirk::AllowedFrameAhead2)
-        stringQuirks.push_back("Allowed Frame Ahead: 2");
-
-    if (quirks & GameQuirk::DisableXeFGChecks)
-        stringQuirks.push_back("Skip pre init checks for XeFG");
-
     if (quirks & GameQuirk::CreateD3D12DeviceForLuma)
         stringQuirks.push_back("Create D3D12 device for Luma before loading Reshade");
 
     if (quirks & GameQuirk::LoadVulkanManually)
         stringQuirks.push_back("Load vulkan-1.dll");
 
-    if (quirks & GameQuirk::UseFsr2Dx11Inputs)
-        stringQuirks.push_back("Use FSR2 DX11 inputs");
-
-    if (quirks & GameQuirk::UseFsr2VulkanInputs)
-        stringQuirks.push_back("Use FSR2 Vulkan inputs");
-
-    if (quirks & GameQuirk::ForceBorderlessWhenUsingXeFG)
-        stringQuirks.push_back("Force Borderless when using XeFG");
-
-    if (quirks & GameQuirk::OverrideVsyncWhenUsingXeFG)
-        stringQuirks.push_back("Override Vsync when using XeFG");
-
     if (quirks & GameQuirk::ForceCreateD3D12Device)
         stringQuirks.push_back("Force create D3D12 device for w/Dx12");
 
-    if (quirks & GameQuirk::DisableResizeSkip)
-        stringQuirks.push_back("Disable Resize Skip");
-
-    if (quirks & GameQuirk::SpoofRegistry)
-        stringQuirks.push_back("Spoof Registry");
-
-    if (quirks & GameQuirk::DisableFakenvapi)
-        stringQuirks.push_back("Disable fakenvapi");
-
     if (quirks & GameQuirk::ForceDepthD32S8)
         stringQuirks.push_back("Force depth as D32S8");
-
-    if (quirks & GameQuirk::DoNotPreserveFGSwapChain)
-        stringQuirks.push_back("Don't Preserve FG Swapchain");
-
-    if (quirks & GameQuirk::OldOverlayMenu)
-        stringQuirks.push_back("Using old overlay (draws on upscaled image)");
 
     if (quirks & GameQuirk::PregmataFixDLSSModes)
         stringQuirks.push_back("Fix DLSS quality selection in Pragmata");
@@ -1316,9 +1224,6 @@ static void printQuirks(flag_set<GameQuirk>& quirks)
 
     if (quirks & GameQuirk::CreateSLOnThe2ndDevice)
         stringQuirks.push_back("Create SL on the 2nd device");
-
-    if (quirks & GameQuirk::DisableOTA)
-        stringQuirks.push_back("Disable Streamline OTA");
 
     state->detectedQuirks.append_range(stringQuirks);
     for (auto& stringQuirk : stringQuirks)
@@ -1350,226 +1255,10 @@ static void CheckQuirks(bool isNvidia)
     }
 #endif
 
-    auto quirks = getQuirksForExe(State::Instance().gameExe);
+    GameConfigContext context;
+    context.isNvidia = isNvidia;
 
-    auto state = &State::Instance();
-
-    // Apply config-level quirks
-    if (quirks & GameQuirk::DisableHudfix && !Config::Instance()->FGDisableHUDFix.has_value() &&
-        Config::Instance()->FGInput.value_or_default() == FGInput::Upscaler)
-        Config::Instance()->FGDisableHUDFix.set_volatile_value(true);
-    else
-        quirks.reset(GameQuirk::DisableHudfix);
-
-    if (quirks & GameQuirk::DisableFSR3Inputs && !Config::Instance()->EnableFsr3Inputs.has_value())
-        Config::Instance()->EnableFsr3Inputs.set_volatile_value(false);
-    else
-        quirks.reset(GameQuirk::DisableFSR3Inputs);
-
-    if (quirks & GameQuirk::DisableFSR2Inputs && !Config::Instance()->EnableFsr2Inputs.has_value())
-        Config::Instance()->EnableFsr2Inputs.set_volatile_value(false);
-    else
-        quirks.reset(GameQuirk::DisableFSR3Inputs);
-
-    if (quirks & GameQuirk::DisableFFXInputs && !Config::Instance()->EnableFfxInputs.has_value())
-        Config::Instance()->EnableFfxInputs.set_volatile_value(false);
-    else
-        quirks.reset(GameQuirk::DisableFFXInputs);
-
-    if (quirks & GameQuirk::DisableDxgiSpoofing && !Config::Instance()->DxgiSpoofing.has_value())
-        Config::Instance()->DxgiSpoofing.set_volatile_value(false);
-    else
-        quirks.reset(GameQuirk::DisableDxgiSpoofing);
-
-    if (quirks & GameQuirk::RestoreComputeSigOnNonNvidia && !isNvidia &&
-        !Config::Instance()->RestoreComputeSignature.has_value())
-    {
-        Config::Instance()->RestoreComputeSignature.set_volatile_value(true);
-    }
-    else
-        quirks.reset(GameQuirk::RestoreComputeSigOnNonNvidia);
-
-    if (quirks & GameQuirk::RestoreComputeSigOnNvidia && isNvidia &&
-        !Config::Instance()->RestoreComputeSignature.has_value())
-    {
-        Config::Instance()->RestoreComputeSignature.set_volatile_value(true);
-    }
-    else
-        quirks.reset(GameQuirk::RestoreComputeSigOnNvidia);
-
-    if (quirks & GameQuirk::ExtendedSigRestore && !Config::Instance()->ExtendedStateRestore.has_value())
-    {
-        Config::Instance()->ExtendedStateRestore.set_volatile_value(true);
-    }
-    else
-        quirks.reset(GameQuirk::ExtendedSigRestore);
-
-    if (quirks & GameQuirk::DisableReactiveMasks)
-        Config::Instance()->DisableReactiveMask.set_volatile_value(true);
-    else
-        quirks.reset(GameQuirk::DisableReactiveMasks);
-
-    if (quirks & GameQuirk::ForceAutoExposure)
-        Config::Instance()->AutoExposure.set_volatile_value(true);
-    else
-        quirks.reset(GameQuirk::ForceAutoExposure);
-
-    if (quirks & GameQuirk::DisableUseFsrInputValues)
-        Config::Instance()->FsrUseFsrInputValues.set_volatile_value(false);
-    else
-        quirks.reset(GameQuirk::DisableUseFsrInputValues);
-
-    if (quirks & GameQuirk::EnableVulkanSpoofing && !isNvidia && !Config::Instance()->VulkanSpoofing.has_value())
-    {
-        Config::Instance()->VulkanSpoofing.set_volatile_value(true);
-    }
-    else
-        quirks.reset(GameQuirk::EnableVulkanSpoofing);
-
-    if (quirks & GameQuirk::EnableVulkanExtensionSpoofing && !isNvidia &&
-        !Config::Instance()->VulkanExtensionSpoofing.has_value())
-    {
-        Config::Instance()->VulkanExtensionSpoofing.set_volatile_value(true);
-    }
-    else
-        quirks.reset(GameQuirk::EnableVulkanExtensionSpoofing);
-
-    if (quirks & GameQuirk::DisableOptiXessPipelineCreation && !Config::Instance()->CreateHeaps.has_value() &&
-        !Config::Instance()->BuildPipelines.has_value())
-    {
-        Config::Instance()->CreateHeaps.set_volatile_value(false);
-        Config::Instance()->BuildPipelines.set_volatile_value(false);
-    }
-    else
-        quirks.reset(GameQuirk::DisableOptiXessPipelineCreation);
-
-    if (quirks & GameQuirk::DontUseNTShared && !Config::Instance()->DontUseNTShared.has_value())
-        Config::Instance()->DontUseNTShared.set_volatile_value(true);
-    else
-        quirks.reset(GameQuirk::DontUseNTShared);
-
-    if (quirks & GameQuirk::DontUseUnrealColorBarriers && !Config::Instance()->ColorResourceBarrier.has_value())
-        Config::Instance()->ColorResourceBarrier.set_volatile_value(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    else
-        quirks.reset(GameQuirk::DontUseUnrealColorBarriers);
-
-    if (quirks & GameQuirk::DontUseUnrealMVBarriers && !Config::Instance()->MVResourceBarrier.has_value())
-        Config::Instance()->MVResourceBarrier.set_volatile_value(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    else
-        quirks.reset(GameQuirk::DontUseUnrealMVBarriers);
-
-    if (quirks & GameQuirk::SkipFirst10Frames && !Config::Instance()->SkipFirstFrames.has_value())
-        Config::Instance()->SkipFirstFrames.set_volatile_value(10);
-    else
-        quirks.reset(GameQuirk::SkipFirst10Frames);
-
-    if (quirks & GameQuirk::DisableVsyncOverride && !Config::Instance()->OverrideVsync.has_value())
-        Config::Instance()->OverrideVsync.set_volatile_value(false);
-    else
-        quirks.reset(GameQuirk::DisableVsyncOverride);
-
-    if (quirks & GameQuirk::DontUseNtDllHooks && !Config::Instance()->UseNtdllHooks.has_value())
-        Config::Instance()->UseNtdllHooks.set_volatile_value(false);
-    else
-        quirks.reset(GameQuirk::DontUseNtDllHooks);
-
-    if (quirks & GameQuirk::UseFSR2PatternMatching && !Config::Instance()->Fsr2Pattern.has_value())
-        Config::Instance()->Fsr2Pattern.set_volatile_value(true);
-    else
-        quirks.reset(GameQuirk::UseFSR2PatternMatching);
-
-    if (quirks & GameQuirk::AlwaysCaptureFSRFGSwapchain &&
-        !Config::Instance()->FGAlwaysCaptureFSRFGSwapchain.has_value())
-    {
-        Config::Instance()->FGAlwaysCaptureFSRFGSwapchain.set_volatile_value(true);
-    }
-    else
-        quirks.reset(GameQuirk::AlwaysCaptureFSRFGSwapchain);
-
-    if (quirks & GameQuirk::AllowedFrameAhead2 && !Config::Instance()->FGAllowedFrameAhead.has_value())
-        Config::Instance()->FGAllowedFrameAhead.set_volatile_value(2);
-    else
-        quirks.reset(GameQuirk::AllowedFrameAhead2);
-
-    if (quirks & GameQuirk::DisableXeFGChecks && !Config::Instance()->FGXeFGIgnoreInitChecks.has_value())
-        Config::Instance()->FGXeFGIgnoreInitChecks.set_volatile_value(true);
-    else
-        quirks.reset(GameQuirk::DisableXeFGChecks);
-
-    if (quirks & GameQuirk::UseFsr2Dx11Inputs && !Config::Instance()->UseFsr2Dx11Inputs.has_value())
-        Config::Instance()->UseFsr2Dx11Inputs.set_volatile_value(true);
-    else
-        quirks.reset(GameQuirk::UseFsr2Dx11Inputs);
-
-    if (quirks & GameQuirk::UseFsr2VulkanInputs && !Config::Instance()->UseFsr2VulkanInputs.has_value())
-        Config::Instance()->UseFsr2VulkanInputs.set_volatile_value(true);
-    else
-        quirks.reset(GameQuirk::UseFsr2VulkanInputs);
-
-    if (quirks & GameQuirk::ForceBorderlessWhenUsingXeFG && !Config::Instance()->FGXeFGForceBorderless.has_value() &&
-        State::Instance().activeFgOutput == FGOutput::XeFG && State::Instance().activeFgInput != FGInput::NoFG &&
-        State::Instance().activeFgInput != FGInput::NvngxFG)
-    {
-        Config::Instance()->FGXeFGForceBorderless.set_volatile_value(true);
-    }
-    else
-        quirks.reset(GameQuirk::ForceBorderlessWhenUsingXeFG);
-
-    if (quirks & GameQuirk::OverrideVsyncWhenUsingXeFG && !Config::Instance()->OverrideVsync.has_value() &&
-        State::Instance().activeFgOutput == FGOutput::XeFG && State::Instance().activeFgInput != FGInput::NoFG &&
-        State::Instance().activeFgInput != FGInput::NvngxFG)
-    {
-        Config::Instance()->OverrideVsync.set_volatile_value(true);
-    }
-    else
-        quirks.reset(GameQuirk::OverrideVsyncWhenUsingXeFG);
-
-    if (quirks & GameQuirk::DisableResizeSkip && !Config::Instance()->FGSkipResizeBuffers.has_value())
-    {
-        Config::Instance()->FGSkipResizeBuffers.set_volatile_value(false);
-    }
-    else
-        quirks.reset(GameQuirk::DisableResizeSkip);
-
-    if (quirks & GameQuirk::SpoofRegistry && !Config::Instance()->SpoofRegistry.has_value())
-    {
-        Config::Instance()->SpoofRegistry.set_volatile_value(true);
-    }
-    else
-        quirks.reset(GameQuirk::SpoofRegistry);
-
-    if (quirks & GameQuirk::DisableFakenvapi && !Config::Instance()->UseFakenvapi.has_value())
-    {
-        Config::Instance()->UseFakenvapi.set_volatile_value(false);
-    }
-    else
-        quirks.reset(GameQuirk::DisableFakenvapi);
-
-    if (quirks & GameQuirk::DoNotPreserveFGSwapChain && !Config::Instance()->FGPreserveSwapChain.has_value())
-    {
-        Config::Instance()->FGPreserveSwapChain.set_volatile_value(false);
-    }
-    else
-        quirks.reset(GameQuirk::DoNotPreserveFGSwapChain);
-
-    if (quirks & GameQuirk::OldOverlayMenu && !Config::Instance()->OverlayMenu.has_value())
-    {
-        Config::Instance()->OverlayMenu.set_volatile_value(false);
-    }
-    else
-        quirks.reset(GameQuirk::OldOverlayMenu);
-
-    if (quirks & GameQuirk::DoNotLoadAmdxc64 && !Config::Instance()->Fsr4DoNotLoadAmdxc64.has_value())
-    {
-        Config::Instance()->Fsr4DoNotLoadAmdxc64.set_volatile_value(true);
-    }
-    else
-        quirks.reset(GameQuirk::DoNotLoadAmdxc64);
-
-    if (quirks & GameQuirk::DisableOTA && !Config::Instance()->DisableOTA.has_value())
-        Config::Instance()->DisableOTA.set_volatile_value(true);
-    else
-        quirks.reset(GameQuirk::DisableOTA);
+    auto quirks = ApplyGameConfigs(State::Instance().gameExe, context);
 
     // For Luma, we assume if Luma addon in game folder it's used
     const auto dir = Util::ExePath().parent_path();

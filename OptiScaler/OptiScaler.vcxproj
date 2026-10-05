@@ -386,6 +386,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="shaders\reproject\Reproject_Dx12.h" />
     <ClInclude Include="shaders\Shader_Common.h" />
     <ClInclude Include="misc\SkipSpoof.h" />
+    <ClInclude Include="misc\GameConfigs.h" />
     <ClInclude Include="shaders\Shader_Dx11.h" />
     <ClInclude Include="spoofing\User32_Spoofing.h" />
     <ClInclude Include="hooks\VulkanwDx12_Hooks.h" />
@@ -697,6 +698,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="shaders\Shader_Dx12.cpp" />
     <ClCompile Include="shaders\Shader_Vk.cpp" />
     <ClCompile Include="misc\SkipSpoof.cpp" />
+    <ClCompile Include="misc\GameConfigs.cpp" />
     <ClCompile Include="shaders\Shader_Dx11.cpp" />
     <ClCompile Include="spoofing\Dxgi_Spoofing.cpp" />
     <ClCompile Include="spoofing\User32_Spoofing.cpp" />
