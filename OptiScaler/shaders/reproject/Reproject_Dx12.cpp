@@ -4,6 +4,8 @@
 #include "Reproject_Dx12.h"
 #include "Reproject_Common.h"
 #include "precompile/reproject_Shader.h"
+#include "precompile/reproject_mask_h_Shader.h"
+#include "precompile/reproject_mask_v_Shader.h"
 
 #include <numbers>
 #include "mouseInputs/RawInputHook.h"
@@ -220,6 +222,38 @@ void Reproject_Dx12::ResourceBarrier(ID3D12GraphicsCommandList* cmdList, ID3D12R
     cmdList->ResourceBarrier(1, &barrier);
 }
 
+bool Reproject_Dx12::CreateMaskResource(ID3D12Resource** resource, uint32_t width, uint32_t height, const wchar_t* name)
+{
+    if (*resource != nullptr)
+    {
+        auto desc = (*resource)->GetDesc();
+
+        if (desc.Width == width && desc.Height == height)
+            return true;
+
+        LOG_WARN("[{0}] Release {1}x{2}, new one: {3}x{4}", _name, desc.Width, desc.Height, width, height);
+        (*resource)->Release();
+        (*resource) = nullptr;
+    }
+
+    auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+    auto desc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8_UNORM, width, height, 1, 1, 1, 0,
+                                             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+
+    auto result =
+        _device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                                         nullptr, IID_PPV_ARGS(resource));
+
+    if (result != S_OK)
+    {
+        LOG_ERROR("[{0}] CreateCommittedResource error {1:x}", _name, (unsigned int) result);
+        return false;
+    }
+
+    (*resource)->SetName(name);
+    return true;
+}
+
 Reproject_Dx12::Reproject_Dx12(std::string InName, ID3D12Device* InDevice) : Shader_Dx12(InName, InDevice)
 {
     if (InDevice == nullptr)
@@ -235,7 +269,9 @@ Reproject_Dx12::Reproject_Dx12(std::string InName, ID3D12Device* InDevice) : Sha
     sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     sampler.AddressU = sampler.AddressV = sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
 
-    if (!SetupRootSignature(InDevice, 4, 1, 1, 0, 0, 1, &sampler))
+    // SRV: Hudless, PresentCopy, Depth, FakePresent, DepthMask, DepthMaskTemp
+    // UAV: Present, DepthMaskTemp, DepthMask
+    if (!SetupRootSignature(InDevice, 6, 3, 1, 0, 0, 1, &sampler))
     {
         LOG_ERROR("Failed to setup root signature");
         return;
@@ -257,6 +293,20 @@ Reproject_Dx12::Reproject_Dx12(std::string InName, ID3D12Device* InDevice) : Sha
     if (!CreateComputePipeline(InDevice, &_pipelineState, reproject_cso, sizeof(reproject_cso), shaderCode.c_str()))
     {
         LOG_ERROR("[{0}] Failed to create compute pipeline", _name);
+        return;
+    }
+
+    if (!CreateComputePipeline(InDevice, &_maskPipelineH, reproject_mask_h_cso, sizeof(reproject_mask_h_cso),
+                               maskHShaderCode.c_str()))
+    {
+        LOG_ERROR("[{0}] Failed to create mask H compute pipeline", _name);
+        return;
+    }
+
+    if (!CreateComputePipeline(InDevice, &_maskPipelineV, reproject_mask_v_cso, sizeof(reproject_mask_v_cso),
+                               maskVShaderCode.c_str()))
+    {
+        LOG_ERROR("[{0}] Failed to create mask V compute pipeline", _name);
         return;
     }
 
@@ -299,6 +349,20 @@ bool Reproject_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ReprojectionPa
         return result;
     }
 
+    // Not every caller provides depth size
+    if (params.DepthWidth == 0 || params.DepthHeight == 0)
+    {
+        auto depthDesc = depth->GetDesc();
+        params.DepthWidth = static_cast<uint32_t>(depthDesc.Width);
+        params.DepthHeight = depthDesc.Height;
+    }
+
+    if (!CreateMaskResource(&_depthMaskTemp, params.DepthWidth, params.DepthHeight, L"Reproject_DepthMaskTemp") ||
+        !CreateMaskResource(&_depthMask, params.DepthWidth, params.DepthHeight, L"Reproject_DepthMask"))
+    {
+        return false;
+    }
+
     ResourceBarrier(cmdList, currentBuffer, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
     ResourceBarrier(cmdList, realPresent, realPresentState, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
@@ -322,8 +386,12 @@ bool Reproject_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ReprojectionPa
     CreateShaderResourceView(_device, depth, currentHeap.GetSrvCPU(2));
     if (fakePresent)
         CreateShaderResourceView(_device, fakePresent, currentHeap.GetSrvCPU(3));
+    CreateShaderResourceView(_device, _depthMask, currentHeap.GetSrvCPU(4));
+    CreateShaderResourceView(_device, _depthMaskTemp, currentHeap.GetSrvCPU(5));
 
     CreateUnorderedAccessView(_device, currentBuffer, currentHeap.GetUavCPU(0), 0);
+    CreateUnorderedAccessView(_device, _depthMaskTemp, currentHeap.GetUavCPU(1), 0);
+    CreateUnorderedAccessView(_device, _depthMask, currentHeap.GetUavCPU(2), 0);
 
     if (!CreateConstantsBuffer(_device, _constantBuffer, params, currentHeap.GetCbvCPU(0)))
     {
@@ -335,9 +403,32 @@ bool Reproject_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ReprojectionPa
     cmdList->SetDescriptorHeaps(_countof(heaps), heaps);
 
     cmdList->SetComputeRootSignature(_rootSignature);
-    cmdList->SetPipelineState(_pipelineState);
-
     cmdList->SetComputeRootDescriptorTable(0, currentHeap.GetTableGPUStart());
+
+    // Depth mask prepass
+    UINT maskDispatchWidth = (params.DepthWidth + InNumThreadsX - 1) / InNumThreadsX;
+    UINT maskDispatchHeight = (params.DepthHeight + InNumThreadsY - 1) / InNumThreadsY;
+
+    // Writes straight to _depthMask when CutoffExpandPx == 0
+    cmdList->SetPipelineState(_maskPipelineH);
+    cmdList->Dispatch(maskDispatchWidth, maskDispatchHeight, 1);
+
+    if (params.CutoffExpandPx > 0)
+    {
+        ResourceBarrier(cmdList, _depthMaskTemp, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+        cmdList->SetPipelineState(_maskPipelineV);
+        cmdList->Dispatch(maskDispatchWidth, maskDispatchHeight, 1);
+
+        ResourceBarrier(cmdList, _depthMaskTemp, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                        D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    }
+
+    ResourceBarrier(cmdList, _depthMask, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+    cmdList->SetPipelineState(_pipelineState);
 
     UINT dispatchWidth = static_cast<UINT>((presentDesc.Width + InNumThreadsX - 1) / InNumThreadsX);
     UINT dispatchHeight = (presentDesc.Height + InNumThreadsY - 1) / InNumThreadsY;
@@ -350,6 +441,8 @@ bool Reproject_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ReprojectionPa
     ResourceBarrier(cmdList, hudless, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, hudlessState);
     ResourceBarrier(cmdList, depth, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, depthState);
     ResourceBarrier(cmdList, currentBuffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    ResourceBarrier(cmdList, _depthMask, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                    D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
     return true;
 }
@@ -406,6 +499,10 @@ Reproject_Dx12::~Reproject_Dx12()
 
     SAFE_RELEASE(_rootSignature);
     SAFE_RELEASE(_constantBuffer);
+    SAFE_RELEASE(_maskPipelineH);
+    SAFE_RELEASE(_maskPipelineV);
+    SAFE_RELEASE(_depthMaskTemp);
+    SAFE_RELEASE(_depthMask);
 
     for (int i = 0; i < Reproject_NUM_OF_HEAPS; i++)
     {

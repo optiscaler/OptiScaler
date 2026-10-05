@@ -33,6 +33,7 @@ Texture2D<float3> Hudless : register(t0);
 Texture2D<float3> PresentCopy : register(t1);
 Texture2D<float> Depth : register(t2);
 Texture2D<float3> FakePresent : register(t3);
+Texture2D<float> DepthMask : register(t4);
 
 RWTexture2D<float3> Present : register(u0);
 SamplerState LinearClampSampler : register(s0);
@@ -59,33 +60,11 @@ float HashNoise(uint2 p)
     return n * (1.0f / 4294967295.0f);
 }
 
-bool IsDepthCutoutExpanded(float2 uv, int radius)
+// Depth cutout mask is built by the reproject_mask_h/reproject_mask_v prepass (already expanded by CutoffExpandPx)
+bool IsDepthCutout(float2 uv)
 {
-    int2 basePixel = int2(uv * float2(DepthWidth - 1, DepthHeight - 1));
-    
-    if (radius == 0)
-    {
-        float d = Depth.Load(int3(basePixel, 0));
-        return InvertedDepth ? (d > DepthCutoff) : (d < DepthCutoff);
-    }
-
-    for (int y = -radius; y <= radius; ++y)
-    {
-        for (int x = -radius; x <= radius; ++x)
-        {
-            // Clamp coordinates to prevent reading outside the texture
-            int2 sampleCoord = clamp(basePixel + int2(x, y), int2(0, 0), int2(DepthWidth - 1, DepthHeight - 1));
-            
-            float d = Depth.Load(int3(sampleCoord, 0));
-            bool isCutout = InvertedDepth ? (d > DepthCutoff) : (d < DepthCutoff);
-            
-            if (isCutout)
-            {
-                return true;
-            }
-        }
-    }
-    return false;
+    int2 maskPixel = int2(uv * float2(DepthWidth - 1, DepthHeight - 1));
+    return DepthMask.Load(int3(maskPixel, 0)) > 0.5f;
 }
 
 [numthreads(16, 16, 1)]
@@ -107,8 +86,7 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     float uiMask = smoothstep(UiDiffThreshold, UiDiffThreshold * 2.0f, delta);
     
     // Add depth cutout mask to the uiMask
-    // float depth = Depth.Load(int3(pixelCoord, 0));
-    bool isCutout = IsDepthCutoutExpanded(uv, CutoffExpandPx);
+    bool isCutout = IsDepthCutout(uv);
     uiMask = max(uiMask, isCutout ? 1.0f : 0.0f);
        
     float3 reprojectedGame = 0.0f; // Black
@@ -149,7 +127,7 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     if (inside)
     {
         // Depth cutoff
-        bool isCutoutReprojected = IsDepthCutoutExpanded(sourceUV, CutoffExpandPx);
+        bool isCutoutReprojected = IsDepthCutout(sourceUV);
                 
         if (isCutoutReprojected)
         {

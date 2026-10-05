@@ -38,6 +38,7 @@ Texture2D<float3> Hudless : register(t0);
 Texture2D<float3> PresentCopy : register(t1);
 Texture2D<float> Depth : register(t2);
 Texture2D<float3> FakePresent : register(t3);
+Texture2D<float> DepthMask : register(t4);
 
 RWTexture2D<float3> Present : register(u0);
 SamplerState LinearClampSampler : register(s0);
@@ -64,33 +65,11 @@ float HashNoise(uint2 p)
     return n * (1.0f / 4294967295.0f);
 }
 
-bool IsDepthCutoutExpanded(float2 uv, int radius)
+// Depth cutout mask is built by the reproject_mask_h/reproject_mask_v prepass (already expanded by CutoffExpandPx)
+bool IsDepthCutout(float2 uv)
 {
-    int2 basePixel = int2(uv * float2(DepthWidth - 1, DepthHeight - 1));
-    
-    if (radius == 0)
-    {
-        float d = Depth.Load(int3(basePixel, 0));
-        return InvertedDepth ? (d > DepthCutoff) : (d < DepthCutoff);
-    }
-
-    for (int y = -radius; y <= radius; ++y)
-    {
-        for (int x = -radius; x <= radius; ++x)
-        {
-            // Clamp coordinates to prevent reading outside the texture
-            int2 sampleCoord = clamp(basePixel + int2(x, y), int2(0, 0), int2(DepthWidth - 1, DepthHeight - 1));
-            
-            float d = Depth.Load(int3(sampleCoord, 0));
-            bool isCutout = InvertedDepth ? (d > DepthCutoff) : (d < DepthCutoff);
-            
-            if (isCutout)
-            {
-                return true;
-            }
-        }
-    }
-    return false;
+    int2 maskPixel = int2(uv * float2(DepthWidth - 1, DepthHeight - 1));
+    return DepthMask.Load(int3(maskPixel, 0)) > 0.5f;
 }
 
 [numthreads(16, 16, 1)]
@@ -112,8 +91,7 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     float uiMask = smoothstep(UiDiffThreshold, UiDiffThreshold * 2.0f, delta);
     
     // Add depth cutout mask to the uiMask
-    // float depth = Depth.Load(int3(pixelCoord, 0));
-    bool isCutout = IsDepthCutoutExpanded(uv, CutoffExpandPx);
+    bool isCutout = IsDepthCutout(uv);
     uiMask = max(uiMask, isCutout ? 1.0f : 0.0f);
        
     float3 reprojectedGame = 0.0f; // Black
@@ -154,7 +132,7 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     if (inside)
     {
         // Depth cutoff
-        bool isCutoutReprojected = IsDepthCutoutExpanded(sourceUV, CutoffExpandPx);
+        bool isCutoutReprojected = IsDepthCutout(sourceUV);
                 
         if (isCutoutReprojected)
         {
@@ -221,5 +199,139 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
         composedImage = lerp(composedImage, pink, uv.x < 0.02);
     
     Present[pixelCoord] = lerp(composedImage, pink, uiMask * 0.6f * ShowStaticElements);
+}
+)";
+
+static std::string maskHShaderCode = R"(
+cbuffer Params : register(b0)
+{
+    uint ScreenWidth;
+    uint ScreenHeight;
+    float InvScreenWidth;
+    float InvScreenHeight;
+    
+    uint DepthWidth;
+    uint DepthHeight;
+    float2 _Pad0;
+    
+    float UiDiffThreshold;
+    float DepthCutoff;
+    float DitherWidthPx;
+    uint CutoffExpandPx;
+    
+    uint EdgeMode;
+    uint ShowStaticElements;
+    uint InvertedDepth;
+    uint FakeFrame; // need to provide fakePresent
+
+    float TanHalfFovX;
+    float TanHalfFovY;
+    float InvTanHalfFovX;
+    float InvTanHalfFovY;
+    
+    float4 ReprojectionMatrixRow0;
+    float4 ReprojectionMatrixRow1;
+    float4 ReprojectionMatrixRow2;
+};
+
+Texture2D<float> Depth : register(t2);
+
+RWTexture2D<float> DepthMaskTempOut : register(u1);
+RWTexture2D<float> DepthMaskOut : register(u2);
+
+// Depth mask prepass, horizontal part
+// Thresholds depth and expands the cutout by CutoffExpandPx along X
+// With CutoffExpandPx == 0 the vertical pass is skipped and the result goes straight to the final mask
+[numthreads(16, 16, 1)]
+void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
+{
+    int2 pixelCoord = int2(dispatchThreadID.xy);
+
+    if (pixelCoord.x >= int(DepthWidth) || pixelCoord.y >= int(DepthHeight))
+        return;
+
+    int radius = int(CutoffExpandPx);
+    int maxX = int(DepthWidth) - 1;
+
+    // Cutout if any depth in the window crosses the cutoff, so only min/max is needed
+    float minDepth = 1.0f;
+    float maxDepth = 0.0f;
+
+    for (int x = -radius; x <= radius; ++x)
+    {
+        int sampleX = clamp(pixelCoord.x + x, 0, maxX);
+        float d = Depth.Load(int3(sampleX, pixelCoord.y, 0));
+        minDepth = min(minDepth, d);
+        maxDepth = max(maxDepth, d);
+    }
+
+    bool isCutout = InvertedDepth ? (maxDepth > DepthCutoff) : (minDepth < DepthCutoff);
+    float mask = isCutout ? 1.0f : 0.0f;
+
+    if (radius == 0)
+        DepthMaskOut[pixelCoord] = mask;
+    else
+        DepthMaskTempOut[pixelCoord] = mask;
+}
+)";
+
+static std::string maskVShaderCode = R"(
+cbuffer Params : register(b0)
+{
+    uint ScreenWidth;
+    uint ScreenHeight;
+    float InvScreenWidth;
+    float InvScreenHeight;
+    
+    uint DepthWidth;
+    uint DepthHeight;
+    float2 _Pad0;
+    
+    float UiDiffThreshold;
+    float DepthCutoff;
+    float DitherWidthPx;
+    uint CutoffExpandPx;
+    
+    uint EdgeMode;
+    uint ShowStaticElements;
+    uint InvertedDepth;
+    uint FakeFrame; // need to provide fakePresent
+
+    float TanHalfFovX;
+    float TanHalfFovY;
+    float InvTanHalfFovX;
+    float InvTanHalfFovY;
+    
+    float4 ReprojectionMatrixRow0;
+    float4 ReprojectionMatrixRow1;
+    float4 ReprojectionMatrixRow2;
+};
+
+Texture2D<float> DepthMaskTemp : register(t5);
+
+RWTexture2D<float> DepthMaskOut : register(u2);
+
+// Depth mask prepass, vertical part
+// Expands the horizontally expanded mask by CutoffExpandPx along Y
+[numthreads(16, 16, 1)]
+void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
+{
+    int2 pixelCoord = int2(dispatchThreadID.xy);
+
+    if (pixelCoord.x >= int(DepthWidth) || pixelCoord.y >= int(DepthHeight))
+        return;
+
+    int radius = int(CutoffExpandPx);
+    int maxY = int(DepthHeight) - 1;
+
+    float mask = 0.0f;
+
+    for (int y = -radius; y <= radius; ++y)
+    {
+        int sampleY = clamp(pixelCoord.y + y, 0, maxY);
+        mask = max(mask, DepthMaskTemp.Load(int3(pixelCoord.x, sampleY, 0)));
+    }
+
+    DepthMaskOut[pixelCoord] = mask;
 }
 )";

@@ -115,11 +115,20 @@ class Reproject_Dx12 : public Shader_Dx12
 
     ID3D12Resource* _buffer[Reproject_NUM_OF_HEAPS] = {};
 
+    // Depth cutout mask prepass, separable dilation by CutoffExpandPx
+    // Both are kept in D3D12_RESOURCE_STATE_UNORDERED_ACCESS between dispatches
+    ID3D12PipelineState* _maskPipelineH = nullptr;
+    ID3D12PipelineState* _maskPipelineV = nullptr;
+    ID3D12Resource* _depthMaskTemp = nullptr;
+    ID3D12Resource* _depthMask = nullptr;
+
     uint32_t InNumThreadsX = 16;
     uint32_t InNumThreadsY = 16;
 
     CalibrationState _calibration;
     bool _isFirstFrame = true;
+
+    bool CreateMaskResource(ID3D12Resource** resource, uint32_t width, uint32_t height, const wchar_t* name);
 
     static void ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
                                 D3D12_RESOURCE_STATES InBeforeState, D3D12_RESOURCE_STATES InAfterState);

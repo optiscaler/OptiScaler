@@ -4428,9 +4428,9 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                     "Cyberpunk is around 0.02");
 
         uint32_t cutoffExpandPx = config->ReprojectionCutoffExpand.value_or_default();
-        if (SliderUInt("Cutoff expand", &cutoffExpandPx, 0, 2))
+        if (SliderUInt("Cutoff expand", &cutoffExpandPx, 0, 8))
             config->ReprojectionCutoffExpand = cutoffExpandPx;
-        ShowTooltip("A toddler implemented this so it's super slow\n"
+        ShowTooltip("Expands the cutoff area by this many depth pixels\n"
                     "Use only when you see an outline left by the cutoff process");
     }
 
