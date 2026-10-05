@@ -8,7 +8,11 @@ void Sl_Inputs_Dx12::CheckForFrame(IFGFeature_Dx12* fg, uint32_t frameId)
 {
     std::scoped_lock lock(_frameBoundaryMutex);
 
-    if (_isFrameFinished && _lastPresentFrameId == _currentFrameId && frameId == 0 && frameId != _currentFrameId)
+    const bool presentMarked = _isFrameFinished && _lastPresentFrameId == _currentFrameId;
+    const bool fgDispatched =
+        fg->IsActive() && !fg->IsPaused() && fg->IsDispatched() && fg->FrameCount() == _currentFrameId;
+
+    if ((presentMarked || fgDispatched) && frameId == 0 && _currentFrameId != 0)
     {
         LOG_DEBUG("1> CheckForFrame: frameId={}, currentFrameId={}, lastPresentFrameId={}, isFrameFinished={}", frameId,
                   _currentFrameId, _lastPresentFrameId, _isFrameFinished);
@@ -17,12 +21,7 @@ void Sl_Inputs_Dx12::CheckForFrame(IFGFeature_Dx12* fg, uint32_t frameId)
 
         fg->StartNewFrame();
         _currentIndex = fg->GetIndex();
-
-        if (frameId != 0)
-            _currentFrameId = frameId;
-        else
-            _currentFrameId = _lastPresentFrameId + 1;
-
+        _currentFrameId++;
         _frameIdIndex[_currentIndex] = _currentFrameId;
     }
     else if (frameId != 0 && frameId > _currentFrameId)

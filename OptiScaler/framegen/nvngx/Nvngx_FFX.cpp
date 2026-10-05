@@ -463,9 +463,10 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
         createFg.backBufferFormat = ffxApiGetSurfaceFormatDX12(backbuffer->GetDesc().Format);
         createFg.header.pNext = &backendDesc.header;
 
+        ffxCreateContextDescFrameGenerationHudless hudlessFormat {};
+
         if (hudlessFormatFfx != 0 && backbufferFormatFfx != hudlessFormatFfx)
         {
-            ffxCreateContextDescFrameGenerationHudless hudlessFormat {};
             hudlessFormat.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION_HUDLESS;
             hudlessFormat.hudlessBackBufferFormat = hudlessFormatFfx;
 
