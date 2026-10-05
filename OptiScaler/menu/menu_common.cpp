@@ -8660,14 +8660,19 @@ void MenuCommon::RenderMainMenuWindow(RenderMenuContext& ctx)
         CopyMemory(style.Colors, styleold.Colors, sizeof(style.Colors)); // Restore colors
     }
 
-    // Fixed size, only the tab content scrolls. Keeps the menu from growing or shrinking when tabs change
+    // Fixed width, only the tab content scrolls. Keeps the menu from growing or shrinking when tabs change
+    // Height can be changed by the user with the resize grip and is stored unscaled in the config
     ImGuiWindowFlags mainFlags = ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse |
-                                 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar |
-                                 ImGuiWindowFlags_NoScrollWithMouse;
+                                 ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 
-    ImGui::SetNextWindowSize(ImVec2(std::min(680.0f * menuResScale, io.DisplaySize.x - 20.0f),
-                                    std::min(700.0f * menuResScale, io.DisplaySize.y - 20.0f)),
-                             ImGuiCond_Always);
+    const float menuWidth = std::min(680.0f * menuResScale, io.DisplaySize.x - 20.0f);
+    const float maxMenuHeight = io.DisplaySize.y - 20.0f;
+    const float minMenuHeight = std::min(300.0f * menuResScale, maxMenuHeight);
+    const float menuHeight =
+        std::clamp(config->MenuHeight.value_or(700.0f) * menuResScale, minMenuHeight, maxMenuHeight);
+
+    ImGui::SetNextWindowSize(ImVec2(menuWidth, menuHeight), ImGuiCond_Always);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(menuWidth, minMenuHeight), ImVec2(menuWidth, maxMenuHeight));
 
     // Main menu window
     if (windowTitle.empty())
@@ -8689,6 +8694,11 @@ void MenuCommon::RenderMainMenuWindow(RenderMenuContext& ctx)
 
         auto winSize = ImGui::GetWindowSize();
         auto winPos = ImGui::GetWindowPos();
+
+        // Menu was resized by the user
+        if (std::abs(winSize.y - menuHeight) > 0.5f)
+            config->MenuHeight = std::round(winSize.y / menuResScale);
+
         if (lastPosition.x < -900.0f || (lastPosition.x >= winPos.x - 1.0f && lastPosition.y >= winPos.y - 1.0f &&
                                          lastPosition.x <= winPos.x + 1.0f && lastPosition.y <= winPos.y + 1.0f))
         {
