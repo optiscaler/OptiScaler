@@ -368,27 +368,37 @@ bool DLSSG_Dx12::Dispatch()
         constData.cameraFwd = { 1.0f, 0.0f, 0.0f };
         constData.cameraPinholeOffset = { 0.0f, 0.0f };
 
+        auto prev = XMMatrixIdentity();
+
+        XMFLOAT4X4 temp;
+        XMStoreFloat4x4(&temp, prev);
+        memcpy(&constData.clipToLensClip, &temp, sizeof(sl::float4x4));
+        memcpy(&constData.clipToPrevClip, &temp, sizeof(sl::float4x4));
+        memcpy(&constData.prevClipToClip, &temp, sizeof(sl::float4x4));
+    }
+
+    {
         XMMATRIX cameraViewToClip {};
+        XMMATRIX clipToCameraView {};
+
+        float vFov = _cameraVFov[fIndex];
 
         // XMMatrixPerspectiveFovRH will fail if input values are incorrect
-        if (_cameraNear[fIndex] > 0.f && _cameraFar[fIndex] > 0.f &&
-            !XMScalarNearEqual(_cameraVFov[fIndex], 0.0f, 0.00001f) &&
+        if (_cameraNear[fIndex] > 0.f && _cameraFar[fIndex] > 0.f && std::isfinite(_cameraNear[fIndex]) &&
+            std::isfinite(_cameraFar[fIndex]) && !XMScalarNearEqual(vFov, 0.0f, 0.00001f) &&
             !XMScalarNearEqual(_cameraAspectRatio[fIndex], 0.0f, 0.00001f))
         {
             if (XMScalarNearEqual(_cameraNear[fIndex], _cameraFar[fIndex], 0.00001f))
                 _cameraFar[fIndex]++;
 
-            cameraViewToClip = XMMatrixPerspectiveFovRH(_cameraVFov[fIndex], _cameraAspectRatio[fIndex],
-                                                        _cameraNear[fIndex], _cameraFar[fIndex]);
+            cameraViewToClip =
+                XMMatrixPerspectiveFovRH(vFov, _cameraAspectRatio[fIndex], _cameraNear[fIndex], _cameraFar[fIndex]);
+            clipToCameraView = XMMatrixInverse(nullptr, cameraViewToClip);
         }
         else
         {
             LOG_WARN("Can't calculate projectionMatrix");
         }
-
-        XMMATRIX clipToCameraView = XMMatrixInverse(nullptr, cameraViewToClip);
-
-        auto prev = XMMatrixIdentity();
 
         // Convert to sl::float4x4 for Streamline
         XMFLOAT4X4 temp;
@@ -396,11 +406,6 @@ bool DLSSG_Dx12::Dispatch()
         memcpy(&constData.cameraViewToClip, &temp, sizeof(sl::float4x4));
         XMStoreFloat4x4(&temp, clipToCameraView);
         memcpy(&constData.clipToCameraView, &temp, sizeof(sl::float4x4));
-
-        XMStoreFloat4x4(&temp, prev);
-        memcpy(&constData.clipToLensClip, &temp, sizeof(sl::float4x4));
-        memcpy(&constData.clipToPrevClip, &temp, sizeof(sl::float4x4));
-        memcpy(&constData.prevClipToClip, &temp, sizeof(sl::float4x4));
     }
 
     constData.cameraAspectRatio = _cameraAspectRatio[fIndex];
