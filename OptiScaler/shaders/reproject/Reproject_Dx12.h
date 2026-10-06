@@ -114,6 +114,7 @@ class Reproject_Dx12 : public Shader_Dx12
     FrameDescriptorHeap _frameHeaps[Reproject_NUM_OF_HEAPS];
 
     ID3D12Resource* _buffer[Reproject_NUM_OF_HEAPS] = {};
+    ID3D12Resource* _constantBuffers[Reproject_NUM_OF_HEAPS] = {};
 
     // Depth cutout mask prepass, separable dilation by CutoffExpandPx
     // Both are kept in D3D12_RESOURCE_STATE_UNORDERED_ACCESS between dispatches

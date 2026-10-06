@@ -280,14 +280,17 @@ Reproject_Dx12::Reproject_Dx12(std::string InName, ID3D12Device* InDevice) : Sha
     D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(ReprojectionParams));
     auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 
-    auto result =
-        InDevice->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ,
-                                          nullptr, IID_PPV_ARGS(&_constantBuffer));
-
-    if (result != S_OK)
+    for (int i = 0; i < Reproject_NUM_OF_HEAPS; i++)
     {
-        LOG_ERROR("[{0}] CreateCommittedResource error {1:x}", _name, (unsigned int) result);
-        return;
+        auto result = InDevice->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
+                                                        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                                                        IID_PPV_ARGS(&_constantBuffers[i]));
+
+        if (result != S_OK)
+        {
+            LOG_ERROR("[{0}] CreateCommittedResource error {1:x}", _name, (unsigned int) result);
+            return;
+        }
     }
 
     if (!CreateComputePipeline(InDevice, &_pipelineState, reproject_cso, sizeof(reproject_cso), shaderCode.c_str()))
@@ -393,7 +396,7 @@ bool Reproject_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ReprojectionPa
     CreateUnorderedAccessView(_device, _depthMaskTemp, currentHeap.GetUavCPU(1), 0);
     CreateUnorderedAccessView(_device, _depthMask, currentHeap.GetUavCPU(2), 0);
 
-    if (!CreateConstantsBuffer(_device, _constantBuffer, params, currentHeap.GetCbvCPU(0)))
+    if (!CreateConstantsBuffer(_device, _constantBuffers[_counter], params, currentHeap.GetCbvCPU(0)))
     {
         LOG_ERROR("[{0}] Failed to create a constants buffer", _name);
         return false;
@@ -507,6 +510,7 @@ Reproject_Dx12::~Reproject_Dx12()
     for (int i = 0; i < Reproject_NUM_OF_HEAPS; i++)
     {
         _frameHeaps[i].ReleaseHeaps();
+        SAFE_RELEASE(_constantBuffers[i]);
     }
 
     RawInputHook::getInstance().stop();
