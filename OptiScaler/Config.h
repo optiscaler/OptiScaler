@@ -377,9 +377,14 @@ class Config
     CustomOptional<float> MenuBGColorR { 0.0f };
     CustomOptional<float> MenuBGColorG { 0.0f };
     CustomOptional<float> MenuBGColorB { 0.0f };
-    CustomOptional<float> MenuBGColorA { 0.99f };
-    CustomOptional<bool> CustomTabEnabled { false };
-    CustomOptional<std::string> CustomTabCards { "" }; // Comma separated ids of the boxes
+    CustomOptional<float> MenuBGColorA { 0.93f };
+    CustomOptional<bool> MenuBlur { true };
+    CustomOptional<float> MenuBlurStrength { 1.0f };
+    CustomOptional<bool> CustomTabEnabled { true };
+    CustomOptional<std::string> CustomTabCards {
+        "upscaler,fg_selection,fg_fsrfg,fg_xefg,fg_dlssg,fg_reprojection,fg_optifg,fg_nvngx,fg_fsrfg_inputs,fg_sl_"
+        "inputs,framerate"
+    }; // Comma separated ids of the boxes
 
     // Hooks
     CustomOptional<bool> HookOriginalNvngxOnly { false };

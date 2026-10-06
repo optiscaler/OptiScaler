@@ -291,6 +291,23 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
     LOG_FUNC();
 
     ScopedVulkanCreatingSC scopedVulkanCreatingSC {};
+
+    // Menu blur copies the swapchain image
+    VkSwapchainCreateInfoKHR localCreateInfo {};
+    if (pCreateInfo != nullptr && Config::Instance()->OverlayMenu.value_or_default() &&
+        !State::Instance().vulkanSkipHooks && _PD != VK_NULL_HANDLE &&
+        (pCreateInfo->imageUsage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) == 0)
+    {
+        VkSurfaceCapabilitiesKHR surfaceCaps {};
+        if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(_PD, pCreateInfo->surface, &surfaceCaps) == VK_SUCCESS &&
+            (surfaceCaps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) != 0)
+        {
+            localCreateInfo = *pCreateInfo;
+            localCreateInfo.imageUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+            pCreateInfo = &localCreateInfo;
+        }
+    }
+
     VkResult result = VK_SUCCESS;
     {
         ScopedSkipSpoofingGlobal skipSpoofingGlobal {};

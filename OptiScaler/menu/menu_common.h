@@ -160,6 +160,11 @@ class MenuCommon
     inline static bool _dx12Ready = false;
     inline static bool _vulkanReady = false;
 
+    // Blurred game image provided by the renderer, drawn behind the main menu window
+    inline static ImTextureID _bgBlurTexture = ImTextureID_Invalid;
+    inline static ImVec2 _bgBlurUVScale { 1.0f, 1.0f };
+    inline static bool _bgBlurUsed = false;
+
     inline static void ShowTooltip(const char* tip);
 
     inline static void ShowResetButton(CustomOptional<bool, NoDefault>* initFlag, std::string buttonName);
@@ -206,9 +211,9 @@ class MenuCommon
     static void RenderMainMenuHeaderMessages(RenderMenuContext& ctx);
     static void RenderUpscalerStateMessage(RenderMenuContext& ctx);
     static void RenderMainMenuTabs(RenderMenuContext& ctx);
-    static void PlotLinesWithFancyText(const char* label, float (*values_getter)(void* data, int idx), void* data,
-                                       int values_count, int values_offset, const char* overlay_text, float scale_min,
-                                       float scale_max, ImVec2 graph_size, float padding);
+    static void PlotLinesWithRange(const char* label, float (*values_getter)(void* data, int idx), void* data,
+                                   int values_count, int values_offset, const char* overlay_text, ImVec2 graph_size,
+                                   float padding);
     static void RenderCard(RenderMenuContext& ctx, void (*render)(RenderMenuContext&));
 
     // Custom tab
@@ -259,6 +264,17 @@ class MenuCommon
     static bool IsInited() { return _isInited; }
     static bool IsVisible() { return _isVisible; }
     static HWND Handle() { return _handle; }
+
+    // Texture should cover the whole display, uvScale is the part of it matching the display
+    static void SetBackgroundBlur(ImTextureID texture, ImVec2 uvScale = ImVec2(1.0f, 1.0f))
+    {
+        _bgBlurTexture = texture;
+        _bgBlurUVScale = uvScale;
+        _bgBlurUsed = false;
+    }
+
+    // True if the last RenderMenu call drew the blur texture, so the renderer needs to update it
+    static bool BackgroundBlurUsed() { return _bgBlurUsed; }
 
     static bool RenderMenu();
     static void Init(HWND InHwnd, bool isUWP);

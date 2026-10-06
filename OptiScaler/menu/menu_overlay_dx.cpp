@@ -10,6 +10,10 @@
 #include <imgui/imgui_impl_dx12.h>
 #include <imgui/imgui_impl_win32.h>
 
+#include "menu_common.h"
+#include <shaders/menu_blur/MenuBlur_Dx11.h>
+#include <shaders/menu_blur/MenuBlur_Dx12.h>
+
 // menu
 static int const NUM_BACK_BUFFERS = 8;
 static int const SRV_HEAP_SIZE = 64;
@@ -20,6 +24,7 @@ static bool _dx12Device = false;
 static ID3D11Device* g_pd3dDevice = nullptr;
 static ID3D11DeviceContext* g_pd3dDeviceContext = nullptr;
 static ID3D11RenderTargetView* g_pd3dRenderTarget = nullptr;
+static std::unique_ptr<MenuBlur_Dx11> g_menuBlurDx11;
 
 // for dx12
 static ID3D12Device* g_pd3dDeviceParam = nullptr;
@@ -31,6 +36,7 @@ static ID3D12GraphicsCommandList* g_pd3dCommandList = nullptr;
 static ID3D12CommandAllocator* g_commandAllocators[NUM_BACK_BUFFERS] = {};
 static ID3D12Resource* g_mainRenderTargetResource[NUM_BACK_BUFFERS] = {};
 static D3D12_CPU_DESCRIPTOR_HANDLE g_mainRenderTargetDescriptor[NUM_BACK_BUFFERS] = {};
+static std::unique_ptr<MenuBlur_Dx12> g_menuBlur;
 
 // current command queue for dx12 swapchain
 static IUnknown* currentSCCommandQueue = nullptr;
@@ -128,6 +134,10 @@ static void CleanupRenderTargetDx12(bool clearQueue)
 
     if (clearQueue)
     {
+        // Uses a descriptor from the ImGui heap, needs to go before it
+        MenuCommon::SetBackgroundBlur(ImTextureID_Invalid);
+        g_menuBlur.reset();
+
         if (MenuOverlayBase::IsInited() && g_pd3dDeviceParam != nullptr && g_pd3dSrvDescHeap != nullptr &&
             ImGui::GetIO().BackendRendererUserData)
         {
@@ -185,6 +195,9 @@ static void CleanupRenderTargetDx11(bool shutDown)
         LOG_FUNC();
 
     SAFE_RELEASE(g_pd3dRenderTarget);
+
+    MenuCommon::SetBackgroundBlur(ImTextureID_Invalid);
+    g_menuBlurDx11.reset();
 
     if (g_pd3dDevice != nullptr)
         g_pd3dDevice = nullptr;
@@ -245,13 +258,37 @@ static void RenderImGui_DX11(IDXGISwapChain* pSwapChain)
             ImGui_ImplDX11_NewFrame();
             ImGui_ImplWin32_NewFrame();
 
+            ID3D11Texture2D* backBuffer = nullptr;
+            pSwapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer));
+
+            // Blur textures are only created once the menu is opened, menu decides if they are used
+            bool blurReady = false;
+            if (backBuffer != nullptr && (g_menuBlurDx11 || MenuOverlayBase::IsVisible()))
+            {
+                if (!g_menuBlurDx11)
+                    g_menuBlurDx11 = std::make_unique<MenuBlur_Dx11>("MenuBlur", g_pd3dDevice);
+
+                blurReady = g_menuBlurDx11->Prepare(backBuffer);
+            }
+
+            if (blurReady)
+                MenuCommon::SetBackgroundBlur(g_menuBlurDx11->TextureId(), g_menuBlurDx11->UVScale());
+            else
+                MenuCommon::SetBackgroundBlur(ImTextureID_Invalid);
+
             if (MenuOverlayBase::RenderMenu())
             {
                 ImGui::Render();
 
+                if (blurReady && MenuCommon::BackgroundBlurUsed())
+                    g_menuBlurDx11->Dispatch(g_pd3dDeviceContext, backBuffer);
+
                 g_pd3dDeviceContext->OMSetRenderTargets(1, &g_pd3dRenderTarget, NULL);
                 ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
             }
+
+            if (backBuffer != nullptr)
+                backBuffer->Release();
         }
     }
 }
@@ -433,11 +470,28 @@ static void RenderImGui_DX12(IDXGISwapChain* pSwapChainPlain)
 
             ImGui_ImplDX12_NewFrame();
 
+            UINT backBufferIdx = pSwapChain->GetCurrentBackBufferIndex();
+
+            // Blur textures are only created once the menu is opened, menu decides if they are used
+            bool blurReady = false;
+            if (g_menuBlur || MenuOverlayBase::IsVisible())
+            {
+                if (!g_menuBlur)
+                    g_menuBlur = std::make_unique<MenuBlur_Dx12>("MenuBlur", device, &g_pd3dSrvDescHeapAlloc);
+
+                blurReady = g_menuBlur->Prepare(g_mainRenderTargetResource[backBufferIdx]);
+            }
+
+            if (blurReady)
+                MenuCommon::SetBackgroundBlur(g_menuBlur->TextureId(), g_menuBlur->UVScale());
+            else
+                MenuCommon::SetBackgroundBlur(ImTextureID_Invalid);
+
             if (MenuOverlayBase::RenderMenu())
             {
                 ImGui::Render();
 
-                UINT backBufferIdx = pSwapChain->GetCurrentBackBufferIndex();
+                const bool blurMenu = blurReady && MenuCommon::BackgroundBlurUsed();
                 ID3D12CommandAllocator* commandAllocator = g_commandAllocators[backBufferIdx];
 
                 auto result = commandAllocator->Reset();
@@ -463,6 +517,17 @@ static void RenderImGui_DX12(IDXGISwapChain* pSwapChainPlain)
                     LOG_ERROR("g_pd3dCommandList->Reset: {0:X}", (unsigned long) result);
                     pSwapChain->Release();
                     return;
+                }
+
+                if (blurMenu)
+                {
+                    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+                    g_pd3dCommandList->ResourceBarrier(1, &barrier);
+
+                    g_menuBlur->Dispatch(g_pd3dCommandList, g_mainRenderTargetResource[backBufferIdx], backBufferIdx);
+
+                    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+                    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
                 }
 
                 g_pd3dCommandList->ResourceBarrier(1, &barrier);

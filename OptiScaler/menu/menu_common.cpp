@@ -167,6 +167,7 @@ static CustomOptional<uint32_t> comboPreset { 0 };
 static int lastKey = 0;
 static bool capturingKey = false;
 static int selectedMenuTab = 0;
+static const char* requestedMenuTab = nullptr; // Label of a tab to switch to on the next frame
 
 template <typename T, size_t N> struct RingBuffer
 {
@@ -346,7 +347,7 @@ ScopedCard::~ScopedCard()
     const ImVec2 max(_min.x + _width, bottom);
 
     _splitter.SetCurrentChannel(drawList, 0);
-    drawList->AddRectFilled(_min, max, ImGui::GetColorU32(ImGuiCol_WindowBg), style.ChildRounding);
+    // drawList->AddRectFilled(_min, max, ImGui::GetColorU32(ImGuiCol_WindowBg), style.ChildRounding);
     drawList->AddRect(_min, max, ImGui::GetColorU32(ImGuiCol_Separator), style.ChildRounding);
     _splitter.Merge(drawList);
 
@@ -2515,9 +2516,9 @@ void MenuCommon::RenderUpscalerStateMessage(RenderMenuContext& ctx)
         ImGui::Spacing();
 
         if (config->UseHQFont.value_or_default())
-            ImGui::PushFontSize(std::round(fontSize * menuResScale * 2.5f));
+            ImGui::PushFontSize(std::round(fontSize * menuResScale * 2.0f));
         else
-            ImGui::SetWindowFontScale(menuResScale * 2.5f);
+            ImGui::SetWindowFontScale(menuResScale * 2.0f);
 
         if (state.nvngxExists || state.nvngxReplacement.has_value() ||
             (state.libxessExists || XeSSProxy::Module() != nullptr))
@@ -2540,8 +2541,8 @@ void MenuCommon::RenderUpscalerStateMessage(RenderMenuContext& ctx)
             std::string joinedUpscalers(joined.begin(), joined.end());
 
             ImGui::PushTextWrapPos(0.0f);
-            ImGui::Text("Please select %s as upscaler from game\noptions and load a save game "
-                        "to enable Opti settings.\nUpscalers don't always work in menus.",
+            ImGui::Text("Please select %s as upscaler from game options and load a save game to enable Opti settings.\n"
+                        "Upscalers don't always work in menus.",
                         joinedUpscalers.c_str());
             ImGui::PopTextWrapPos();
 
@@ -2577,9 +2578,9 @@ void MenuCommon::RenderUpscalerStateMessage(RenderMenuContext& ctx)
         ImGui::Spacing();
 
         if (config->UseHQFont.value_or_default())
-            ImGui::PushFontSize(std::round(fontSize * menuResScale * 2.5f));
+            ImGui::PushFontSize(std::round(fontSize * menuResScale * 2.0f));
         else
-            ImGui::SetWindowFontScale(menuResScale * 2.5f);
+            ImGui::SetWindowFontScale(menuResScale * 2.0f);
 
         ImGui::PushTextWrapPos(0.0f);
         ImGui::Text("%s active, but currently not used by the game\nPlease load into the game",
@@ -6908,6 +6909,20 @@ void MenuCommon::RenderThemeSettings(RenderMenuContext& ctx)
             ApplyThemeStyle();
         }
 
+        if (_bgBlurTexture != ImTextureID_Invalid)
+        {
+            ConfigCheckbox("Background Blur", config->MenuBlur,
+                           "Blur the game behind the menu\nOnly visible when Background Alpha is below 1");
+
+            ImGui::BeginDisabled(!config->MenuBlur.value_or_default());
+
+            auto blurStrength = config->MenuBlurStrength.value_or_default();
+            if (ImGui::SliderFloat("Blur Strength", &blurStrength, 0.0f, 4.0f, "%.2f"))
+                config->MenuBlurStrength = blurStrength;
+
+            ImGui::EndDisabled();
+        }
+
         ImGui::Spacing();
 
         if (ImGui::Button("Reset BG Colour"))
@@ -7506,7 +7521,7 @@ void MenuCommon::RenderDetectedInfo(RenderMenuContext& ctx)
 
     ScopedCard card { "Detected" };
 
-    if (ImGui::BeginTable("statusDetected", 4, ImGuiTableFlags_SizingStretchSame))
+    if (ImGui::BeginTable("statusDetected", 4, ImGuiTableFlags_SizingStretchProp))
     {
         StatusFlag("nvngx.dll", state.nvngxExists);
         StatusFlag("nvngx_dlss", state.NVNGX_DLSS_Path.has_value());
@@ -7749,7 +7764,7 @@ void MenuCommon::RenderStatusInfo(RenderMenuContext& ctx)
 
 static bool IsUpscalerActive(IFeature* feature) { return feature != nullptr && !feature->IsFrozen(); }
 
-static float FooterPlotHeight() { return ImGui::GetFrameHeight() * 2.0f; }
+static float FooterPlotHeight() { return ImGui::GetFrameHeight() * 1.0f; }
 
 // Everything RenderMainMenuFooter draws, every item is followed by the item spacing
 static float FooterHeight()
@@ -7889,6 +7904,15 @@ void MenuCommon::RenderCustomTab(RenderMenuContext& ctx)
         anyPinned = true;
 
         ImGui::PushID(boxes[i].id);
+
+        // Explains why the upscaler settings are missing, the Upscaling tab draws it above its boxes
+        if (strcmp(boxes[i].id, "upscaler") == 0)
+        {
+            auto feature = ctx.currentFeature;
+            if (feature == nullptr || !feature->IsInited() || feature->IsFrozen())
+                RenderCard(ctx, RenderUpscalerStateMessage);
+        }
+
         RenderMenuBox(ctx, boxes[i]);
         ImGui::PopID();
     }
@@ -7898,6 +7922,21 @@ void MenuCommon::RenderCustomTab(RenderMenuContext& ctx)
         ImGui::TextDisabled("Nothing picked yet, choose the boxes in Menu > Custom Tab");
     else if (ImGui::GetCursorPosY() == startY)
         ImGui::TextDisabled("None of the picked boxes are available right now");
+
+    // Hint pinned to the bottom of the tab
+    const float hintHeight = ImGui::GetFrameHeight();
+    const float gap = ImGui::GetContentRegionAvail().y - hintHeight - ImGui::GetStyle().ItemSpacing.y;
+    if (gap > 0.0f)
+        ImGui::Dummy(ImVec2(0.0f, gap));
+    else
+        ImGui::Spacing();
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+    if (ImGui::SmallButton("Customise this tab"))
+        requestedMenuTab = "Menu";
+    ImGui::PopStyleColor(2);
 }
 
 void MenuCommon::RenderCustomTabSettings(RenderMenuContext& ctx)
@@ -8005,6 +8044,17 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
 
     constexpr int customTab = 0;
     const bool customTabEnabled = config->CustomTabEnabled.value_or_default();
+
+    if (requestedMenuTab != nullptr)
+    {
+        for (int i = 0; i < (int) std::size(tabs); i++)
+        {
+            if (strcmp(tabs[i].label, requestedMenuTab) == 0)
+                selectedMenuTab = i;
+        }
+
+        requestedMenuTab = nullptr;
+    }
 
     selectedMenuTab = std::clamp(selectedMenuTab, 0, (int) std::size(tabs) - 1);
 
@@ -8151,26 +8201,26 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
     ImGui::PopStyleColor();
 }
 
-void MenuCommon::PlotLinesWithFancyText(const char* label, float (*values_getter)(void* data, int idx), void* data,
-                                        int values_count, int values_offset, const char* overlay_text, float scale_min,
-                                        float scale_max, ImVec2 graph_size, float padding)
+void MenuCommon::PlotLinesWithRange(const char* label, float (*values_getter)(void* data, int idx), void* data,
+                                    int values_count, int values_offset, const char* overlay_text, ImVec2 graph_size,
+                                    float padding)
 {
-    ImGui::PlotEx(ImGuiPlotType_Lines, label, values_getter, data, values_count, values_offset, nullptr, scale_min,
-                  scale_max, graph_size);
+    float v_min = FLT_MAX;
+    float v_max = -FLT_MAX;
+    for (int i = 0; i < plotWidth; i++)
+    {
+        const float v = values_getter(data, i);
+        if (v != v) // Ignore NaN values
+            continue;
+        v_min = ImMin(v_min, v);
+        v_max = ImMax(v_max, v);
+    }
 
-    // Get the rectangle occupied by the PlotLines widget
-    ImVec2 plot_min = ImGui::GetItemRectMin();
-    ImVec2 plot_max = ImGui::GetItemRectMax();
+    ImGui::PlotEx(ImGuiPlotType_Lines, label, values_getter, data, values_count, values_offset, overlay_text, v_min,
+                  v_max, graph_size);
 
-    ImVec2 text_size = ImGui::CalcTextSize(overlay_text);
-
-    ImVec2 bg_min = ImVec2(plot_min.x + 1.0f, plot_min.y + 1.0f);
-    ImVec2 bg_max = ImVec2(bg_min.x + text_size.x + padding * 2.0f, bg_min.y + text_size.y + padding * 2.0f);
-
-    ImDrawList* draw_list = ImGui::GetWindowDrawList();
-    draw_list->AddRectFilled(bg_min, bg_max, ImGui::GetColorU32(ImGuiCol_ChildBg, 0.67f), 3.0f);
-    draw_list->AddText(ImVec2(bg_min.x + padding, bg_min.y + padding), ImGui::GetColorU32(ImGuiCol_TextDisabled),
-                       overlay_text);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("Range: %.2f ms - %.2f ms", v_min, v_max);
 }
 
 void MenuCommon::RenderFrameTimeGraph(RenderMenuContext& ctx)
@@ -8178,25 +8228,14 @@ void MenuCommon::RenderFrameTimeGraph(RenderMenuContext& ctx)
     auto& frameTime = ctx.frameTime;
     auto& frameRate = ctx.frameRate;
     auto& menuResScale = ctx.menuResScale;
+    auto& averageFrameTime = ctx.averageFrameTime;
 
-    float v_min = FLT_MAX;
-    float v_max = -FLT_MAX;
-    for (int i = 0; i < plotWidth; i++)
-    {
-        const float v = gFrameTimes.At(i);
-        if (v != v) // Ignore NaN values
-            continue;
-        v_min = ImMin(v_min, v);
-        v_max = ImMax(v_max, v);
-    }
+    ImGui::Text("Frametime: %.2fms / %.1ffps (avg: %.1ffps)", frameTime, frameRate, 1000.f / averageFrameTime);
 
-    ImGui::Text("Frame time: %.2f ms / %.1f fps", frameTime, frameRate);
-
-    auto ft = StrFmt("%.2f - %.2f ms", v_min, v_max);
-    PlotLinesWithFancyText(
+    PlotLinesWithRange(
         "##FrameTime",
         [](void* rb, int idx) -> float { return static_cast<RingBuffer<float, plotWidth>*>(rb)->At(idx); },
-        &gFrameTimes, plotWidth, 0, ft.c_str(), v_min, v_max, ImVec2(0.0f, FooterPlotHeight()), 4.0f * menuResScale);
+        &gFrameTimes, plotWidth, 0, nullptr, ImVec2(0.0f, FooterPlotHeight()), 4.0f * menuResScale);
 }
 
 void MenuCommon::RenderUpscalerTimeGraph(RenderMenuContext& ctx)
@@ -8204,28 +8243,17 @@ void MenuCommon::RenderUpscalerTimeGraph(RenderMenuContext& ctx)
     auto& state = ctx.state;
     auto& currentFeature = ctx.currentFeature;
     auto& menuResScale = ctx.menuResScale;
+    auto& averageUpscalerFT = ctx.averageUpscalerFT;
 
     if (!IsUpscalerActive(currentFeature))
         return;
 
-    float v_min = FLT_MAX;
-    float v_max = -FLT_MAX;
-    for (int i = 0; i < plotWidth; i++)
-    {
-        const float v = gUpscalerTimes.At(i);
-        if (v != v) // Ignore NaN values
-            continue;
-        v_min = ImMin(v_min, v);
-        v_max = ImMax(v_max, v);
-    }
+    ImGui::Text("Upscaler GPU time: %.2fms (avg: %.2fms)", state.upscaleTimes.back(), averageUpscalerFT);
 
-    ImGui::Text("Upscaler GPU time: %.2f ms", state.upscaleTimes.back());
-
-    auto ups = StrFmt("%.2f - %.2f ms", v_min, v_max);
-    PlotLinesWithFancyText(
-        "##UpscalerTime", [](void* rb, int idx) -> float
-        { return static_cast<RingBuffer<float, plotWidth>*>(rb)->At(idx); }, &gUpscalerTimes, plotWidth, 0, ups.c_str(),
-        v_min, v_max, ImVec2(0.0f, FooterPlotHeight()), 4.0f * menuResScale);
+    PlotLinesWithRange(
+        "##UpscalerTime",
+        [](void* rb, int idx) -> float { return static_cast<RingBuffer<float, plotWidth>*>(rb)->At(idx); },
+        &gUpscalerTimes, plotWidth, 0, nullptr, ImVec2(0.0f, FooterPlotHeight()), 4.0f * menuResScale);
 }
 
 void MenuCommon::RenderMainMenuFooter(RenderMenuContext& ctx)
@@ -8677,7 +8705,7 @@ void MenuCommon::RenderMainMenuWindow(RenderMenuContext& ctx)
     const float maxMenuHeight = io.DisplaySize.y - 20.0f;
     const float minMenuHeight = std::min(300.0f * menuResScale, maxMenuHeight);
     const float menuHeight =
-        std::clamp(config->MenuHeight.value_or(700.0f) * menuResScale, minMenuHeight, maxMenuHeight);
+        std::clamp(config->MenuHeight.value_or(815.0f) * menuResScale, minMenuHeight, maxMenuHeight);
 
     ImGui::SetNextWindowSize(ImVec2(menuWidth, menuHeight), ImGuiCond_Always);
     ImGui::SetNextWindowSizeConstraints(ImVec2(menuWidth, minMenuHeight), ImVec2(menuWidth, maxMenuHeight));
@@ -8726,6 +8754,21 @@ void MenuCommon::RenderMainMenuWindow(RenderMenuContext& ctx)
             ImGui::SetWindowPos(ImVec2 { posX, posY });
             lastPosition.x = posX;
             lastPosition.y = posY;
+        }
+
+        // Blurred game image behind the window, the semi transparent window background tints it
+        if (_bgBlurTexture != ImTextureID_Invalid && config->MenuBlur.value_or_default() &&
+            ImGui::GetStyleColorVec4(ImGuiCol_WindowBg).w < 1.0f)
+        {
+            const ImVec2 blurMin = ImGui::GetWindowPos();
+            const ImVec2 blurMax = ImVec2(blurMin.x + ImGui::GetWindowWidth(), blurMin.y + ImGui::GetWindowHeight());
+            const ImVec2 uvMul = ImVec2(_bgBlurUVScale.x / io.DisplaySize.x, _bgBlurUVScale.y / io.DisplaySize.y);
+
+            ImGui::GetBackgroundDrawList()->AddImageRounded(
+                _bgBlurTexture, blurMin, blurMax, ImVec2(blurMin.x * uvMul.x, blurMin.y * uvMul.y),
+                ImVec2(blurMax.x * uvMul.x, blurMax.y * uvMul.y), IM_COL32_WHITE, ImGui::GetStyle().WindowRounding);
+
+            _bgBlurUsed = true;
         }
 
         ImGui::End();

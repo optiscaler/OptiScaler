@@ -902,6 +902,27 @@
     <ClInclude Include="shaders\magnifier\Magnifier_Dx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="shaders\menu_blur\MenuBlur_Common.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\menu_blur\MenuBlur_Dx11.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\menu_blur\MenuBlur_Dx12.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\menu_blur\MenuBlur_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\menu_blur\precompile\MenuBlur_Shader_Dx11.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\menu_blur\precompile\MenuBlur_Shader_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\menu_blur\precompile\MenuBlur_Shader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="low_latency\input\input_uell.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1542,6 +1563,15 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="shaders\magnifier\Magnifier_Dx12.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="shaders\menu_blur\MenuBlur_Dx11.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="shaders\menu_blur\MenuBlur_Dx12.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="shaders\menu_blur\MenuBlur_Vk.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="shaders\magnifier\Magnifier_Common.cpp">
