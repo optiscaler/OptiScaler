@@ -241,6 +241,8 @@ bool RCAS_Vk::Dispatch(VkDevice InDevice, VkCommandBuffer InCmdList, RcasConstan
         State::Instance().currentFeature == nullptr)
         return false;
 
+    ScopedGpuTime_Vk scopedGpuTime(GpuTime.get(), InCmdList);
+
     auto sharpnessShader = Config::Instance()->SharpnessShader.value_or_default();
     if (sharpnessShader == SharpenShader::LocalContrastDepthAware)
     {

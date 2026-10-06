@@ -10,8 +10,6 @@
 
 #include "upscalers/FeatureProvider_Vk.h"
 
-#include <upscaler_time/UpscalerTime_Vk.h>
-
 #include <vulkan/vulkan.hpp>
 #include <ankerl/unordered_dense.h>
 #include <imgui/ImGuiNotify.hpp>
@@ -245,8 +243,6 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_Init_Ext2(
     }
 
     State::Instance().currentVkDevice = InDevice;
-
-    UpscalerTimeVk::Init(InDevice, InPD);
 
     State::Instance().nvngxVkInited = true;
 
@@ -1063,8 +1059,6 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_EvaluateFeature(VkCommandBuffer 
     deviceContext = VkContexts[handleId].feature.get();
     state.currentFeature = deviceContext;
 
-    UpscalerTimeVk::UpscaleStart(InCmdList);
-
     auto upscaleResult = deviceContext->Evaluate(InCmdList, InParameters);
 
     if (!upscaleResult)
@@ -1077,8 +1071,6 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_EvaluateFeature(VkCommandBuffer 
         state.changeBackend[handleId] = true;
         return NVSDK_NGX_Result_Success;
     }
-
-    UpscalerTimeVk::UpscaleEnd(InCmdList);
 
     return upscaleResult ? NVSDK_NGX_Result_Success : NVSDK_NGX_Result_Fail;
 }

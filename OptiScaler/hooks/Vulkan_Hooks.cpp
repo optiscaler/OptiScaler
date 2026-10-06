@@ -8,7 +8,7 @@
 
 #include <menu/menu_overlay_vk.h>
 #include <proxies/KernelBase_Proxy.h>
-#include <upscaler_time/UpscalerTime_Vk.h>
+#include <upscalers/IFeature_Vk.h>
 
 #include <misc/FrameLimit.h>
 #include "Reflex_Hooks.h"
@@ -243,8 +243,24 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
 {
     LOG_FUNC();
 
-    // get upscaler time
-    UpscalerTimeVk::ReadUpscalingTime(_device);
+    // Upscaler GPU time computation
+    if (auto vkFeature = dynamic_cast<IFeature_Vk*>(State::Instance().currentFeature); vkFeature != nullptr)
+    {
+        if (auto upscalerTimeOpt = vkFeature->ReadUpscalerTime(nullptr); upscalerTimeOpt.has_value())
+        {
+            vkFeature->ReadDetailedGpuTimes(nullptr, State::Instance().detailedGpuTimes);
+
+            auto upscalerTime = upscalerTimeOpt.value();
+            // filter out possibly wrong measured high values
+            if (upscalerTime < 100.0)
+            {
+                State::Instance().frameTimeMutex.lock();
+                State::Instance().upscaleTimes.push_back(upscalerTime);
+                State::Instance().upscaleTimes.pop_front();
+                State::Instance().frameTimeMutex.unlock();
+            }
+        }
+    }
 
     // ??? TODO: if we are hooking dxvk's vulkan calls then this present call could be either coming from dxvk or from a
     // native vk game

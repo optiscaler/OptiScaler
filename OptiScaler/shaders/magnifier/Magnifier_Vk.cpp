@@ -66,6 +66,8 @@ bool Magnifier_Vk::Dispatch(VkCommandBuffer InCmdList, const VkImageInfo& InReso
 
     LOG_DEBUG("[{0}] Start!", _name);
 
+    ScopedGpuTime_Vk scopedGpuTime(GpuTime.get(), InCmdList);
+
     if (!InitializeViews(InResourceInfo.ImageView, OutResourceInfo.ImageView))
         return false;
 

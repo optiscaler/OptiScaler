@@ -87,6 +87,8 @@ class IFeature_VkwDx12 : public virtual IFeature_Vk
     uint64_t pendingResourceCopyValue = 0;
     std::mutex EvaluateMutex;
 
+    std::vector<DetailedGpuTime> detailedGpuTimes;
+
     // Copy shaders
     std::unique_ptr<ResourceCopy_Vk> ColorCopy = nullptr;
     std::unique_ptr<ResourceCopy_Vk> VelocityCopy = nullptr;
@@ -147,6 +149,45 @@ class IFeature_VkwDx12 : public virtual IFeature_Vk
 
     API Api() const override { return API::DX12; }
     bool IsWithDx12() override { return true; }
+
+    std::optional<double> ReadUpscalerTime(void* unused) override
+    {
+        if (auto feature = dx12Feature.get(); feature && Dx12CommandQueue && UpscalerTime)
+        {
+            auto dx12UpscalerTime = feature->ReadUpscalerTime(Dx12CommandQueue);
+
+            feature->ReadDetailedGpuTimes(Dx12CommandQueue, detailedGpuTimes);
+
+            // Count up shader times that are included in upscalerWithInterop but not in dx12UpscalerTime
+            double deductedUpscalerTime = 0.0;
+            for (const auto& time : detailedGpuTimes)
+            {
+                if (!time.includedInUpscalerTime)
+                    deductedUpscalerTime += time.time;
+            }
+
+            auto upscalerWithInterop = UpscalerTime->ReadGpuTime();
+
+            if (dx12UpscalerTime && upscalerWithInterop)
+            {
+                auto interopTime = upscalerWithInterop.value() - dx12UpscalerTime.value() - deductedUpscalerTime;
+
+                if (interopTime > 0.0)
+                {
+                    detailedGpuTimes.push_back({ "Interop", interopTime, true });
+                    return interopTime + dx12UpscalerTime.value();
+                }
+            }
+        }
+
+        return std::nullopt;
+    };
+
+    void ReadDetailedGpuTimes(void* unused, std::vector<DetailedGpuTime>& detailedGpuTimes) override
+    {
+        // We already queried and prepared detailedGpuTimes in ReadUpscalerTime
+        detailedGpuTimes = this->detailedGpuTimes;
+    };
 
     feature_version Version() final
     {

@@ -113,6 +113,8 @@ bool OS_Vk::Dispatch(VkCommandBuffer InCmdList, const VkImageInfo& InResourceVie
     if (!_init || InCmdList == VK_NULL_HANDLE)
         return false;
 
+    ScopedGpuTime_Vk scopedGpuTime(GpuTime.get(), InCmdList);
+
     // Update Constants
     FsrEasuCon(fsr1Constants.const0, fsr1Constants.const1, fsr1Constants.const2, fsr1Constants.const3,
                State::Instance().currentFeature->TargetWidth(), State::Instance().currentFeature->TargetHeight(),

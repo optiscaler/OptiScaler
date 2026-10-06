@@ -2,6 +2,7 @@
 
 #include "SysUtils.h"
 #include <vulkan/vulkan.h>
+#include <gpu_time/GpuTime_Vk.h>
 #include <string>
 #include <vector>
 
@@ -24,6 +25,8 @@ class Shader_Vk
 
     VkDevice _device = VK_NULL_HANDLE;
     VkPhysicalDevice _physicalDevice = VK_NULL_HANDLE;
+
+    std::unique_ptr<GpuTime_Vk> GpuTime = nullptr;
 
     // Pipeline Layouts
     VkPipeline _pipeline = VK_NULL_HANDLE;
@@ -84,6 +87,8 @@ class Shader_Vk
   public:
     bool IsInit() const { return _init; }
     bool CanRender() const { return _init && _pipeline != VK_NULL_HANDLE; }
+    std::string Name() const { return _name; }
+    std::optional<double> ReadGpuTime() { return GpuTime->ReadGpuTime(); }
 
     VkImageView GetImageView() const { return _intermediateImageView; }
     VkImage GetImage() const { return _intermediateImage; }

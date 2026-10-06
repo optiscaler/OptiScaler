@@ -18,12 +18,10 @@ bool IFeature_Vk::Init(VkInstance InInstance, VkPhysicalDevice InPD, VkDevice In
 
     if (result)
     {
-
         OutputScaler = std::make_unique<OS_Vk>("Output Scaling", InDevice, InPD, (TargetWidth() < DisplayWidth()));
         RCAS = std::make_unique<RCAS_Vk>("RCAS", InDevice, InPD);
         Magnifier = std::make_unique<Magnifier_Vk>("Magnifier", InDevice, InPD);
-
-        // UpscalerTime = std::make_unique<GpuTime_Vk>(InDevice);
+        UpscalerTime = std::make_unique<GpuTime_Vk>(InDevice, InPD);
     }
 
     return result;
@@ -271,11 +269,11 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
         paramOutput->Resource.ImageViewInfo.Height = currentTarget.Height;
     }
 
-    // UpscalerTime->Start(InCmdBuffer);
+    UpscalerTime->Start(InCmdBuffer);
 
     auto evalResult = EvaluateInternal(InCmdBuffer, InParameters);
 
-    // UpscalerTime->End(InCmdBuffer);
+    UpscalerTime->End(InCmdBuffer);
 
     if (!evalResult)
         return false;
@@ -306,4 +304,39 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
     _frameCount++;
 
     return evalResult;
+}
+
+std::optional<double> IFeature_Vk::ReadUpscalerTime(void* unused)
+{
+    if (!UpscalerTime || !RCAS || !OutputScaler)
+        return std::nullopt;
+
+    lastUpscalerTime = UpscalerTime->ReadGpuTime();
+    lastRcasTime = RCAS->ReadGpuTime();
+    lastOutputScalingTime = OutputScaler->ReadGpuTime();
+
+    return sumOpts(lastUpscalerTime, lastRcasTime, lastOutputScalingTime);
+}
+
+void IFeature_Vk::ReadDetailedGpuTimes(void* unused, std::vector<DetailedGpuTime>& detailedGpuTimes)
+{
+    detailedGpuTimes.clear();
+
+    // Do not call ReadGpuTime twice for shaders
+    if (lastUpscalerTime)
+        detailedGpuTimes.emplace_back(DetailedGpuTime { ShortName(), lastUpscalerTime.value(), true });
+
+    if (lastRcasTime)
+        detailedGpuTimes.emplace_back(DetailedGpuTime { RCAS->Name(), lastRcasTime.value(), true });
+
+    if (lastOutputScalingTime)
+        detailedGpuTimes.emplace_back(DetailedGpuTime { OutputScaler->Name(), lastOutputScalingTime.value(), true });
+
+    if (!Magnifier)
+        return;
+
+    auto magnifierTime = Magnifier->ReadGpuTime();
+
+    if (magnifierTime)
+        detailedGpuTimes.emplace_back(DetailedGpuTime { Magnifier->Name(), magnifierTime.value(), false });
 }

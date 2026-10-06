@@ -5,6 +5,7 @@
 Shader_Vk::Shader_Vk(std::string InName, VkDevice InDevice, VkPhysicalDevice InPhysicalDevice)
     : _name(InName), _device(InDevice), _physicalDevice(InPhysicalDevice)
 {
+    GpuTime = std::make_unique<GpuTime_Vk>(InDevice, InPhysicalDevice);
 }
 
 Shader_Vk::~Shader_Vk()
