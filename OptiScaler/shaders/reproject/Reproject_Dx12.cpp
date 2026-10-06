@@ -6,6 +6,7 @@
 #include "precompile/reproject_Shader.h"
 #include "precompile/reproject_mask_h_Shader.h"
 #include "precompile/reproject_mask_v_Shader.h"
+#include "precompile/reproject_latch_Shader.h"
 
 #include <numbers>
 #include "mouseInputs/RawInputHook.h"
@@ -157,20 +158,10 @@ void Reproject_Dx12::FilloutStruct(const FilloutData& data, ReprojectionParams& 
         _isFirstFrame = false;
     }
 
-    // Transform mouse input using calibrated coefficients
-    const float curMouseX = data.mouseDeltaSinceSim.x * pixelAngle;
-    const float curMouseY = data.mouseDeltaSinceSim.y * pixelAngle;
-
-    const float yaw = curMouseX * _calibration.yawFromX + curMouseY * _calibration.yawFromY;
-    const float pitch = curMouseX * _calibration.pitchFromX + curMouseY * _calibration.pitchFromY;
-
-    // Compute camera reprojection matrix
+    // Compute camera basis
     XMVECTOR camRight = XMVector3Normalize(XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(data.cameraRight)));
     XMVECTOR camUp = XMVector3Normalize(XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(data.cameraUp)));
     XMVECTOR camForward = XMVector3Normalize(XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(data.cameraForward)));
-
-    XMMATRIX viewToWorld = XMMATRIX(camRight, camUp, camForward, XMVectorSet(0, 0, 0, 1));
-    XMMATRIX worldToView = XMMatrixTranspose(viewToWorld);
 
     constexpr float TEST_ANGLE = 0.001f;
 
@@ -197,14 +188,20 @@ void Reproject_Dx12::FilloutStruct(const FilloutData& data, ReprojectionParams& 
 
     int yawSign = (std::abs(yawTest) >= 1e-8f && yawTest >= 0.0f) ? 1 : -1;
 
-    XMMATRIX rotPitch = XMMatrixRotationAxis(camRight, pitch * pitchSign);
-    XMMATRIX rotYaw = XMMatrixRotationAxis(XMVectorSet(0, 0, 1, 0), yaw * yawSign);
+    // The rotation itself is built by the latch pass on the GPU, see reproject_latch.hlsl
+    XMStoreFloat4(&params.CameraRight, camRight);
+    XMStoreFloat4(&params.CameraUp, camUp);
+    XMStoreFloat4(&params.CameraForward, camForward);
+    params.Calibration = { _calibration.yawFromX, _calibration.yawFromY, _calibration.pitchFromX,
+                           _calibration.pitchFromY };
 
-    XMMATRIX rotation = XMMatrixTranspose(viewToWorld * rotPitch * rotYaw * worldToView);
+    params.PixelAngle = pixelAngle;
+    params.YawSign = (float) yawSign;
+    params.PitchSign = (float) pitchSign;
 
-    XMStoreFloat4(&params.ReprojectionRow0, rotation.r[0]);
-    XMStoreFloat4(&params.ReprojectionRow1, rotation.r[1]);
-    XMStoreFloat4(&params.ReprojectionRow2, rotation.r[2]);
+    params.LateLatch = data.lateLatch ? 1 : 0;
+    params.MouseDelta = data.mouseDeltaSinceSim;
+    params.SimStartMouse = data.simStartMouse;
 }
 
 void Reproject_Dx12::ResourceBarrier(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* resource,
@@ -270,8 +267,9 @@ Reproject_Dx12::Reproject_Dx12(std::string InName, ID3D12Device* InDevice) : Sha
     sampler.AddressU = sampler.AddressV = sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
 
     // SRV: Hudless, PresentCopy, Depth, FakePresent, DepthMask, DepthMaskTemp
-    // UAV: Present, DepthMaskTemp, DepthMask
-    if (!SetupRootSignature(InDevice, 6, 3, 1, 0, 0, 1, &sampler))
+    // UAV: Present, DepthMaskTemp, DepthMask, Latched
+    // CBV: Params, LiveInput
+    if (!SetupRootSignature(InDevice, 6, 4, 2, 0, 0, 1, &sampler))
     {
         LOG_ERROR("Failed to setup root signature");
         return;
@@ -313,7 +311,55 @@ Reproject_Dx12::Reproject_Dx12(std::string InName, ID3D12Device* InDevice) : Sha
         return;
     }
 
+    if (!CreateComputePipeline(InDevice, &_latchPipeline, reproject_latch_cso, sizeof(reproject_latch_cso),
+                               latchShaderCode.c_str()))
+    {
+        LOG_ERROR("[{0}] Failed to create latch compute pipeline", _name);
+        return;
+    }
+
+    // Live mouse input, stays mapped for the whole lifetime so the input thread can write into it at any time
+    auto liveDesc = CD3DX12_RESOURCE_DESC::Buffer(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+    auto result =
+        InDevice->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &liveDesc,
+                                          D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&_liveInput));
+
+    if (result != S_OK)
+    {
+        LOG_ERROR("[{0}] CreateCommittedResource (live input) error {1:x}", _name, (unsigned int) result);
+        return;
+    }
+
+    _liveInput->SetName(L"Reproject_LiveInput");
+
+    CD3DX12_RANGE readRange(0, 0);
+    if (_liveInput->Map(0, &readRange, &_liveInputMapped) != S_OK)
+    {
+        LOG_ERROR("[{0}] Failed to map live input", _name);
+        _liveInputMapped = nullptr;
+        return;
+    }
+
+    std::memset(_liveInputMapped, 0, sizeof(ReprojectionLiveInput));
+
+    // Result of the latch pass, 3 rotation rows + used mouse delta
+    auto latchedDesc = CD3DX12_RESOURCE_DESC::Buffer(4 * sizeof(XMFLOAT4), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+    auto defaultHeapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+    result = InDevice->CreateCommittedResource(&defaultHeapProps, D3D12_HEAP_FLAG_NONE, &latchedDesc,
+                                               D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&_latchedOutput));
+
+    if (result != S_OK)
+    {
+        LOG_ERROR("[{0}] CreateCommittedResource (latched output) error {1:x}", _name, (unsigned int) result);
+        return;
+    }
+
+    _latchedOutput->SetName(L"Reproject_LatchedOutput");
+
     _init = InitHeaps(InDevice, _frameHeaps, Reproject_NUM_OF_HEAPS);
+
+    if (_init)
+        InputCollection::getInstance().registerLiveSink(_liveInputMapped);
 
     // TODO: make this owned or something, so that hooks stay in place if there are
     // two instances of this shader and one gets destroyed
@@ -396,11 +442,23 @@ bool Reproject_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ReprojectionPa
     CreateUnorderedAccessView(_device, _depthMaskTemp, currentHeap.GetUavCPU(1), 0);
     CreateUnorderedAccessView(_device, _depthMask, currentHeap.GetUavCPU(2), 0);
 
+    D3D12_UNORDERED_ACCESS_VIEW_DESC latchedUavDesc {};
+    latchedUavDesc.Format = DXGI_FORMAT_UNKNOWN;
+    latchedUavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+    latchedUavDesc.Buffer.NumElements = 4;
+    latchedUavDesc.Buffer.StructureByteStride = sizeof(XMFLOAT4);
+    _device->CreateUnorderedAccessView(_latchedOutput, nullptr, &latchedUavDesc, currentHeap.GetUavCPU(3));
+
     if (!CreateConstantsBuffer(_device, _constantBuffers[_counter], params, currentHeap.GetCbvCPU(0)))
     {
         LOG_ERROR("[{0}] Failed to create a constants buffer", _name);
         return false;
     }
+
+    D3D12_CONSTANT_BUFFER_VIEW_DESC liveCbvDesc {};
+    liveCbvDesc.BufferLocation = _liveInput->GetGPUVirtualAddress();
+    liveCbvDesc.SizeInBytes = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+    _device->CreateConstantBufferView(&liveCbvDesc, currentHeap.GetCbvCPU(1));
 
     ID3D12DescriptorHeap* heaps[] = { currentHeap.GetHeapCSU() };
     cmdList->SetDescriptorHeaps(_countof(heaps), heaps);
@@ -430,6 +488,13 @@ bool Reproject_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ReprojectionPa
 
     ResourceBarrier(cmdList, _depthMask, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                     D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+    // Late latch, as close as possible to the reprojection itself
+    cmdList->SetPipelineState(_latchPipeline);
+    cmdList->Dispatch(1, 1, 1);
+
+    auto latchBarrier = CD3DX12_RESOURCE_BARRIER::UAV(_latchedOutput);
+    cmdList->ResourceBarrier(1, &latchBarrier);
 
     cmdList->SetPipelineState(_pipelineState);
 
@@ -497,6 +562,9 @@ ID3D12Resource* Reproject_Dx12::GetCurrentBuffer() { return _buffer[_counter]; }
 
 Reproject_Dx12::~Reproject_Dx12()
 {
+    // Always stop the input thread from writing into the mapped memory
+    InputCollection::getInstance().unregisterLiveSink(_liveInputMapped);
+
     if (!_init || State::Instance().isShuttingDown)
         return;
 
@@ -504,6 +572,9 @@ Reproject_Dx12::~Reproject_Dx12()
     SAFE_RELEASE(_constantBuffer);
     SAFE_RELEASE(_maskPipelineH);
     SAFE_RELEASE(_maskPipelineV);
+    SAFE_RELEASE(_latchPipeline);
+    SAFE_RELEASE(_liveInput);
+    SAFE_RELEASE(_latchedOutput);
     SAFE_RELEASE(_depthMaskTemp);
     SAFE_RELEASE(_depthMask);
 

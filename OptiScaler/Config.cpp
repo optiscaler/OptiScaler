@@ -217,6 +217,7 @@ bool Config::Reload(std::filesystem::path iniPath)
 
             ReprojectionDepthCutoff.set_from_config(readFloat("Reprojection", "DepthCutoff"));
             ReprojectionCutoffExpand.set_from_config(readUInt("Reprojection", "CutoffExpand"));
+            ReprojectionLateLatch.set_from_config(readBool("Reprojection", "LateLatch"));
         }
 
         // FSR FG Inputs
@@ -990,6 +991,8 @@ bool Config::SaveIni()
                      GetFloatValue(Instance()->ReprojectionDepthCutoff.value_for_config()).c_str());
         ini.SetValue("Reprojection", "CutoffExpand",
                      GetIntValue(Instance()->ReprojectionCutoffExpand.value_for_config()).c_str());
+        ini.SetValue("Reprojection", "LateLatch",
+                     GetBoolValue(Instance()->ReprojectionLateLatch.value_for_config()).c_str());
     }
 
     // OptiFG

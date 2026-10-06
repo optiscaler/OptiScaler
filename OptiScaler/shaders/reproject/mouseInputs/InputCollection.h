@@ -1,6 +1,7 @@
 #pragma once
 
 #include <shared_mutex>
+#include <vector>
 #include <DirectXMath.h>
 
 struct InputDelta
@@ -65,6 +66,16 @@ class InputCollection
     InputDelta inProgressSimToSimDelta {}; // assumes only one in-flight sim
     InputDelta simToSimDeltas[8] {};       // just for reading
 
+    // Running total of all mouse movement, wraps around, only differences between two values are meaningful
+    uint32_t cumulativeX = 0;
+    uint32_t cumulativeY = 0;
+    DirectX::XMINT2 simStartCumulative[8] {};
+
+    // GPU visible memory that gets the running total written on every mouse event (late latching)
+    std::vector<volatile uint64_t*> liveSinks;
+
+    void writeLiveSinks();
+
   public:
     static InputCollection& getInstance()
     {
@@ -81,4 +92,11 @@ class InputCollection
 
     // Returns the mouse delta since sim start of the provided frame id
     InputDelta readDeltaSinceSim(uint64_t frameId);
+
+    // Returns the running mouse total at sim start of the provided frame id
+    DirectX::XMINT2 readCumulativeAtSim(uint64_t frameId);
+
+    // sink has to point to 8 bytes of persistently mapped memory, gets the running total as int2
+    void registerLiveSink(void* sink);
+    void unregisterLiveSink(void* sink);
 };

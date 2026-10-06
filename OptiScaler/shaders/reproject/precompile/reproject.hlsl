@@ -24,9 +24,18 @@ cbuffer Params : register(b0)
     float InvTanHalfFovX;
     float InvTanHalfFovY;
     
-    float4 ReprojectionMatrixRow0;
-    float4 ReprojectionMatrixRow1;
-    float4 ReprojectionMatrixRow2;
+    float4 CameraRight;
+    float4 CameraUp;
+    float4 CameraForward;
+    float4 Calibration; // yawFromX, yawFromY, pitchFromX, pitchFromY
+
+    float PixelAngle;
+    float YawSign;
+    float PitchSign;
+    uint LateLatch;
+
+    int2 MouseDelta;
+    int2 SimStartMouse;
 };
 
 Texture2D<float3> Hudless : register(t0);
@@ -36,6 +45,9 @@ Texture2D<float3> FakePresent : register(t3);
 Texture2D<float> DepthMask : register(t4);
 
 RWTexture2D<float3> Present : register(u0);
+
+// Rows of the reprojection rotation, written once per dispatch by the latch pass
+RWStructuredBuffer<float4> Latched : register(u3);
 SamplerState LinearClampSampler : register(s0);
 
 float Bayer4x4(uint2 p)
@@ -96,11 +108,7 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     float3 ray = float3(ndc * float2(TanHalfFovX, TanHalfFovY), 1.0f);
 
     // sourceUV is the reprojected position of the pixel that we want
-    float3 sourceRay = float3(
-        dot(ReprojectionMatrixRow0.xyz, ray),
-        dot(ReprojectionMatrixRow1.xyz, ray),
-        dot(ReprojectionMatrixRow2.xyz, ray)
-    );
+    float3 sourceRay = ray.x * Latched[0].xyz + ray.y * Latched[1].xyz + ray.z * Latched[2].xyz;
 
     // Perspective Divide & Source UV Calculation
     float2 sourceUV = 0.0f;

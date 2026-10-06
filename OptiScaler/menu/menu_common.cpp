@@ -4432,6 +4432,15 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             config->ReprojectionCutoffExpand = cutoffExpandPx;
         ShowTooltip("Expands the cutoff area by this many depth pixels\n"
                     "Use only when you see an outline left by the cutoff process");
+
+        if (bool lateLatch = config->ReprojectionLateLatch.value_or_default();
+            ImGui::Checkbox("Late latch mouse", &lateLatch))
+        {
+            config->ReprojectionLateLatch = lateLatch;
+        }
+        ShowTooltip("Reads the mouse right when the GPU starts the reprojection\n"
+                    "instead of when the frame is presented on the CPU.\n"
+                    "Lowers latency, especially when GPU bound");
     }
 
     // OptiFG
