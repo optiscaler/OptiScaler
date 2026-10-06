@@ -88,7 +88,6 @@ class IFeature_Dx11wDx12 : public virtual IFeature_Dx11
                 if (!time.includedInUpscalerTime)
                 {
                     deductedUpscalerTime += time.time;
-                    break;
                 }
             }
 
