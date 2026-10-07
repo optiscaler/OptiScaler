@@ -288,6 +288,11 @@ class State
     sl::DLSSGMode dlssgLastSetMode = sl::DLSSGMode::eOff;
     int dlssgDetectedInterpolationCount = 0;
 
+    // What the game requested from DLSSG when it's used as FG Input
+    // This might need to get moved to Sl_Inputs_Dx12
+    bool dlssgInputGameEnabled = false;
+    int dlssgInputGameInterpolationCount = 1;
+
     // DLSS
     bool dlssPresetsOverriddenExternally = false;
     bool dlssPresetsOverridenByOpti = false;

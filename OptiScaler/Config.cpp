@@ -1641,6 +1641,31 @@ void Config::CheckUpscalerFiles()
     }
 }
 
+bool Config::FGCanFollowGame()
+{
+    // SL1 has no slDLSSGSetOptions so we never learn what the game wants
+    const auto& state = State::Instance();
+    return state.activeFgInput == FGInput::DLSSG && state.streamlineVersion.major >= 2;
+}
+
+bool Config::FGFollowsGame() const { return !FGEnabled.has_value() && FGCanFollowGame(); }
+
+bool Config::IsFGEnabled() const
+{
+    if (FGFollowsGame())
+        return State::Instance().dlssgInputGameEnabled;
+
+    return FGEnabled.value_or_default();
+}
+
+int Config::FGInterpolationCount(int outputCount) const
+{
+    if (FGFollowsGame())
+        return State::Instance().dlssgInputGameInterpolationCount;
+
+    return outputCount;
+}
+
 std::vector<std::string> Config::GetConfigLog() { return _log; }
 
 std::optional<std::string> Config::readString(std::string section, std::string key, bool lowercase)

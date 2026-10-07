@@ -129,7 +129,7 @@ bool Sl1_Inputs_Dx12::applyConstants(const sl1::Constants& values, uint32_t fram
 
     fgOutput->EvaluateState(State::Instance().currentD3D12Device, fgConstants);
 
-    if (!config->FGEnabled.value_or_default())
+    if (!config->IsFGEnabled())
     {
         LOG_TRACE("SL1 FG not enabled");
         return true;
@@ -239,7 +239,7 @@ bool Sl1_Inputs_Dx12::reportCachedResource(const CachedTag& tag, ID3D12GraphicsC
 
     auto fgOutput = reinterpret_cast<IFGFeature_Dx12*>(state.currentFG);
 
-    if (fgOutput == nullptr || !Config::Instance()->FGEnabled.value_or_default())
+    if (fgOutput == nullptr || !Config::Instance()->IsFGEnabled())
         return false;
 
     if (tag.resource.native == nullptr)

@@ -349,7 +349,7 @@ bool Hudfix_Dx11::IsResourceCheckActive()
             return false;
     }
 
-    if (!Config::Instance()->FGEnabled.value_or_default() || !Config::Instance()->FGHUDFix.value_or_default())
+    if (!Config::Instance()->IsFGEnabled() || !Config::Instance()->FGHUDFix.value_or_default())
         return false;
 
     if (state.activeFgInput != FGInput::Upscaler || state.swapchainInteropApi != SwapchainInteropApi::Dx11wDx12)

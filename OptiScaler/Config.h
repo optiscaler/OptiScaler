@@ -563,7 +563,8 @@ class Config
     CustomOptional<bool> FGReprojectionEnabled { false }; // WIP Not saved or loaded
 
     // OptiFG
-    CustomOptional<bool> FGEnabled { false };
+    // Unset (auto) follows the game's DLSSG state when FG Input is DLSSG, use IsFGEnabled() to read
+    CustomOptional<bool, SoftDefault> FGEnabled { false };
     CustomOptional<bool> FGUseMutexForSwapchain { true };
     CustomOptional<bool> FGMakeMVCopy { true };
     CustomOptional<bool> FGMakeDepthCopy { true };
@@ -698,6 +699,12 @@ class Config
     bool SaveXeFG();
 
     void CheckUpscalerFiles();
+
+    // FG on/off and interpolation count, following the game's DLSSG state when FGEnabled is unset
+    static bool FGCanFollowGame();
+    bool FGFollowsGame() const;
+    bool IsFGEnabled() const;
+    int FGInterpolationCount(int outputCount) const;
 
     std::vector<std::string> GetConfigLog();
 

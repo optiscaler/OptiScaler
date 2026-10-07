@@ -880,7 +880,7 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
               params->numGeneratedFrames);
 
     // check for status
-    if (!Config::Instance()->FGEnabled.value_or_default() || _fgContext == nullptr || state.scChanged)
+    if (!Config::Instance()->IsFGEnabled() || _fgContext == nullptr || state.scChanged)
     {
         LOG_WARN("Cancel async dispatch");
         params->numGeneratedFrames = 0;
@@ -1507,7 +1507,7 @@ void FSRFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
     }
 
     // If FG Enabled from menu
-    if (Config::Instance()->FGEnabled.value_or_default())
+    if (Config::Instance()->IsFGEnabled())
     {
         // If FG context is nullptr
         if (_fgContext == nullptr)

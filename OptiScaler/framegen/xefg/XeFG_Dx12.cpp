@@ -37,6 +37,43 @@ void XeFG_Dx12::xefgLogCallback(const char* message, xefg_swapchain_logging_leve
     }
 }
 
+int XeFG_Dx12::QueryMaxInterpolationCount(ID3D12Device* device)
+{
+    if (device == nullptr || (XeFGProxy::Module() == nullptr && !XeFGProxy::InitXeFG()) ||
+        XeFGProxy::D3D12CreateContext() == nullptr || XeFGProxy::GetProperties() == nullptr ||
+        XeFGProxy::Destroy() == nullptr)
+    {
+        return 0;
+    }
+
+#ifndef DONT_USE_XMX
+    ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
+#endif // !DONT_USE_XMX
+
+    xefg_swapchain_handle_t context = nullptr;
+    auto result = XeFGProxy::D3D12CreateContext()(device, &context);
+
+    if (result != XEFG_SWAPCHAIN_RESULT_SUCCESS)
+    {
+        LOG_ERROR("D3D12CreateContext error: {} ({})", magic_enum::enum_name(result), (UINT) result);
+        return 0;
+    }
+
+    // Only maxSupportedInterpolations is reported before swapchain init
+    xefg_swapchain_properties_t props {};
+    result = XeFGProxy::GetProperties()(context, &props);
+    XeFGProxy::Destroy()(context);
+
+    if (result != XEFG_SWAPCHAIN_RESULT_SUCCESS)
+    {
+        LOG_ERROR("GetProperties error: {} ({})", magic_enum::enum_name(result), (UINT) result);
+        return 0;
+    }
+
+    LOG_INFO("Max supported interpolations: {}", props.maxSupportedInterpolations);
+    return static_cast<int>(props.maxSupportedInterpolations);
+}
+
 bool XeFG_Dx12::CreateSwapchainContext(ID3D12Device* device)
 {
     if (XeFGProxy::Module() == nullptr && !XeFGProxy::InitXeFG())
@@ -332,7 +369,8 @@ bool XeFG_Dx12::CreateSwapchainInternal(IDXGIFactory* factory, ID3D12CommandQueu
 
     // For old libxess_fg versions we use max to control interpolation count
     if (XeFGProxy::SetNumInterpolatedFrames() == nullptr)
-        intTarget = Config::Instance()->FGXeFGInterpolationCount.value_or_default();
+        intTarget =
+            Config::Instance()->FGInterpolationCount(Config::Instance()->FGXeFGInterpolationCount.value_or_default());
 
     if (intTarget < 1 || intTarget > _maxInterpolationCount)
     {
@@ -462,7 +500,8 @@ bool XeFG_Dx12::CreateSwapchain1Internal(IDXGIFactory* factory, ID3D12CommandQue
 
     // For old libxess_fg versions we use max to control interpolation count
     if (XeFGProxy::SetNumInterpolatedFrames() == nullptr)
-        intTarget = Config::Instance()->FGXeFGInterpolationCount.value_or_default();
+        intTarget =
+            Config::Instance()->FGInterpolationCount(Config::Instance()->FGXeFGInterpolationCount.value_or_default());
 
     if (intTarget < 1 || intTarget > _maxInterpolationCount)
     {
@@ -713,10 +752,13 @@ bool XeFG_Dx12::Dispatch()
                      _maxInterpolationCount);
         }
 
-        if (_framesToInterpolate != Config::Instance()->FGXeFGInterpolationCount.value_or_default())
+        const int targetCount = std::clamp(
+            Config::Instance()->FGInterpolationCount(Config::Instance()->FGXeFGInterpolationCount.value_or_default()),
+            1, std::max(_maxInterpolationCount, 1));
+
+        if (_framesToInterpolate != targetCount)
         {
-            LOG_INFO("Interpolation count changed {} -> {}", _framesToInterpolate,
-                     Config::Instance()->FGXeFGInterpolationCount.value_or_default());
+            LOG_INFO("Interpolation count changed {} -> {}", _framesToInterpolate, targetCount);
 
             state.WAR_xefgRequestFGToggle = true;
 
@@ -724,10 +766,9 @@ bool XeFG_Dx12::Dispatch()
             ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 #endif // !DONT_USE_XMX
 
-            auto intResult = XeFGProxy::SetNumInterpolatedFrames()(
-                _swapChainContext, Config::Instance()->FGXeFGInterpolationCount.value_or_default());
+            auto intResult = XeFGProxy::SetNumInterpolatedFrames()(_swapChainContext, targetCount);
 
-            _framesToInterpolate = Config::Instance()->FGXeFGInterpolationCount.value_or_default();
+            _framesToInterpolate = targetCount;
 
             if (intResult != XEFG_SWAPCHAIN_RESULT_SUCCESS)
             {
@@ -985,7 +1026,7 @@ void XeFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
     _infiniteDepth = static_cast<bool>(fgConstants.flags & FG_Flags::InfiniteDepth);
 
     // If FG Enabled from menu
-    if (Config::Instance()->FGEnabled.value_or_default())
+    if (Config::Instance()->IsFGEnabled())
     {
         // If FG context is nullptr
         if (_fgContext == nullptr)

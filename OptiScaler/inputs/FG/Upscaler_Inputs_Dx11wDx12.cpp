@@ -204,7 +204,7 @@ void UpscalerInputsDx11wDx12::UpscaleStart(NVSDK_NGX_Parameter* InParameters, IF
 
     Hudfix_Dx11::UpscaleStart();
 
-    if (State::Instance().isShuttingDown || !fg->IsActive() || !Config::Instance()->FGEnabled.value_or_default() ||
+    if (State::Instance().isShuttingDown || !fg->IsActive() || !Config::Instance()->IsFGEnabled() ||
         State::Instance().currentSwapchain == nullptr)
     {
         return;
@@ -315,8 +315,7 @@ void UpscalerInputsDx11wDx12::UpscaleEnd(NVSDK_NGX_Parameter* InParameters, IFea
     if (fg == nullptr || State::Instance().activeFgInput != FGInput::Upscaler || _dx12Device == nullptr)
         return;
 
-    if (fg->IsActive() && Config::Instance()->FGEnabled.value_or_default() &&
-        State::Instance().currentSwapchain != nullptr)
+    if (fg->IsActive() && Config::Instance()->IsFGEnabled() && State::Instance().currentSwapchain != nullptr)
     {
         if (Config::Instance()->FGHUDFix.value_or_default())
         {

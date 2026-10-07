@@ -518,7 +518,7 @@ ffxReturnCode_t ffxConfigure_Dx12FG(ffxContext* context, ffxConfigureDescHeader*
 
         s.fsrfgInputActive = cDesc->frameGenerationEnabled;
 
-        if (cDesc->frameGenerationEnabled && !fg->IsActive() && Config::Instance()->FGEnabled.value_or_default())
+        if (cDesc->frameGenerationEnabled && !fg->IsActive() && Config::Instance()->IsFGEnabled())
         {
             if (!fg->IsPaused())
             {

@@ -40,6 +40,9 @@ class XeFG_Dx12 : public virtual IFGFeature_Dx12
     void CreateObjects(ID3D12Device* InDevice) override final;
 
   public:
+    // Uses a temporary context, works before our FG swapchain exists. Returns 0 on failure
+    static int QueryMaxInterpolationCount(ID3D12Device* device);
+
     // IFGFeature
     const char* Name() override final;
     feature_version Version() override final;

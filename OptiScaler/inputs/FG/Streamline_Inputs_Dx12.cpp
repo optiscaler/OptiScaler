@@ -126,7 +126,7 @@ bool Sl_Inputs_Dx12::setConstants(const sl::Constants& values, uint32_t frameId)
 
         fgOutput->EvaluateState(State::Instance().currentD3D12Device, fgConstants);
 
-        if (!config->FGEnabled.value_or_default())
+        if (!config->IsFGEnabled())
         {
             LOG_TRACE("FG not enabled");
             return true;
@@ -288,7 +288,7 @@ bool Sl_Inputs_Dx12::reportResource(const sl::ResourceTag& tag, ID3D12GraphicsCo
     auto fgOutput = reinterpret_cast<IFGFeature_Dx12*>(state.currentFG);
 
     // It's possible for only some resources to be marked ready if FGEnabled is enabled during resource tagging
-    if (fgOutput == nullptr || !Config::Instance()->FGEnabled.value_or_default())
+    if (fgOutput == nullptr || !Config::Instance()->IsFGEnabled())
         return false;
 
     static const bool ignoreValidUntilEvaluateForFG =

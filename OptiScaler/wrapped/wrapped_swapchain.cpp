@@ -878,7 +878,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
     DXGI_SWAP_CHAIN_DESC desc {};
     _real->GetDesc(&desc);
 
-    if (Config::Instance()->FGEnabled.value_or_default())
+    if (Config::Instance()->IsFGEnabled())
     {
         State::Instance().fgResetCapturedResources = true;
         State::Instance().fgOnlyUseCapturedResources = false;
@@ -1277,7 +1277,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
     DXGI_SWAP_CHAIN_DESC desc {};
     _real->GetDesc(&desc);
 
-    if (Config::Instance()->FGEnabled.value_or_default())
+    if (Config::Instance()->IsFGEnabled())
     {
         State::Instance().fgResetCapturedResources = true;
         State::Instance().fgOnlyUseCapturedResources = false;

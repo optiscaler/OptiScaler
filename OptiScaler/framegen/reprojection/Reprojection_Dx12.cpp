@@ -181,7 +181,7 @@ void Reprojection_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgCons
 
     _constants = fgConstants;
 
-    if (Config::Instance()->FGEnabled.value_or_default())
+    if (Config::Instance()->IsFGEnabled())
     {
         if (_device == nullptr)
             CreateContext(device, fgConstants);
