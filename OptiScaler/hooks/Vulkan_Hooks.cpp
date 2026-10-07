@@ -22,6 +22,8 @@
 
 #include "Hook_Utils.h"
 
+#pragma intrinsic(_ReturnAddress)
+
 // for menu rendering
 static VkDevice _device = VK_NULL_HANDLE;
 static VkInstance _instance = VK_NULL_HANDLE;
@@ -48,6 +50,34 @@ PFN_vkAntiLagUpdateAMD VulkanHooks::o_vkAntiLagUpdateAMD = nullptr;
 static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo);
 static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateInfoKHR* pCreateInfo,
                                        const VkAllocationCallbacks* pAllocator, VkSwapchainKHR* pSwapchain);
+
+// Swapchain calls coming from dxvk/vkd3d-proton's DXGI based modules
+// For those the menu is drawn on the DXGI swapchain instead
+static bool IsDxgiBackedCaller(void* returnAddress)
+{
+    // dxvk and vkd3d-proton present from their own threads
+    thread_local HMODULE lastModule = nullptr;
+    thread_local bool lastResult = false;
+
+    auto module = Util::GetCallerModule(returnAddress);
+
+    if (module == nullptr || module == dllModule)
+        return false;
+
+    if (module == lastModule)
+        return lastResult;
+
+    auto name = Util::WhoIsTheCaller(returnAddress);
+    to_lower_in_place(name);
+
+    lastModule = module;
+    lastResult = name == "dxgi.dll" || name == "d3d11.dll" || name == "d3d10core.dll" || name == "d3d12.dll" ||
+                 name == "d3d12core.dll";
+
+    LOG_DEBUG("Swapchain caller: {}, DXGI backed: {}", name, lastResult);
+
+    return lastResult;
+}
 
 static void HookDevice(VkDevice InDevice)
 {
@@ -262,25 +292,28 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
         }
     }
 
-    // ??? TODO: if we are hooking dxvk's vulkan calls then this present call could be either coming from dxvk or from a
-    // native vk game
-    if (!IdentifyGpu::getPrimaryGpu().usesDxvk)
+    // dxvk/vkd3d-proton presents are handled by the DXGI swapchain
+    const bool dxgiBacked = IsDxgiBackedCaller(_ReturnAddress());
+
+    if (!dxgiBacked)
+    {
         State::Instance().swapchainApi = Vulkan;
 
-    // Tick feature to let it know if it's frozen
-    if (auto currentFeature = State::Instance().currentFeature; currentFeature != nullptr)
-    {
-        if (auto currentFg = State::Instance().currentFG; currentFg != nullptr)
-            currentFeature->TickFrozenCheck(currentFg->GetInterpolatedFrameCount());
-        else
-            currentFeature->TickFrozenCheck();
+        // Tick feature to let it know if it's frozen
+        if (auto currentFeature = State::Instance().currentFeature; currentFeature != nullptr)
+        {
+            if (auto currentFg = State::Instance().currentFG; currentFg != nullptr)
+                currentFeature->TickFrozenCheck(currentFg->GetInterpolatedFrameCount());
+            else
+                currentFeature->TickFrozenCheck();
+        }
     }
 
     VkPresentInfoKHR localPresentInfo {};
     memcpy(&localPresentInfo, pPresentInfo, sizeof(VkPresentInfoKHR));
 
     // render menu if needed
-    if (!MenuOverlayVk::QueuePresent(queue, &localPresentInfo))
+    if (!dxgiBacked && !MenuOverlayVk::QueuePresent(queue, &localPresentInfo))
     {
         LOG_ERROR("QueuePresent: false!");
         return VK_ERROR_OUT_OF_DATE_KHR;
@@ -308,10 +341,13 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
 
     ScopedVulkanCreatingSC scopedVulkanCreatingSC {};
 
+    // dxvk/vkd3d-proton swapchains get the menu on the DXGI swapchain
+    const bool dxgiBacked = IsDxgiBackedCaller(_ReturnAddress());
+
     // Menu blur copies the swapchain image
     VkSwapchainCreateInfoKHR localCreateInfo {};
     if (pCreateInfo != nullptr && Config::Instance()->OverlayMenu.value_or_default() &&
-        !State::Instance().vulkanSkipHooks && _PD != VK_NULL_HANDLE &&
+        !State::Instance().vulkanSkipHooks && !dxgiBacked && _PD != VK_NULL_HANDLE &&
         (pCreateInfo->imageUsage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) == 0)
     {
         VkSurfaceCapabilitiesKHR surfaceCaps {};
@@ -331,7 +367,7 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
     }
 
     if (result == VK_SUCCESS && device != VK_NULL_HANDLE && pCreateInfo != nullptr && *pSwapchain != VK_NULL_HANDLE &&
-        !State::Instance().vulkanSkipHooks)
+        !State::Instance().vulkanSkipHooks && !dxgiBacked)
     {
         State::Instance().screenWidth = static_cast<float>(pCreateInfo->imageExtent.width);
         State::Instance().screenHeight = static_cast<float>(pCreateInfo->imageExtent.height);

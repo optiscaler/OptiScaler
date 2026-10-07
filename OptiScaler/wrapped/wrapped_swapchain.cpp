@@ -460,39 +460,6 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         LOG_DEBUG("Final SyncInterval: {}", SyncInterval);
     }
 
-    // DXVK check, it's here because of upscaler time calculations
-    if (IdentifyGpu::getPrimaryGpu().usesDxvk)
-    {
-        if (pPresentParameters == nullptr)
-            presentResult = pSwapChain->Present(SyncInterval, Flags);
-        else
-            presentResult = ((IDXGISwapChain1*) pSwapChain)->Present1(SyncInterval, Flags, pPresentParameters);
-
-        if (presentResult == S_OK)
-        {
-            LOG_TRACE("3 {}", (UINT) presentResult);
-        }
-        else if (presentResult == DXGI_ERROR_DEVICE_REMOVED)
-        {
-            if (isD3D11)
-            {
-                if (State::Instance().currentD3D11Device != nullptr)
-                    Util::GetDeviceRemovedReason(State::Instance().currentD3D11Device);
-            }
-            else
-            {
-                if (State::Instance().currentD3D12Device != nullptr)
-                    Util::GetDeviceRemovedReason(State::Instance().currentD3D12Device);
-            }
-        }
-        else
-        {
-            LOG_ERROR("3 {:X}", (UINT) presentResult);
-        }
-
-        return presentResult;
-    }
-
     if (willPresent)
     {
         // Tick feature to let it know if it's frozen
@@ -553,8 +520,18 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
     {
         LOG_ERROR("Original present result: {:X}", (UINT) presentResult);
 
-        if (presentResult == DXGI_ERROR_DEVICE_REMOVED && State::Instance().currentD3D12Device != nullptr)
-            Util::GetDeviceRemovedReason(State::Instance().currentD3D12Device);
+        if (presentResult == DXGI_ERROR_DEVICE_REMOVED)
+        {
+            if (isD3D11)
+            {
+                if (State::Instance().currentD3D11Device != nullptr)
+                    Util::GetDeviceRemovedReason(State::Instance().currentD3D11Device);
+            }
+            else if (State::Instance().currentD3D12Device != nullptr)
+            {
+                Util::GetDeviceRemovedReason(State::Instance().currentD3D12Device);
+            }
+        }
     }
 
     return presentResult;

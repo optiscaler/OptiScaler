@@ -29,6 +29,7 @@ class Dx11WithDx12
     inline static ID3D11Fence* Dx11FenceTextureCopy = nullptr;
     inline static ID3D12Fence* Dx12FenceTextureCopy = nullptr;
     inline static HANDLE Dx11SharedHandleForTextureCopy = NULL;
+    inline static HANDLE Dx12TextureCopyEvent = NULL;
     inline static UINT64 TextureCopyFenceValue = 1;
 
     // Sync objects are tied to the current D3D11 device, D3D12 device and D3D12 queue.
@@ -45,6 +46,7 @@ class Dx11WithDx12
     static void ReleaseSyncResources();
     static void ReleaseSyncResourcesLocked();
     static bool EnsureSyncResourcesLocked();
+    static bool UseCpuWaitForDx12();
 
   public:
     enum class ResourceMask : uint32_t

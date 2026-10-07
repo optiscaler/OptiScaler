@@ -3,6 +3,9 @@
 #include "dx11_with_dx12.h"
 #include "with_dx12.h"
 
+#include <State.h>
+#include <Util.h>
+
 #define ASSIGN_DESC(dest, src)                                                                                         \
     dest.Width = src.Width;                                                                                            \
     dest.Height = src.Height;                                                                                          \
@@ -114,6 +117,12 @@ void Dx11WithDx12::ReleaseSyncResourcesLocked()
     {
         CloseHandle(Dx11SharedHandleForTextureCopy);
         Dx11SharedHandleForTextureCopy = NULL;
+    }
+
+    if (Dx12TextureCopyEvent != NULL)
+    {
+        CloseHandle(Dx12TextureCopyEvent);
+        Dx12TextureCopyEvent = NULL;
     }
 
     TextureCopyFenceValue = 1;
@@ -238,6 +247,15 @@ bool Dx11WithDx12::SyncDx11ToDx12()
     return true;
 }
 
+// vkd3d-proton can map multiple D3D12 queues onto a single VkQueue (e.g. RADV has only one graphics queue).
+// With the DX11 FG swapchain interop also waiting on D3D11 from D3D12, a GPU side D3D11 wait on D3D12 can
+// end up in a cycle and deadlock. Wait on the CPU instead so D3D11 never blocks on D3D12 on the GPU.
+bool Dx11WithDx12::UseCpuWaitForDx12()
+{
+    return State::Instance().isRunningOnLinux &&
+           State::Instance().swapchainInteropApi == SwapchainInteropApi::Dx11wDx12;
+}
+
 bool Dx11WithDx12::SyncDx12ToDx11()
 {
     std::lock_guard<std::mutex> lock(SyncMutex);
@@ -253,6 +271,47 @@ bool Dx11WithDx12::SyncDx12ToDx11()
         LOG_ERROR("Dx11WithDx12 Dx12 signal failed for fence {}: {:X}", fenceValue, (UINT) result);
         ReleaseSyncResourcesLocked();
         return false;
+    }
+
+    if (UseCpuWaitForDx12())
+    {
+        // Upscaler work is short, polling avoids the event wake up latency under Wine
+        const auto spinStart = Util::MillisecondsNow();
+        while (Util::MillisecondsNow() - spinStart < 2.0)
+        {
+            if (Dx12FenceTextureCopy->GetCompletedValue() >= fenceValue)
+                return true;
+
+            YieldProcessor();
+        }
+
+        if (Dx12FenceTextureCopy->GetCompletedValue() >= fenceValue)
+            return true;
+
+        if (Dx12TextureCopyEvent == NULL)
+            Dx12TextureCopyEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+
+        if (Dx12TextureCopyEvent == NULL)
+        {
+            LOG_ERROR("Dx11WithDx12 can't create texture copy event");
+            return false;
+        }
+
+        result = Dx12FenceTextureCopy->SetEventOnCompletion(fenceValue, Dx12TextureCopyEvent);
+        if (result != S_OK)
+        {
+            LOG_ERROR("Dx11WithDx12 SetEventOnCompletion failed for fence {}: {:X}", fenceValue, (UINT) result);
+            return false;
+        }
+
+        if (WaitForSingleObject(Dx12TextureCopyEvent, 5000) != WAIT_OBJECT_0)
+        {
+            LOG_ERROR("Dx11WithDx12 CPU wait timed out for fence {}, completed: {}", fenceValue,
+                      Dx12FenceTextureCopy->GetCompletedValue());
+            return false;
+        }
+
+        return true;
     }
 
     result = Dx11DeviceContext->Wait(Dx11FenceTextureCopy, fenceValue);
@@ -965,6 +1024,10 @@ bool Dx11WithDx12::CopyUpscalerOutputToDx11(UINT frameIndex)
     }
 
     Dx11DeviceContext->CopyResource(cache.ParamOutput[outputIndex], cache.Output[outputIndex].SharedTexture);
+
+    // After a CPU wait the D3D11 queue is idle, submit right away instead of waiting for the next flush
+    if (UseCpuWaitForDx12())
+        Dx11DeviceContext->Flush();
 
     // Games flush should be enough, so disabled for now
     // Dx11DeviceContext->Flush();
