@@ -773,8 +773,9 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::Present(UINT SyncInterval, UIN
         result = LocalPresent(_real, SyncInterval, Flags, nullptr, _device, _handle, _uwp);
 
         // When Reflex can't be used to limit, sleep in present
+        // DXVK's DXGI presents through Vulkan where the limiter already sleeps
         if (!State::Instance().reflexLimitsFps && State::Instance().activeFgOutput == FGOutput::NoFG &&
-            !IdentifyGpu::getPrimaryGpu().usesDxvk && !XellHooks::canLimit())
+            !IdentifyGpu::getPrimaryGpu().dxgiIsDxvk && !XellHooks::canLimit())
             FrameLimit::sleep(false);
     }
     else
@@ -1131,8 +1132,9 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::Present1(UINT SyncInterval, UI
         result = LocalPresent(_real1, SyncInterval, Flags, pPresentParameters, _device, _handle, _uwp);
 
         // When Reflex can't be used to limit, sleep in present
+        // DXVK's DXGI presents through Vulkan where the limiter already sleeps
         if (!State::Instance().reflexLimitsFps && State::Instance().activeFgOutput == FGOutput::NoFG &&
-            !IdentifyGpu::getPrimaryGpu().usesDxvk && !XellHooks::canLimit())
+            !IdentifyGpu::getPrimaryGpu().dxgiIsDxvk && !XellHooks::canLimit())
             FrameLimit::sleep(false);
     }
     else

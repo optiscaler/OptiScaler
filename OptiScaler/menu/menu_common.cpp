@@ -2173,14 +2173,14 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                              ImGuiWindowFlags_NoNav))
         {
             std::string api;
-            if (IdentifyGpu::getPrimaryGpu().usesDxvk && state.api == DX11)
+            if (IdentifyGpu::gameUsesDxvk())
             {
                 if (state.swapchainInteropApi == SwapchainInteropApi::None)
                     api = "DXVK";
                 else
                     api = "DXVK w/Dx12";
             }
-            else if (IdentifyGpu::getPrimaryGpu().usesVkd3dProton && state.api == DX12)
+            else if (IdentifyGpu::gameUsesVkd3dProton())
             {
                 api = "VKD3D";
             }
@@ -5014,7 +5014,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 const bool isDllProxyNvngxType =
                     activeNvngxFg == FGNvngxReplacement::Nukems || activeNvngxFg == FGNvngxReplacement::Arturs;
                 if (isDllProxyNvngxType && !primaryGpu.dlssCapable && primaryGpu.fsr4Support == FSR4Support::None &&
-                    !primaryGpu.usesVkd3dProton && !isUnrealEngine)
+                    !primaryGpu.d3d12IsVkd3dProton && !isUnrealEngine)
                 {
                     if (bool makeDepthCopy = config->NvngxFGMakeDepthCopy.value_or_default();
                         ImGui::Checkbox("Fix broken visuals", &makeDepthCopy))
@@ -7809,7 +7809,10 @@ void MenuCommon::RenderStatusInfo(RenderMenuContext& ctx)
         {
             setupPairs();
 
-            pair("API", StrFmt("%s%s", ApiName(state.api), primaryGpu.usesDxvk ? " (DXVK)" : ""));
+            pair("API", StrFmt("%s%s", ApiName(state.api),
+                               IdentifyGpu::gameUsesDxvk()          ? " (DXVK)"
+                               : IdentifyGpu::gameUsesVkd3dProton() ? " (VKD3D)"
+                                                                    : ""));
             pair("Swapchain", ApiName(state.swapchainApi));
             pair("Input", ApiUpscalerInputName(state.currentInputApiName));
 

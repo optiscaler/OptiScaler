@@ -1349,8 +1349,9 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
     if (state.swapchainInteropApi == SwapchainInteropApi::None)
         Hudfix_Dx12::PresentEnd();
 
+    // DXVK's DXGI presents through Vulkan where the limiter already sleeps
     if (willPresent && !state.reflexLimitsFps && state.activeFgOutput != FGOutput::NoFG &&
-        !IdentifyGpu::getPrimaryGpu().usesDxvk && !XellHooks::canLimit())
+        !IdentifyGpu::getPrimaryGpu().dxgiIsDxvk && !XellHooks::canLimit())
     {
         FrameLimit::sleep(fg != nullptr ? fg->IsActive() && !fg->IsPaused() : false);
     }
