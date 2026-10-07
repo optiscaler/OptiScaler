@@ -8,6 +8,7 @@
 #include <proxies/XeSS_Proxy.h>
 #include <proxies/XeFG_Proxy.h>
 #include <proxies/FfxApi_Proxy.h>
+#include <upscalers/ffx/FFXFeature.h>
 #include <proxies/Streamline_Proxy.h>
 
 #include <framegen/nvngx/Nvngx_FG.h>
@@ -28,6 +29,7 @@
 #include <cstdarg>
 
 #include <array>
+#include <numeric>
 #include <chrono>
 #include <memory>
 #include <type_traits>
@@ -616,37 +618,209 @@ void MenuCommon::GetCurrentBackendInfo(const API api, Upscaler& upscaler, std::s
     *name = UpscalerDisplayName(upscaler, api);
 }
 
+// List of upscalers reported by FFX for a given backend, nullptr if the backend doesn't use FFX
+static State::FfxVersionList* GetFfxVersionList(Upscaler upscaler, API api)
+{
+    if (upscaler == Upscaler::FFX_on12 || (upscaler == Upscaler::FFX && api == API::DX12))
+        return &State::Instance().ffxUpscalerVersionsDx12;
+
+    if (upscaler == Upscaler::FFX && api == API::Vulkan)
+        return &State::Instance().ffxUpscalerVersionsVk;
+
+    return nullptr;
+}
+
+static bool IsOn12(Upscaler upscaler)
+{
+    switch (upscaler)
+    {
+    case Upscaler::XeSS_on12:
+    case Upscaler::FSR21_on12:
+    case Upscaler::FSR22_on12:
+    case Upscaler::FFX_on12:
+    case Upscaler::DLSS_on12:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// Name without the w/Dx12 suffix, that one is shown as a tag in the list instead
+static std::string ShortUpscalerName(Upscaler upscaler, API api, int ffxIndex)
+{
+    if (auto versions = GetFfxVersionList(upscaler, api);
+        versions != nullptr && ffxIndex >= 0 && ffxIndex < versions->names.size())
+        return StrFmt("FSR %s", versions->names[ffxIndex]);
+
+    switch (upscaler)
+    {
+    case Upscaler::XeSS_on12:
+        return UpscalerDisplayName(Upscaler::XeSS);
+    case Upscaler::FSR21_on12:
+        return UpscalerDisplayName(Upscaler::FSR21);
+    case Upscaler::FSR22_on12:
+        return UpscalerDisplayName(Upscaler::FSR22);
+    case Upscaler::FFX_on12:
+        return UpscalerDisplayName(Upscaler::FFX, API::DX12);
+    case Upscaler::DLSS_on12:
+        return UpscalerDisplayName(Upscaler::DLSS);
+    default:
+        return UpscalerDisplayName(upscaler, api);
+    }
+}
+
+static feature_version UpscalerSortVersion(Upscaler upscaler)
+{
+    switch (upscaler)
+    {
+    case Upscaler::FSR21:
+    case Upscaler::FSR21_on12:
+        return { 2, 1, 2 };
+    case Upscaler::FSR22:
+    case Upscaler::FSR22_on12:
+        return { 2, 2, 1 };
+    case Upscaler::FSR31:
+        return { 3, 1, 2 };
+    case Upscaler::FFX:
+    case Upscaler::FFX_on12:
+        return { 3, 1, 0 };
+    default:
+        return {};
+    }
+}
+
+// Indices into the FFX version list, newest first
+static std::vector<int> FfxVersionsNewestFirst(const State::FfxVersionList& versions)
+{
+    std::vector<int> order(versions.names.size());
+    std::iota(order.begin(), order.end(), 0);
+
+    std::stable_sort(order.begin(), order.end(), [&versions](int a, int b)
+                     { return feature_version(versions.names[b]) < feature_version(versions.names[a]); });
+
+    return order;
+}
+
 void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, const std::vector<Upscaler>& options)
 {
     auto primaryGpu = IdentifyGpu::getPrimaryGpu();
+    auto config = Config::Instance();
+    const int ffxIndex = config->FfxUpscalerIndex.value_or_default();
 
-    // Determine display name
     Upscaler targetBackend = State::Instance().newBackend;
     if (targetBackend == Upscaler::Reset)
         targetBackend = currentUpscaler;
 
-    std::string selectedName = UpscalerDisplayName(targetBackend, api);
+    // Interop is only shown here, the list uses a tag for it
+    auto selectedName = ShortUpscalerName(targetBackend, api, ffxIndex);
+    if (IsOn12(targetBackend))
+        selectedName += " (Dx12)";
 
-    if (ImGui::BeginCombo("##UpscalerCombo", selectedName.c_str()))
+    if (!ImGui::BeginCombo("##UpscalerCombo", selectedName.c_str(), ImGuiComboFlags_HeightLargest))
+        return;
+
+    struct Entry
     {
-        for (auto opt : options)
+        Upscaler upscaler;
+        int ffxIndex; // Newest upscaler reported by FFX, -1 when not using FFX
+        feature_version version;
+    };
+
+    std::vector<Entry> entries;
+
+    for (auto opt : options)
+    {
+        // Check if GPU is capable of a given backend
+        if ((opt == Upscaler::DLSS || opt == Upscaler::DLSS_on12) && !primaryGpu.dlssCapable)
+            continue;
+
+        // Not all Intel GPUs support native DX11 XeSS but don't think we have a good way to check exactly
+        if (opt == Upscaler::XeSS && api == API::DX11 && primaryGpu.vendorId != VendorId::Intel)
+            continue;
+
+        // Only the newest FFX upscaler is listed here, the rest are in the FFX Upscaler combo
+        if (auto versions = GetFfxVersionList(opt, api); versions != nullptr)
         {
-            // Check if GPU is capable of a given backend
-            if ((opt == Upscaler::DLSS || opt == Upscaler::DLSS_on12) && !primaryGpu.dlssCapable)
-                continue;
+            if (versions == &State::Instance().ffxUpscalerVersionsVk)
+                FFXFeature::EnsureVersionsVulkan();
+            else
+                FFXFeature::EnsureVersionsDx12();
 
-            // Not all Intel GPUs support native DX11 XeSS but don't think we have a good way to check exactly
-            if (opt == Upscaler::XeSS && api == API::DX11 && primaryGpu.vendorId != VendorId::Intel)
-                continue;
-
-            bool isSelected = (currentUpscaler == opt);
-            if (ImGui::Selectable(UpscalerDisplayName(opt, api).c_str(), isSelected))
+            // Fall back to a generic entry if FFX couldn't be queried
+            if (!versions->names.empty())
             {
-                State::Instance().newBackend = opt;
+                auto newest = FfxVersionsNewestFirst(*versions)[0];
+                entries.push_back({ opt, newest, feature_version(versions->names[newest]) });
+                continue;
             }
         }
-        ImGui::EndCombo();
+
+        entries.push_back({ opt, -1, UpscalerSortVersion(opt) });
     }
+
+    // Upscaler of the GPU vendor goes first, FSRs are sorted by version, newest first
+    // Stable sort keeps native ahead of w/Dx12
+    auto group = [&primaryGpu](Upscaler upscaler)
+    {
+        int family = IsFsr(upscaler) ? 1 : (upscaler == Upscaler::DLSS || upscaler == Upscaler::DLSS_on12) ? 2 : 0;
+
+        const int vendorFamily = primaryGpu.vendorId == VendorId::AMD      ? 1
+                                 : primaryGpu.vendorId == VendorId::Nvidia ? 2
+                                                                           : 0;
+
+        return family == vendorFamily ? -1 : family;
+    };
+
+    std::stable_sort(entries.begin(), entries.end(),
+                     [&group](const Entry& a, const Entry& b)
+                     {
+                         if (group(a.upscaler) != group(b.upscaler))
+                             return group(a.upscaler) < group(b.upscaler);
+
+                         return b.version < a.version;
+                     });
+
+    for (size_t i = 0; i < entries.size(); i++)
+    {
+        const auto& entry = entries[i];
+
+        if (i > 0 && group(entry.upscaler) != group(entries[i - 1].upscaler))
+            ImGui::Separator();
+
+        auto label =
+            StrFmt("%s##%d", ShortUpscalerName(entry.upscaler, api, entry.ffxIndex).c_str(), (int) entry.upscaler);
+
+        if (ImGui::Selectable(label.c_str(), currentUpscaler == entry.upscaler))
+        {
+            State::Instance().newBackend = entry.upscaler;
+
+            // Switching to FFX starts with the newest one
+            if (entry.ffxIndex >= 0 && currentUpscaler != entry.upscaler)
+                config->FfxUpscalerIndex = entry.ffxIndex;
+        }
+
+        // Dimmed tags aligned to the right
+        const char* tag = nullptr;
+
+        if (entry.ffxIndex >= 0 && IsOn12(entry.upscaler))
+            tag = "FFX Dx12";
+        else if (entry.ffxIndex >= 0)
+            tag = "FFX";
+        else if (IsOn12(entry.upscaler))
+            tag = "Dx12";
+
+        if (tag != nullptr)
+        {
+            auto& style = ImGui::GetStyle();
+
+            ImGui::SameLine();
+            ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowWidth() - style.WindowPadding.x -
+                                                                      ImGui::CalcTextSize(tag).x));
+            ImGui::TextDisabled(tag);
+        }
+    }
+
+    ImGui::EndCombo();
 }
 
 void MenuCommon::AddDx11Backends(Upscaler upscaler)
@@ -2755,299 +2929,296 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
     // FFX -----------------
     if (!usesDlssd && (currentBackend == Upscaler::FFX || currentBackend == Upscaler::FFX_on12))
     {
-        ImGui::Spacing();
-
-        if (_ffxUpscalerIndex < 0)
-            _ffxUpscalerIndex = config->FfxUpscalerIndex.value_or_default();
-
-        if (currentBackend == Upscaler::FFX ||
-            currentBackend == Upscaler::FFX_on12 && state.ffxUpscalerVersionNames.size() > 0)
+        if (auto versions = GetFfxVersionList(currentBackend, state.api);
+            versions != nullptr && !versions->names.empty())
         {
+            ImGui::Spacing();
+
+            const int ffxIndex = config->FfxUpscalerIndex.value_or_default();
+            auto currentName =
+                ffxIndex >= 0 && ffxIndex < versions->names.size() ? StrFmt("FSR %s", versions->names[ffxIndex]) : "";
+
             ImGui::PushItemWidth(150.0f * menuResScale);
 
-            auto currentName = StrFmt("FSR %s", state.ffxUpscalerVersionNames[_ffxUpscalerIndex]);
             if (ImGui::BeginCombo("FFX Upscaler", currentName.c_str()))
             {
-                for (int n = 0; n < state.ffxUpscalerVersionIds.size(); n++)
+                for (auto n : FfxVersionsNewestFirst(*versions))
                 {
-                    auto name = StrFmt("FSR %s##%d", state.ffxUpscalerVersionNames[n], n);
-                    if (ImGui::Selectable(name.c_str(), config->FfxUpscalerIndex.value_or_default() == n))
-                        _ffxUpscalerIndex = n;
-                }
-
-                ImGui::EndCombo();
-            }
-            ImGui::PopItemWidth();
-
-            ShowTooltip("List of upscalers reported by FFX SDK");
-
-            ImGui::SameLine(0.0f, 6.0f);
-
-            if (_ffxUpscalerIndex != config->FfxUpscalerIndex.value_or_default())
-            {
-                config->FfxUpscalerIndex = _ffxUpscalerIndex;
-                state.newBackend = currentBackend;
-                MARK_ALL_BACKENDS_CHANGED();
-            }
-
-            auto majorFsrVersion = currentFeature->Version().major;
-
-            if (majorFsrVersion >= 4)
-            {
-                ImGui::Spacing();
-
-                // Colorspaces
-                const char* colorSpaces[] = { "Linear (Default)", "Non-Linear", "Non-Linear sRGB", "Non-Linear PQ" };
-                int currentColorSpace = 0;
-                if (config->FsrNonLinearPQ.value_or_default())
-                    currentColorSpace = 3;
-                else if (config->FsrNonLinearSRGB.value_or_default())
-                    currentColorSpace = 2;
-                else if (config->FsrNonLinearColorSpace.value_or_default())
-                    currentColorSpace = 1;
-
-                ImGui::SetNextItemWidth(150.0f * menuResScale);
-                if (ImGui::Combo("Input Color Space", &currentColorSpace, colorSpaces, IM_ARRAYSIZE(colorSpaces)))
-                {
-                    bool isSrgb = (currentColorSpace == 2);
-                    bool isPq = (currentColorSpace == 3);
-
-                    config->FsrNonLinearSRGB = isSrgb;
-                    config->FsrNonLinearPQ = isPq;
-
-                    if (isSrgb || isPq)
+                    if (ImGui::Selectable(StrFmt("FSR %s##%d", versions->names[n], n).c_str(), ffxIndex == n) &&
+                        ffxIndex != n)
                     {
-                        config->FsrNonLinearColorSpace.set_volatile_value(true);
-                    }
-                    else if (currentColorSpace == 1) // Just non-Linear
-                    {
-                        config->FsrNonLinearColorSpace = true;
-                    }
-                    else // Linear
-                    {
-                        config->FsrNonLinearColorSpace = false;
-                    }
-
-                    state.newBackend = currentBackend;
-                    MARK_ALL_BACKENDS_CHANGED();
-                }
-                ShowTooltip("Select the input color space that the game uses.\n"
-                            "Non-Linear / sRGB: Might improve FSR4 upscaling quality, might increase ghosting.\n"
-                            "PQ: Rarest, might increase ghosting and break lights.");
-
-                // FSR 4 Presets
-                const char* presets[] = { "Default",  "Preset 0", "Preset 1", "Preset 2",
-                                          "Preset 3", "Preset 4", "Preset 5" };
-                int currentPresetIdx = config->Fsr4Preset.has_value() ? config->Fsr4Preset.value() + 1 : 0;
-
-                if (currentPresetIdx < 0 || currentPresetIdx >= IM_ARRAYSIZE(presets))
-                    currentPresetIdx = 0;
-
-                ImGui::SetNextItemWidth(150.0f * menuResScale);
-                if (ImGui::Combo("FSR4 Preset", &currentPresetIdx, presets, IM_ARRAYSIZE(presets)))
-                {
-                    if (currentPresetIdx == 0)
-                        config->Fsr4Preset.reset();
-                    else
-                        config->Fsr4Preset = currentPresetIdx - 1;
-
-                    state.newBackend = currentBackend;
-                    MARK_ALL_BACKENDS_CHANGED();
-                }
-                ShowTooltip("Each internal FSR4 preset is tuned for a specific resolution.\n"
-                            "Selecting an FSR4 preset won't change the in-game\nupscaler preset!!!\n\n"
-                            "Preset 0 is meant for FSR Native AA\n"
-                            "Preset 1 is meant for Quality/Ultra Quality\n"
-                            "Preset 2 is meant for Balanced\n"
-                            "Preset 3 is meant for Performance\n"
-                            "Preset 4 is meant for DRS\n"
-                            "Preset 5 is meant for Ultra Performance");
-
-                // Display the active preset right next to the combo box instead of using a table
-                ImGui::SameLine();
-                if (state.currentFsr4Preset.has_value())
-                    ImGui::TextDisabled("(Active: %d)", state.currentFsr4Preset.value());
-                else if (FSR4ModelSelection::IsInt8FsrHooked())
-                    ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)), "(Potential FSR3 fallback)");
-                else
-                    ImGui::TextDisabled("(Failed to hook)");
-            }
-
-            if (majorFsrVersion >= 3)
-            {
-                ImGui::Spacing();
-
-                bool debugView = config->FsrDebugView.value_or_default();
-                if (ImGui::Checkbox("Upscaler Debug View", &debugView))
-                {
-                    config->FsrDebugView = debugView;
-
-                    // FSR 4's debug view requires backend reinit
-                    if (majorFsrVersion > 3)
-                    {
+                        config->FfxUpscalerIndex = n;
                         state.newBackend = currentBackend;
                         MARK_ALL_BACKENDS_CHANGED();
                     }
                 }
 
-                if (majorFsrVersion > 3)
+                ImGui::EndCombo();
+            }
+
+            ImGui::PopItemWidth();
+
+            ShowTooltip("List of upscalers reported by FFX SDK");
+        }
+
+        auto majorFsrVersion = currentFeature->Version().major;
+
+        if (majorFsrVersion >= 4)
+        {
+            ImGui::Spacing();
+
+            // Colorspaces
+            const char* colorSpaces[] = { "Linear (Default)", "Non-Linear", "Non-Linear sRGB", "Non-Linear PQ" };
+            int currentColorSpace = 0;
+            if (config->FsrNonLinearPQ.value_or_default())
+                currentColorSpace = 3;
+            else if (config->FsrNonLinearSRGB.value_or_default())
+                currentColorSpace = 2;
+            else if (config->FsrNonLinearColorSpace.value_or_default())
+                currentColorSpace = 1;
+
+            ImGui::SetNextItemWidth(150.0f * menuResScale);
+            if (ImGui::Combo("Input Color Space", &currentColorSpace, colorSpaces, IM_ARRAYSIZE(colorSpaces)))
+            {
+                bool isSrgb = (currentColorSpace == 2);
+                bool isPq = (currentColorSpace == 3);
+
+                config->FsrNonLinearSRGB = isSrgb;
+                config->FsrNonLinearPQ = isPq;
+
+                if (isSrgb || isPq)
                 {
-                    ShowTooltip("Top left: Dilated Motion Vectors\n"
-                                "Top right: Predicted Blend Factor");
+                    config->FsrNonLinearColorSpace.set_volatile_value(true);
                 }
+                else if (currentColorSpace == 1) // Just non-Linear
+                {
+                    config->FsrNonLinearColorSpace = true;
+                }
+                else // Linear
+                {
+                    config->FsrNonLinearColorSpace = false;
+                }
+
+                state.newBackend = currentBackend;
+                MARK_ALL_BACKENDS_CHANGED();
+            }
+            ShowTooltip("Select the input color space that the game uses.\n"
+                        "Non-Linear / sRGB: Might improve FSR4 upscaling quality, might increase ghosting.\n"
+                        "PQ: Rarest, might increase ghosting and break lights.");
+
+            // FSR 4 Presets
+            const char* presets[] = {
+                "Default", "Preset 0", "Preset 1", "Preset 2", "Preset 3", "Preset 4", "Preset 5"
+            };
+            int currentPresetIdx = config->Fsr4Preset.has_value() ? config->Fsr4Preset.value() + 1 : 0;
+
+            if (currentPresetIdx < 0 || currentPresetIdx >= IM_ARRAYSIZE(presets))
+                currentPresetIdx = 0;
+
+            ImGui::SetNextItemWidth(150.0f * menuResScale);
+            if (ImGui::Combo("FSR4 Preset", &currentPresetIdx, presets, IM_ARRAYSIZE(presets)))
+            {
+                if (currentPresetIdx == 0)
+                    config->Fsr4Preset.reset();
                 else
-                {
-                    ShowTooltip("Top left: Dilated Motion Vectors\n"
-                                "Top middle: Protected Areas\n"
-                                "Top right: Dilated Depth\n"
-                                "Middle: Upscaled frame\n"
-                                "Bottom left: Disocclusion mask\n"
-                                "Bottom middle: Reactiveness\n"
-                                "Bottom right: Detail Protection Takedown");
-                }
+                    config->Fsr4Preset = currentPresetIdx - 1;
 
+                state.newBackend = currentBackend;
+                MARK_ALL_BACKENDS_CHANGED();
+            }
+            ShowTooltip("Each internal FSR4 preset is tuned for a specific resolution.\n"
+                        "Selecting an FSR4 preset won't change the in-game\nupscaler preset!!!\n\n"
+                        "Preset 0 is meant for FSR Native AA\n"
+                        "Preset 1 is meant for Quality/Ultra Quality\n"
+                        "Preset 2 is meant for Balanced\n"
+                        "Preset 3 is meant for Performance\n"
+                        "Preset 4 is meant for DRS\n"
+                        "Preset 5 is meant for Ultra Performance");
+
+            // Display the active preset right next to the combo box instead of using a table
+            ImGui::SameLine();
+            if (state.currentFsr4Preset.has_value())
+                ImGui::TextDisabled("(Active: %d)", state.currentFsr4Preset.value());
+            else if (FSR4ModelSelection::IsInt8FsrHooked())
+                ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)), "(Potential FSR3 fallback)");
+            else
+                ImGui::TextDisabled("(Failed to hook)");
+        }
+
+        if (majorFsrVersion >= 3)
+        {
+            ImGui::Spacing();
+
+            bool debugView = config->FsrDebugView.value_or_default();
+            if (ImGui::Checkbox("Upscaler Debug View", &debugView))
+            {
+                config->FsrDebugView = debugView;
+
+                // FSR 4's debug view requires backend reinit
                 if (majorFsrVersion > 3)
                 {
-                    ImGui::SameLine(0.0f, 20.0f * menuResScale);
-                    bool fsr4wm = config->Fsr4EnableWatermark.value_or_default();
-                    if (ImGui::Checkbox("Watermark", &fsr4wm))
-                    {
-                        LOG_DEBUG("FSR4 Watermark set to {}", fsr4wm);
-                        config->Fsr4EnableWatermark = fsr4wm;
-                    }
-
-                    ShowTooltip("After changing this option, please Save Settings.\n"
-                                "It will be applied on next launch.");
+                    state.newBackend = currentBackend;
+                    MARK_ALL_BACKENDS_CHANGED();
                 }
             }
 
-            if (currentFeature->Version() >= feature_version { 3, 1, 1 } &&
-                currentFeature->Version() < feature_version { 4, 0, 0 })
+            if (majorFsrVersion > 3)
             {
-                ImGui::Spacing();
+                ShowTooltip("Top left: Dilated Motion Vectors\n"
+                            "Top right: Predicted Blend Factor");
+            }
+            else
+            {
+                ShowTooltip("Top left: Dilated Motion Vectors\n"
+                            "Top middle: Protected Areas\n"
+                            "Top right: Dilated Depth\n"
+                            "Middle: Upscaled frame\n"
+                            "Bottom left: Disocclusion mask\n"
+                            "Bottom middle: Reactiveness\n"
+                            "Bottom right: Detail Protection Takedown");
+            }
 
-                if (currentFeature != nullptr)
+            if (majorFsrVersion > 3)
+            {
+                ImGui::SameLine(0.0f, 20.0f * menuResScale);
+                bool fsr4wm = config->Fsr4EnableWatermark.value_or_default();
+                if (ImGui::Checkbox("Watermark", &fsr4wm))
                 {
-                    ImGui::Text("FSR 3.1 Presets:");
-
-                    ImGui::SameLine(0.0f, 6.0f);
-
-                    // This will be applied by default
-                    if (ImGui::Button("Stability"))
-                    {
-                        auto const scaleRatioX =
-                            (float) currentFeature->TargetWidth() / (float) currentFeature->RenderWidth();
-                        auto const scaleRatioY =
-                            (float) currentFeature->TargetHeight() / (float) currentFeature->RenderHeight();
-                        auto const scaleRatio = std::max(scaleRatioX, scaleRatioY);
-
-                        config->FsrVelocity = 0.5f;
-                        config->FsrReactiveScale = 0.25f;
-
-                        config->FsrShadingScale.reset();
-                        config->FsrAccAddPerFrame.reset();
-                        config->FsrMinDisOccAcc.reset();
-                        config->FsrShadingScale.set_volatile_value(0.5f / scaleRatio);
-                        config->FsrAccAddPerFrame.set_volatile_value(scaleRatio / 10.0f);
-                        config->FsrMinDisOccAcc.set_volatile_value(scaleRatio / 20.0f);
-                    }
-
-                    ImGui::SameLine(0.0f, 6.0f);
-
-                    if (ImGui::Button("Motion"))
-                    {
-                        auto const scaleRatioX =
-                            (float) currentFeature->TargetWidth() / (float) currentFeature->RenderWidth();
-                        auto const scaleRatioY =
-                            (float) currentFeature->TargetHeight() / (float) currentFeature->RenderHeight();
-                        auto const scaleRatio = std::max(scaleRatioX, scaleRatioY);
-
-                        config->FsrVelocity = 1.0f;
-                        config->FsrReactiveScale = 0.5f;
-
-                        config->FsrShadingScale.reset();
-                        config->FsrAccAddPerFrame.reset();
-                        config->FsrMinDisOccAcc.reset();
-                        config->FsrShadingScale.set_volatile_value(1.0f / scaleRatio);
-                        config->FsrAccAddPerFrame.set_volatile_value(scaleRatio / 10.0f);
-                        config->FsrMinDisOccAcc.set_volatile_value(scaleRatio / 20.0f);
-                    }
-
-                    ImGui::SameLine(0.0f, 6.0f);
-
-                    if (ImGui::Button("Default"))
-                    {
-                        config->FsrVelocity = 1.0f;
-                        config->FsrReactiveScale = 1.0f;
-                        config->FsrShadingScale = 1.0f;
-                        config->FsrAccAddPerFrame = 0.333f;
-                        config->FsrMinDisOccAcc = -0.333f;
-                    }
+                    LOG_DEBUG("FSR4 Watermark set to {}", fsr4wm);
+                    config->Fsr4EnableWatermark = fsr4wm;
                 }
 
+                ShowTooltip("After changing this option, please Save Settings.\n"
+                            "It will be applied on next launch.");
+            }
+        }
+
+        if (currentFeature->Version() >= feature_version { 3, 1, 1 } &&
+            currentFeature->Version() < feature_version { 4, 0, 0 })
+        {
+            ImGui::Spacing();
+
+            if (currentFeature != nullptr)
+            {
+                ImGui::Text("FSR 3.1 Presets:");
+
+                ImGui::SameLine(0.0f, 6.0f);
+
+                // This will be applied by default
+                if (ImGui::Button("Stability"))
+                {
+                    auto const scaleRatioX =
+                        (float) currentFeature->TargetWidth() / (float) currentFeature->RenderWidth();
+                    auto const scaleRatioY =
+                        (float) currentFeature->TargetHeight() / (float) currentFeature->RenderHeight();
+                    auto const scaleRatio = std::max(scaleRatioX, scaleRatioY);
+
+                    config->FsrVelocity = 0.5f;
+                    config->FsrReactiveScale = 0.25f;
+
+                    config->FsrShadingScale.reset();
+                    config->FsrAccAddPerFrame.reset();
+                    config->FsrMinDisOccAcc.reset();
+                    config->FsrShadingScale.set_volatile_value(0.5f / scaleRatio);
+                    config->FsrAccAddPerFrame.set_volatile_value(scaleRatio / 10.0f);
+                    config->FsrMinDisOccAcc.set_volatile_value(scaleRatio / 20.0f);
+                }
+
+                ImGui::SameLine(0.0f, 6.0f);
+
+                if (ImGui::Button("Motion"))
+                {
+                    auto const scaleRatioX =
+                        (float) currentFeature->TargetWidth() / (float) currentFeature->RenderWidth();
+                    auto const scaleRatioY =
+                        (float) currentFeature->TargetHeight() / (float) currentFeature->RenderHeight();
+                    auto const scaleRatio = std::max(scaleRatioX, scaleRatioY);
+
+                    config->FsrVelocity = 1.0f;
+                    config->FsrReactiveScale = 0.5f;
+
+                    config->FsrShadingScale.reset();
+                    config->FsrAccAddPerFrame.reset();
+                    config->FsrMinDisOccAcc.reset();
+                    config->FsrShadingScale.set_volatile_value(1.0f / scaleRatio);
+                    config->FsrAccAddPerFrame.set_volatile_value(scaleRatio / 10.0f);
+                    config->FsrMinDisOccAcc.set_volatile_value(scaleRatio / 20.0f);
+                }
+
+                ImGui::SameLine(0.0f, 6.0f);
+
+                if (ImGui::Button("Default"))
+                {
+                    config->FsrVelocity = 1.0f;
+                    config->FsrReactiveScale = 1.0f;
+                    config->FsrShadingScale = 1.0f;
+                    config->FsrAccAddPerFrame = 0.333f;
+                    config->FsrMinDisOccAcc = -0.333f;
+                }
+            }
+
+            ImGui::Spacing();
+
+            if (auto ch = ScopedCollapsingHeader("FSR 3 Upscaler Manual Tuning"); ch.IsHeaderOpen())
+            {
+                ScopedIndent indent {};
+                ImGui::Spacing();
                 ImGui::Spacing();
 
-                if (auto ch = ScopedCollapsingHeader("FSR 3 Upscaler Manual Tuning"); ch.IsHeaderOpen())
+                ImGui::PushItemWidth(220.0f * menuResScale);
+
+                float velocity = config->FsrVelocity.value_or_default();
+                if (ImGui::SliderFloat("Velocity Factor", &velocity, 0.00f, 1.0f, "%.2f"))
+                    config->FsrVelocity = velocity;
+
+                ShowTooltip("Value of 0.0f can improve temporal stability of bright pixels\n"
+                            "Lower values are more stable with ghosting\n"
+                            "Higher values are more pixelly, but less ghosting");
+
+                if (currentFeature->Version() >= feature_version { 3, 1, 4 })
                 {
-                    ScopedIndent indent {};
-                    ImGui::Spacing();
-                    ImGui::Spacing();
+                    // Reactive Scale
+                    float reactiveScale = config->FsrReactiveScale.value_or_default();
+                    if (ImGui::SliderFloat("Reactive Scale", &reactiveScale, 0.0f, 1.0f, "%.3f"))
+                        config->FsrReactiveScale = reactiveScale;
 
-                    ImGui::PushItemWidth(220.0f * menuResScale);
+                    ShowTooltip("Meant for development purpose to test if\n"
+                                "writing a larger value to reactive mask, reduces ghosting.");
 
-                    float velocity = config->FsrVelocity.value_or_default();
-                    if (ImGui::SliderFloat("Velocity Factor", &velocity, 0.00f, 1.0f, "%.2f"))
-                        config->FsrVelocity = velocity;
+                    // Shading Scale
+                    float shadingScale = config->FsrShadingScale.value_or_default();
+                    if (ImGui::SliderFloat("Shading Scale", &shadingScale, 0.0f, 1.0f, "%.3f"))
+                        config->FsrShadingScale = shadingScale;
 
-                    ShowTooltip("Value of 0.0f can improve temporal stability of bright pixels\n"
-                                "Lower values are more stable with ghosting\n"
-                                "Higher values are more pixelly, but less ghosting");
+                    ShowTooltip("Increasing this scales FSR3.1 computed shading\n"
+                                "change value at read to have higher reactiveness.");
 
-                    if (currentFeature->Version() >= feature_version { 3, 1, 4 })
-                    {
-                        // Reactive Scale
-                        float reactiveScale = config->FsrReactiveScale.value_or_default();
-                        if (ImGui::SliderFloat("Reactive Scale", &reactiveScale, 0.0f, 1.0f, "%.3f"))
-                            config->FsrReactiveScale = reactiveScale;
+                    // Accumulation Added Per Frame
+                    float accAddPerFrame = config->FsrAccAddPerFrame.value_or_default();
+                    if (ImGui::SliderFloat("Acc. Added Per Frame", &accAddPerFrame, 0.0f, 1.0f, "%.3f"))
+                        config->FsrAccAddPerFrame = accAddPerFrame;
 
-                        ShowTooltip("Meant for development purpose to test if\n"
-                                    "writing a larger value to reactive mask, reduces ghosting.");
+                    ShowTooltip("Corresponds to amount of accumulation added per frame\n"
+                                "at pixel coordinate where disocclusion occured or when\n"
+                                "reactive mask value is > 0.0f. Decreasing this and \n"
+                                "drawing the ghosting object (IE no mv) to reactive mask \n"
+                                "with value close to 1.0f can decrease temporal ghosting.\n"
+                                "Decreasing this could result in more thin feature pixels flickering.");
 
-                        // Shading Scale
-                        float shadingScale = config->FsrShadingScale.value_or_default();
-                        if (ImGui::SliderFloat("Shading Scale", &shadingScale, 0.0f, 1.0f, "%.3f"))
-                            config->FsrShadingScale = shadingScale;
+                    // Min Disocclusion Accumulation
+                    float minDisOccAcc = config->FsrMinDisOccAcc.value_or_default();
+                    if (ImGui::SliderFloat("Min. Disocclusion Acc.", &minDisOccAcc, -1.0f, 1.0f, "%.3f"))
+                        config->FsrMinDisOccAcc = minDisOccAcc;
 
-                        ShowTooltip("Increasing this scales FSR3.1 computed shading\n"
-                                    "change value at read to have higher reactiveness.");
-
-                        // Accumulation Added Per Frame
-                        float accAddPerFrame = config->FsrAccAddPerFrame.value_or_default();
-                        if (ImGui::SliderFloat("Acc. Added Per Frame", &accAddPerFrame, 0.0f, 1.0f, "%.3f"))
-                            config->FsrAccAddPerFrame = accAddPerFrame;
-
-                        ShowTooltip("Corresponds to amount of accumulation added per frame\n"
-                                    "at pixel coordinate where disocclusion occured or when\n"
-                                    "reactive mask value is > 0.0f. Decreasing this and \n"
-                                    "drawing the ghosting object (IE no mv) to reactive mask \n"
-                                    "with value close to 1.0f can decrease temporal ghosting.\n"
-                                    "Decreasing this could result in more thin feature pixels flickering.");
-
-                        // Min Disocclusion Accumulation
-                        float minDisOccAcc = config->FsrMinDisOccAcc.value_or_default();
-                        if (ImGui::SliderFloat("Min. Disocclusion Acc.", &minDisOccAcc, -1.0f, 1.0f, "%.3f"))
-                            config->FsrMinDisOccAcc = minDisOccAcc;
-
-                        ShowTooltip("Increasing this value may reduce white pixel temporal\n"
-                                    "flickering around swaying thin objects that are disoccluding \n"
-                                    "one another often. Too high value may increase ghosting.");
-                    }
-
-                    ImGui::PopItemWidth();
-
-                    ImGui::Spacing();
-                    ImGui::Spacing();
+                    ShowTooltip("Increasing this value may reduce white pixel temporal\n"
+                                "flickering around swaying thin objects that are disoccluding \n"
+                                "one another often. Too high value may increase ghosting.");
                 }
+
+                ImGui::PopItemWidth();
+
+                ImGui::Spacing();
+                ImGui::Spacing();
             }
         }
     }

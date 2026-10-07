@@ -643,7 +643,11 @@ bool FFXFeatureDx12::InitFFX(const NVSDK_NGX_Parameter* InParameters)
     {
         ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 
-        QueryVersionsDx12(Device);
+        if (!QueryVersionsDx12(Device) || State::Instance().ffxUpscalerVersionsDx12.ids.empty())
+        {
+            LOG_ERROR("No FFX upscalers reported!");
+            return false;
+        }
 
         InitFlags();
 
@@ -654,13 +658,14 @@ bool FFXFeatureDx12::InitFFX(const NVSDK_NGX_Parameter* InParameters)
         _contextDesc.header.pNext = &backendDesc.header;
 
         if (Config::Instance()->FfxUpscalerIndex.value_or_default() < 0 ||
-            Config::Instance()->FfxUpscalerIndex.value_or_default() >= State::Instance().ffxUpscalerVersionIds.size())
+            Config::Instance()->FfxUpscalerIndex.value_or_default() >=
+                State::Instance().ffxUpscalerVersionsDx12.ids.size())
             Config::Instance()->FfxUpscalerIndex.set_volatile_value(0);
 
         ffxOverrideVersion override = { 0 };
         override.header.type = FFX_API_DESC_TYPE_OVERRIDE_VERSION;
         override.versionId =
-            State::Instance().ffxUpscalerVersionIds[Config::Instance()->FfxUpscalerIndex.value_or_default()];
+            State::Instance().ffxUpscalerVersionsDx12.ids[Config::Instance()->FfxUpscalerIndex.value_or_default()];
         backendDesc.header.pNext = &override.header;
 
         LOG_DEBUG("_createContext!");
@@ -678,7 +683,7 @@ bool FFXFeatureDx12::InitFFX(const NVSDK_NGX_Parameter* InParameters)
         }
 
         auto version =
-            State::Instance().ffxUpscalerVersionNames[Config::Instance()->FfxUpscalerIndex.value_or_default()];
+            State::Instance().ffxUpscalerVersionsDx12.names[Config::Instance()->FfxUpscalerIndex.value_or_default()];
         _name = "FSR";
         parse_version(version);
     }

@@ -144,7 +144,6 @@ class MenuCommon
     inline static float _limitFps = std::numeric_limits<float>::infinity();
 
     // ffx
-    inline static int _ffxUpscalerIndex = -1;
     inline static int _ffxFGIndex = -1;
 
     // output scaling

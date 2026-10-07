@@ -22,9 +22,6 @@ class FFXFeature : public virtual IFeature
 
     double GetDeltaTime();
 
-    void QueryVersionsDx12(ID3D12Device* device);
-    void QueryVersionsVulkan();
-
     void InitFlags();
 
     static inline void parse_version(const char* version_str) { _version.parse_version(version_str); }
@@ -90,6 +87,13 @@ class FFXFeature : public virtual IFeature
 
   public:
     feature_version Version() override { return _version; }
+
+    static bool QueryVersionsDx12(ID3D12Device* device);
+    static bool QueryVersionsVulkan();
+
+    // Fill the version lists without an active FFX feature, loads FFX and creates a temp device if needed
+    static void EnsureVersionsDx12();
+    static void EnsureVersionsVulkan();
 
     FFXFeature(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters);
 

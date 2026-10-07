@@ -435,13 +435,6 @@ bool FSR31FeatureDx11::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
     {
         ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 
-        uint64_t versionCount = 0;
-        State::Instance().ffxUpscalerVersionIds.resize(versionCount);
-        State::Instance().ffxUpscalerVersionNames.resize(versionCount);
-        State::Instance().ffxUpscalerVersionIds.push_back(1);
-        auto version_number = "3.1.2";
-        State::Instance().ffxUpscalerVersionNames.push_back(version_number);
-
         const size_t scratchBufferSize = Fsr31::ffxGetScratchMemorySizeDX11(1);
         void* scratchBuffer = calloc(scratchBufferSize, 1);
 
@@ -571,10 +564,6 @@ bool FSR31FeatureDx11::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
             }
         }
 
-        if (Config::Instance()->FfxUpscalerIndex.value_or_default() < 0 ||
-            Config::Instance()->FfxUpscalerIndex.value_or_default() >= State::Instance().ffxUpscalerVersionIds.size())
-            Config::Instance()->FfxUpscalerIndex.set_volatile_value(0);
-
         LOG_DEBUG("_createContext!");
         auto ret = ffxFsr3ContextCreate(&_upscalerContext, &_upscalerContextDesc);
 
@@ -586,10 +575,8 @@ bool FSR31FeatureDx11::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
 
         LOG_INFO("_createContext success!");
 
-        auto version =
-            State::Instance().ffxUpscalerVersionNames[Config::Instance()->FfxUpscalerIndex.value_or_default()];
         _name = "FSR";
-        parse_version(version);
+        parse_version("3.1.2");
     }
 
     SetInit(true);
