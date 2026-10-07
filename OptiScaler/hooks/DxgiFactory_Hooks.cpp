@@ -155,6 +155,9 @@ void DxgiFactoryHooks::HookToFactory(IDXGIFactory* pFactory)
 HRESULT DxgiFactoryHooks::CreateSwapChain(IDXGIFactory* realFactory, IUnknown* pDevice, DXGI_SWAP_CHAIN_DESC* pDesc,
                                           IDXGISwapChain** ppSwapChain)
 {
+    auto caller = Util::WhoIsTheCaller(_ReturnAddress());
+    LOG_DEBUG("Caller: {}", caller);
+
     *ppSwapChain = nullptr;
 
     if (State::Instance().vulkanCreatingSC)
@@ -185,7 +188,7 @@ HRESULT DxgiFactoryHooks::CreateSwapChain(IDXGIFactory* realFactory, IUnknown* p
     }
 
     if (pDesc->BufferDesc.Height != 0 && pDesc->BufferDesc.Width != 0 &&
-        (pDesc->BufferDesc.Height < 100 || pDesc->BufferDesc.Width < 100))
+        (pDesc->BufferDesc.Height <= 200 || pDesc->BufferDesc.Width <= 200))
     {
         LOG_WARN("Overlay call!");
 
@@ -441,6 +444,9 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
                                                  const DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pFullscreenDesc,
                                                  IDXGIOutput* pRestrictToOutput, IDXGISwapChain1** ppSwapChain)
 {
+    auto caller = Util::WhoIsTheCaller(_ReturnAddress());
+    LOG_DEBUG("Caller: {}", caller);
+
     *ppSwapChain = nullptr;
 
     static bool firstCall = static_cast<bool>(State::Instance().gameQuirks & GameQuirk::NoFSRFGFirstSwapchain);
@@ -487,7 +493,7 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
         return result;
     }
 
-    if (pDesc->Height != 100 && pDesc->Width != 100 && (pDesc->Height < 100 || pDesc->Width < 100))
+    if (pDesc->Height != 100 && pDesc->Width != 100 && (pDesc->Height <= 200 || pDesc->Width <= 200))
     {
         LOG_WARN("Overlay call!");
         HRESULT result;
@@ -789,7 +795,7 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForCoreWindow(IDXGIFactory2* realFactor
         return realFactory->CreateSwapChainForCoreWindow(pDevice, pWindow, pDesc, pRestrictToOutput, ppSwapChain);
     }
 
-    if (pDesc->Height != 100 && pDesc->Width != 100 && (pDesc->Height < 100 || pDesc->Width < 100))
+    if (pDesc->Height != 100 && pDesc->Width != 100 && (pDesc->Height <= 200 || pDesc->Width <= 200))
     {
         LOG_WARN("Overlay call!");
 

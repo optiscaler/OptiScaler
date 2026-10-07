@@ -76,7 +76,7 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChain(IDXGIFactory* realFactory, Wrap
     }
 
     if (localDesc.BufferDesc.Height != 0 && localDesc.BufferDesc.Width != 0 &&
-        (localDesc.BufferDesc.Height < 100 || localDesc.BufferDesc.Width < 100))
+        (localDesc.BufferDesc.Height <= 200 || localDesc.BufferDesc.Width <= 200))
 
     {
         LOG_WARN("Overlay call!");
@@ -374,7 +374,7 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChainForHwnd(IDXGIFactory2* realFacto
         return res;
     }
 
-    if (pDesc->Height != 100 && pDesc->Width != 100 && (pDesc->Height < 100 || pDesc->Width < 100))
+    if (pDesc->Height != 100 && pDesc->Width != 100 && (pDesc->Height <= 200 || pDesc->Width <= 200))
     {
         LOG_WARN("Overlay call!");
         ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
@@ -681,7 +681,7 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChainForCoreWindow(IDXGIFactory2* rea
         return realFactory->CreateSwapChainForCoreWindow(pDevice, pWindow, pDesc, pRestrictToOutput, ppSwapChain);
     }
 
-    if (pDesc->Height != 100 && pDesc->Width != 100 && (pDesc->Height < 100 || pDesc->Width < 100))
+    if (pDesc->Height != 100 && pDesc->Width != 100 && (pDesc->Height <= 200 || pDesc->Width <= 200))
     {
         LOG_WARN("Overlay call!");
         ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
