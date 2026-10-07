@@ -53,7 +53,9 @@ DEFINE_NAME_VECTORS(overlay, "eosovh-win32-shipping",
                              "discordoverlay64",        // Discord
                              "overlay",
                              "overlay64"                  // Ubisoft
-);
+                             "overlayenginex64.dll", 
+                             "overlayreleasex64.dll"
+ );
 
 DEFINE_NAME_VECTORS(blockOverlay, "eosovh-win32-shipping",
                                   "eosovh-win64-shipping",
@@ -67,10 +69,12 @@ DEFINE_NAME_VECTORS(blockOverlay, "eosovh-win32-shipping",
                                   "discordoverlay",
                                   "discordoverlay64",
                                   "overlay",
-                                  "overlay64"
+                                  "overlay64", 
+                                  "overlayenginex64.dll", 
+                                  "overlayreleasex64.dll"
 );
 
-inline std::vector<std::wstring> blockedDllNamesW = { L"windhawk.dll", L"mactype.dll", L"mactype64.dll", L"overlayenginex64.dll", L"overlayreleasex64.dll" };
+inline std::vector<std::wstring> blockedDllNamesW = { L"windhawk.dll", L"mactype.dll", L"mactype64.dll" };
 
 DEFINE_NAME_VECTORS(skipDxgiWrapping, "eosovh-win32-shipping",
                                       "eosovh-win64-shipping",
