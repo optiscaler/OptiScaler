@@ -3435,14 +3435,15 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
                 ShowTooltip("The FG that you will actually be using");
             }
 
-            ImGui::EndTable();
-        }
+            if (showNvngxFgDowndown)
+            {
+                ImGui::TableNextColumn();
 
-        // Should be on a new line
-        if (showNvngxFgDowndown)
-        {
-            PopulateCombo("FG Nvngx Replacement", config->FGNvngxReplacement, nvngxOptions);
-            ShowTooltip("What backend to use instead of the real DLSSG");
+                PopulateCombo("FG Nvngx Replacement", config->FGNvngxReplacement, nvngxOptions);
+                ShowTooltip("What backend to use instead of the real DLSSG");
+            }
+
+            ImGui::EndTable();
         }
 
         // Try to avoid having None selected when the gpu doesn't support DLSSG + some fallbacks
@@ -6354,17 +6355,17 @@ void MenuCommon::RenderAdvancedSettings(RenderMenuContext& ctx)
                 MARK_ALL_BACKENDS_CHANGED();
             }
 
+            // DRS
+            ImGui::TableNextColumn();
+            ConfigCheckbox("DRS Override Minimum", config->DrsMinOverrideEnabled,
+                           "Dynamic Resolution Scaling\nFix for games ignoring official DRS limits");
+
             ImGui::TableNextColumn();
             if (upscalerActive)
                 ConfigCheckbox("Enable Extended Limits", config->ExtendedLimits,
                                "Extended sliders limit for quality presets\n\n"
                                "Using this option changes resolution detection logic\n"
                                "and might cause issues and crashes!");
-
-            // DRS
-            ImGui::TableNextColumn();
-            ConfigCheckbox("DRS Override Minimum", config->DrsMinOverrideEnabled,
-                           "Dynamic Resolution Scaling\nFix for games ignoring official DRS limits");
 
             ImGui::TableNextColumn();
             ConfigCheckbox("DRS Override Maximum", config->DrsMaxOverrideEnabled,
