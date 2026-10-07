@@ -1652,6 +1652,10 @@ bool Config::FGFollowsGame() const { return !FGEnabled.has_value() && FGCanFollo
 
 bool Config::IsFGEnabled() const
 {
+    // Force DMFG overrides the FG mode
+    if (FGDLSSGForceDMFG.value_or_default() && State::Instance().activeFgOutput == FGOutput::DLSSG)
+        return true;
+
     if (FGFollowsGame())
         return State::Instance().dlssgInputGameEnabled;
 
