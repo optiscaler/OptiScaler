@@ -3,6 +3,7 @@
 
 #include <Util.h>
 #include <Config.h>
+#include <DllNames.h>
 
 #include <magic_enum.hpp>
 
@@ -1329,8 +1330,15 @@ VALIDATE_HOOK(hkD3D12CreateDevice, D3d12Proxy::PFN_D3D12CreateDevice)
 static HRESULT hkD3D12CreateDevice(IUnknown* pAdapter, D3D_FEATURE_LEVEL MinimumFeatureLevel, REFIID riid,
                                    void** ppDevice)
 {
-    LOG_DEBUG("Adapter: {:X}, Level: {:X}, Caller: {}", (size_t) pAdapter, (UINT) MinimumFeatureLevel,
-              Util::WhoIsTheCaller(_ReturnAddress()));
+    auto caller = Util::WhoIsTheCaller(_ReturnAddress());
+
+    LOG_DEBUG("Adapter: {:X}, Level: {:X}, Caller: {}", (size_t) pAdapter, (UINT) MinimumFeatureLevel, caller);
+
+    if (CheckDllName(&caller, &overlayNames))
+    {
+        LOG_DEBUG("Overlay detected, skipping hook");
+        return o_D3D12CreateDevice(pAdapter, MinimumFeatureLevel, riid, ppDevice);
+    }
 
 #ifdef ENABLE_DEBUG_LAYER_DX12
     LOG_WARN("Debug layers active!");
@@ -1416,7 +1424,7 @@ static HRESULT hkD3D12CreateDevice(IUnknown* pAdapter, D3D_FEATURE_LEVEL Minimum
         // if (Config::Instance()->UESpoofIntelAtomics64.value_or_default())
         //     UnhookDevice();
 
-        HookToDevice(State::Instance().currentD3D12Device);
+        HookToDevice((ID3D12Device*) *ppDevice);
         _d3d12Captured = true;
 
         State::Instance().d3d12Devices.push_back((ID3D12Device*) *ppDevice);
@@ -1458,8 +1466,15 @@ VALIDATE_HOOK(hkCreateDevice, PFN_CreateDevice)
 static HRESULT hkCreateDevice(ID3D12DeviceFactory* pFactory, IUnknown* pAdapter, D3D_FEATURE_LEVEL MinimumFeatureLevel,
                               REFIID riid, void** ppDevice)
 {
-    LOG_DEBUG("Adapter: {:X}, Level: {:X}, Caller: {}", (size_t) pAdapter, (UINT) MinimumFeatureLevel,
-              Util::WhoIsTheCaller(_ReturnAddress()));
+    auto caller = Util::WhoIsTheCaller(_ReturnAddress());
+
+    LOG_DEBUG("Adapter: {:X}, Level: {:X}, Caller: {}", (size_t) pAdapter, (UINT) MinimumFeatureLevel, caller);
+
+    if (CheckDllName(&caller, &overlayNames))
+    {
+        LOG_DEBUG("Overlay detected, skipping hook");
+        return o_CreateDevice(pFactory, pAdapter, MinimumFeatureLevel, riid, ppDevice);
+    }
 
     if (_creatingD3D12Device)
     {
@@ -1526,8 +1541,8 @@ static HRESULT hkCreateDevice(ID3D12DeviceFactory* pFactory, IUnknown* pAdapter,
 
     if (result == S_OK && ppDevice != nullptr && MinimumFeatureLevel != D3D_FEATURE_LEVEL_1_0_CORE)
     {
-        LOG_DEBUG("Device captured: {0:X}", (size_t) *ppDevice);
-        State::Instance().currentD3D12Device = (ID3D12Device*) *ppDevice;
+        // LOG_DEBUG("Device captured: {0:X}", (size_t) *ppDevice);
+        // State::Instance().currentD3D12Device = (ID3D12Device*) *ppDevice;
 
         if (szName.size() > 0)
             State::Instance().DeviceAdapterNames[*ppDevice] = wstring_to_string(szName);
@@ -1544,8 +1559,8 @@ static HRESULT hkCreateDevice(ID3D12DeviceFactory* pFactory, IUnknown* pAdapter,
                 o_D3D12DeviceRelease(_intelD3D12Device);
         }
 
-        HookToDevice(State::Instance().currentD3D12Device);
-        _d3d12Captured = true;
+        HookToDevice((ID3D12Device*) *ppDevice);
+        //_d3d12Captured = true;
 
         State::Instance().d3d12Devices.push_back((ID3D12Device*) *ppDevice);
 
@@ -1579,6 +1594,7 @@ static HRESULT hkCreateDevice(ID3D12DeviceFactory* pFactory, IUnknown* pAdapter,
     }
 
     LOG_DEBUG("final result: {:X}", (UINT) result);
+
     return result;
 }
 
