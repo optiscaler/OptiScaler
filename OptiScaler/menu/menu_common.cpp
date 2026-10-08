@@ -3685,7 +3685,8 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
         {
             auto& setting = config->FGXeFGOverrideInterpolationCount;
             const int currentSet = setting.has_value() ? setting.value() + 1 : 0;
-            auto label = [](int i) {
+            auto label = [](int i)
+            {
                 return i == 0 ? std::string("Default") : i == 1 ? std::string("Off") : std::to_string(i) + "X";
             };
 
