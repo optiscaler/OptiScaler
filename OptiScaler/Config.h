@@ -100,13 +100,12 @@ template <class T, HasDefaultValue defaultState = WithDefault> class CustomOptio
     }
 
     constexpr T value_or_default() &&
-        requires(defaultState != NoDefault)
-    {
-        return this->has_value() ? std::move(this->value()) : std::move(_defaultValue);
-    }
+        requires(defaultState != NoDefault) {
+            return this->has_value() ? std::move(this->value()) : std::move(_defaultValue);
+        }
 
-    constexpr std::optional<T> value_for_config()
-        requires(defaultState == WithDefault)
+        constexpr std::optional<T> value_for_config()
+            requires(defaultState == WithDefault)
     {
         if (_volatile)
         {
@@ -381,10 +380,9 @@ class Config
     CustomOptional<bool> MenuBlur { true };
     CustomOptional<float> MenuBlurStrength { 1.0f };
     CustomOptional<bool> CustomTabEnabled { true };
-    CustomOptional<std::string> CustomTabCards {
-        "upscaler,fg_selection,fg_fsrfg,fg_xefg,fg_dlssg,fg_reprojection,fg_optifg,fg_nvngx,fg_fsrfg_inputs,fg_sl_"
-        "inputs,framerate"
-    }; // Comma separated ids of the boxes
+    CustomOptional<std::string> CustomTabCards { "upscaler,sharpness,fg_selection,fg_fsrfg,fg_xefg,fg_dlssg,fg_"
+                                                 "reprojection,fg_optifg,fg_nvngx,fg_fsrfg_inputs,fg_sl_"
+                                                 "inputs,framerate" }; // Comma separated ids of the boxes
 
     // Hooks
     CustomOptional<bool> HookOriginalNvngxOnly { false };
