@@ -12,6 +12,7 @@
 #include <math.h>
 #include <imgui/ImGuiNotify.hpp>
 #include <shaders/reproject/mouseInputs/InputCollection.h>
+#include <low_latency/input/input_common.h>
 
 static inline uint64_t _lastFrameId[20] = { 0 };
 static inline IUnknown* _lastDev[20] = { 0 };
@@ -65,6 +66,7 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_Sleep(IUnknown* pDev)
             LOG_TRACE("Sleep for frame {}", frameCount);
 
             skip = true;
+            ScopedOptiScalerReflex optiScalerCall {};
             StreamlineProxy::ReflexSleep()(*frameToken);
             skip = false;
 
@@ -241,6 +243,7 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_SetLatencyMarker(IUnknown* pDev,
             LOG_TRACE("{} for frame {}", magic_enum::enum_name(marker), frameCount);
 
             skip[index] = true;
+            ScopedOptiScalerReflex optiScalerCall {};
             StreamlineProxy::PCLSetMarker()(marker, *frameToken);
             skip[index] = false;
 
@@ -378,6 +381,30 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D12_SetAsyncFrameMarker(ID3D12CommandQueue* 
     }
 
     return o_NvAPI_D3D12_SetAsyncFrameMarker(pCommandQueue, pSetAsyncFrameMarkerParams);
+}
+
+void* ReflexHooks::getHookedReflexSync(PFN_NvApi_QueryInterface& queryInterface)
+{
+    if (o_NvAPI_D3D_SetReflexSync == nullptr && queryInterface != nullptr)
+        o_NvAPI_D3D_SetReflexSync = GET_INTERFACE(NvAPI_D3D_SetReflexSync, queryInterface);
+
+    return o_NvAPI_D3D_SetReflexSync != nullptr ? (void*) &hkNvAPI_D3D_SetReflexSync : nullptr;
+}
+
+NvAPI_Status ReflexHooks::hkNvAPI_D3D_SetReflexSync(IUnknown* pDev, NV_SET_REFLEX_SYNC_PARAMS* pSetReflexSyncParams)
+{
+#ifdef LOW_LATENCY_INPUTS
+    // With the Reflex output OptiScaler's FSR-FG reports its own frame multiplier, the game's Streamline doesn't
+    // know it
+    LowLatencyInput activeInput {};
+    LowLatencyMode activeOutput {};
+    InputCommon::get_currently_active(activeInput, activeOutput);
+
+    if (activeOutput == LowLatencyMode::Reflex && State::Instance().activeFgOutput == FGOutput::FSRFG)
+        return NVAPI_OK;
+#endif
+
+    return o_NvAPI_D3D_SetReflexSync(pDev, pSetReflexSyncParams);
 }
 
 NvAPI_Status ReflexHooks::hkNvAPI_Vulkan_SetLatencyMarker(HANDLE vkDevice,

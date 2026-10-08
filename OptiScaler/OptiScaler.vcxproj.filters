@@ -524,6 +524,9 @@
     <ClInclude Include="inputs\FG\FfxApi_Dx12_FG.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="inputs\FG\XeFG_Inputs_Dx12.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="fsr4\FSR4ModelSelection.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -753,6 +756,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="low_latency\low_latency_tech\ll_latencyflex.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="low_latency\low_latency_tech\ll_reflex.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="low_latency\low_latency_tech\ll_xell.h">
@@ -1304,6 +1310,9 @@
     <ClCompile Include="inputs\FG\FfxApi_Dx12_FG.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="inputs\FG\XeFG_Inputs_Dx12.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="fsr4\FSR4ModelSelection.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -1422,6 +1431,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="low_latency\low_latency_tech\ll_latencyflex.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="low_latency\low_latency_tech\ll_reflex.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="low_latency\low_latency_tech\ll_xell.cpp">

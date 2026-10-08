@@ -202,11 +202,7 @@ void XeLL::set_marker(IUnknown* pDevice, const MarkerParams& marker_params)
 
 void XeLL::set_async_marker(IUnknown* pCommandQueue, const MarkerParams& marker_params)
 {
-    if (!pCommandQueue)
-    {
-        LOG_ERROR("Invalid pointer");
-        return;
-    }
+    // The command queue isn't needed, XeLL inputs without an app queue send these too
 
     // XeLL frame ids are uint64_t
     auto frame_id = (uint32_t) marker_params.frame_id;
