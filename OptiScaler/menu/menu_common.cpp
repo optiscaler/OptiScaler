@@ -8193,6 +8193,7 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
         const char* description;
         DrawFn draw; // Drawn above the boxes of the tab
         bool hideLabelInMenu;
+        bool (*visible)(RenderMenuContext&) = nullptr; // Tab hidden when returned false
     };
 
     // Boxes of a tab come from GetMenuBoxes, by the label of the tab
@@ -8205,12 +8206,22 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
         { "SYSTEM", "Textures", "Mipmap bias and anisotropic filtering." },
         { "SYSTEM", "Compatibility", "Init flags, hooks, plugins and game specific workarounds." },
         { "ADVANCED", "Menu", "Menu scale, theme, FPS overlay and keybinds." },
+        { "ADVANCED", "Quirks", "Game specific quirks applied by OptiScaler.",
++          [](RenderMenuContext& c) { RenderCard(c, RenderQuirksSettings); }, false,
++          [](RenderMenuContext& c) { return !c.state.detectedQuirks.empty(); } },
         { "ADVANCED", "Help / Status", "Support info. Filled dot: on or found, hollow dot: off or missing.", nullptr, true },
     };
     // clang-format on
 
     constexpr int customTab = 0;
     const bool customTabEnabled = config->CustomTabEnabled.value_or_default();
+
+    auto isTabVisible = [&](int i)
+    {
+        if (i == customTab)
+            return customTabEnabled;
+        return tabs[i].visible == nullptr || tabs[i].visible(ctx);
+    };
 
     if (requestedMenuTab != nullptr)
     {
@@ -8225,8 +8236,18 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
 
     selectedMenuTab = std::clamp(selectedMenuTab, 0, (int) std::size(tabs) - 1);
 
-    if (selectedMenuTab == customTab && !customTabEnabled)
-        selectedMenuTab = customTab + 1;
+    // Selected tab can disappear, pick the first one that's visible
+    if (!isTabVisible(selectedMenuTab))
+    {
+        for (int i = 0; i < (int) std::size(tabs); i++)
+        {
+            if (isTabVisible(i))
+            {
+                selectedMenuTab = i;
+                break;
+            }
+        }
+    }
 
     const auto& style = ImGui::GetStyle();
 
@@ -8244,7 +8265,7 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
 
         for (int i = 0; i < (int) std::size(tabs); i++)
         {
-            if (i == customTab && !customTabEnabled)
+            if (!isTabVisible(i))
                 continue;
 
             if (lastGroup == nullptr || strcmp(lastGroup, tabs[i].group) != 0)
