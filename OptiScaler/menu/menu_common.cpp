@@ -3564,12 +3564,10 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     nvngxOptions[fgNvngxArtursIndex].set_disabled(!state.artursFgFileAvailable, "Missing dlss-enabler-headless.dll");
 
     auto constexpr fgNvngxFfxIndex = (uint32_t) FGNvngxReplacement::FFX;
-    nvngxOptions[fgNvngxFfxIndex].set_disabled(state.swapchainApi == API::Vulkan, "Unsupported API");
     nvngxOptions[fgNvngxFfxIndex].set_disabled(!FfxApiProxy::IsFGReady(false),
                                                "Missing amd_fidelityfx_framegeneration_dx12.dll");
 
     auto constexpr fgNvngxComboIndex = (uint32_t) FGNvngxReplacement::Combo;
-    nvngxOptions[fgNvngxComboIndex].set_disabled(state.swapchainApi == API::Vulkan, "Unsupported API");
     nvngxOptions[fgNvngxComboIndex].set_disabled(
         !FfxApiProxy::IsFGReady(false) || !state.artursFgFileAvailable,
         "Missing amd_fidelityfx_framegeneration_dx12.dll\nor missing dlss-enabler-headless.dll");
@@ -5537,16 +5535,12 @@ void MenuCommon::RenderFakenvapiSettings(RenderMenuContext& ctx)
     auto& state = ctx.state;
     auto config = ctx.config;
 
-    // Using state.reflexLimitsFps as a detection for Reflex being used on Nvidia
-    const bool showLatencyFlex =
-        fakenvapi::isUsingAsMainNvapi() || (state.activeFgOutput == FGOutput::XeFG && state.reflexLimitsFps);
-    const bool showForceXell = state.swapchainApi != API::Vulkan;
-
-    if (!showLatencyFlex && !showForceXell)
-        return;
-
     // FAKENVAPI ---------------------------
     SectionTitle("fakenvapi");
+
+    // Using state.reflexLimitsFps as a detection for Reflex being used on Nvidia
+    bool showLatencyFlex =
+        fakenvapi::isUsingAsMainNvapi() || (state.activeFgOutput == FGOutput::XeFG && state.reflexLimitsFps);
 
     if (showLatencyFlex)
     {
@@ -5559,29 +5553,27 @@ void MenuCommon::RenderFakenvapiSettings(RenderMenuContext& ctx)
         ShowTooltip("By default, FSR Anti-Lag 2.0/XeLL is used when available.\n"
                     "This setting lets you force LatencyFlex instead");
         ImGui::EndDisabled();
+
+        // Keep Force XeLL on the same line if LatencyFlex is visible
+        ImGui::SameLine(0.0f, 16.0f);
     }
 
-    if (showForceXell)
+    // Force XeLL is always visible
+    bool forceXell = config->ForceXeLL.value_or_default();
+    static bool activeForceXeLL = forceXell;
+
+    if (ImGui::Checkbox("Force XeLL", &forceXell))
     {
-        if (showLatencyFlex)
-            ImGui::SameLine(0.0f, 16.0f);
+        config->ForceXeLL = forceXell;
+    }
+    ShowTooltip("Allows XeLL to work without FG on non-Intel cards.\n\nDisables FG "
+                "options\n\nRequires a restart");
 
-        bool forceXell = config->ForceXeLL.value_or_default();
-        static bool activeForceXeLL = forceXell;
-
-        if (ImGui::Checkbox("Force XeLL", &forceXell))
-        {
-            config->ForceXeLL = forceXell;
-        }
-        ShowTooltip("Allows XeLL to work without FG on non-Intel cards.\n\nDisables FG "
-                    "options\n\nRequires a restart");
-
-        if (activeForceXeLL != forceXell)
-        {
-            ImGui::Spacing();
-            ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.0f, 1.f)), "Save INI and restart to apply the changes");
-            ImGui::Spacing();
-        }
+    if (activeForceXeLL != forceXell)
+    {
+        ImGui::Spacing();
+        ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.0f, 1.f)), "Save INI and restart to apply the changes");
+        ImGui::Spacing();
     }
 
     if (showLatencyFlex)
