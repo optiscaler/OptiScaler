@@ -4489,13 +4489,11 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                     ImGui::Checkbox("Force Dynamic MFG", &dynamicMFG))
                 {
                     config->FGDLSSGForceDMFG = dynamicMFG;
-                    state.fgChanged = true;
                 }
 
                 ImGui::BeginDisabled(!config->FGDLSSGForceDMFG.value_or_default());
                 static float fpsTarget = config->FGDLSSGFramerateTargetDMFG.value_or_default();
-                float fpsSliderMax = (float) std::max(200, refreshRate);
-                ImGui::SliderFloat("DMFG FPS Target", &fpsTarget, 0, fpsSliderMax, "%.0f");
+                ImGui::SliderFloat("DMFG FPS Target", &fpsTarget, 0, 200, "%.0f");
 
                 ShowTooltip("An active limit of 0 means auto-detect the display refresh rate");
 
