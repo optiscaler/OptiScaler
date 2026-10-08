@@ -51,6 +51,8 @@ class ReflexHooks
     static NvAPI_Status hkNvAPI_D3D_SetReflexSync(IUnknown* pDev, NV_SET_REFLEX_SYNC_PARAMS* pSetReflexSyncParams);
     static NvAPI_Status hkNvAPI_D3D12_SetAsyncFrameMarker(ID3D12CommandQueue* pCommandQueue,
                                                           NV_ASYNC_FRAME_MARKER_PARAMS* pSetAsyncFrameMarkerParams);
+    static NvAPI_Status sendMarker(IUnknown* pDev, NV_LATENCY_MARKER_PARAMS* pSetLatencyMarkerParams,
+                                   bool toStreamline);
 
     // Vulkan
     inline static decltype(&NvAPI_Vulkan_SetLatencyMarker) o_NvAPI_Vulkan_SetLatencyMarker = nullptr;
@@ -86,6 +88,22 @@ class ReflexHooks
     static void* getHookedReflex(unsigned int InterfaceId);
     static bool updateTimingData();
     static bool gameIsSendingMarkers();
+
+    // Delivers a game's marker on, toStreamline when OptiScaler's Streamline (DLSSG output) took it instead
+    using MarkerSend = NvAPI_Status (*)(IUnknown* pDev, NV_LATENCY_MARKER_PARAMS* params, bool toStreamline);
+
+    // The game's Reflex markers: tracking, game quirks and passing them to OptiScaler's Streamline
+    static NvAPI_Status processGameMarker(IUnknown* pDev, NV_LATENCY_MARKER_PARAMS* pSetLatencyMarkerParams,
+                                          MarkerSend send);
+
+    // OptiScaler's Streamline sleeping for the game, false when it doesn't
+    static bool streamlineSleep();
+
+    // The game's Reflex sleep mode thread, for game quirks
+    static void gameSetSleepMode();
+
+    // Async markers that don't reach the driver hooks, a game stops sending them when DLSSG is disabled
+    static void trackAsyncMarker(uint64_t frameId) { _lastAsyncMarkerFrameId = frameId; }
 
     // For updating information about Reflex hooks
     static void update(bool optiFg_FgState, bool isVulkan);

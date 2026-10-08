@@ -535,6 +535,33 @@ static PVOID _redirects[128] {};
 static size_t _redirectCount = 0;
 static bool _redirectIncomplete = false;
 
+static xefg_swapchain_result_t GameSetLatencyReduction(xefg_swapchain_handle_t hSwapChain, void* hXeLLContext);
+static xefg_swapchain_result_t GameSetEnabled(xefg_swapchain_handle_t hSwapChain, uint32_t enable);
+
+// The game's own XeFG without the XeFG input, only for its XeLL (the XeFG passthrough knows it from the start)
+static HookEntry _nativeHooks[] = {
+    { "xefgSwapChainSetLatencyReduction", (PVOID) &GameSetLatencyReduction },
+    { "xefgSwapChainSetEnabled", (PVOID) &GameSetEnabled },
+};
+
+// XeFG reads the XeLL context directly, it needs the real one behind it
+static xefg_swapchain_result_t GameSetLatencyReduction(xefg_swapchain_handle_t hSwapChain, void* hXeLLContext)
+{
+    InputXeLL::AttachXeFG(hXeLLContext);
+    return ((decltype(&xefgSwapChainSetLatencyReduction)) _nativeHooks[0].target)(hSwapChain, hXeLLContext);
+}
+
+// Only while it generates frames the game's XeLL runs as without OptiScaler
+static xefg_swapchain_result_t GameSetEnabled(xefg_swapchain_handle_t hSwapChain, uint32_t enable)
+{
+    auto result = ((decltype(&xefgSwapChainSetEnabled)) _nativeHooks[1].target)(hSwapChain, enable);
+
+    if (result == XEFG_SWAPCHAIN_RESULT_SUCCESS)
+        InputXeLL::SetXeFGEnabled(enable != 0);
+
+    return result;
+}
+
 // The calls that carry the game's frame generation choices go through the override
 static HookEntry _passHooks[] = {
     { "xefgSwapChainD3D12InitFromSwapChain", (PVOID) &PassInitFromSwapChain },
@@ -668,8 +695,23 @@ void XeFGInputs::Hook(HMODULE libxessFg)
 {
     static HMODULE hooked = nullptr;
 
-    if (State::Instance().activeFgInput != FGInput::XeFG || libxessFg == nullptr || libxessFg == hooked ||
-        (libxessFg == XeFGProxy::Module() && Passthrough()))
+    if (libxessFg == nullptr || libxessFg == hooked)
+        return;
+
+    if (State::Instance().activeFgInput != FGInput::XeFG)
+    {
+#ifdef LOW_LATENCY_INPUTS
+        // One library, its trampoline is kept in the table
+        if (_nativeHooks[0].target == nullptr)
+        {
+            hooked = libxessFg;
+            LOG_INFO("XeFG XeLL hook: {}", Attach(libxessFg, _nativeHooks));
+        }
+#endif
+        return;
+    }
+
+    if (libxessFg == XeFGProxy::Module() && Passthrough())
         return;
 
     hooked = libxessFg;

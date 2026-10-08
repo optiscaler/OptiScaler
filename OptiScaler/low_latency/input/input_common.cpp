@@ -3,16 +3,36 @@
 #include <misc/IdentifyGpu.h>
 
 #include "input_common.h"
+#include "input_xell.h"
 #include <low_latency/low_latency_tech/ll_xell.h>
 #include <low_latency/low_latency_tech/ll_antilag2.h>
 #include <low_latency/low_latency_tech/ll_latencyflex.h>
 #include <low_latency/low_latency_tech/ll_reflex.h>
 #include <inputs/FG/XeFG_Inputs_Dx12.h>
+#include <framegen/IFGFeature_Dx12.h>
 #include <nvapi/fakenvapi.h>
 
 // Game frame id of the frames the FG presenter shows next, and whether a new batch of them started
 static std::atomic<uint64_t> fg_frame_id = 0;
 static std::atomic<bool> fg_new_batch = false;
+
+static bool marker_supported(InputMarkerMode mode, MarkerType type)
+{
+    switch (mode)
+    {
+    case InputMarkerMode::NoMarkers:
+        return false;
+    case InputMarkerMode::SimStartOnly:
+        return type == MarkerType::SIMULATION_START;
+    case InputMarkerMode::SimStartAndPresentStart:
+        return type == MarkerType::SIMULATION_START || type == MarkerType::PRESENT_START ||
+               type == MarkerType::OUT_OF_BAND_PRESENT_START;
+    case InputMarkerMode::SimOnly:
+        return type == MarkerType::SIMULATION_START || type == MarkerType::SIMULATION_END;
+    default:
+        return true;
+    }
+}
 
 // private
 bool InputCommon::deinit_current_tech()
@@ -85,7 +105,12 @@ bool InputCommon::init_tech(IUnknown* pDevice, LowLatencyMode desiredMode)
         if (auto current_tech = currently_active_tech.load(); current_tech && isInitialized)
         {
             activeOutput = current_tech->get_mode();
-            current_tech->set_sleep_mode(&get_sleep_copy(activeInput)); // Restore any potential sleep mode
+
+            // XeFG needs XeLL in low latency mode, disabling it only stops sending the sleep and marker calls
+            current_tech->set_forced_mode(xefg_paced());
+            current_tech->set_low_latency_override(Config::Instance()->FN_ForceReflex.value_or_default());
+
+            apply_sleep_mode(current_tech.get()); // Restore any potential sleep mode
             return true;
         }
     }
@@ -112,23 +137,84 @@ LowLatencyMode InputCommon::default_output()
 
 std::optional<LowLatencyMode> InputCommon::forced_output()
 {
-    auto fgOutput = State::Instance().activeFgOutput;
-
-    // XeFG paces through XeLL, also the game's own XeFG with the XeFG input passthrough
-    if (fgOutput == FGOutput::XeFG || XeFGInputs::Passthrough())
+    // OptiScaler's XeFG paces through XeLL, the game's XeFG through its own XeLL (no output). OptiScaler's DLSSG and
+    // FSR-FG take any output, the game's own FSR-FG and DLSSG default to their own (default_input, default_output).
+    if (State::Instance().activeFgOutput == FGOutput::XeFG || InputXeLL::IsNative())
         return LowLatencyMode::XeLL;
-
-    // DLSSG works with Reflex and FSR-FG with AntiLag 2, each falls back to the GPU vendor's own output
-    if (fgOutput == FGOutput::DLSSG || fgOutput == FGOutput::FSRFG)
-        return default_output();
 
     return std::nullopt;
 }
 
+bool InputCommon::xefg_paced()
+{
+    // OptiScaler's XeFG needs XeLL in low latency mode and knows its generated frames
+    return activeOutput == LowLatencyMode::XeLL && State::Instance().activeFgOutput == FGOutput::XeFG;
+}
+
+LowLatencyInput InputCommon::default_input()
+{
+    // With the XeFG input the game's own low latency for its frame generation is XeLL, Reflex markers it also sends
+    // belong to its other paths
+    if (State::Instance().activeFgInput == FGInput::XeFG && avaliableInputs[LowLatencyInput::XeLL])
+        return LowLatencyInput::XeLL;
+
+    // The game's FSR-FG only reports its generated frames through AntiLag 2
+    if (avaliableInputs[LowLatencyInput::AntiLag2] && reports_frame_generation(LowLatencyInput::AntiLag2))
+        return LowLatencyInput::AntiLag2;
+
+    if (avaliableInputs[LowLatencyInput::Reflex])
+        return LowLatencyInput::Reflex;
+
+    // A game can have XeLL without it being enabled in its settings, it does nothing until it is
+    if (avaliableInputs[LowLatencyInput::XeLL] && get_sleep_copy(LowLatencyInput::XeLL).low_latency_enabled)
+        return LowLatencyInput::XeLL;
+
+    if (avaliableInputs[LowLatencyInput::AntiLag2])
+        return LowLatencyInput::AntiLag2;
+
+    if (avaliableInputs[LowLatencyInput::UeLowLatency])
+        return LowLatencyInput::UeLowLatency;
+
+    if (avaliableInputs[LowLatencyInput::XeLL])
+        return LowLatencyInput::XeLL;
+
+    // OptiScaler's own Streamline (DLSSG output) when the game has nothing
+    if (avaliableInputs[LowLatencyInput::OptiScaler])
+        return LowLatencyInput::OptiScaler;
+
+    return LowLatencyInput::None;
+}
+
+const char* InputCommon::incompatibility(LowLatencyInput input, LowLatencyMode output)
+{
+    // Reflex and XeLL send everything, with frame ids. OptiScaler sends its sleep and present markers, with ids.
+    if (input != LowLatencyInput::AntiLag2 && input != LowLatencyInput::UeLowLatency &&
+        input != LowLatencyInput::OptiScaler)
+    {
+        return nullptr;
+    }
+
+    if (output == LowLatencyMode::XeLL && input != LowLatencyInput::OptiScaler)
+    {
+        return input == LowLatencyInput::AntiLag2
+                   ? "XeLL needs frame ids and frame markers, AntiLag 2 has neither"
+                   : "XeLL needs render submit and present markers, UE only sends simulation markers";
+    }
+
+    // The other modes end frames on render submit markers, Reflex ID also sleeps on simulation start markers
+    if (output == LowLatencyMode::LatencyFlex &&
+        (LFXMode) Config::Instance()->FN_LatencyFlexMode.value_or_default() != LFXMode::Conservative)
+    {
+        return "LatencyFlex only works in the Conservative mode with this input";
+    }
+
+    return nullptr;
+}
+
 std::optional<LowLatencyInput> InputCommon::forced_input()
 {
-    // Intel's XeFG only generates frames while the game's XeLL is in low latency mode
-    if (XeFGInputs::Passthrough())
+    // The game's XeFG (also with the XeFG passthrough) runs on the game's XeLL
+    if (XeFGInputs::Passthrough() || InputXeLL::IsNative())
         return LowLatencyInput::XeLL;
 
     return std::nullopt;
@@ -136,7 +222,15 @@ std::optional<LowLatencyInput> InputCommon::forced_input()
 
 bool InputCommon::update_low_latency_tech(IUnknown* pDevice, std::optional<LowLatencyMode> mode)
 {
-    if (avaliableInputs.count() == 0)
+    // The game's XeFG runs on its own XeLL, nothing else may drive an output next to it (update() removes it)
+    if (InputXeLL::IsNative())
+    {
+        activeInput = LowLatencyInput::XeLL;
+        return true;
+    }
+
+    // An output asked for (OptiScaler's XeFG) starts without one
+    if (avaliableInputs.count() == 0 && !mode.has_value())
     {
         LOG_TRACE("No avaliable inputs");
 
@@ -172,6 +266,10 @@ bool InputCommon::update_low_latency_tech(IUnknown* pDevice, std::optional<LowLa
     if (auto forced = forced_input())
         desiredInput = *forced;
 
+    // None was the earlier name of the default
+    if (desiredInput == LowLatencyInput::None)
+        desiredInput = LowLatencyInput::Auto;
+
     // The selection stays, the input is used once the game starts using it
     if (!avaliableInputs[desiredInput] && desiredInput != LowLatencyInput::Auto)
     {
@@ -183,57 +281,29 @@ bool InputCommon::update_low_latency_tech(IUnknown* pDevice, std::optional<LowLa
         desiredInput = LowLatencyInput::Auto;
     }
 
-    // Hopefully this doesn't cause constant switching of inputs.
-    // We can just change the activeInput because it only controls what calls get through.
-    if (activeInput != desiredInput || !avaliableInputs[activeInput] || desiredInput == LowLatencyInput::Auto)
+    if (desiredInput == LowLatencyInput::Auto)
+        desiredInput = default_input();
+
+    // We can just change the activeInput because it only controls what calls get through
+    if (activeInput != desiredInput)
     {
-        bool change = false;
+        activeInput = desiredInput;
+        LOG_INFO("Low latency input: {}", magic_enum::enum_name(activeInput));
 
-        if (avaliableInputs[desiredInput])
-        {
-            activeInput = desiredInput;
-            change = true;
-        }
-        else
-        {
-            // Try to use inputs in order Reflex -> XeLL -> AL2. With the XeFG input the game's own low latency
-            // for its frame generation is XeLL, Reflex markers it also sends belong to its other paths.
-            if (State::Instance().activeFgInput == FGInput::XeFG && avaliableInputs[LowLatencyInput::XeLL])
-                desiredInput = LowLatencyInput::XeLL;
-            else if (avaliableInputs[LowLatencyInput::Reflex])
-                desiredInput = LowLatencyInput::Reflex;
-            else if (avaliableInputs[LowLatencyInput::XeLL])
-                desiredInput = LowLatencyInput::XeLL;
-            else if (avaliableInputs[LowLatencyInput::AntiLag2])
-                desiredInput = LowLatencyInput::AntiLag2;
-            else if (avaliableInputs[LowLatencyInput::UeLowLatency])
-                desiredInput = LowLatencyInput::UeLowLatency;
-            else
-                desiredInput = LowLatencyInput::None;
+        // The previous input's frame reports would stay in the overlay, its frame ids don't continue
+        std::memset(frame_reports, 0, sizeof(frame_reports));
 
-            if (desiredInput != activeInput)
-            {
-                activeInput = desiredInput;
-                change = true;
-            }
-        }
+        for (auto& id : last_marker_frame_ids)
+            id = 0;
 
-        if (change)
-        {
-            LOG_TRACE_LOWLATENCY("Selected activeInput: {}", magic_enum::enum_name(activeInput));
-
-            if (auto current_tech = currently_active_tech.load())
-            {
-                current_tech->set_sleep_mode(&get_sleep_copy(activeInput)); // Restore any potential sleep mode
-                return true;
-            }
-        }
+        if (auto current_tech = currently_active_tech.load())
+            apply_sleep_mode(current_tech.get()); // Restore any potential sleep mode
     }
 
     if (desiredMode == LowLatencyMode::None)
         desiredMode = Config::Instance()->LowLatencyOutput.value_or_default();
 
-    if (desiredMode == LowLatencyMode::Auto)
+    if (desiredMode == LowLatencyMode::Auto || desiredMode == LowLatencyMode::None)
         desiredMode = default_output();
 
     // The frame generation output decides the low latency output it works with
@@ -371,6 +441,8 @@ InputResult InputCommon::sleep(const InputContext& inputContext, IUnknown* pDevi
     if (inputContext.caller != activeInput)
         return InputResult::UsingDifferentInput;
 
+    presents_without_input = 0;
+
     if (auto current_tech = currently_active_tech.load())
         current_tech->sleep(frame_id);
     else
@@ -380,7 +452,7 @@ InputResult InputCommon::sleep(const InputContext& inputContext, IUnknown* pDevi
 }
 
 InputResult InputCommon::set_marker(const InputContext& inputContext, IUnknown* pDevice,
-                                    const MarkerParams& marker_params)
+                                    const MarkerParams& marker_params, bool toOutput)
 {
     // Ignore context that Opti creates
     if (!inputContext.localContext)
@@ -392,15 +464,8 @@ InputResult InputCommon::set_marker(const InputContext& inputContext, IUnknown* 
     if (inputContext.caller != activeInput)
         return InputResult::UsingDifferentInput;
 
-    if (inputContext.markerMode == InputMarkerMode::NoMarkers)
-    {
+    if (!marker_supported(inputContext.markerMode, marker_params.marker_type))
         return InputResult::InputNotSupported;
-    }
-    else if (inputContext.markerMode == InputMarkerMode::PresentStartOnly &&
-             marker_params.marker_type != MarkerType::PRESENT_START)
-    {
-        return InputResult::InputNotSupported;
-    }
 
     // Some games send a frame's marker twice (The Witcher 3 ends its render submit again after present), the first
     // one is the right one. Frame id 0 is what inputs without frame ids send.
@@ -411,16 +476,28 @@ InputResult InputCommon::set_marker(const InputContext& inputContext, IUnknown* 
             return InputResult::Ok;
     }
 
-    if (marker_params.marker_type == MarkerType::SIMULATION_START)
-        State::Instance().reflexFrameId = marker_params.frame_id;
-    else if (marker_params.marker_type == MarkerType::PRESENT_START)
+    presents_without_input = 0;
+
+    if (marker_params.marker_type == MarkerType::PRESENT_START)
         last_present_start_frame_id = marker_params.frame_id;
 
-    // update_effective_fg_state();
+    // Without frame ids there's nothing to report, the overlay's timings need them
+    if (!inputContext.noFrameId)
+    {
+        if (marker_params.marker_type == MarkerType::SIMULATION_START)
+            State::Instance().reflexFrameId = marker_params.frame_id;
 
-    // update_enabled_override();
+        add_marker_to_report(marker_params);
+    }
 
-    add_marker_to_report(marker_params);
+    if (!toOutput)
+        return InputResult::Ok;
+
+    // Markers without a frame id only let AntiLag 2 and LatencyFlex follow the sleep calls, Reflex and XeLL use ids
+    if (marker_params.frame_id == 0 && (activeOutput == LowLatencyMode::Reflex || activeOutput == LowLatencyMode::XeLL))
+    {
+        return InputResult::Ok;
+    }
 
     if (auto current_tech = currently_active_tech.load())
         current_tech->set_marker(pDevice, marker_params);
@@ -437,31 +514,25 @@ InputResult InputCommon::set_async_marker(const InputContext& inputContext, ID3D
 {
     auto fgOutput = State::Instance().activeFgOutput;
 
+    // Async markers only come with frame generation, the game's own when it's the game's input
+    if (!inputContext.localContext)
+        mark_frame_generation(inputContext.caller);
+
     // With the Reflex output OptiScaler's FSR-FG sends the async markers of its own presents (fg_output_present),
     // the game's describe presents that don't happen
     if (activeOutput == LowLatencyMode::Reflex && fgOutput == FGOutput::FSRFG)
         return InputResult::UsingDifferentInput;
 
-    // Always allow Opti's local context through, like XeLL or AL2. The async markers of OptiScaler's DLSSG output
-    // come from its Streamline as Reflex calls, they don't mix with the frame markers of the active input.
-    if (inputContext.caller != activeInput && !inputContext.localContext &&
-        !(activeOutput == LowLatencyMode::Reflex && fgOutput == FGOutput::DLSSG))
-    {
+    // Always allow Opti's local contexts through, like XeLL, AL2 or the async markers of its DLSSG output's
+    // Streamline (with the Reflex output those go to the driver directly)
+    if (inputContext.caller != activeInput && !inputContext.localContext)
         return InputResult::UsingDifferentInput;
-    }
 
     if (!currently_active_tech.load()) // can't init using ID3D12CommandQueue, can only check if available
         return InputResult::LowLatencyUpdateFail;
 
-    if (inputContext.markerMode == InputMarkerMode::NoMarkers)
-    {
+    if (!marker_supported(inputContext.markerMode, marker_params.marker_type))
         return InputResult::InputNotSupported;
-    }
-    else if (inputContext.markerMode == InputMarkerMode::PresentStartOnly &&
-             marker_params.marker_type != MarkerType::OUT_OF_BAND_PRESENT_START)
-    {
-        return InputResult::InputNotSupported;
-    }
 
     // TODO: could consider adding async markers to the report but would require some rewriting
     // add_marker_to_report(marker_params);
@@ -478,20 +549,22 @@ InputResult InputCommon::set_async_marker(const InputContext& inputContext, ID3D
 
 InputResult InputCommon::set_sleep_mode(const InputContext& inputContext, IUnknown* pDevice, SleepMode* sleep_mode)
 {
-    // Ignore context that Opti creates
+    // Ignore context that Opti creates. Its contexts (XeFG's XeLL) don't stand for the game's setting either, which
+    // is kept even without an output yet: AntiLag 2 and XeLL only send it when it changes.
     if (!inputContext.localContext)
+    {
         set_input_avaliable(inputContext.caller);
+        get_sleep_copy(inputContext.caller) = *sleep_mode;
+    }
 
     if (!update_low_latency_tech(pDevice))
         return InputResult::LowLatencyUpdateFail;
-
-    get_sleep_copy(inputContext.caller) = *sleep_mode;
 
     if (inputContext.caller != activeInput)
         return InputResult::UsingDifferentInput;
 
     if (auto current_tech = currently_active_tech.load())
-        current_tech->set_sleep_mode(sleep_mode);
+        apply_sleep_mode(current_tech.get());
     else
         return InputResult::NoReadyOutput;
 
@@ -535,7 +608,8 @@ InputResult InputCommon::get_latency(const InputContext& inputContext, IUnknown*
     if (!latency_params)
         return InputResult::InvalidParameter;
 
-    if (inputContext.caller == LowLatencyInput::Reflex)
+    // OptiScaler's own Streamline uses Reflex too
+    if (inputContext.caller == LowLatencyInput::Reflex || inputContext.caller == LowLatencyInput::OptiScaler)
     {
         if (activeOutput == LowLatencyMode::Reflex)
         {
@@ -650,7 +724,8 @@ bool InputCommon::get_timing_data(TimingData& timingDataOut)
     if (activeOutput == LowLatencyMode::Reflex)
     {
         // TODO: allocate struct and get everything from reflex
-        return true;
+        timingDataOut = {};
+        return false;
     }
 
     // auto processFrameReport = [&](const auto& frameReport) -> bool
@@ -757,8 +832,12 @@ bool InputCommon::get_timing_data(TimingData& timingDataOut)
                 end = time;
         }
 
-        if (end < start)
+        // No reports (an input without frame ids, or one that just changed) or just one marker
+        if (end <= start)
+        {
+            timingDataOut = {};
             return false;
+        }
 
         double rangeNs = static_cast<double>(end - start);
 
@@ -839,6 +918,124 @@ void InputCommon::fg_output_present(ID3D12CommandQueue* presentQueue, bool prese
     }
 }
 
+void InputCommon::apply_sleep_mode(LowLatencyTech* tech)
+{
+    auto sleepMode = get_sleep_copy(activeInput);
+
+    if (auto interval = fps_limit_interval_us.load(); interval != 0)
+        sleepMode.minimum_interval_us = interval;
+
+    tech->set_sleep_mode(&sleepMode);
+}
+
+void InputCommon::update()
+{
+    auto& state = State::Instance();
+    auto current_tech = currently_active_tech.load();
+    bool active = false;
+    ++present_count;
+
+    auto fpsLimit = Config::Instance()->FramerateLimit.value_or_default();
+
+    // The game's XeFG with its own XeLL, only OptiScaler's FPS limit goes to it. XeLL knows the generated frames.
+    if (InputXeLL::IsNative())
+    {
+        if (current_tech != nullptr)
+        {
+            current_tech.reset();
+            std::scoped_lock lock(create_tech_mutex);
+            deinit_current_tech();
+            activeOutput = LowLatencyMode::None;
+        }
+
+        limits_fps = InputXeLL::LimitFps(fpsLimit > 0.0f ? static_cast<uint32_t>(std::round(1'000'000 / fpsLimit)) : 0);
+        return;
+    }
+
+    // Force State can change at any time, XeLL takes a changed state through its sleep mode
+    if (current_tech != nullptr)
+    {
+        bool xefgPaced = xefg_paced();
+
+        // AntiLag 2, LatencyFlex and XeLL without XeFG fall apart with more than 1 generated DLSSG frame. Only when it
+        // starts, Force State can be changed back afterwards.
+        static bool lastMultiFrame = false;
+        bool multiFrame =
+            state.dlssgLastSetMode == sl::DLSSGMode::eDynamic || state.dlssgDetectedInterpolationCount > 1;
+
+        if (!std::exchange(lastMultiFrame, multiFrame) && multiFrame && activeOutput != LowLatencyMode::Reflex &&
+            !xefgPaced && Config::Instance()->FN_ForceReflex.value_or_default() != ForceReflex::ForceEnable)
+        {
+            LOG_INFO("Multi frame generation, disabling {}", magic_enum::enum_name(activeOutput));
+            Config::Instance()->FN_ForceReflex.set_volatile_value(ForceReflex::ForceDisable);
+        }
+
+        // OptiScaler's XeFG can start and stop at any time
+        static bool lastXefgPaced = false;
+        static ForceReflex lastOverride = ForceReflex::InGame;
+        auto lowLatencyOverride = Config::Instance()->FN_ForceReflex.value_or_default();
+        current_tech->set_low_latency_override(lowLatencyOverride);
+        current_tech->set_forced_mode(xefgPaced);
+
+        bool overrideChanged = std::exchange(lastOverride, lowLatencyOverride) != lowLatencyOverride;
+
+        if (overrideChanged)
+            LOG_INFO("Low latency Force State: {}", magic_enum::enum_name(lowLatencyOverride));
+
+        if (std::exchange(lastXefgPaced, xefgPaced) != xefgPaced || overrideChanged)
+            apply_sleep_mode(current_tech.get());
+    }
+
+    // The output only sleeps while the game's low latency calls drive it
+    if (current_tech != nullptr && !state.reflexLimitsFps && activeInput != LowLatencyInput::None &&
+        ++presents_without_input <= 20)
+    {
+        auto mode = current_tech->get_mode();
+
+        // Their limiters only work with low latency enabled, for XeLL with XeFG it only skips the sleep calls
+        if (mode == LowLatencyMode::AntiLag2 || mode == LowLatencyMode::XeLL || mode == LowLatencyMode::LatencyFlex)
+            active = current_tech->is_enabled();
+    }
+
+    uint32_t interval = 0;
+
+    if (active && fpsLimit > 0.0f)
+    {
+        interval = static_cast<uint32_t>(std::round(1'000'000 / fpsLimit));
+
+        // The limit is for the presented frames, the output limits the game's. XeFG paces through XeLL, which knows
+        // about its generated frames. The game's own DLSSG reports its count through the NGX evaluate.
+        auto fg = state.currentFG;
+
+        if (xefg_paced())
+        {
+        }
+        else if (fg != nullptr && fg->IsActive() && !fg->IsPaused())
+        {
+            interval *= fg->GetInterpolatedFrameCount() + 1;
+        }
+        else if (state.dlssgDetectedInterpolationCount > 0)
+        {
+            interval *= state.dlssgDetectedInterpolationCount + 1;
+        }
+        else if (activeInput == LowLatencyInput::AntiLag2 && reports_frame_generation(LowLatencyInput::AntiLag2))
+        {
+            // ponytail: the game's FSR-FG as one generated frame, count AntiLag 2's interpolated presents for more
+            interval *= 2;
+        }
+    }
+
+    limits_fps = active;
+
+    if (fps_limit_interval_us.exchange(interval) != interval)
+    {
+        LOG_INFO("FPS limit through {}: {} us", magic_enum::enum_name(activeOutput), interval);
+
+        if (current_tech != nullptr)
+            apply_sleep_mode(current_tech.get());
+    }
+}
+
 InputResult InputCommon::mark_present_start(IUnknown* pDevice)
 {
     // TODO: could allow AL2 but need to check the InputMarkerMode of the active AL2 input
@@ -866,70 +1063,12 @@ InputResult InputCommon::mark_present_start(IUnknown* pDevice)
     return InputResult::Ok;
 }
 
-xell_result_t InputCommon::pass_xellD3D12SetAppQueue(const InputContext& inputContext, ID3D12CommandQueue* appQueue)
+xell_context_handle_t InputCommon::xell_output_context()
 {
-    // TODO: XeLL seems to be sending this early, before any markers. Because of that activeOutput is likely still None
-    // and we dont grab the appQueue at all
+    auto current_tech = currently_active_tech.load();
 
-    if (inputContext.caller == LowLatencyInput::XeLL && activeOutput == LowLatencyMode::XeLL)
-    {
-        if (auto current_tech = currently_active_tech.load())
-        {
-            auto xell_tech = std::static_pointer_cast<XeLL>(current_tech);
-            return xell_tech->xellD3D12SetAppQueue(appQueue);
-        }
+    if (current_tech == nullptr || current_tech->get_mode() != LowLatencyMode::XeLL)
+        return nullptr;
 
-        return XELL_RESULT_ERROR_UNKNOWN;
-    }
-
-    return XELL_RESULT_SUCCESS;
-}
-
-xell_result_t InputCommon::pass_xellSetDisplayInfo(const InputContext& inputContext, void* displayInfo)
-{
-    if (inputContext.caller == LowLatencyInput::XeLL && activeOutput == LowLatencyMode::XeLL)
-    {
-        if (auto current_tech = currently_active_tech.load())
-        {
-            auto xell_tech = std::static_pointer_cast<XeLL>(current_tech);
-            return xell_tech->xellSetDisplayInfo(displayInfo);
-        }
-
-        return XELL_RESULT_ERROR_UNKNOWN;
-    }
-
-    return XELL_RESULT_SUCCESS;
-}
-
-xell_result_t InputCommon::pass_xellSetFgEnabled(const InputContext& inputContext, uint32_t param1, uint32_t param2)
-{
-    if (inputContext.caller == LowLatencyInput::XeLL && activeOutput == LowLatencyMode::XeLL)
-    {
-        if (auto current_tech = currently_active_tech.load())
-        {
-            auto xell_tech = std::static_pointer_cast<XeLL>(current_tech);
-            return xell_tech->xellSetFgEnabled(param1, param2);
-        }
-
-        return XELL_RESULT_ERROR_UNKNOWN;
-    }
-
-    return XELL_RESULT_SUCCESS;
-}
-
-xell_result_t InputCommon::pass_xellSetGeneratedFramesCount(const InputContext& inputContext, uint32_t frameId,
-                                                            uint32_t framesCount)
-{
-    if (inputContext.caller == LowLatencyInput::XeLL && activeOutput == LowLatencyMode::XeLL)
-    {
-        if (auto current_tech = currently_active_tech.load())
-        {
-            auto xell_tech = std::static_pointer_cast<XeLL>(current_tech);
-            return xell_tech->xellSetGeneratedFramesCount(frameId, framesCount);
-        }
-
-        return XELL_RESULT_ERROR_UNKNOWN;
-    }
-
-    return XELL_RESULT_SUCCESS;
+    return (xell_context_handle_t) current_tech->get_tech_context();
 }

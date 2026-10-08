@@ -51,32 +51,22 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_Sleep(IUnknown* pDev)
     LOG_FUNC();
 #endif
 
+    // Streamline's own sleep comes back here
     static bool skip = false;
-    if (State::Instance().activeFgOutput == FGOutput::DLSSG &&
-        Config::Instance()->FGDLSSGUseGamesReflexMarkers.value_or_default() && State::Instance().currentFG &&
-        State::Instance().currentFG->IsActive() && !State::Instance().currentFG->IsPaused())
+
+    if (!skip)
     {
-        if (!skip)
-        {
-            uint32_t frameCount = (uint32_t) _lastFrameId[SIMULATION_START] + 1;
+        skip = true;
+        bool slept = streamlineSleep();
+        skip = false;
 
-            sl::FrameToken* frameToken;
-            StreamlineProxy::GetNewFrameToken()(frameToken, &frameCount);
-
-            LOG_TRACE("Sleep for frame {}", frameCount);
-
-            skip = true;
-            ScopedOptiScalerReflex optiScalerCall {};
-            StreamlineProxy::ReflexSleep()(*frameToken);
-            skip = false;
-
+        if (slept)
             return NVAPI_OK;
-        }
-        else
-        {
-            _lastSleepDev = pDev;
-            return o_NvAPI_D3D_Sleep(pDev);
-        }
+    }
+    else
+    {
+        _lastSleepDev = pDev;
+        return o_NvAPI_D3D_Sleep(pDev);
     }
 
     if (State::Instance().activeFgOutput == FGOutput::XeFG &&
@@ -104,6 +94,21 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_GetLatency(IUnknown* pDev, NV_LATENCY_RESU
     return o_NvAPI_D3D_GetLatency(pDev, pGetLatencyParams);
 }
 
+NvAPI_Status ReflexHooks::sendMarker(IUnknown* pDev, NV_LATENCY_MARKER_PARAMS* pSetLatencyMarkerParams,
+                                     bool toStreamline)
+{
+    if (toStreamline)
+        return NVAPI_OK;
+
+    if (State::Instance().activeFgOutput == FGOutput::XeFG &&
+        !Config::Instance()->ImASillyGooseThatIsAboutToMisuseReflex.value_or_default())
+    {
+        return nvapi_calls::NvAPI_D3D_SetLatencyMarker(pDev, pSetLatencyMarkerParams);
+    }
+
+    return o_NvAPI_D3D_SetLatencyMarker(pDev, pSetLatencyMarkerParams);
+}
+
 NvAPI_Status ReflexHooks::hkNvAPI_D3D_SetLatencyMarker(IUnknown* pDev,
                                                        NV_LATENCY_MARKER_PARAMS* pSetLatencyMarkerParams)
 {
@@ -111,6 +116,19 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_SetLatencyMarker(IUnknown* pDev,
     LOG_FUNC();
 #endif
 
+#ifdef LOW_LATENCY_INPUTS
+    // The game's markers are processed by the Reflex input, these come from the Reflex output and OptiScaler's own
+    // Streamline
+    _updatesWithoutMarker = 0;
+    return sendMarker(pDev, pSetLatencyMarkerParams, false);
+#else
+    return processGameMarker(pDev, pSetLatencyMarkerParams, &sendMarker);
+#endif
+}
+
+NvAPI_Status ReflexHooks::processGameMarker(IUnknown* pDev, NV_LATENCY_MARKER_PARAMS* pSetLatencyMarkerParams,
+                                            MarkerSend send)
+{
     _updatesWithoutMarker = 0;
 
     // LOG_DEBUG("frameID: {}, markerType: {}", pSetLatencyMarkerParams->frameID,
@@ -247,14 +265,12 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_SetLatencyMarker(IUnknown* pDev,
             StreamlineProxy::PCLSetMarker()(marker, *frameToken);
             skip[index] = false;
 
-            return NvAPI_Status::NVAPI_OK;
+            return send(pDev, pSetLatencyMarkerParams, true);
         }
         else
         {
-            if (noMarker)
-                return NVAPI_OK;
-            else
-                return o_NvAPI_D3D_SetLatencyMarker(pDev, pSetLatencyMarkerParams);
+            // Streamline's copy of the marker comes back here
+            return send(pDev, pSetLatencyMarkerParams, noMarker);
         }
     }
 
@@ -275,22 +291,46 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_SetLatencyMarker(IUnknown* pDev,
             _lastSetSleepThread = std::this_thread::get_id();
 
             newParams.markerType = RENDERSUBMIT_START;
-            hkNvAPI_D3D_SetLatencyMarker(pDev, &newParams);
+            processGameMarker(pDev, &newParams, send);
 
             newParams.markerType = RENDERSUBMIT_END;
-            hkNvAPI_D3D_SetLatencyMarker(pDev, &newParams);
+            processGameMarker(pDev, &newParams, send);
 
             _lastSetSleepThread = previousThread;
         }
     }
 
-    if (State::Instance().activeFgOutput == FGOutput::XeFG &&
-        !Config::Instance()->ImASillyGooseThatIsAboutToMisuseReflex.value_or_default())
+    return send(pDev, pSetLatencyMarkerParams, false);
+}
+
+bool ReflexHooks::streamlineSleep()
+{
+    auto& state = State::Instance();
+
+    // With OptiScaler's DLSSG output the game's markers go to its Streamline, which then sleeps for the game
+    if (state.activeFgOutput != FGOutput::DLSSG ||
+        !Config::Instance()->FGDLSSGUseGamesReflexMarkers.value_or_default() || state.currentFG == nullptr ||
+        !state.currentFG->IsActive() || state.currentFG->IsPaused())
     {
-        return nvapi_calls::NvAPI_D3D_SetLatencyMarker(pDev, pSetLatencyMarkerParams);
+        return false;
     }
 
-    return o_NvAPI_D3D_SetLatencyMarker(pDev, pSetLatencyMarkerParams);
+    uint32_t frameCount = (uint32_t) _lastFrameId[SIMULATION_START] + 1;
+
+    sl::FrameToken* frameToken;
+    StreamlineProxy::GetNewFrameToken()(frameToken, &frameCount);
+
+    LOG_TRACE("Sleep for frame {}", frameCount);
+
+    ScopedOptiScalerReflex optiScalerCall {};
+    StreamlineProxy::ReflexSleep()(*frameToken);
+    return true;
+}
+
+void ReflexHooks::gameSetSleepMode()
+{
+    if (State::Instance().gameQuirks & GameQuirk::HitmanReflexHacks)
+        _lastSetSleepThread = std::this_thread::get_id();
 }
 
 NvAPI_Status ReflexHooks::hkNvAPI_D3D12_SetAsyncFrameMarker(ID3D12CommandQueue* pCommandQueue,
@@ -615,6 +655,16 @@ void ReflexHooks::update(bool fgActive, bool isVulkan)
 
     State::Instance().reflexShowWarning = false;
 
+    // With the low latency inputs the game's D3D Reflex only reaches the driver through the Reflex output
+    bool reflexOutput = true;
+
+#ifdef LOW_LATENCY_INPUTS
+    LowLatencyInput activeInput {};
+    LowLatencyMode activeOutput {};
+    InputCommon::get_currently_active(activeInput, activeOutput);
+    reflexOutput = activeOutput == LowLatencyMode::Reflex;
+#endif
+
     if (_updatesWithoutMarker > 20 || !_inited)
     {
         State::Instance().reflexLimitsFps = false;
@@ -626,6 +676,11 @@ void ReflexHooks::update(bool fgActive, bool isVulkan)
         // fgActive doesn't matter for vulkan
         // isUsingAsMainNvapi() because fakenvapi might override the reflex' setting and we don't know it
         State::Instance().reflexLimitsFps = fakenvapi::isUsingAsMainNvapi() || _lastVkSleepParams.bLowLatencyMode;
+    }
+    else if (!reflexOutput)
+    {
+        // The low latency inputs limit through the other outputs themselves
+        State::Instance().reflexLimitsFps = false;
     }
     else if (_lastSleepDev)
     {

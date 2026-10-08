@@ -5,6 +5,10 @@
 
 HRESULT STDMETHODCALLTYPE AmdExtAntiLagApi::UpdateAntiLagState(VOID* pData)
 {
+    // AntiLag 2 never passes its device, without one the output can't start
+    if (device == nullptr)
+        device = State::Instance().currentD3D12Device;
+
     // That's the mark to insert a delay...
     if (!pData)
     {
@@ -89,8 +93,7 @@ HRESULT STDMETHODCALLTYPE AmdExtAntiLagApi::UpdateAntiLagState(VOID* pData)
         }
 
         // TODO: This doesn't get unset if the game stops sending FG markers
-        inputContext.markerMode = InputMarkerMode::PresentStartOnly;
-
+        inputContext.markerMode = InputMarkerMode::SimStartAndPresentStart;
         const uint64_t frameId = ver2Struct->iiFrameIdx; // Usually not used
 
         if (ver2Struct->flags.signalEndOfFrameIdx == 1)
@@ -120,8 +123,10 @@ HRESULT STDMETHODCALLTYPE AmdExtAntiLagApi::UpdateAntiLagState(VOID* pData)
             markerParams.marker_type = MarkerType::OUT_OF_BAND_PRESENT_START;
             markerParams.frame_id = pseudoFrameId;
 
-            // Mainly to mimic what Reflex does, so that we can convert this back to AL2 later
+            // The frame type is known, the pseudo frame ids are only for the other outputs
             const bool fakeFrame = ver2Struct->flags.isInterpolatedFrame == 1;
+            markerParams.interpolated = fakeFrame;
+
             if (!fakeFrame)
                 pseudoFrameId++;
 

@@ -37,6 +37,7 @@
 #include <misc/IdentifyGpu.h>
 #include <hooks/Xell_Hooks.h>
 #include <low_latency/input/input_common.h>
+#include <low_latency/input/input_xell.h>
 
 enum class UiTargetMode
 {
@@ -5494,6 +5495,21 @@ void MenuCommon::RenderFramerateSettings(RenderMenuContext& ctx)
                                    "Using RTSS Reflex injection with FSR Anti-Lag 2.0 and FSR FG "
                                    "might cause issues");
         }
+        else if (InputCommon::can_limit_fps())
+        {
+            LowLatencyInput activeInput {};
+            InputCommon::get_currently_active(activeInput, fakenvapiMode);
+
+            // The game's XeFG with its own XeLL
+            if (InputXeLL::IsNative())
+                currentMethod = "Game's XeLL";
+            else if (fakenvapiMode == LowLatencyMode::AntiLag2)
+                currentMethod = "FSR Anti-Lag 2.0";
+            else if (fakenvapiMode == LowLatencyMode::LatencyFlex)
+                currentMethod = "LatencyFlex";
+            else
+                currentMethod = "XeLL";
+        }
         else
         {
             if (XellHooks::canLimit())
@@ -5678,16 +5694,20 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
     SectionTitle("Low Latency");
 
     static std::vector<MenuOption<LowLatencyInput>> lowLatencyInput = {
-        { LowLatencyInput::None, "None (Off)" },    { LowLatencyInput::Auto, "Not set" },
-        { LowLatencyInput::AntiLag2, "AntiLag 2" }, { LowLatencyInput::Reflex, "Reflex" },
-        { LowLatencyInput::XeLL, "XeLL" },          { LowLatencyInput::UeLowLatency, "UeLowLatency" },
+        { LowLatencyInput::None, "None" },
+        { LowLatencyInput::Auto, "Default" },
+        { LowLatencyInput::AntiLag2, "FSR Anti-Lag 2.0" },
+        { LowLatencyInput::Reflex, "Reflex" },
+        { LowLatencyInput::XeLL, "XeLL" },
+        { LowLatencyInput::UeLowLatency, "UeLowLatency" },
+        { LowLatencyInput::OptiScaler, "OptiScaler" },
     };
 
     static std::vector<MenuOption<LowLatencyMode>> lowLatencyOutput = {
-        { LowLatencyMode::None, "None (Off)" },
+        { LowLatencyMode::None, "None" },
         { LowLatencyMode::Auto, "Auto" },
         { LowLatencyMode::LatencyFlex, "LatencyFlex" },
-        { LowLatencyMode::AntiLag2, "AntiLag 2" },
+        { LowLatencyMode::AntiLag2, "FSR Anti-Lag 2.0" },
         { LowLatencyMode::XeLL, "XeLL" },
         { LowLatencyMode::AntiLagVk, "AntiLag Vk" },
         { LowLatencyMode::Reflex, "Reflex" },
@@ -5717,19 +5737,31 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
 
         auto avalibleInputs = InputCommon::get_avaliable_inputs();
 
-        lowLatencyInput[(uint32_t) LowLatencyInput::Auto].set_hidden(true);
-        lowLatencyInput[(uint32_t) LowLatencyInput::AntiLag2].set_disabled(!avalibleInputs[LowLatencyInput::AntiLag2]);
-        lowLatencyInput[(uint32_t) LowLatencyInput::Reflex].set_disabled(!avalibleInputs[LowLatencyInput::Reflex]);
-        lowLatencyInput[(uint32_t) LowLatencyInput::XeLL].set_disabled(!avalibleInputs[LowLatencyInput::XeLL]);
-        lowLatencyInput[(uint32_t) LowLatencyInput::UeLowLatency].set_disabled(
-            !avalibleInputs[LowLatencyInput::UeLowLatency]);
+        // Inputs become available as the game starts sending them
+        for (auto type : { LowLatencyInput::AntiLag2, LowLatencyInput::Reflex, LowLatencyInput::XeLL,
+                           LowLatencyInput::UeLowLatency })
+        {
+            auto& option = lowLatencyInput[(uint32_t) type];
+            option.disabled = !avalibleInputs[type];
+            option.tooltip = option.disabled ? "The game doesn't send it" : "";
+        }
 
-        // Until an input is picked the active one is shown, without saving it
+        auto defaultInput = InputCommon::default_input();
+        lowLatencyInput[(uint32_t) LowLatencyInput::None].set_hidden(true);
+
+        // Only the default when the game has nothing of its own
+        lowLatencyInput[(uint32_t) LowLatencyInput::OptiScaler].set_hidden(true);
+        lowLatencyInput[(uint32_t) LowLatencyInput::Auto].label = "Auto";
+        lowLatencyInput[(uint32_t) LowLatencyInput::Auto].tooltip =
+            "The best input the game sends: Reflex, XeLL when enabled in the game, AntiLag 2, UE, XeLL.\n"
+            "AntiLag 2 first while the game's FSR-FG reports its frames through it.\n"
+            "Without any, OptiScaler's own with the DLSSG output.";
+
         auto forcedInput = InputCommon::forced_input();
         auto input = forcedInput.value_or(config->LowLatencyInput.value_or_default());
 
-        if (input == LowLatencyInput::Auto && activeInput != LowLatencyInput::None)
-            input = activeInput;
+        if (input == LowLatencyInput::None)
+            input = LowLatencyInput::Auto;
 
         auto selectedInput = input;
 
@@ -5738,24 +5770,27 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
         ImGui::EndDisabled();
 
         if (forcedInput.has_value() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-            ImGui::SetTooltip("Set by XeFG: the game's own XeFG needs XeLL");
+            ImGui::SetTooltip("Set by XeFG: the game's own keeps its XeLL");
         else if (selectedInput != input)
             config->LowLatencyInput = selectedInput;
 
         ImGui::TableNextColumn();
 
-        lowLatencyOutput[(uint32_t) LowLatencyMode::Auto].set_hidden(true);
+        lowLatencyOutput[(uint32_t) LowLatencyMode::None].set_hidden(true);
         lowLatencyOutput[(uint32_t) LowLatencyMode::AntiLagVk].set_disabled(true, "No support");
         lowLatencyOutput[(uint32_t) LowLatencyMode::Reflex].set_disabled(
             IdentifyGpu::getPrimaryGpu().vendorId != VendorId::Nvidia || fakenvapi::isUsingAsMainNvapi(),
             "Needs an Nvidia GPU");
+        lowLatencyOutput[(uint32_t) LowLatencyMode::Auto].label = "Auto";
+        lowLatencyOutput[(uint32_t) LowLatencyMode::Auto].tooltip =
+            "The GPU's own: AntiLag 2 on AMD, Reflex on Nvidia, XeLL on Intel, LatencyFlex otherwise";
 
-        // Frame generation decides the output it works with, otherwise the GPU vendor's own until one is picked
+        // Frame generation decides the output it works with
         auto forcedOutput = InputCommon::forced_output();
         auto output = forcedOutput.value_or(config->LowLatencyOutput.value_or_default());
 
-        if (output == LowLatencyMode::Auto)
-            output = InputCommon::default_output();
+        if (output == LowLatencyMode::None)
+            output = LowLatencyMode::Auto;
 
         auto selectedOutput = output;
 
@@ -5764,12 +5799,19 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
         ImGui::EndDisabled();
 
         if (forcedOutput.has_value() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-            ImGui::SetTooltip("Set by the FG output: XeFG uses XeLL, DLSSG Reflex,\n"
-                              "FSR-FG AntiLag 2 on AMD, Reflex on Nvidia, XeLL on Intel");
+            ImGui::SetTooltip("Set by XeFG: the game's own keeps its XeLL (only the FPS limit is OptiScaler's),\n"
+                              "OptiScaler's needs XeLL");
         else if (selectedOutput != output)
             config->LowLatencyOutput = selectedOutput;
 
         ImGui::EndTable();
+    }
+
+    if (auto reason = InputCommon::incompatibility(activeInput, activeOutput))
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)));
+        ImGui::TextWrapped("Incompatible: %s", reason);
+        ImGui::PopStyleColor();
     }
 
     if (activeOutput == LowLatencyMode::LatencyFlex)

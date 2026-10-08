@@ -207,6 +207,7 @@ enum class LowLatencyInput : uint32_t
     Reflex,
     XeLL,
     UeLowLatency,
+    OptiScaler, // OptiScaler's own Streamline (DLSSG output) when the game has no low latency of its own
     _
 };
 

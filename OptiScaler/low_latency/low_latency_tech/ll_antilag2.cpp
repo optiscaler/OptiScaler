@@ -156,6 +156,10 @@ void AntiLag2::sleep(std::optional<uint32_t> frame_id)
 {
     last_sleep_framecount = simulation_framecount;
 
+    // Inputs that only sleep (OptiScaler's present markers) never send a simulation start to switch with
+    if (simulation_framecount == 0)
+        current_call_spot = CallSpot::SleepCall;
+
     if (current_call_spot == CallSpot::SleepCall)
         al2_sleep();
 }
@@ -187,7 +191,8 @@ void AntiLag2::set_async_marker(IUnknown* pCommandQueue, const MarkerParams& mar
     if (marker_params.marker_type == MarkerType::OUT_OF_BAND_PRESENT_START)
     {
         static uint64_t previous_frame_id = marker_params.frame_id;
-        set_fg_type(previous_frame_id == marker_params.frame_id, marker_params.frame_id);
+        set_fg_type(marker_params.interpolated.value_or(previous_frame_id == marker_params.frame_id),
+                    marker_params.frame_id);
         previous_frame_id = marker_params.frame_id;
     }
 }
