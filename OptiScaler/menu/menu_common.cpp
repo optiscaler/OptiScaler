@@ -58,7 +58,6 @@ static ImVec4 SdrColors[ImGuiCol_COUNT];
 
 static bool inputMenu = false;
 static bool inputFG = false;
-static bool fgHotkeyLeftDefault = false; // FG hotkey temporarily overrode Default (follow game)
 static bool inputFps = false;
 static bool inputFpsCycle = false;
 static uint64_t lastInputTick = 0;
@@ -1782,27 +1781,10 @@ void MenuCommon::HandleMenuShortcuts(RenderMenuContext& ctx)
             if (state.activeFgInput != FGInput::NoFG && state.activeFgOutput != FGOutput::NoFG &&
                 (state.currentFGSwapchain != nullptr || state.activeFgInput == FGInput::NvngxFG))
             {
-                if (fgHotkeyLeftDefault)
-                {
-                    // Second press goes back to following the game
-                    fgHotkeyLeftDefault = false;
-                    config->FGEnabled = std::optional<bool> {};
-                    LOG_DEBUG("FG toggle key pressed, following the game again");
-                }
-                else if (config->FGFollowsGame())
-                {
-                    // Volatile so the ini keeps auto
-                    fgHotkeyLeftDefault = true;
-                    config->FGEnabled.set_volatile_value(!config->IsFGEnabled());
-                    LOG_DEBUG("FG toggle key pressed, overriding the game with {}", config->FGEnabled.value());
-                }
-                else
-                {
-                    config->FGEnabled = !config->IsFGEnabled();
-                    LOG_DEBUG("FG toggle key pressed, setting FGEnabled to {}", config->FGEnabled.value());
-                }
+                config->FGEnabled = !config->FGEnabled.value_or_default();
+                LOG_DEBUG("FG toggle key pressed, setting FGEnabled to {}", config->FGEnabled.value_or_default());
 
-                if (config->IsFGEnabled())
+                if (config->FGEnabled.value_or_default())
                     state.fgChanged = true;
             }
         }
@@ -3955,87 +3937,6 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     }
 }
 
-// Replaces the Active checkbox + MFG combo of FG outputs
-// maxInterpolationCount of 0 means the output doesn't generate frames, "On" is shown instead of "2X"
-void MenuCommon::RenderFGModeCombo(RenderMenuContext& ctx, const char* label, int maxInterpolationCount,
-                                   CustomOptional<int>* countConfig)
-{
-    auto& state = ctx.state;
-    auto config = ctx.config;
-
-    // -1 = Default (follow game), 0 = Off, >0 = interpolated frame count
-    auto modeName = [&](int mode) -> std::string
-    {
-        if (mode < 0)
-            return "Default";
-
-        if (mode == 0)
-            return "Off";
-
-        if (maxInterpolationCount == 0)
-            return "On";
-
-        return std::format("{}X", mode + 1);
-    };
-
-    const int maxMode = std::max(maxInterpolationCount, 1);
-
-    int current = 0;
-    if (config->FGFollowsGame())
-        current = -1;
-    else if (config->FGEnabled.value_or_default())
-        current = countConfig != nullptr ? std::clamp(countConfig->value_or_default(), 1, maxMode) : 1;
-
-    std::string preview = modeName(current);
-    if (current < 0)
-    {
-        const int gameMode =
-            state.dlssgInputGameEnabled ? std::min(state.dlssgInputGameInterpolationCount, maxMode) : 0;
-        preview += std::format(" ({})", modeName(gameMode));
-    }
-
-    ImGui::PushItemWidth(115.0f * ctx.menuResScale);
-
-    if (ImGui::BeginCombo(label, preview.c_str()))
-    {
-        const int firstMode = Config::FGCanFollowGame() ? -1 : 0;
-
-        for (int mode = firstMode; mode <= maxMode; mode++)
-        {
-            if (!ImGui::Selectable(modeName(mode).c_str(), current == mode) || current == mode)
-                continue;
-
-            fgHotkeyLeftDefault = false;
-
-            if (mode < 0)
-            {
-                config->FGEnabled = std::optional<bool> {};
-            }
-            else
-            {
-                config->FGEnabled = mode > 0;
-
-                if (mode > 0 && countConfig != nullptr)
-                    *countConfig = mode;
-            }
-
-            LOG_DEBUG("FG mode set to: {}", modeName(mode));
-
-            if (config->IsFGEnabled())
-                state.fgChanged = true;
-        }
-
-        ImGui::EndCombo();
-    }
-
-    ImGui::PopItemWidth();
-
-    if (Config::FGCanFollowGame())
-        ShowTooltip("Frame Generation mode\nDefault follows the game's DLSS FG setting");
-    else
-        ShowTooltip("Frame Generation mode");
-}
-
 void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 {
     auto& state = ctx.state;
@@ -4062,21 +3963,16 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
             if (state.ffxFGVersionNames.size() > 0)
             {
-                ImGui::PushItemWidth(115.0f * menuResScale);
+                ImGui::PushItemWidth(135.0f * menuResScale);
 
                 auto currentName = StrFmt("FSR %s", state.ffxFGVersionNames[_ffxFGIndex]);
-                if (ImGui::BeginCombo("FFX FG Version", currentName.c_str()))
+                if (ImGui::BeginCombo("FFX FG", currentName.c_str()))
                 {
                     for (int n = 0; n < state.ffxFGVersionIds.size(); n++)
                     {
                         auto name = StrFmt("FSR %s", state.ffxFGVersionNames[n]);
                         if (ImGui::Selectable(name.c_str(), config->FfxFGIndex.value_or_default() == n))
-                        {
                             _ffxFGIndex = n;
-                            config->FfxFGIndex = _ffxFGIndex;
-                            state.fgChanged = true;
-                            state.scChanged = true;
-                        }
                     }
 
                     ImGui::EndCombo();
@@ -4084,16 +3980,34 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 ImGui::PopItemWidth();
 
                 ShowTooltip("List of FGs reported by FFX SDK");
+
+                ImGui::SameLine(0.0f, 6.0f);
+
+                if (ImGui::Button("Change FG") && _ffxFGIndex != config->FfxFGIndex.value_or_default())
+                {
+                    config->FfxFGIndex = _ffxFGIndex;
+                    state.fgChanged = true;
+                    state.scChanged = true;
+                }
             }
 
-            RenderFGModeCombo(ctx, "Frame Gen##fsrfg", 1, nullptr);
+            bool fgActive = config->FGEnabled.value_or_default();
+            if (ImGui::Checkbox("Active##2", &fgActive))
+            {
+                config->FGEnabled = fgActive;
+                LOG_DEBUG("FGEnabled set FGEnabled: {}", fgActive);
+
+                if (config->FGEnabled.value_or_default())
+                    state.fgChanged = true;
+            }
+            ShowTooltip("Enable Frame Generation");
 
             bool fgAsync = config->FGAsync.value_or_default();
             if (ImGui::Checkbox("Allow Async", &fgAsync))
             {
                 config->FGAsync = fgAsync;
 
-                if (config->IsFGEnabled())
+                if (config->FGEnabled.value_or_default())
                 {
                     state.fgChanged = true;
                     state.scChanged = true;
@@ -4109,7 +4023,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             {
                 config->FGDebugView = fgDV;
 
-                if (config->IsFGEnabled())
+                if (config->FGEnabled.value_or_default())
                 {
                     state.fgChanged = true;
                     LOG_DEBUG("DebugView set FGChanged");
@@ -4305,7 +4219,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
         if (!correctMVs || state.realExclusiveFullscreen)
         {
-            config->FGEnabled.set_volatile_value(false);
+            config->FGEnabled.reset();
             config->FGXeFGDebugView.reset();
         }
 
@@ -4354,8 +4268,51 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
         ImGui::BeginDisabled(!correctMVs || cantActivate);
 
-        RenderFGModeCombo(ctx, "Frame Gen##xefg", fgOutput->GetMaxInterpolationCount(),
-                          &config->FGXeFGInterpolationCount);
+        bool fgActive = config->FGEnabled.value_or_default();
+        if (ImGui::Checkbox("Active##3", &fgActive))
+        {
+            config->FGEnabled = fgActive;
+            LOG_DEBUG("Enabled set FGEnabled: {}", fgActive);
+
+            if (config->FGEnabled.value_or_default())
+                state.fgChanged = true;
+        }
+
+        ShowTooltip("Enable Frame Generation");
+
+        auto maxInterpolationCount = fgOutput->GetMaxInterpolationCount();
+
+        if (maxInterpolationCount > 1)
+        {
+            ImGui::SameLine(0.0f, 16.0f);
+
+            auto currentSet = fgOutput->GetInterpolatedFrameCount() - 1;
+
+            std::string currentIntCountStr = std::to_string(currentSet + 2) + "X";
+
+            ImGui::PushItemWidth(95.0f * menuResScale);
+
+            if (ImGui::BeginCombo("MFG", currentIntCountStr.c_str()))
+            {
+                for (int i = 0; i < maxInterpolationCount; i++)
+                {
+                    std::string modeStr = std::to_string(i + 2) + "X";
+
+                    if (ImGui::Selectable(modeStr.c_str(), (currentSet == i)))
+                    {
+                        LOG_DEBUG("XeFG Interpolation Count set to: {}", i + 1);
+                        state.fgChanged = true;
+                        config->FGXeFGInterpolationCount = i + 1;
+                    }
+                }
+
+                ImGui::EndCombo();
+            }
+
+            ImGui::PopItemWidth();
+
+            ShowTooltip("Set XeFG interpolation count");
+        }
 
         ImGui::SameLine(0.0f, 16.0f);
         ImGui::BeginDisabled(!fgOutput->IsUsingHudlessAny() || XeFGProxy::SetUiCompositionState() == nullptr);
@@ -4476,11 +4433,54 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)), "OFF");
         }
 
-        RenderFGModeCombo(ctx, "Frame Gen##dlssg", fgOutput->GetMaxInterpolationCount(),
-                          &config->FGDLSSGInterpolationCount);
-
-        if (fgOutput->GetMaxInterpolationCount() > 1)
+        bool fgActive = config->FGEnabled.value_or_default();
+        if (ImGui::Checkbox("Active##4", &fgActive))
         {
+            config->FGEnabled = fgActive;
+            LOG_DEBUG("Enabled set FGEnabled: {}", fgActive);
+
+            if (config->FGEnabled.value_or_default())
+                state.fgChanged = true;
+        }
+
+        ShowTooltip("Enable Frame Generation");
+
+        auto maxInterpolationCount = fgOutput->GetMaxInterpolationCount();
+
+        if (maxInterpolationCount > 1)
+        {
+            ImGui::SameLine(0.0f, 16.0f);
+
+            ImGui::BeginDisabled(config->FGDLSSGForceDMFG.value_or_default());
+
+            auto currentSet = fgOutput->GetInterpolatedFrameCount() - 1;
+
+            std::string currentIntCountStr = std::to_string(currentSet + 2) + "X";
+
+            ImGui::PushItemWidth(95.0f * menuResScale);
+
+            if (ImGui::BeginCombo("MFG", currentIntCountStr.c_str()))
+            {
+                for (int i = 0; i < maxInterpolationCount; i++)
+                {
+                    std::string modeStr = std::to_string(i + 2) + "X";
+
+                    if (ImGui::Selectable(modeStr.c_str(), (currentSet == i)))
+                    {
+                        LOG_DEBUG("DLSSG Interpolation Count set to: {}", i + 1);
+                        config->FGDLSSGInterpolationCount = i + 1;
+                    }
+                }
+
+                ImGui::EndCombo();
+            }
+
+            ImGui::PopItemWidth();
+
+            ShowTooltip("Set DLSSG interpolation count");
+
+            ImGui::EndDisabled();
+
             if (fgOutput->GetDMFGSupport())
             {
                 ImGui::SameLine(0.0f, 16.0f);
@@ -4540,7 +4540,15 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
         if (state.activeFgOutput == FGOutput::Reprojection)
         {
-            RenderFGModeCombo(ctx, "Reprojection##mode", 0, nullptr);
+            bool fgActive = config->FGEnabled.value_or_default();
+            if (ImGui::Checkbox("Active##2", &fgActive))
+            {
+                config->FGEnabled = fgActive;
+                LOG_DEBUG("Reprojection enabled: {}", fgActive);
+
+                if (config->FGEnabled.value_or_default())
+                    state.fgChanged = true;
+            }
         }
         else
         {
@@ -4550,8 +4558,8 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 config->FGReprojectionEnabled = reprojectionActive;
                 LOG_DEBUG("Reprojection enabled: {}", reprojectionActive);
             }
-            ShowTooltip("Enable reprojection");
         }
+        ShowTooltip("Enable reprojection");
 
         ImGui::SameLine();
 
@@ -5170,7 +5178,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 {
                     config->FGAsync = fgAsync;
 
-                    if (config->IsFGEnabled())
+                    if (config->FGEnabled.value_or_default())
                     {
                         state.fgChanged = true;
                         LOG_DEBUG("Async set FGChanged");
@@ -5184,7 +5192,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 {
                     config->FGDebugView = fgDV;
 
-                    if (config->IsFGEnabled())
+                    if (config->FGEnabled.value_or_default())
                     {
                         state.fgChanged = true;
                         LOG_DEBUG("DebugView set FGChanged");
