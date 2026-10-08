@@ -29,6 +29,7 @@ struct Nvngx_FFX_Handle
     uint32_t swapchainWidth = 0;
     uint32_t swapchainHeight = 0;
     uint64_t lastFrameId = 0;
+    bool createFailed = false;
 
     // for HDR
     bool hdrRangeSet = false;
