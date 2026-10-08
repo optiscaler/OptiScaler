@@ -48,60 +48,28 @@ bool XeLL::init(IUnknown* pDevice)
     if (hr != S_OK)
         return false;
 
+#ifdef LOW_LATENCY_INPUTS
+    // Created as OptiScaler's own, it goes straight to the real XeLL. Opti's XeFG gets it too.
+    auto result = InputXeLL::D3D12CreateLocalContext(dx12_pDevice, (InputXeLL::xell_input_handle_t*) &xell_context) ==
+                  XELL_RESULT_SUCCESS;
+#else
     auto result = o_xellD3D12CreateContext(dx12_pDevice, &xell_context) == XELL_RESULT_SUCCESS;
 
     if (result)
     {
         XellHooks::blockExternalContexts(true);
-
-#ifdef LOW_LATENCY_INPUTS
-        // Resend of XeLL-exclusive data we got from XeLL inputs
-
-        // Ok, this isn't ideal BUT when using low latency inputs this *should* be low latency xell inputs context
-        auto xellInputContext = (InputXeLL::xell_input_handle_t) XellHooks::getOurContext();
-
-        if (!xellInputContext)
-            return true;
-
-        auto resendResult = XELL_RESULT_SUCCESS;
-
-        do
-        {
-            if (xellInputContext->d3d12AppQueue)
-                resendResult = xellD3D12SetAppQueue(xellInputContext->d3d12AppQueue);
-
-            if (resendResult != XELL_RESULT_SUCCESS)
-                break;
-
-            // This might be problematic, pointer could be freed
-            if (xellInputContext->displayInfo)
-                resendResult = xellSetDisplayInfo(xellInputContext->displayInfo);
-
-            if (resendResult != XELL_RESULT_SUCCESS)
-                break;
-
-            resendResult = xellSetFgEnabled(xellInputContext->setFgEnabledParam1, xellInputContext->setFgEnabledParam2);
-
-            if (resendResult != XELL_RESULT_SUCCESS)
-                break;
-
-            resendResult = xellSetGeneratedFramesCount(xellInputContext->setGeneratedFramesCountFrameId,
-                                                       xellInputContext->framesCount);
-        } while (false);
-
-        if (resendResult != XELL_RESULT_SUCCESS)
-            LOG_WARN("XeLL resend failed: {}", magic_enum::enum_name(resendResult));
-#else
         XellHooks::setOurContext(xell_context);
-#endif
     }
+#endif
 
     return result;
 }
 
 void XeLL::deinit()
 {
+#ifndef LOW_LATENCY_INPUTS
     XellHooks::blockExternalContexts(false);
+#endif
 
     o_xellDestroyContext(xell_context);
     LOG_INFO("XeLL deinitialized");
@@ -234,46 +202,6 @@ void XeLL::sleep(std::optional<uint32_t> frame_id)
     }
 
     xell_sleep((uint32_t) sleep_last_id);
-}
-
-xell_result_t XeLL::xellD3D12SetAppQueue(ID3D12CommandQueue* appQueue) const
-{
-    if (!o_xellD3D12SetAppQueue)
-        return XELL_RESULT_ERROR_UNKNOWN;
-
-    return o_xellD3D12SetAppQueue(xell_context, appQueue);
-}
-
-xell_result_t XeLL::xellSetDisplayInfo(void* displayInfo) const
-{
-    if (!o_xellSetDisplayInfo)
-        return XELL_RESULT_ERROR_UNKNOWN;
-
-    return o_xellSetDisplayInfo(xell_context, displayInfo);
-}
-
-xell_result_t XeLL::xellSetFgEnabled(uint32_t param1, uint32_t param2) const
-{
-    if (!o_xellSetFgEnabled)
-        return XELL_RESULT_ERROR_UNKNOWN;
-
-    return o_xellSetFgEnabled(xell_context, param1, param2);
-}
-
-xell_result_t XeLL::xellSetGeneratedFramesCount(uint32_t frameId, uint32_t framesCount) const
-{
-    if (!o_xellSetGeneratedFramesCount)
-        return XELL_RESULT_ERROR_UNKNOWN;
-
-    return o_xellSetGeneratedFramesCount(xell_context, frameId, framesCount);
-}
-
-xell_result_t XeLL::xellGetLastPresentStartFrameId(uint32_t* p_frame_id) const
-{
-    if (!o_xellGetLastPresentStartFrameId)
-        return XELL_RESULT_ERROR_UNKNOWN;
-
-    return o_xellGetLastPresentStartFrameId(xell_context, p_frame_id);
 }
 
 xell_result_t XeLL::xellGetFramesReports(xell_frame_report_t* outdata) const

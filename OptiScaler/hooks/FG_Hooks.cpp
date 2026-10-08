@@ -17,6 +17,7 @@
 
 #include <misc/IdentifyGpu.h>
 #include <hooks/Reflex_Hooks.h>
+#include <low_latency/input/input_common.h>
 #include <menu/menu_overlay_dx.h>
 
 #include <d3d12.h>
@@ -1376,7 +1377,7 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
 
     // DXVK's DXGI presents through Vulkan where the limiter already sleeps
     if (willPresent && !state.reflexLimitsFps && state.activeFgOutput != FGOutput::NoFG &&
-        !IdentifyGpu::getPrimaryGpu().dxgiIsDxvk && !XellHooks::canLimit())
+        !IdentifyGpu::getPrimaryGpu().dxgiIsDxvk && !XellHooks::canLimit() && !InputCommon::can_limit_fps())
     {
         FrameLimit::sleep(fg != nullptr ? fg->IsActive() && !fg->IsPaused() : false);
     }

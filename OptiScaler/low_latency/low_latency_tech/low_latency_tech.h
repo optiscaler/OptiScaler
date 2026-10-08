@@ -60,6 +60,7 @@ struct MarkerParams
 {
     uint64_t frame_id;
     MarkerType marker_type;
+    std::optional<bool> interpolated {}; // Frame type of OUT_OF_BAND_PRESENT_START when the input knows it (AntiLag 2)
 };
 
 class LowLatencyTech

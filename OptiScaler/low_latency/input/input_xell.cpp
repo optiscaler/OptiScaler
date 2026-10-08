@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "input_xell.h"
-#include <hooks/Xell_Hooks.h>
 #include <proxies/XeLL_Proxy.h>
+#include <inputs/FG/XeFG_Inputs_Dx12.h>
 
 // Context free calls can be answered by the real XeLL
 static FARPROC RealExport(const char* name)
@@ -10,13 +10,112 @@ static FARPROC RealExport(const char* name)
     return module != nullptr ? KernelBaseProxy::GetProcAddress_()(module, name) : nullptr;
 }
 
+// Calls XeFG makes on the real XeLL, older libxell versions might not have them
+template <typename Fn, typename... Args> static xell_result_t CallReal(Fn real, Args... args)
+{
+    return real != nullptr ? real(args...) : XELL_RESULT_ERROR_NOT_IMPLEMENTED;
+}
+
+bool InputXeLL::CreateReal(xell_input_handle_t context)
+{
+    if (context->real != nullptr)
+        return true;
+
+    auto create = XeLLProxy::RealD3D12CreateContext();
+
+    if (create == nullptr || create(context->device, &context->real) != XELL_RESULT_SUCCESS)
+    {
+        LOG_ERROR("Couldn't create the real XeLL context");
+        context->real = nullptr;
+        return false;
+    }
+
+    // libxell's handle is the same two fields
+    auto real = (xell_input_handle_t) context->real;
+    context->impl = real->impl;
+    context->magic = real->magic;
+
+    return true;
+}
+
+xell_result_t InputXeLL::SetRealSleepMode(xell_input_handle_t context)
+{
+    auto params = context->sleepParams;
+
+    // OptiScaler's own contexts get their limit from the XeLL output
+    if (auto limit = fpsLimitUs.load(); limit != 0 && !context->inputContext.localContext)
+        params.minimumIntervalUs = limit;
+
+    return XeLLProxy::RealSetSleepMode()(context->real, &params);
+}
+
+xell_result_t InputXeLL::D3D12CreateLocalContext(ID3D12Device* device, xell_input_handle_t* out_context)
+{
+    if (!device || !out_context)
+        return XELL_RESULT_ERROR_INVALID_ARGUMENT;
+
+    auto context = new _xell_input_handle_t();
+    context->device = device;
+    context->inputContext.localContext = true;
+
+    if (!CreateReal(context))
+    {
+        delete context;
+        return XELL_RESULT_ERROR_UNKNOWN;
+    }
+
+    *out_context = context;
+    return XELL_RESULT_SUCCESS;
+}
+
+void InputXeLL::AttachXeFG(void* xellContext)
+{
+    auto context = gameContext.load();
+
+    // Not a context OptiScaler gave out, it's already the real XeLL's
+    if (context != nullptr && context == xellContext && CreateReal(context))
+        LOG_INFO("The game's XeFG got its XeLL context");
+}
+
+void InputXeLL::SetXeFGEnabled(bool enabled)
+{
+    // The XeFG passthrough stays native
+    if (XeFGInputs::Passthrough() || native.exchange(enabled) == enabled)
+        return;
+
+    LOG_INFO("The game's XeFG {}, its XeLL {}", enabled ? "enabled" : "disabled",
+             enabled ? "passes through" : "is the low latency input again");
+
+    // XeFG needs the game's low latency mode on the real XeLL
+    if (auto context = gameContext.load(); enabled && context != nullptr && context->real != nullptr)
+        SetRealSleepMode(context);
+}
+
+bool InputXeLL::LimitFps(uint32_t intervalUs)
+{
+    // ponytail: only the game's latest context is limited, games use one
+    auto context = gameContext.load();
+
+    if (!native || context == nullptr || context->real == nullptr)
+        return false;
+
+    if (fpsLimitUs.exchange(intervalUs) != intervalUs)
+        SetRealSleepMode(context);
+
+    return intervalUs != 0 && context->sleepParams.bLowLatencyMode;
+}
+
 // Common
 xell_result_t InputXeLL::DestroyContext(xell_input_handle_t context)
 {
     if (!context)
         return XELL_RESULT_ERROR_INVALID_CONTEXT;
 
-    // TODO: cleanup everything
+    auto expected = context;
+    gameContext.compare_exchange_strong(expected, nullptr);
+
+    if (context->real)
+        XeLLProxy::RealDestroyContext()(context->real);
 
     delete context;
     return XELL_RESULT_SUCCESS;
@@ -29,24 +128,22 @@ xell_result_t InputXeLL::SetSleepMode(xell_input_handle_t context, const xell_sl
     if (!param)
         return XELL_RESULT_ERROR_INVALID_ARGUMENT;
 
+    context->sleepParams = *param;
+
+    if (PassesThrough(context))
+        return SetRealSleepMode(context);
+
     SleepMode sleepMode {};
     sleepMode.low_latency_enabled = param->bLowLatencyMode;
     sleepMode.low_latency_boost = param->bLowLatencyBoost;
     sleepMode.minimum_interval_us = param->minimumIntervalUs;
 
-    // TODO: not fully filled out
-
     auto result = InputCommon::set_sleep_mode(context->inputContext, context->device, &sleepMode);
 
-    if (result == InputResult::Ok || result == InputResult::UsingDifferentInput)
-        return XELL_RESULT_SUCCESS;
-    else
+    if (result != InputResult::Ok && result != InputResult::UsingDifferentInput)
         LOG_ERROR("set_sleep_mode result: {}", magic_enum::enum_name(result));
 
-    // TOOD: XeFG needs this as it needs low latency always enabled, figure something out
     return XELL_RESULT_SUCCESS;
-
-    return XELL_RESULT_ERROR_UNKNOWN;
 }
 xell_result_t InputXeLL::GetSleepMode(xell_input_handle_t context, xell_sleep_params_t* param)
 {
@@ -55,6 +152,9 @@ xell_result_t InputXeLL::GetSleepMode(xell_input_handle_t context, xell_sleep_pa
 
     if (!param)
         return XELL_RESULT_ERROR_INVALID_ARGUMENT;
+
+    if (PassesThrough(context))
+        return XeLLProxy::RealGetSleepMode()(context->real, param);
 
     if (!context->device)
         return XELL_RESULT_ERROR_DEVICE;
@@ -84,6 +184,9 @@ xell_result_t InputXeLL::Sleep(xell_input_handle_t context, uint32_t frame_id)
     if (!context)
         return XELL_RESULT_ERROR_INVALID_CONTEXT;
 
+    if (PassesThrough(context))
+        return XeLLProxy::RealSleep()(context->real, frame_id);
+
     if (!context->device)
         return XELL_RESULT_ERROR_DEVICE;
 
@@ -102,28 +205,12 @@ xell_result_t InputXeLL::AddMarkerData(xell_input_handle_t context, uint32_t fra
     if (!context)
         return XELL_RESULT_ERROR_INVALID_CONTEXT;
 
+    // XeFG's own markers (80860000, 80860001), only for the real XeLL
+    if (PassesThrough(context) || (marker >= XELL_MARKER_COUNT && context->real))
+        return XeLLProxy::RealAddMarkerData()(context->real, frame_id, marker);
+
     if (marker >= XELL_MARKER_COUNT)
-    {
-        // TODO: call async, probably, need to understand the high markers
-        MarkerParams markerParams {};
-        markerParams.frame_id = frame_id;
-
-        if (marker == 80860000)
-            markerParams.marker_type = MarkerType::OUT_OF_BAND_RENDERSUBMIT_START;
-        else if (marker == 80860001)
-            markerParams.marker_type = MarkerType::OUT_OF_BAND_RENDERSUBMIT_END;
-        else
-            return XELL_RESULT_ERROR_UNKNOWN;
-
-        auto result = InputCommon::set_async_marker(context->inputContext, context->d3d12AppQueue, markerParams);
-
-        if (result == InputResult::Ok || result == InputResult::UsingDifferentInput)
-            return XELL_RESULT_SUCCESS;
-        else
-            LOG_ERROR("set_async_marker result: {}", magic_enum::enum_name(result));
-
-        return XELL_RESULT_ERROR_UNKNOWN;
-    }
+        return XELL_RESULT_SUCCESS;
 
     MarkerParams markerParams {};
     markerParams.frame_id = frame_id;
@@ -164,7 +251,8 @@ xell_result_t InputXeLL::SetLoggingCallback(xell_input_handle_t context, xell_lo
     if (!context)
         return XELL_RESULT_ERROR_INVALID_CONTEXT;
 
-    // Not logging to the callback
+    if (PassesThrough(context))
+        return XeLLProxy::RealSetLoggingCallback()(context->real, loggingLevel, loggingCallback);
 
     return XELL_RESULT_SUCCESS;
 }
@@ -175,6 +263,9 @@ xell_result_t InputXeLL::GetFramesReports(xell_input_handle_t context, xell_fram
 
     if (!outdata)
         return XELL_RESULT_ERROR_INVALID_ARGUMENT;
+
+    if (PassesThrough(context))
+        return XeLLProxy::RealGetFramesReports()(context->real, outdata);
 
     auto result = InputCommon::get_latency(context->inputContext, context->device, outdata);
 
@@ -192,15 +283,18 @@ xell_result_t InputXeLL::D3D12CreateContext(ID3D12Device* device, xell_input_han
     if (!device || !out_context)
         return XELL_RESULT_ERROR_INVALID_ARGUMENT;
 
-    xell_input_handle_t newContext = new _xell_input_handle_t();
-    newContext->id = ++lastContextId;
-    // newContext->id = 0x47466558;
-    newContext->device = device;
+    auto context = new _xell_input_handle_t();
+    context->device = device;
 
-    *out_context = newContext;
+    // The XeFG passthrough decided at startup, the game's XeFG is the frame generation
+    if (XeFGInputs::Passthrough())
+    {
+        native = true;
+        CreateReal(context);
+    }
 
-    // Alternatively we could not hook xell when using low latency xell inputs
-    XellHooks::setOurContext((xell_context_handle_t) newContext);
+    gameContext = context;
+    *out_context = context;
 
     return XELL_RESULT_SUCCESS;
 }
@@ -227,16 +321,14 @@ bool InputXeLL::AILIsSupportedDevice(uint32_t param1)
 
     return false;
 }
+
+// The rest only XeFG calls, on the real XeLL also while disabled. A context without one has no XeFG on it.
 xell_result_t InputXeLL::D3D12SetAppQueue(xell_input_handle_t context, ID3D12CommandQueue* appQueue)
 {
     if (!context)
         return XELL_RESULT_ERROR_INVALID_CONTEXT;
 
-    // It may need to do something extra but I'm not sure it matters for us
-
-    context->d3d12AppQueue = appQueue;
-
-    return InputCommon::pass_xellD3D12SetAppQueue(context->inputContext, appQueue);
+    return context->real ? CallReal(XeLLProxy::RealD3D12SetAppQueue(), context->real, appQueue) : XELL_RESULT_SUCCESS;
 }
 xell_result_t InputXeLL::GetContextParameterP(xell_input_handle_t context, uint32_t param1, uint64_t param2)
 {
@@ -249,6 +341,9 @@ xell_result_t InputXeLL::GetLastPresentStartFrameId(xell_input_handle_t context,
 
     if (!p_frame_id)
         return XELL_RESULT_ERROR_INVALID_ARGUMENT;
+
+    if (PassesThrough(context))
+        return CallReal(XeLLProxy::RealGetLastPresentStartFrameId(), context->real, p_frame_id);
 
     *p_frame_id = (uint32_t) InputCommon::get_last_present_start_frame_id();
 
@@ -263,9 +358,8 @@ xell_result_t InputXeLL::QueryInterface(xell_input_handle_t context, LPCSTR lpPr
 
     if (!lpProcName)
     {
-        // Should return the internal context but well...
-        // TODO: do something about if it's actually used
-        *outFunc = (FARPROC) context;
+        // libxell returns its context behind the handle
+        *outFunc = (FARPROC) (context != nullptr && context->impl != nullptr ? context->impl : context);
         return XELL_RESULT_SUCCESS;
     }
 
@@ -327,36 +421,24 @@ xell_result_t InputXeLL::SetDisplayInfo(xell_input_handle_t context, void* displ
     if (!context)
         return XELL_RESULT_ERROR_INVALID_CONTEXT;
 
-    context->displayInfo = displayInfo;
-
-    return InputCommon::pass_xellSetDisplayInfo(context->inputContext, displayInfo);
+    return context->real ? CallReal(XeLLProxy::RealSetDisplayInfo(), context->real, displayInfo) : XELL_RESULT_SUCCESS;
 }
-xell_result_t InputXeLL::SetFgEnabled(xell_input_handle_t context, uint32_t param1, uint32_t param2)
+xell_result_t InputXeLL::SetFgEnabled(xell_input_handle_t context, uint32_t enabled, uint32_t frameId)
 {
-    // TODO: figure out params and impl
-    // This might need to take Opti's FG into account, unsure
-
     if (!context)
         return XELL_RESULT_ERROR_INVALID_CONTEXT;
 
-    context->setFgEnabledParam1 = param1;
-    context->setFgEnabledParam2 = param2;
-
-    return InputCommon::pass_xellSetFgEnabled(context->inputContext, param1, param2);
+    return context->real ? CallReal(XeLLProxy::RealSetFgEnabled(), context->real, enabled, frameId)
+                         : XELL_RESULT_SUCCESS;
 }
 
 xell_result_t InputXeLL::SetGeneratedFramesCount(xell_input_handle_t context, uint32_t frameId, uint32_t framesCount)
 {
-    // TODO: figure out params and impl
-    // TODO: store framesCount for the SleepParams::fg_multiplier
-
     if (!context)
         return XELL_RESULT_ERROR_INVALID_CONTEXT;
 
-    context->setGeneratedFramesCountFrameId = frameId;
-    context->framesCount = framesCount;
-
-    return InputCommon::pass_xellSetGeneratedFramesCount(context->inputContext, frameId, framesCount);
+    return context->real ? CallReal(XeLLProxy::RealSetGeneratedFramesCount(), context->real, frameId, framesCount)
+                         : XELL_RESULT_SUCCESS;
 }
 
 #ifdef LOW_LATENCY_INPUTS

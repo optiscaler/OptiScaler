@@ -2,13 +2,49 @@
 #include "input_reflex.h"
 #include <nvapi/NvApiHooks.h>
 
-// OptiScaler's own Streamline (DLSSG output) reaches the driver as before, it isn't a game input
-template <typename Fn> static Fn OptiScalerCall(unsigned int id)
+#include <intrin.h>
+
+#pragma intrinsic(_ReturnAddress)
+
+// OptiScaler's own Streamline (DLSSG output): its calls marked as OptiScaler's, and the ones its modules make on
+// Streamline's own threads (the async markers of the generated frames' presents)
+static bool FromOptiScaler(void* returnAddress)
 {
-    if (!ReflexHooks::optiScalerCall)
+    if (ReflexHooks::optiScalerCall)
+        return true;
+
+    auto& state = State::Instance();
+
+    if (state.optiSlInterposer == nullptr)
+        return false;
+
+    auto module = Util::GetCallerModule(returnAddress);
+
+    return module != nullptr &&
+           (module == state.optiSlInterposer || module == state.optiSlCommon || module == state.optiSlDLSSG ||
+            module == state.optiSlReflex || module == state.optiSlPCL || module == state.optiDLSSG);
+}
+
+// With NVIDIA's nvapi OptiScaler's Streamline reaches the driver, with fakenvapi it's the OptiScaler input
+template <typename Fn> static Fn ToDriver(unsigned int id)
+{
+    if (fakenvapi::isUsingAsMainNvapi())
         return nullptr;
 
     return reinterpret_cast<Fn>(ReflexHooks::getHookedReflex(id));
+}
+
+static NvAPI_Status ToNvApi(InputResult result, const char* call)
+{
+    if (result == InputResult::Ok || result == InputResult::UsingDifferentInput ||
+        result == InputResult::NotEnoughReports)
+    {
+        return NVAPI_OK;
+    }
+
+    LOG_ERROR("{} result: {}", call, magic_enum::enum_name(result));
+
+    return result == InputResult::NoReadyOutput ? NVAPI_OK : NVAPI_ERROR;
 }
 
 NvAPI_Status InputReflex::D3D_SetSleepMode(IUnknown* pDev, NV_SET_SLEEP_MODE_PARAMS* pSetSleepModeParams)
@@ -16,8 +52,19 @@ NvAPI_Status InputReflex::D3D_SetSleepMode(IUnknown* pDev, NV_SET_SLEEP_MODE_PAR
     if (!pSetSleepModeParams || !pDev)
         return NVAPI_INVALID_ARGUMENT;
 
-    if (auto own = OptiScalerCall<decltype(&NvAPI_D3D_SetSleepMode)>(GET_ID(NvAPI_D3D_SetSleepMode)))
-        return own(pDev, pSetSleepModeParams);
+    bool own = FromOptiScaler(_ReturnAddress());
+
+    if (own)
+    {
+        if (auto driver = ToDriver<decltype(&NvAPI_D3D_SetSleepMode)>(GET_ID(NvAPI_D3D_SetSleepMode)))
+            return driver(pDev, pSetSleepModeParams);
+
+        optiScalerLowLatency = pSetSleepModeParams->bLowLatencyMode;
+    }
+    else
+    {
+        ReflexHooks::gameSetSleepMode();
+    }
 
     SleepMode sleepMode {};
     sleepMode.low_latency_enabled = pSetSleepModeParams->bLowLatencyMode;
@@ -26,17 +73,8 @@ NvAPI_Status InputReflex::D3D_SetSleepMode(IUnknown* pDev, NV_SET_SLEEP_MODE_PAR
     sleepMode.use_markers_to_optimize = pSetSleepModeParams->bUseMarkersToOptimize;
     sleepMode.use_min_queue_time = pSetSleepModeParams->bUseMinQueueTime;
 
-    auto result = InputCommon::set_sleep_mode(inputContext, pDev, &sleepMode);
-
-    if (result == InputResult::Ok || result == InputResult::UsingDifferentInput)
-        return NVAPI_OK;
-    else
-        LOG_ERROR("set_sleep_mode result: {}", magic_enum::enum_name(result));
-
-    if (result == InputResult::NoReadyOutput)
-        return NVAPI_OK;
-    else
-        return NVAPI_ERROR;
+    return ToNvApi(InputCommon::set_sleep_mode(own ? optiScalerContext : inputContext, pDev, &sleepMode),
+                   "set_sleep_mode");
 }
 
 NvAPI_Status InputReflex::D3D_GetSleepStatus(IUnknown* pDevice, NV_GET_SLEEP_STATUS_PARAMS* pGetSleepStatusParams)
@@ -44,19 +82,22 @@ NvAPI_Status InputReflex::D3D_GetSleepStatus(IUnknown* pDevice, NV_GET_SLEEP_STA
     if (!pGetSleepStatusParams || !pDevice)
         return NVAPI_INVALID_ARGUMENT;
 
-    if (ReflexHooks::optiScalerCall && NvApiHooks::o_NvAPI_QueryInterface != nullptr)
+    bool own = FromOptiScaler(_ReturnAddress());
+
+    if (own && !fakenvapi::isUsingAsMainNvapi() && NvApiHooks::o_NvAPI_QueryInterface != nullptr)
     {
-        if (auto own = GET_INTERFACE(NvAPI_D3D_GetSleepStatus, NvApiHooks::o_NvAPI_QueryInterface))
-            return own(pDevice, pGetSleepStatusParams);
+        if (auto driver = GET_INTERFACE(NvAPI_D3D_GetSleepStatus, NvApiHooks::o_NvAPI_QueryInterface))
+            return driver(pDevice, pGetSleepStatusParams);
     }
 
     SleepParams sleepParams {};
 
-    auto result = InputCommon::get_sleep_status(inputContext, pDevice, &sleepParams);
+    auto result = InputCommon::get_sleep_status(own ? optiScalerContext : inputContext, pDevice, &sleepParams);
 
     if (result == InputResult::Ok || result == InputResult::UsingDifferentInput)
     {
-        pGetSleepStatusParams->bLowLatencyMode = sleepParams.low_latency_enabled;
+        // OptiScaler's Streamline reads back the low latency it set, the game's input decides the output's
+        pGetSleepStatusParams->bLowLatencyMode = own ? optiScalerLowLatency : sleepParams.low_latency_enabled;
         pGetSleepStatusParams->bFsVrr = sleepParams.fullscreen_vrr;
         pGetSleepStatusParams->bCplVsyncOn = sleepParams.control_panel_vsync_override;
         pGetSleepStatusParams->sleepIntervalUs = sleepParams.sleep_interval_us;
@@ -66,15 +107,11 @@ NvAPI_Status InputReflex::D3D_GetSleepStatus(IUnknown* pDevice, NV_GET_SLEEP_STA
 
         return NVAPI_OK;
     }
-    else
-    {
-        LOG_ERROR("get_sleep_status result: {}", magic_enum::enum_name(result));
-    }
 
-    if (result == InputResult::NoReadyOutput)
-        return NVAPI_OK;
-    else
-        return NVAPI_ERROR;
+    if (own)
+        pGetSleepStatusParams->bLowLatencyMode = optiScalerLowLatency;
+
+    return ToNvApi(result, "get_sleep_status");
 }
 
 NvAPI_Status InputReflex::D3D_Sleep(IUnknown* pDev)
@@ -82,20 +119,26 @@ NvAPI_Status InputReflex::D3D_Sleep(IUnknown* pDev)
     if (!pDev)
         return NVAPI_INVALID_ARGUMENT;
 
-    if (auto own = OptiScalerCall<decltype(&NvAPI_D3D_Sleep)>(GET_ID(NvAPI_D3D_Sleep)))
-        return own(pDev);
+    if (FromOptiScaler(_ReturnAddress()))
+    {
+        if (auto driver = ToDriver<decltype(&NvAPI_D3D_Sleep)>(GET_ID(NvAPI_D3D_Sleep)))
+            return driver(pDev);
+
+        return ToNvApi(InputCommon::sleep(optiScalerContext, pDev), "sleep");
+    }
 
     auto result = InputCommon::sleep(inputContext, pDev);
 
-    if (result == InputResult::Ok || result == InputResult::UsingDifferentInput)
-        return NVAPI_OK;
-    else
-        LOG_ERROR("sleep result: {}", magic_enum::enum_name(result));
+    // The Reflex output's sleep goes through OptiScaler's Streamline itself, with the other outputs it still sleeps
+    // for the game so DLSSG follows its frames
+    LowLatencyInput activeInput {};
+    LowLatencyMode activeOutput {};
+    InputCommon::get_currently_active(activeInput, activeOutput);
 
-    if (result == InputResult::NoReadyOutput)
-        return NVAPI_OK;
-    else
-        return NVAPI_ERROR;
+    if (activeOutput != LowLatencyMode::Reflex)
+        ReflexHooks::streamlineSleep();
+
+    return ToNvApi(result, "sleep");
 }
 
 NvAPI_Status InputReflex::D3D_GetLatency(IUnknown* pDev, NV_LATENCY_RESULT_PARAMS* pGetLatencyParams)
@@ -103,22 +146,33 @@ NvAPI_Status InputReflex::D3D_GetLatency(IUnknown* pDev, NV_LATENCY_RESULT_PARAM
     if (!pDev || !pGetLatencyParams)
         return NVAPI_INVALID_ARGUMENT;
 
-    if (auto own = OptiScalerCall<decltype(&NvAPI_D3D_GetLatency)>(GET_ID(NvAPI_D3D_GetLatency)))
-        return own(pDev, pGetLatencyParams);
+    bool own = FromOptiScaler(_ReturnAddress());
 
-    auto result = InputCommon::get_latency(inputContext, pDev, pGetLatencyParams);
+    if (own)
+    {
+        if (auto driver = ToDriver<decltype(&NvAPI_D3D_GetLatency)>(GET_ID(NvAPI_D3D_GetLatency)))
+            return driver(pDev, pGetLatencyParams);
+    }
 
-    if (result == InputResult::Ok || result == InputResult::UsingDifferentInput)
-        return NVAPI_OK;
-    else if (result == InputResult::NotEnoughReports)
-        return NVAPI_OK;
-    else
-        LOG_ERROR("get_latency result: {}", magic_enum::enum_name(result));
+    return ToNvApi(InputCommon::get_latency(own ? optiScalerContext : inputContext, pDev, pGetLatencyParams),
+                   "get_latency");
+}
 
-    if (result == InputResult::NoReadyOutput)
-        return NVAPI_OK;
-    else
-        return NVAPI_ERROR;
+// The game's marker after OptiScaler's tracking and game quirks. OptiScaler's Streamline reaches the Reflex output
+// itself with a marker it took, the other outputs get the game's.
+NvAPI_Status InputReflex::SendGameMarker(IUnknown* pDev, NV_LATENCY_MARKER_PARAMS* params, bool toStreamline)
+{
+    LowLatencyInput activeInput {};
+    LowLatencyMode activeOutput {};
+    InputCommon::get_currently_active(activeInput, activeOutput);
+
+    MarkerParams markerParams {};
+    markerParams.frame_id = params->frameID;
+    markerParams.marker_type = (MarkerType) params->markerType; // requires enums to match
+
+    return ToNvApi(InputCommon::set_marker(inputContext, pDev, markerParams,
+                                           !toStreamline || activeOutput != LowLatencyMode::Reflex),
+                   "set_marker");
 }
 
 NvAPI_Status InputReflex::D3D_SetLatencyMarker(IUnknown* pDev, NV_LATENCY_MARKER_PARAMS* pSetLatencyMarkerParams)
@@ -126,25 +180,19 @@ NvAPI_Status InputReflex::D3D_SetLatencyMarker(IUnknown* pDev, NV_LATENCY_MARKER
     if (!pDev || !pSetLatencyMarkerParams)
         return NVAPI_INVALID_ARGUMENT;
 
-    if (auto own = OptiScalerCall<decltype(&NvAPI_D3D_SetLatencyMarker)>(GET_ID(NvAPI_D3D_SetLatencyMarker)))
-        return own(pDev, pSetLatencyMarkerParams);
+    if (FromOptiScaler(_ReturnAddress()))
+    {
+        if (auto driver = ToDriver<decltype(&NvAPI_D3D_SetLatencyMarker)>(GET_ID(NvAPI_D3D_SetLatencyMarker)))
+            return driver(pDev, pSetLatencyMarkerParams);
 
-    MarkerParams markerParams {};
+        MarkerParams markerParams {};
+        markerParams.frame_id = pSetLatencyMarkerParams->frameID;
+        markerParams.marker_type = (MarkerType) pSetLatencyMarkerParams->markerType;
 
-    markerParams.frame_id = pSetLatencyMarkerParams->frameID;
-    markerParams.marker_type = (MarkerType) pSetLatencyMarkerParams->markerType; // requires enums to match
+        return ToNvApi(InputCommon::set_marker(optiScalerContext, pDev, markerParams), "set_marker");
+    }
 
-    auto result = InputCommon::set_marker(inputContext, pDev, markerParams);
-
-    if (result == InputResult::Ok || result == InputResult::UsingDifferentInput)
-        return NVAPI_OK;
-    else
-        LOG_ERROR("set_marker result: {}", magic_enum::enum_name(result));
-
-    if (result == InputResult::NoReadyOutput)
-        return NVAPI_OK;
-    else
-        return NVAPI_ERROR;
+    return ReflexHooks::processGameMarker(pDev, pSetLatencyMarkerParams, &SendGameMarker);
 }
 
 NvAPI_Status InputReflex::D3D12_SetAsyncFrameMarker(ID3D12CommandQueue* pCommandQueue,
@@ -153,23 +201,23 @@ NvAPI_Status InputReflex::D3D12_SetAsyncFrameMarker(ID3D12CommandQueue* pCommand
     if (!pCommandQueue || !pSetAsyncFrameMarkerParams)
         return NVAPI_INVALID_ARGUMENT;
 
-    if (auto own = OptiScalerCall<decltype(&NvAPI_D3D12_SetAsyncFrameMarker)>(GET_ID(NvAPI_D3D12_SetAsyncFrameMarker)))
-        return own(pCommandQueue, pSetAsyncFrameMarkerParams);
+    bool own = FromOptiScaler(_ReturnAddress());
+
+    if (own)
+    {
+        if (auto driver = ToDriver<decltype(&NvAPI_D3D12_SetAsyncFrameMarker)>(GET_ID(NvAPI_D3D12_SetAsyncFrameMarker)))
+        {
+            return driver(pCommandQueue, pSetAsyncFrameMarkerParams);
+        }
+    }
+
+    ReflexHooks::trackAsyncMarker(pSetAsyncFrameMarkerParams->frameID);
 
     MarkerParams markerParams {};
-
     markerParams.frame_id = pSetAsyncFrameMarkerParams->frameID;
     markerParams.marker_type = (MarkerType) pSetAsyncFrameMarkerParams->markerType; // requires enums to match
 
-    auto result = InputCommon::set_async_marker(inputContext, pCommandQueue, markerParams);
-
-    if (result == InputResult::Ok || result == InputResult::UsingDifferentInput)
-        return NVAPI_OK;
-    else
-        LOG_ERROR("set_async_marker result: {}", magic_enum::enum_name(result));
-
-    if (result == InputResult::NoReadyOutput)
-        return NVAPI_OK;
-    else
-        return NVAPI_ERROR;
+    return ToNvApi(
+        InputCommon::set_async_marker(own ? optiScalerAsyncContext : inputContext, pCommandQueue, markerParams),
+        "set_async_marker");
 }

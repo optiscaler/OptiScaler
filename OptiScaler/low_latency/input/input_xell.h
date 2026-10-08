@@ -6,28 +6,58 @@
 
 class InputXeLL
 {
-    static inline uint64_t lastContextId = 0;
     struct _xell_input_handle_t
     {
-        uint64_t id {};
+        // libxell's own handle starts with these, XeFG reads them directly: the 'XeFG' magic and the context behind
+        // it. Copied from the real XeLL context once there is one.
+        uint64_t magic {};
+        void* impl {};
+
+        // The real XeLL context, OptiScaler's own contexts and the game's once its XeFG uses it. Calls on a context
+        // with one go straight to it, the others are the XeLL input.
+        xell_context_handle_t real {};
+
         InputContext inputContext { .caller = LowLatencyInput::XeLL,
                                     .localContext = false,
                                     .noFrameId = false,
                                     .markerMode = InputMarkerMode::FullMarkers };
         ID3D12Device* device {};
-
-        ID3D12CommandQueue* d3d12AppQueue {};
-        void* displayInfo {}; // could be freed, somehow make a copy
-
-        // Unsure what to do with those, just store for now
-        uint32_t setFgEnabledParam1 {};
-        uint32_t setFgEnabledParam2 {};
-        uint32_t setGeneratedFramesCountFrameId {};
-        uint32_t framesCount {};
+        xell_sleep_params_t sleepParams {}; // The game's, to pass on once it goes to the real XeLL
     };
 
   public:
     typedef struct _xell_input_handle_t* xell_input_handle_t;
+
+  private:
+    static inline std::atomic<xell_input_handle_t> gameContext = nullptr; // The game's latest context
+    static inline std::atomic_bool native = false;                        // The game's XeFG is enabled
+    static inline std::atomic_uint32_t fpsLimitUs = 0;
+
+    static bool CreateReal(xell_input_handle_t context);
+
+    // OptiScaler's own contexts always, the game's while its XeFG is enabled
+    static bool PassesThrough(xell_input_handle_t context)
+    {
+        return context->real != nullptr && (context->inputContext.localContext || native);
+    }
+    static xell_result_t SetRealSleepMode(xell_input_handle_t context);
+
+  public:
+    // OptiScaler's own context, it goes straight to the real XeLL (the XeLL output)
+    static xell_result_t D3D12CreateLocalContext(ID3D12Device* device, xell_input_handle_t* out_context);
+
+    // The game's XeFG got its XeLL context, it reads the real XeLL context behind it. Games do it at startup, also
+    // with another frame generation in use.
+    static void AttachXeFG(void* xellContext);
+
+    // The game's XeFG enabled or disabled, while enabled the game's XeLL runs as without OptiScaler
+    static void SetXeFGEnabled(bool enabled);
+
+    // The game's XeLL runs as without OptiScaler, only the FPS limit is OptiScaler's
+    static bool IsNative() { return native; }
+
+    // OptiScaler's FPS limit on the game's XeLL when native, 0 = none. True when it limits.
+    static bool LimitFps(uint32_t intervalUs);
 
     // Common
     static xell_result_t DestroyContext(xell_input_handle_t context);
@@ -58,10 +88,9 @@ class InputXeLL
     static xell_result_t SetContextParameterP(xell_input_handle_t context, uint32_t param1,
                                               uint64_t param2); // return 0
     static xell_result_t SetDisplayInfo(xell_input_handle_t context, void* displayInfo);
-    static xell_result_t SetFgEnabled(xell_input_handle_t context, uint32_t param1,
-                                      uint32_t param2); // param1 might be the Fg state to set
-    static xell_result_t SetGeneratedFramesCount(xell_input_handle_t context, uint32_t param1,
-                                                 uint32_t framesCount); // param1 might be frameId, not sure for both
+    static xell_result_t SetFgEnabled(xell_input_handle_t context, uint32_t enabled, uint32_t frameId);
+    static xell_result_t SetGeneratedFramesCount(xell_input_handle_t context, uint32_t frameId,
+                                                 uint32_t framesCount); // framesCount 0 - 3
 };
 
 extern "C"

@@ -150,6 +150,10 @@ void LatencyFlex::sleep(std::optional<uint32_t> frame_id)
     {
         last_sleep_framecount = simulation_framecount;
 
+        // Inputs that only sleep (OptiScaler's present markers) never send a simulation start to switch with
+        if (simulation_framecount == 0)
+            current_call_spot = CallSpot::SleepCall;
+
         if (current_call_spot == CallSpot::SleepCall)
         {
             if (frame_id.has_value())

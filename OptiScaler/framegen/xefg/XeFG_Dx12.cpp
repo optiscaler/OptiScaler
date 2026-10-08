@@ -133,24 +133,12 @@ bool XeFG_Dx12::CreateSwapchainContext(ID3D12Device* device)
             }
         }
 #else
-        InputXeLL::xell_input_handle_t localXellContext;
-        if (InputXeLL::D3D12CreateContext(device, &localXellContext) == XELL_RESULT_SUCCESS)
+        // XeFG reads the frames of the XeLL context it gets, the one the low latency input feeds. The output keeps it
+        // in low latency mode while XeFG runs.
+        if (InputCommon::set_low_latency_tech(device, LowLatencyMode::XeLL) == InputResult::Ok &&
+            InputCommon::xell_output_context() != nullptr)
         {
-            localXellContext->inputContext.localContext = true; // We created this context
-
-            xell_sleep_params_t sleepParams = {};
-            sleepParams.bLowLatencyMode = true;
-            sleepParams.bLowLatencyBoost = false;
-            sleepParams.minimumIntervalUs = 0;
-
-            auto xellResult = InputXeLL::SetSleepMode(localXellContext, &sleepParams);
-            if (xellResult != XELL_RESULT_SUCCESS)
-            {
-                LOG_ERROR("SetSleepMode error: {} ({})", magic_enum::enum_name(xellResult), (UINT) xellResult);
-                return false;
-            }
-
-            result = XeFGProxy::SetLatencyReduction()(_swapChainContext, (xell_context_handle_t) localXellContext);
+            result = XeFGProxy::SetLatencyReduction()(_swapChainContext, InputCommon::xell_output_context());
 
             if (result != XEFG_SWAPCHAIN_RESULT_SUCCESS)
             {

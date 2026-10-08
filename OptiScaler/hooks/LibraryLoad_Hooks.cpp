@@ -464,7 +464,8 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
         return module;
     }
 
-    if (CheckDllNameW(&libName, &xefgNamesW) && State::Instance().activeFgInput == FGInput::XeFG)
+    // Also the game's own XeFG, for its XeLL context
+    if (CheckDllNameW(&libName, &xefgNamesW))
     {
         auto module = NtdllProxy::LoadLibraryExW_Ldr(lpLibFullPath, NULL, 0);
         XeFGInputs::Hook(module);

@@ -13,6 +13,11 @@ bool XellHooks::Hook()
     if (!XeLLProxy::InitXeLL())
         return false;
 
+#ifdef LOW_LATENCY_INPUTS
+    // The game's XeLL calls already come to OptiScaler's XeLL exports
+    return true;
+#endif
+
     if (o_xellDestroyContext)
     {
         // spdlog::info("Already hooked");

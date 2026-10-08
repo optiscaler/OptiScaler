@@ -716,14 +716,15 @@ bool Config::Reload(std::filesystem::path iniPath)
             else
                 FN_ForceReflex.reset();
 
+            // 0 was none, it's the default now
             if (auto v = readUInt("fakenvapi", "LowLatencyInput");
-                v.has_value() && *v < (uint32_t) ::LowLatencyInput::_)
+                v.has_value() && *v > (uint32_t) ::LowLatencyInput::Auto && *v < (uint32_t) ::LowLatencyInput::_)
                 LowLatencyInput.set_from_config((::LowLatencyInput) *v);
             else
                 LowLatencyInput.reset();
 
             if (auto v = readUInt("fakenvapi", "LowLatencyOutput");
-                v.has_value() && *v <= (uint32_t) LowLatencyMode::Reflex)
+                v.has_value() && *v > (uint32_t) LowLatencyMode::Auto && *v <= (uint32_t) LowLatencyMode::Reflex)
                 LowLatencyOutput.set_from_config((LowLatencyMode) *v);
             else
                 LowLatencyOutput.reset();
