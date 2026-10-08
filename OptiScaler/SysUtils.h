@@ -62,7 +62,7 @@
 #endif
 
 // Enables Low Latency inputs
-// #define LOW_LATENCY_INPUTS
+#define LOW_LATENCY_INPUTS
 
 #ifdef LOW_LATENCY_INPUTS
 #define XELL_EXPORT_API
