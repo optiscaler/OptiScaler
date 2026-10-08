@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "menu_common.h"
+#include <inputs/FG/XeFG_Inputs_Dx12.h>
 
 #include "input/input_system.h"
 
@@ -2501,7 +2502,7 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                         if (!timingOpt.has_value())
                             return;
 
-                        auto toneMappedColor = State::Instance().isHdrActive ? toneMapColor(color) : color;
+                        auto toneMappedColor = toneMapColor(color);
 
                         const auto& timing = timingOpt.value();
                         float duration = static_cast<float>(timing.length * rangeInNs / 1000.0);
@@ -3411,7 +3412,8 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
             "Can be used with any FG Output\n\nRequires enabling FSR-FG in game settings\nSupports HUDless out of the box" },
         { FGInput::FSRFG30, "FSR 3.0 FG",
             "Can be used with any FG Output\n\nRequires enabling FSR-FG in game settings\nSupports HUDless out of the box" },
-        { FGInput::XeFG, "XeFG" }
+        { FGInput::XeFG, "XeFG",
+            "Can be used with any FG Output\n\nRequires enabling XeSS-FG in game settings\nSupports HUDless out of the box" }
     };
 
     // clang-format on
@@ -3420,7 +3422,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
     // XeFG input requirements
     auto constexpr xefgInputIndex = (uint32_t) FGInput::XeFG;
-    inputOptions[xefgInputIndex].set_disabled(true, "Support not implemented, they meant FG Output");
+    inputOptions[xefgInputIndex].set_disabled(state.swapchainApi != API::DX12, "Unsupported API");
 
     // OptiFG requirements
     auto constexpr optiFgIndex = (uint32_t) FGInput::Upscaler;
@@ -3651,7 +3653,13 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
         const bool nvngxFgChanged = (replaceFgOutputWithNvngx || showNvngxFgDowndown) &&
                                     state.activeFgNvngx != config->FGNvngxReplacement.value_or_default();
-        state.fgSettingsChanged = state.activeFgOutput != config->FGOutput.value_or_default() ||
+        // XeFG input to XeFG output runs without OptiScaler's FG output
+        auto configFgOutput = config->FGOutput.value_or_default();
+
+        if (config->FGInput.value_or_default() == FGInput::XeFG && configFgOutput == FGOutput::XeFG)
+            configFgOutput = FGOutput::NoFG;
+
+        state.fgSettingsChanged = state.activeFgOutput != configFgOutput ||
                                   state.activeFgInput != config->FGInput.value_or_default() || nvngxFgChanged;
 
         if (state.fgSettingsChanged)
@@ -3660,6 +3668,36 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
             ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.0f, 1.f)),
                                "Save Settings and restart to apply the changes");
             ImGui::Spacing();
+        }
+
+        // XeFG input to XeFG output: the game's own XeFG, like Override DLSSG Ratio
+        if (XeFGInputs::Passthrough() && XeFGInputs::MaxInterpolations() >= 1)
+        {
+            auto& setting = config->FGXeFGOverrideInterpolationCount;
+            const int currentSet = setting.has_value() ? setting.value() + 1 : 0;
+            auto label = [](int i) {
+                return i == 0 ? std::string("Default") : i == 1 ? std::string("Off") : std::to_string(i) + "X";
+            };
+
+            ImGui::PushItemWidth(95.0f * menuResScale);
+
+            if (ImGui::BeginCombo("Override XeFG Ratio", label(currentSet).c_str()))
+            {
+                for (int i = 0; i <= (int) XeFGInputs::MaxInterpolations() + 1; i++)
+                {
+                    if (ImGui::Selectable(label(i).c_str(), currentSet == i))
+                    {
+                        if (i == 0)
+                            setting.reset();
+                        else
+                            setting = i - 1;
+                    }
+                }
+
+                ImGui::EndCombo();
+            }
+
+            ImGui::PopItemWidth();
         }
 
         const bool dlssgInputOrOutput =
@@ -5629,7 +5667,7 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
     SectionTitle("Low Latency");
 
     static std::vector<MenuOption<LowLatencyInput>> lowLatencyInput = {
-        { LowLatencyInput::None, "None (Off)" },    { LowLatencyInput::Auto, "Auto" },
+        { LowLatencyInput::None, "None (Off)" },    { LowLatencyInput::Auto, "Not set" },
         { LowLatencyInput::AntiLag2, "AntiLag 2" }, { LowLatencyInput::Reflex, "Reflex" },
         { LowLatencyInput::XeLL, "XeLL" },          { LowLatencyInput::UeLowLatency, "UeLowLatency" },
     };
@@ -5668,28 +5706,57 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
 
         auto avalibleInputs = InputCommon::get_avaliable_inputs();
 
+        lowLatencyInput[(uint32_t) LowLatencyInput::Auto].set_hidden(true);
         lowLatencyInput[(uint32_t) LowLatencyInput::AntiLag2].set_disabled(!avalibleInputs[LowLatencyInput::AntiLag2]);
         lowLatencyInput[(uint32_t) LowLatencyInput::Reflex].set_disabled(!avalibleInputs[LowLatencyInput::Reflex]);
         lowLatencyInput[(uint32_t) LowLatencyInput::XeLL].set_disabled(!avalibleInputs[LowLatencyInput::XeLL]);
         lowLatencyInput[(uint32_t) LowLatencyInput::UeLowLatency].set_disabled(
             !avalibleInputs[LowLatencyInput::UeLowLatency]);
 
-        // need to have a value before combo
-        if (!config->LowLatencyInput.has_value())
-            config->LowLatencyInput = config->LowLatencyInput.value_or_default();
+        // Until an input is picked the active one is shown, without saving it
+        auto forcedInput = InputCommon::forced_input();
+        auto input = forcedInput.value_or(config->LowLatencyInput.value_or_default());
 
-        PopulateCombo("Input", config->LowLatencyInput, lowLatencyInput);
+        if (input == LowLatencyInput::Auto && activeInput != LowLatencyInput::None)
+            input = activeInput;
+
+        auto selectedInput = input;
+
+        ImGui::BeginDisabled(forcedInput.has_value());
+        PopulateCombo("Input", selectedInput, lowLatencyInput);
+        ImGui::EndDisabled();
+
+        if (forcedInput.has_value() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("Set by XeFG: the game's own XeFG needs XeLL");
+        else if (selectedInput != input)
+            config->LowLatencyInput = selectedInput;
 
         ImGui::TableNextColumn();
 
+        lowLatencyOutput[(uint32_t) LowLatencyMode::Auto].set_hidden(true);
         lowLatencyOutput[(uint32_t) LowLatencyMode::AntiLagVk].set_disabled(true, "No support");
-        lowLatencyOutput[(uint32_t) LowLatencyMode::Reflex].set_disabled(true, "No support");
+        lowLatencyOutput[(uint32_t) LowLatencyMode::Reflex].set_disabled(
+            IdentifyGpu::getPrimaryGpu().vendorId != VendorId::Nvidia || fakenvapi::isUsingAsMainNvapi(),
+            "Needs an Nvidia GPU");
 
-        // need to have a value before combo
-        if (!config->LowLatencyOutput.has_value())
-            config->LowLatencyOutput = config->LowLatencyOutput.value_or_default();
+        // Frame generation decides the output it works with, otherwise the GPU vendor's own until one is picked
+        auto forcedOutput = InputCommon::forced_output();
+        auto output = forcedOutput.value_or(config->LowLatencyOutput.value_or_default());
 
-        PopulateCombo("Output", config->LowLatencyOutput, lowLatencyOutput);
+        if (output == LowLatencyMode::Auto)
+            output = InputCommon::default_output();
+
+        auto selectedOutput = output;
+
+        ImGui::BeginDisabled(forcedOutput.has_value());
+        PopulateCombo("Output", selectedOutput, lowLatencyOutput);
+        ImGui::EndDisabled();
+
+        if (forcedOutput.has_value() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("Set by the FG output: XeFG uses XeLL, DLSSG Reflex,\n"
+                              "FSR-FG AntiLag 2 on AMD, Reflex on Nvidia, XeLL on Intel");
+        else if (selectedOutput != output)
+            config->LowLatencyOutput = selectedOutput;
 
         ImGui::EndTable();
     }

@@ -35,6 +35,8 @@ struct SleepMode
     uint32_t minimum_interval_us; // 0 -> no fps limit
     bool use_markers_to_optimize; // TODO: log this if false
     bool use_min_queue_time;
+
+    bool operator==(const SleepMode&) const = default;
 };
 
 enum class MarkerType

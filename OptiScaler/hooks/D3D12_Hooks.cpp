@@ -14,6 +14,7 @@
 #include <proxies/IGDExt_Proxy.h>
 #include <proxies/Streamline_Proxy.h>
 #include <proxies/KernelBase_Proxy.h>
+#include <hooks/Reflex_Hooks.h>
 
 #include <detours/detours.h>
 
@@ -1541,6 +1542,7 @@ static HRESULT hkD3D12CreateDevice(IUnknown* pAdapter, D3D_FEATURE_LEVEL Minimum
                 reflexConst.mode = sl::ReflexMode::eLowLatency;
                 reflexConst.useMarkersToOptimize = false;
 
+                ScopedOptiScalerReflex optiScalerCall {};
                 auto result = StreamlineProxy::ReflexSetOptions()(reflexConst);
                 LOG_TRACE("ReflexSetOptions");
             }

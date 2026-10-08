@@ -1,6 +1,14 @@
 #include "pch.h"
 #include "input_xell.h"
 #include <hooks/Xell_Hooks.h>
+#include <proxies/XeLL_Proxy.h>
+
+// Context free calls can be answered by the real XeLL
+static FARPROC RealExport(const char* name)
+{
+    auto module = XeLLProxy::Module();
+    return module != nullptr ? KernelBaseProxy::GetProcAddress_()(module, name) : nullptr;
+}
 
 // Common
 xell_result_t InputXeLL::DestroyContext(xell_input_handle_t context)
@@ -135,10 +143,18 @@ xell_result_t InputXeLL::GetVersion(xell_version_t* pVersion)
     if (!pVersion)
         return XELL_RESULT_ERROR_INVALID_ARGUMENT;
 
-    // TODO: make this mimic the version of loaded xefg dll so that both are seen as compatible
-    pVersion->major = 1;
-    pVersion->minor = 3;
-    pVersion->patch = 1;
+    // XeFG checks the version of the XeLL it is paired with, report the real XeLL's
+    auto result = XELL_RESULT_ERROR_UNKNOWN;
+
+    if (auto real = (decltype(&xellGetVersion)) RealExport("xellGetVersion"))
+        result = real(pVersion);
+
+    if (result != XELL_RESULT_SUCCESS)
+    {
+        pVersion->major = 1;
+        pVersion->minor = 3;
+        pVersion->patch = 1;
+    }
 
     return XELL_RESULT_SUCCESS;
 }
@@ -192,13 +208,23 @@ xell_result_t InputXeLL::D3D12CreateContext(ID3D12Device* device, xell_input_han
 // From dll exports
 xell_result_t InputXeLL::AILGetDecision(void* param1, void* param2)
 {
-    // TODO: idk what this is, might need to just passthrough when possible
+    if (auto real = (decltype(&AILGetDecision)) RealExport("xellAILGetDecision"))
+        return real(param1, param2);
+
     return XELL_RESULT_ERROR_UNKNOWN;
 }
-uint32_t InputXeLL::AILGetVersion() { return 1; }
+uint32_t InputXeLL::AILGetVersion()
+{
+    if (auto real = (decltype(&AILGetVersion)) RealExport("xellAILGetVersion"))
+        return real();
+
+    return 1;
+}
 bool InputXeLL::AILIsSupportedDevice(uint32_t param1)
 {
-    // TODO: idk what this is, might need to just passthrough when possible
+    if (auto real = (decltype(&AILIsSupportedDevice)) RealExport("xellAILIsSupportedDevice"))
+        return real(param1);
+
     return false;
 }
 xell_result_t InputXeLL::D3D12SetAppQueue(xell_input_handle_t context, ID3D12CommandQueue* appQueue)
@@ -232,6 +258,8 @@ xell_result_t InputXeLL::QueryInterface(xell_input_handle_t context, LPCSTR lpPr
 {
     if (!outFunc)
         return XELL_RESULT_ERROR_INVALID_ARGUMENT;
+
+    *outFunc = nullptr;
 
     if (!lpProcName)
     {
@@ -401,5 +429,30 @@ XELL_EXPORT xell_result_t xellGetLastPresentStartFrameId(xell_context_handle_t c
 {
     return InputXeLL::GetLastPresentStartFrameId((InputXeLL::xell_input_handle_t) context, p_frame_id);
 };
+
+// The rest of libxell's exports, so a redirected libxell never sees our contexts
+XELL_EXPORT xell_result_t xellQueryInterface(xell_context_handle_t context, LPCSTR lpProcName, FARPROC* outFunc)
+{
+    return InputXeLL::QueryInterface((InputXeLL::xell_input_handle_t) context, lpProcName, outFunc);
+}
+
+XELL_EXPORT xell_result_t xellGetContextParameterP(xell_context_handle_t context, uint32_t param1, uint64_t param2)
+{
+    return InputXeLL::GetContextParameterP((InputXeLL::xell_input_handle_t) context, param1, param2);
+}
+
+XELL_EXPORT xell_result_t xellSetContextParameterP(xell_context_handle_t context, uint32_t param1, uint64_t param2)
+{
+    return InputXeLL::SetContextParameterP((InputXeLL::xell_input_handle_t) context, param1, param2);
+}
+
+XELL_EXPORT xell_result_t xellAILGetDecision(void* param1, void* param2)
+{
+    return InputXeLL::AILGetDecision(param1, param2);
+}
+
+XELL_EXPORT uint32_t xellAILGetVersion() { return InputXeLL::AILGetVersion(); }
+
+XELL_EXPORT bool xellAILIsSupportedDevice(uint32_t param1) { return InputXeLL::AILIsSupportedDevice(param1); }
 
 #endif

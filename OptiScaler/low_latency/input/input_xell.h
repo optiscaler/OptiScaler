@@ -72,4 +72,10 @@ extern "C"
     XELL_EXPORT xell_result_t xellSetGeneratedFramesCount(xell_context_handle_t context, uint32_t frameId,
                                                           uint32_t framesCount);
     XELL_EXPORT xell_result_t xellGetLastPresentStartFrameId(xell_context_handle_t context, uint32_t* p_frame_id);
+    XELL_EXPORT xell_result_t xellQueryInterface(xell_context_handle_t context, LPCSTR lpProcName, FARPROC* outFunc);
+    XELL_EXPORT xell_result_t xellGetContextParameterP(xell_context_handle_t context, uint32_t param1, uint64_t param2);
+    XELL_EXPORT xell_result_t xellSetContextParameterP(xell_context_handle_t context, uint32_t param1, uint64_t param2);
+    XELL_EXPORT xell_result_t xellAILGetDecision(void* param1, void* param2);
+    XELL_EXPORT uint32_t xellAILGetVersion();
+    XELL_EXPORT bool xellAILIsSupportedDevice(uint32_t param1);
 }

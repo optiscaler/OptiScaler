@@ -42,11 +42,13 @@ class ReflexHooks
     inline static decltype(&NvAPI_D3D_GetLatency) o_NvAPI_D3D_GetLatency = nullptr;
     inline static decltype(&NvAPI_D3D_SetLatencyMarker) o_NvAPI_D3D_SetLatencyMarker = nullptr;
     inline static decltype(&NvAPI_D3D12_SetAsyncFrameMarker) o_NvAPI_D3D12_SetAsyncFrameMarker = nullptr;
+    inline static decltype(&NvAPI_D3D_SetReflexSync) o_NvAPI_D3D_SetReflexSync = nullptr;
 
     static NvAPI_Status hkNvAPI_D3D_SetSleepMode(IUnknown* pDev, NV_SET_SLEEP_MODE_PARAMS* pSetSleepModeParams);
     static NvAPI_Status hkNvAPI_D3D_Sleep(IUnknown* pDev);
     static NvAPI_Status hkNvAPI_D3D_GetLatency(IUnknown* pDev, NV_LATENCY_RESULT_PARAMS* pGetLatencyParams);
     static NvAPI_Status hkNvAPI_D3D_SetLatencyMarker(IUnknown* pDev, NV_LATENCY_MARKER_PARAMS* pSetLatencyMarkerParams);
+    static NvAPI_Status hkNvAPI_D3D_SetReflexSync(IUnknown* pDev, NV_SET_REFLEX_SYNC_PARAMS* pSetReflexSyncParams);
     static NvAPI_Status hkNvAPI_D3D12_SetAsyncFrameMarker(ID3D12CommandQueue* pCommandQueue,
                                                           NV_ASYNC_FRAME_MARKER_PARAMS* pSetAsyncFrameMarkerParams);
 
@@ -73,7 +75,11 @@ class ReflexHooks
   public:
     static std::optional<TimingEntry> timingData[TimingType::TimingTypeCOUNT];
 
+    // Set while OptiScaler's own Streamline (DLSSG output) is called, its Reflex calls aren't a game input
+    inline static thread_local bool optiScalerCall = false;
+
     static void hookReflex(PFN_NvApi_QueryInterface& queryInterface);
+    static void* getHookedReflexSync(PFN_NvApi_QueryInterface& queryInterface);
     static uint8_t dlssgFrameCountToGenerate();
     static void setDlssgFrameCount(uint8_t count);
     static bool isReflexHooked();
@@ -86,4 +92,12 @@ class ReflexHooks
 
     // 0 - disables the fps cap
     static void setFPSLimit(float fps);
+};
+
+// Marks OptiScaler's own Reflex calls for the scope
+struct ScopedOptiScalerReflex
+{
+    bool previous = ReflexHooks::optiScalerCall;
+    ScopedOptiScalerReflex() { ReflexHooks::optiScalerCall = true; }
+    ~ScopedOptiScalerReflex() { ReflexHooks::optiScalerCall = previous; }
 };

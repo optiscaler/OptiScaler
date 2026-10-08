@@ -200,6 +200,15 @@ NvAPI_Status __stdcall NvApiHooks::hkNvAPI_DRS_GetSetting(NvDRSSessionHandle hSe
 
 void* __stdcall NvApiHooks::hkNvAPI_QueryInterface(unsigned int InterfaceId)
 {
+#ifdef LOW_LATENCY_INPUTS
+    // Frame generation reports its multiplier through Reflex Sync, OptiScaler's own FG output reports its own
+    if (InterfaceId == GET_ID(NvAPI_D3D_SetReflexSync))
+    {
+        if (auto hooked = ReflexHooks::getHookedReflexSync(o_NvAPI_QueryInterface))
+            return hooked;
+    }
+#endif
+
     if (!o_NvAPI_QueryInterface)
         if (Config::Instance()->UseFakenvapi.value_or_default())
             o_NvAPI_QueryInterface = (PFN_NvApi_QueryInterface) fakenvapi::queryInterface;
@@ -226,6 +235,9 @@ void* __stdcall NvApiHooks::hkNvAPI_QueryInterface(unsigned int InterfaceId)
     )
     {
 #ifdef LOW_LATENCY_INPUTS
+        // The Reflex output and OptiScaler's own Reflex calls use the Reflex hooks
+        ReflexHooks::hookReflex(o_NvAPI_QueryInterface);
+
         if (InterfaceId == GET_ID(NvAPI_D3D_SetSleepMode))
             return InputReflex::D3D_SetSleepMode;
         if (InterfaceId == GET_ID(NvAPI_D3D_GetSleepStatus))

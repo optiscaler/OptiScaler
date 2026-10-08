@@ -50,6 +50,9 @@ class InputCommon
     inline static std::mutex create_tech_mutex {};
 
     inline static FrameReport frame_reports[FRAME_REPORTS_BUFFER_SIZE] {};
+    inline static std::array<std::atomic_uint64_t, 6> last_marker_frame_ids {}; // Simulation start to present end
+    inline static LowLatencyMode failed_output = LowLatencyMode::None;
+    inline static std::chrono::steady_clock::time_point failed_time {};
     inline static std::atomic_uint64_t last_present_start_frame_id = 0;
     inline static std::atomic_uint32_t delay_deinit = 0;
     inline static std::array<SleepMode, static_cast<size_t>(LowLatencyInput::_)> sleep_mode_copies {};
@@ -90,6 +93,17 @@ class InputCommon
     }
 
     static InputResult mark_present_start(IUnknown* pDevice);
+
+    // OptiScaler's own frame generation presenter (FSR-FG) gives the Reflex output the async calls DLSSG makes
+    static void fg_game_present(ID3D12CommandQueue* gameQueue, bool presented, uint32_t frameMultiplier);
+    static void fg_output_present(ID3D12CommandQueue* presentQueue, bool presented, uint32_t frameMultiplier);
+
+    // The GPU vendor's own low latency output
+    static LowLatencyMode default_output();
+
+    // Set when the frame generation in use decides the low latency output or input
+    static std::optional<LowLatencyMode> forced_output();
+    static std::optional<LowLatencyInput> forced_input();
 
     // passthrough when possible, fillout with local frame_reports if not
 
