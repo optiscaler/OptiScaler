@@ -8263,7 +8263,7 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
 
     // Space kept free below for the frametime graph and the buttons
     const float footerHeight = FooterHeight();
-    const float sidebarWidth = 120.0f * menuResScale;
+    const float sidebarWidth = 130.0f * menuResScale;
     const float tabHeight = ImGui::GetFrameHeight() * 1.35f;
 
     // Sidebar -----------------------------
@@ -8328,14 +8328,29 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
         else if (currentFeature->IsFrozen())
             ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)), "Idle");
         else
-            ImGui::TextColored(toneMapColor(ImVec4(0.35f, 0.85f, 0.45f, 1.f)), "%s",
-                               currentFeature->ShortName().c_str());
+        {
+            const float renderWidth = (float) currentFeature->RenderWidth();
+            const float upscaleRatio = renderWidth > 0.0f ? (float) currentFeature->TargetWidth() / renderWidth : 0.0f;
+
+            ImGui::TextColored(toneMapColor(ImVec4(0.35f, 0.85f, 0.45f, 1.f)), "%s (%.2f)",
+                               currentFeature->ShortName().c_str(), upscaleRatio);
+        }
 
         ImGui::TextDisabled("FG");
         ImGui::SameLine(0.0f, 8.0f * menuResScale);
         auto fg = state.currentFG;
         if (fg != nullptr && fg->IsActive() && !fg->IsPaused())
-            ImGui::TextColored(toneMapColor(ImVec4(0.35f, 0.85f, 0.45f, 1.f)), "%s", std::string(fg->Name()).c_str());
+        {
+            const UINT multiplier = fg->GetInterpolatedFrameCount() + 1;
+
+            // XeFG already has multiplier in name when MFG detected
+            std::string fgName = fg->Name();
+            const std::string multiplierSuffix = StrFmt(" %ux", multiplier);
+            if (fgName.ends_with(multiplierSuffix))
+                fgName.erase(fgName.size() - multiplierSuffix.size());
+
+            ImGui::TextColored(toneMapColor(ImVec4(0.35f, 0.85f, 0.45f, 1.f)), "%s %ux", fgName.c_str(), multiplier);
+        }
         else
             ImGui::TextDisabled("Off");
 
