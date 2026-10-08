@@ -12,6 +12,7 @@
 #include <proxies/XeSS_Proxy.h>
 #include <proxies/XeFG_Proxy.h>
 #include <proxies/XeLL_Proxy.h>
+#include <inputs/FG/XeFG_Inputs_Dx12.h>
 #include <proxies/NVNGX_Proxy.h>
 #include <proxies/FfxApi_Proxy.h>
 
@@ -460,6 +461,13 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
         if (module != nullptr)
             XeSSProxy::InitXeSS(module);
 
+        return module;
+    }
+
+    if (CheckDllNameW(&libName, &xefgNamesW) && State::Instance().activeFgInput == FGInput::XeFG)
+    {
+        auto module = NtdllProxy::LoadLibraryExW_Ldr(lpLibFullPath, NULL, 0);
+        XeFGInputs::Hook(module);
         return module;
     }
 

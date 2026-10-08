@@ -215,6 +215,7 @@ void DLSSG_Dx12::Deactivate()
         sl::ReflexOptions reflexConst = {};
         reflexConst.mode = sl::ReflexMode::eOff;
         reflexConst.useMarkersToOptimize = false;
+        ScopedOptiScalerReflex optiScalerCall {};
         StreamlineProxy::ReflexSetOptions()(reflexConst);
 
         _isActive = false;
@@ -304,6 +305,7 @@ bool DLSSG_Dx12::Dispatch()
     reflexConst.mode = sl::ReflexMode::eLowLatency;
     reflexConst.useMarkersToOptimize = ReflexHooks::gameIsSendingMarkers();
 
+    ScopedOptiScalerReflex optiScalerCall {};
     auto reflexSetOptionsResult = StreamlineProxy::ReflexSetOptions()(reflexConst);
 
     if (reflexSetOptionsResult != sl::Result::eOk)

@@ -6,6 +6,13 @@
 #include <low_latency/low_latency_tech/ll_xell.h>
 #include <low_latency/low_latency_tech/ll_antilag2.h>
 #include <low_latency/low_latency_tech/ll_latencyflex.h>
+#include <low_latency/low_latency_tech/ll_reflex.h>
+#include <inputs/FG/XeFG_Inputs_Dx12.h>
+#include <nvapi/fakenvapi.h>
+
+// Game frame id of the frames the FG presenter shows next, and whether a new batch of them started
+static std::atomic<uint64_t> fg_frame_id = 0;
+static std::atomic<bool> fg_new_batch = false;
 
 // private
 bool InputCommon::deinit_current_tech()
@@ -55,7 +62,7 @@ bool InputCommon::init_tech(IUnknown* pDevice, LowLatencyMode desiredMode)
             isInitialized = try_init(std::make_shared<AntiLag2>(), "AntiLag2");
             break;
         case LowLatencyMode::Reflex:
-            // isInitialized = try_init(std::make_shared<Reflex>(), "Reflex");
+            isInitialized = try_init(std::make_shared<Reflex>(), "Reflex");
             break;
         case LowLatencyMode::LatencyFlex:
             isInitialized = try_init(std::make_shared<LatencyFlex>(), "LatencyFlex");
@@ -66,6 +73,8 @@ bool InputCommon::init_tech(IUnknown* pDevice, LowLatencyMode desiredMode)
 
         if (!isInitialized && desiredMode != LowLatencyMode::LatencyFlex)
         {
+            failed_output = desiredMode;
+            failed_time = std::chrono::steady_clock::now();
             isInitialized = try_init(std::make_shared<LatencyFlex>(), "LatencyFlex (Fallback)");
             if (isInitialized)
             {
@@ -82,6 +91,47 @@ bool InputCommon::init_tech(IUnknown* pDevice, LowLatencyMode desiredMode)
     }
 
     return false;
+}
+
+LowLatencyMode InputCommon::default_output()
+{
+    // TODO: add avaliableOutput, somehow ?
+    auto vendorId = IdentifyGpu::getPrimaryGpu().vendorId;
+
+    if (vendorId == VendorId::Intel)
+        return LowLatencyMode::XeLL;
+
+    if (vendorId == VendorId::AMD)
+        return LowLatencyMode::AntiLag2;
+
+    if (vendorId == VendorId::Nvidia && !fakenvapi::isUsingAsMainNvapi())
+        return LowLatencyMode::Reflex;
+
+    return LowLatencyMode::LatencyFlex;
+}
+
+std::optional<LowLatencyMode> InputCommon::forced_output()
+{
+    auto fgOutput = State::Instance().activeFgOutput;
+
+    // XeFG paces through XeLL, also the game's own XeFG with the XeFG input passthrough
+    if (fgOutput == FGOutput::XeFG || XeFGInputs::Passthrough())
+        return LowLatencyMode::XeLL;
+
+    // DLSSG works with Reflex and FSR-FG with AntiLag 2, each falls back to the GPU vendor's own output
+    if (fgOutput == FGOutput::DLSSG || fgOutput == FGOutput::FSRFG)
+        return default_output();
+
+    return std::nullopt;
+}
+
+std::optional<LowLatencyInput> InputCommon::forced_input()
+{
+    // Intel's XeFG only generates frames while the game's XeLL is in low latency mode
+    if (XeFGInputs::Passthrough())
+        return LowLatencyInput::XeLL;
+
+    return std::nullopt;
 }
 
 bool InputCommon::update_low_latency_tech(IUnknown* pDevice, std::optional<LowLatencyMode> mode)
@@ -119,11 +169,18 @@ bool InputCommon::update_low_latency_tech(IUnknown* pDevice, std::optional<LowLa
 
     // TODO: add option for totally disabling specific inputs on boot
 
+    if (auto forced = forced_input())
+        desiredInput = *forced;
+
+    // The selection stays, the input is used once the game starts using it
     if (!avaliableInputs[desiredInput] && desiredInput != LowLatencyInput::Auto)
     {
-        LOG_WARN("Selected Low Latency Input is not avaliable");
+        static std::atomic<LowLatencyInput> unavailable = LowLatencyInput::_;
+
+        if (unavailable.exchange(desiredInput) != desiredInput)
+            LOG_WARN("Selected Low Latency Input is not avaliable yet: {}", magic_enum::enum_name(desiredInput));
+
         desiredInput = LowLatencyInput::Auto;
-        Config::Instance()->LowLatencyInput.set_volatile_value(activeInput);
     }
 
     // Hopefully this doesn't cause constant switching of inputs.
@@ -139,12 +196,11 @@ bool InputCommon::update_low_latency_tech(IUnknown* pDevice, std::optional<LowLa
         }
         else
         {
-            // Non-auto input is not avaliable, revert config to auto
-            if (desiredInput != LowLatencyInput::Auto)
-                Config::Instance()->LowLatencyInput.set_volatile_value(LowLatencyInput::Auto);
-
-            // Try to use inputs in order Reflex -> XeLL -> AL2
-            if (avaliableInputs[LowLatencyInput::Reflex])
+            // Try to use inputs in order Reflex -> XeLL -> AL2. With the XeFG input the game's own low latency
+            // for its frame generation is XeLL, Reflex markers it also sends belong to its other paths.
+            if (State::Instance().activeFgInput == FGInput::XeFG && avaliableInputs[LowLatencyInput::XeLL])
+                desiredInput = LowLatencyInput::XeLL;
+            else if (avaliableInputs[LowLatencyInput::Reflex])
                 desiredInput = LowLatencyInput::Reflex;
             else if (avaliableInputs[LowLatencyInput::XeLL])
                 desiredInput = LowLatencyInput::XeLL;
@@ -177,24 +233,19 @@ bool InputCommon::update_low_latency_tech(IUnknown* pDevice, std::optional<LowLa
     if (desiredMode == LowLatencyMode::None)
         desiredMode = Config::Instance()->LowLatencyOutput.value_or_default();
 
-    // TODO: add avaliableOutput, somehow ?
     if (desiredMode == LowLatencyMode::Auto)
+        desiredMode = default_output();
+
+    // The frame generation output decides the low latency output it works with
+    if (auto forced = forced_output())
+        desiredMode = *forced;
+
+    // An output that couldn't start keeps its fallback instead of being retried every call
+    if (desiredMode == failed_output && currently_active_tech.load() != nullptr &&
+        std::chrono::steady_clock::now() - failed_time < std::chrono::seconds(10))
     {
-        auto vendorId = IdentifyGpu::getPrimaryGpu().vendorId;
-
-        if (vendorId == VendorId::Intel)
-            desiredMode = LowLatencyMode::XeLL;
-        else if (vendorId == VendorId::AMD)
-            desiredMode = LowLatencyMode::AntiLag2;
-        // else if (vendorId == VendorId::Nvidia)
-        //     desiredMode = LowLatencyMode::Reflex; // TODO: not supported yet
-        else
-            desiredMode = LowLatencyMode::LatencyFlex;
+        desiredMode = activeOutput;
     }
-
-    // Force XeLL when using XeFG
-    if (State::Instance().activeFgOutput == FGOutput::XeFG)
-        desiredMode = LowLatencyMode::XeLL;
 
     if (activeOutput == desiredMode)
     {
@@ -351,6 +402,15 @@ InputResult InputCommon::set_marker(const InputContext& inputContext, IUnknown* 
         return InputResult::InputNotSupported;
     }
 
+    // Some games send a frame's marker twice (The Witcher 3 ends its render submit again after present), the first
+    // one is the right one. Frame id 0 is what inputs without frame ids send.
+    if (auto type = (size_t) marker_params.marker_type;
+        type < last_marker_frame_ids.size() && marker_params.frame_id != 0)
+    {
+        if (last_marker_frame_ids[type].exchange(marker_params.frame_id) == marker_params.frame_id)
+            return InputResult::Ok;
+    }
+
     if (marker_params.marker_type == MarkerType::SIMULATION_START)
         State::Instance().reflexFrameId = marker_params.frame_id;
     else if (marker_params.marker_type == MarkerType::PRESENT_START)
@@ -375,9 +435,20 @@ InputResult InputCommon::set_marker(const InputContext& inputContext, IUnknown* 
 InputResult InputCommon::set_async_marker(const InputContext& inputContext, ID3D12CommandQueue* pCommandQueue,
                                           const MarkerParams& marker_params)
 {
-    // Always allow Opti's local context through, like XeLL or AL2
-    if (inputContext.caller != activeInput && !inputContext.localContext)
+    auto fgOutput = State::Instance().activeFgOutput;
+
+    // With the Reflex output OptiScaler's FSR-FG sends the async markers of its own presents (fg_output_present),
+    // the game's describe presents that don't happen
+    if (activeOutput == LowLatencyMode::Reflex && fgOutput == FGOutput::FSRFG)
         return InputResult::UsingDifferentInput;
+
+    // Always allow Opti's local context through, like XeLL or AL2. The async markers of OptiScaler's DLSSG output
+    // come from its Streamline as Reflex calls, they don't mix with the frame markers of the active input.
+    if (inputContext.caller != activeInput && !inputContext.localContext &&
+        !(activeOutput == LowLatencyMode::Reflex && fgOutput == FGOutput::DLSSG))
+    {
+        return InputResult::UsingDifferentInput;
+    }
 
     if (!currently_active_tech.load()) // can't init using ID3D12CommandQueue, can only check if available
         return InputResult::LowLatencyUpdateFail;
@@ -468,8 +539,14 @@ InputResult InputCommon::get_latency(const InputContext& inputContext, IUnknown*
     {
         if (activeOutput == LowLatencyMode::Reflex)
         {
-            // TODO: passthrough call, if success return InputResult::Ok;
-            // return InputResult::Ok;
+            if (auto current_tech = currently_active_tech.load();
+                current_tech && current_tech->get_mode() == LowLatencyMode::Reflex)
+            {
+                auto reflex_tech = std::static_pointer_cast<Reflex>(current_tech);
+
+                if (reflex_tech->get_latency((NV_LATENCY_RESULT_PARAMS*) latency_params) == NVAPI_OK)
+                    return InputResult::Ok;
+            }
         }
 
         NV_LATENCY_RESULT_PARAMS* reports = (NV_LATENCY_RESULT_PARAMS*) latency_params;
@@ -569,6 +646,7 @@ InputResult InputCommon::get_latency(const InputContext& inputContext, IUnknown*
 bool InputCommon::get_timing_data(TimingData& timingDataOut)
 {
     InputContext tempContext {};
+
     if (activeOutput == LowLatencyMode::Reflex)
     {
         // TODO: allocate struct and get everything from reflex
@@ -696,6 +774,69 @@ bool InputCommon::get_timing_data(TimingData& timingDataOut)
     };
 
     return false;
+}
+
+// As DLSSG: async present markers on the game's queue around the game's present, with the frame multiplier for
+// Reflex Sync in between. Every marker uses the game's frame id.
+void InputCommon::fg_game_present(ID3D12CommandQueue* gameQueue, bool presented, uint32_t frameMultiplier)
+{
+    auto current_tech = currently_active_tech.load();
+
+    if (current_tech == nullptr || current_tech->get_mode() != LowLatencyMode::Reflex || gameQueue == nullptr)
+        return;
+
+    auto reflex_tech = std::static_pointer_cast<Reflex>(current_tech);
+    uint64_t frame_id = last_present_start_frame_id;
+    reflex_tech->set_async_marker(gameQueue,
+                                  { frame_id, presented ? MarkerType::PRESENT_END : MarkerType::PRESENT_START });
+
+    if (!presented)
+    {
+        reflex_tech->set_reflex_sync(frameMultiplier);
+        fg_frame_id = frame_id;
+        fg_new_batch = true;
+    }
+}
+
+// As DLSSG on its present thread: out of band render submit markers around each batch of generated and real
+// frames, out of band present markers around each of their presents, all with the game's frame id
+void InputCommon::fg_output_present(ID3D12CommandQueue* presentQueue, bool presented, uint32_t frameMultiplier)
+{
+    // Only the FG presenter thread calls this
+    static uint64_t batchFrameId = 0;
+    static uint32_t batchPresents = 0;
+    static bool batchOpen = false;
+
+    auto current_tech = currently_active_tech.load();
+
+    if (current_tech == nullptr || current_tech->get_mode() != LowLatencyMode::Reflex || presentQueue == nullptr)
+        return;
+
+    auto reflex_tech = std::static_pointer_cast<Reflex>(current_tech);
+    auto send = [&](MarkerType type) { reflex_tech->set_async_marker(presentQueue, { batchFrameId, type }); };
+
+    if (!presented && fg_new_batch.exchange(false))
+    {
+        // A batch cut short still gets its end
+        if (batchOpen)
+            send(MarkerType::OUT_OF_BAND_RENDERSUBMIT_END);
+
+        batchFrameId = fg_frame_id;
+        batchPresents = 0;
+        batchOpen = true;
+        send(MarkerType::OUT_OF_BAND_RENDERSUBMIT_START);
+    }
+
+    if (batchFrameId == 0)
+        return;
+
+    send(presented ? MarkerType::OUT_OF_BAND_PRESENT_END : MarkerType::OUT_OF_BAND_PRESENT_START);
+
+    if (presented && batchOpen && ++batchPresents >= frameMultiplier)
+    {
+        send(MarkerType::OUT_OF_BAND_RENDERSUBMIT_END);
+        batchOpen = false;
+    }
 }
 
 InputResult InputCommon::mark_present_start(IUnknown* pDevice)

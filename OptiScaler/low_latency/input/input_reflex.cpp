@@ -1,10 +1,23 @@
 #include "pch.h"
 #include "input_reflex.h"
+#include <nvapi/NvApiHooks.h>
+
+// OptiScaler's own Streamline (DLSSG output) reaches the driver as before, it isn't a game input
+template <typename Fn> static Fn OptiScalerCall(unsigned int id)
+{
+    if (!ReflexHooks::optiScalerCall)
+        return nullptr;
+
+    return reinterpret_cast<Fn>(ReflexHooks::getHookedReflex(id));
+}
 
 NvAPI_Status InputReflex::D3D_SetSleepMode(IUnknown* pDev, NV_SET_SLEEP_MODE_PARAMS* pSetSleepModeParams)
 {
     if (!pSetSleepModeParams || !pDev)
         return NVAPI_INVALID_ARGUMENT;
+
+    if (auto own = OptiScalerCall<decltype(&NvAPI_D3D_SetSleepMode)>(GET_ID(NvAPI_D3D_SetSleepMode)))
+        return own(pDev, pSetSleepModeParams);
 
     SleepMode sleepMode {};
     sleepMode.low_latency_enabled = pSetSleepModeParams->bLowLatencyMode;
@@ -30,6 +43,12 @@ NvAPI_Status InputReflex::D3D_GetSleepStatus(IUnknown* pDevice, NV_GET_SLEEP_STA
 {
     if (!pGetSleepStatusParams || !pDevice)
         return NVAPI_INVALID_ARGUMENT;
+
+    if (ReflexHooks::optiScalerCall && NvApiHooks::o_NvAPI_QueryInterface != nullptr)
+    {
+        if (auto own = GET_INTERFACE(NvAPI_D3D_GetSleepStatus, NvApiHooks::o_NvAPI_QueryInterface))
+            return own(pDevice, pGetSleepStatusParams);
+    }
 
     SleepParams sleepParams {};
 
@@ -63,6 +82,9 @@ NvAPI_Status InputReflex::D3D_Sleep(IUnknown* pDev)
     if (!pDev)
         return NVAPI_INVALID_ARGUMENT;
 
+    if (auto own = OptiScalerCall<decltype(&NvAPI_D3D_Sleep)>(GET_ID(NvAPI_D3D_Sleep)))
+        return own(pDev);
+
     auto result = InputCommon::sleep(inputContext, pDev);
 
     if (result == InputResult::Ok || result == InputResult::UsingDifferentInput)
@@ -80,6 +102,9 @@ NvAPI_Status InputReflex::D3D_GetLatency(IUnknown* pDev, NV_LATENCY_RESULT_PARAM
 {
     if (!pDev || !pGetLatencyParams)
         return NVAPI_INVALID_ARGUMENT;
+
+    if (auto own = OptiScalerCall<decltype(&NvAPI_D3D_GetLatency)>(GET_ID(NvAPI_D3D_GetLatency)))
+        return own(pDev, pGetLatencyParams);
 
     auto result = InputCommon::get_latency(inputContext, pDev, pGetLatencyParams);
 
@@ -100,6 +125,9 @@ NvAPI_Status InputReflex::D3D_SetLatencyMarker(IUnknown* pDev, NV_LATENCY_MARKER
 {
     if (!pDev || !pSetLatencyMarkerParams)
         return NVAPI_INVALID_ARGUMENT;
+
+    if (auto own = OptiScalerCall<decltype(&NvAPI_D3D_SetLatencyMarker)>(GET_ID(NvAPI_D3D_SetLatencyMarker)))
+        return own(pDev, pSetLatencyMarkerParams);
 
     MarkerParams markerParams {};
 
@@ -124,6 +152,9 @@ NvAPI_Status InputReflex::D3D12_SetAsyncFrameMarker(ID3D12CommandQueue* pCommand
 {
     if (!pCommandQueue || !pSetAsyncFrameMarkerParams)
         return NVAPI_INVALID_ARGUMENT;
+
+    if (auto own = OptiScalerCall<decltype(&NvAPI_D3D12_SetAsyncFrameMarker)>(GET_ID(NvAPI_D3D12_SetAsyncFrameMarker)))
+        return own(pCommandQueue, pSetAsyncFrameMarkerParams);
 
     MarkerParams markerParams {};
 
