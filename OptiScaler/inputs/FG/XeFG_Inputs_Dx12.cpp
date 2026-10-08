@@ -5,6 +5,7 @@
 #include <proxies/XeLL_Proxy.h>
 #include <detours/detours.h>
 #include <DirectXMath.h>
+#include <magic_enum.hpp>
 
 // XeFG output: the game's own XeFG and XeLL run on OptiScaler's libraries, as they would without OptiScaler.
 // Like Override DLSSG Ratio, "Override XeFG Ratio" replaces the game's count (0 = off), within what the game's
@@ -115,6 +116,8 @@ static uint64_t _frameIds[BUFFER_COUNT] {}; // Present id + 1 of each buffer ind
 static float _frameTimeScale = 0.0f;        // 1000 when the game passes seconds, 0 until decided
 static float _frameTimeMax = 0.0f;
 static int _frameTimeSamples = 0;
+static bool _gameDepthMV[BUFFER_COUNT] {}; // Frames without them from the game use the upscaler's
+static bool _upscalerMVs = false;
 
 static xefg_swapchain_result_t Ok() { return XEFG_SWAPCHAIN_RESULT_SUCCESS; }
 
@@ -134,6 +137,7 @@ static int FrameIndex(IFGFeature_Dx12* fg, uint32_t presentId)
     fg->StartNewFrame();
     auto index = fg->GetIndex();
     _frameIds[index] = (uint64_t) presentId + 1;
+    _gameDepthMV[index] = false;
     return index;
 }
 
@@ -233,6 +237,13 @@ static xefg_swapchain_result_t D3D12GetProperties(xefg_swapchain_handle_t handle
     return GetProperties(handle, properties);
 }
 
+static void SetGameMVFlags()
+{
+    auto flags = _initParams.initFlags;
+    _constants.flags.set(FG_Flags::JitteredMVs, flags & XEFG_SWAPCHAIN_INIT_FLAG_JITTERED_MV);
+    _constants.flags.set(FG_Flags::DisplayResolutionMVs, flags & XEFG_SWAPCHAIN_INIT_FLAG_HIGH_RES_MV);
+}
+
 static xefg_swapchain_result_t InitFromSwapChain(xefg_swapchain_handle_t, ID3D12CommandQueue*,
                                                  const xefg_swapchain_d3d12_init_params_t* params)
 {
@@ -245,7 +256,9 @@ static xefg_swapchain_result_t InitFromSwapChain(xefg_swapchain_handle_t, ID3D12
     _frameTimeScale = 0.0f;
     _frameTimeMax = 0.0f;
     _frameTimeSamples = 0;
+    _upscalerMVs = false;
     std::fill(std::begin(_frameIds), std::end(_frameIds), 0);
+    std::fill(std::begin(_gameDepthMV), std::end(_gameDepthMV), false);
     _initParams = *params;
     _initParams.pApplicationSwapChain = nullptr;
     _initParams.maxInterpolatedFrames = 1;
@@ -253,9 +266,8 @@ static xefg_swapchain_result_t InitFromSwapChain(xefg_swapchain_handle_t, ID3D12
     auto flags = params->initFlags;
     _constants = {};
     _constants.flags.set(FG_Flags::InvertedDepth, flags & XEFG_SWAPCHAIN_INIT_FLAG_INVERTED_DEPTH);
-    _constants.flags.set(FG_Flags::JitteredMVs, flags & XEFG_SWAPCHAIN_INIT_FLAG_JITTERED_MV);
-    _constants.flags.set(FG_Flags::DisplayResolutionMVs, flags & XEFG_SWAPCHAIN_INIT_FLAG_HIGH_RES_MV);
     _constants.flags.set(FG_Flags::Async, Config::Instance()->FGAsync.value_or_default());
+    SetGameMVFlags();
 
     LOG_INFO("XeFG input initialized, flags: {:X}", flags);
     return XEFG_SWAPCHAIN_RESULT_SUCCESS;
@@ -380,6 +392,7 @@ static xefg_swapchain_result_t TagFrameConstants(xefg_swapchain_handle_t, uint32
         mvScaleY *= _mvSize.y * -0.5f;
     }
 
+    // For the game's MVs, the upscaler fallback replaces it later in the frame
     fg->SetJitter(data->jitterOffsetX, data->jitterOffsetY, index);
     fg->SetMVScale(mvScaleX, mvScaleY, index);
     fg->SetReset(data->resetHistory, index);
@@ -412,6 +425,17 @@ static xefg_swapchain_result_t TagFrameResource(xefg_swapchain_handle_t, ID3D12C
 
     if (data->type == XEFG_SWAPCHAIN_RES_MOTION_VECTOR)
         _mvSize = data->resourceSize;
+
+    if (data->type == XEFG_SWAPCHAIN_RES_DEPTH || data->type == XEFG_SWAPCHAIN_RES_MOTION_VECTOR)
+    {
+        _gameDepthMV[index] = true;
+
+        if (std::exchange(_upscalerMVs, false))
+        {
+            LOG_INFO("XeFG input: game tags depth and motion vectors again");
+            SetGameMVFlags();
+        }
+    }
 
     Dx12Resource res {};
     res.type = types[data->type];
@@ -572,6 +596,73 @@ bool XeFGInputs::Passthrough()
 }
 
 uint32_t XeFGInputs::MaxInterpolations() { return _passMax; }
+
+void XeFGInputs::SetUpscalerInputs(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Parameter* parameters,
+                                   IFeature_Dx12* feature)
+{
+    auto fg = State::Instance().currentFG;
+
+    if (State::Instance().activeFgInput != FGInput::XeFG || Passthrough() || fg == nullptr || _swapChain == nullptr ||
+        !_enabled)
+        return;
+
+    // The game's frame constants for this frame come before the upscaler, so it's the latest frame
+    auto index = fg->GetIndex();
+
+    // Cyberpunk 2077 only skips them with DLSS, the game's own tags are used whenever they come
+    if (_gameDepthMV[index])
+        return;
+
+    if (!std::exchange(_upscalerMVs, true))
+        LOG_INFO("XeFG input: game doesn't tag depth and motion vectors, using the upscaler's");
+
+    _constants.flags.set(FG_Flags::JitteredMVs, feature->JitteredMV());
+    _constants.flags.set(FG_Flags::DisplayResolutionMVs, !feature->LowResMV());
+
+    float mvScaleX = 0.0f;
+    float mvScaleY = 0.0f;
+    parameters->Get(NVSDK_NGX_Parameter_MV_Scale_X, &mvScaleX);
+    parameters->Get(NVSDK_NGX_Parameter_MV_Scale_Y, &mvScaleY);
+    fg->SetMVScale(mvScaleX, mvScaleY, index);
+
+    ID3D12Resource* velocity = nullptr;
+    if (parameters->Get(NVSDK_NGX_Parameter_MotionVectors, &velocity) != NVSDK_NGX_Result_Success)
+        parameters->Get(NVSDK_NGX_Parameter_MotionVectors, (void**) &velocity);
+
+    ID3D12Resource* depth = nullptr;
+    if (parameters->Get(NVSDK_NGX_Parameter_Depth, &depth) != NVSDK_NGX_Result_Success)
+        parameters->Get(NVSDK_NGX_Parameter_Depth, (void**) &depth);
+
+    if (velocity != nullptr)
+    {
+        Dx12Resource res {};
+        res.type = FG_ResourceType::Velocity;
+        res.resource = velocity;
+        res.cmdList = cmdList;
+        res.width = feature->LowResMV() ? feature->RenderWidth() : feature->TargetWidth();
+        res.height = feature->LowResMV() ? feature->RenderHeight() : feature->TargetHeight();
+        res.state = (D3D12_RESOURCE_STATES) Config::Instance()->MVResourceBarrier.value_or(
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        res.validity = FG_ResourceValidity::ValidNow;
+        res.frameIndex = index;
+        fg->SetResource(&res);
+    }
+
+    if (depth != nullptr)
+    {
+        Dx12Resource res {};
+        res.type = FG_ResourceType::Depth;
+        res.resource = depth;
+        res.cmdList = cmdList;
+        res.width = feature->RenderWidth();
+        res.height = feature->RenderHeight();
+        res.state = (D3D12_RESOURCE_STATES) Config::Instance()->DepthResourceBarrier.value_or(
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        res.validity = FG_ResourceValidity::ValidNow;
+        res.frameIndex = index;
+        fg->SetResource(&res);
+    }
+}
 
 void XeFGInputs::Hook(HMODULE libxessFg)
 {
