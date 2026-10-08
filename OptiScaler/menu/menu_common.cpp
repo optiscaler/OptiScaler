@@ -8521,25 +8521,6 @@ void MenuCommon::RenderMainMenuBottomBar(RenderMenuContext& ctx)
     auto& io = ctx.io;
 
     // BOTTOM LINE ---------------
-    if (ImGui::Button("Open Wiki"))
-    {
-        auto pIO = &ImGui::GetPlatformIO();
-        auto ctx = ImGui::GetCurrentContext();
-        pIO->Platform_OpenInShellFn(ctx, "https://github.com/optiscaler/OptiScaler/wiki");
-    }
-    ShowTooltip("Click to open the OptiScaler Wiki page\nin your default browser\n\n"
-                "Compatibility list with known game issues\nand workarounds, FG options explained\n"
-                "and other useful info");
-
-    ImGui::SameLine();
-
-    auto& style = ImGui::GetStyle();
-    float rightButtonsWidth =
-        ImGui::CalcTextSize("Save Settings").x + ImGui::CalcTextSize("Close").x + style.FramePadding.x * 4.0f + 6.0f;
-
-    float avail = ImGui::GetContentRegionAvail().x;
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - rightButtonsWidth);
-
     if (ImGui::Button("Save Settings"))
         config->SaveIni();
 
@@ -8558,6 +8539,26 @@ void MenuCommon::RenderMainMenuBottomBar(RenderMenuContext& ctx)
         io.WantCaptureKeyboard = false;
         io.WantCaptureMouse = false;
     }
+
+    ImGui::SameLine();
+
+    auto textSize = ImGui::CalcTextSize("Open Wiki");
+    auto& style = ImGui::GetStyle();
+    textSize.x += style.FramePadding.x * 2.0f;
+
+    float avail = ImGui::GetContentRegionAvail().x;
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - textSize.x);
+
+    // Make button text underline
+    if (ImGui::Button("Open Wiki"))
+    {
+        auto pIO = &ImGui::GetPlatformIO();
+        auto ctx = ImGui::GetCurrentContext();
+        pIO->Platform_OpenInShellFn(ctx, "https://github.com/optiscaler/OptiScaler/wiki");
+    }
+    ShowTooltip("Click to open the OptiScaler Wiki page\nin your default browser\n\n"
+                "Compatibility list with known game issues\nand workarounds, FG options explained\n"
+                "and other useful info");
 }
 
 void MenuCommon::RenderMipmapBiasWindow(RenderMenuContext& ctx, ImGuiWindowFlags flags)
