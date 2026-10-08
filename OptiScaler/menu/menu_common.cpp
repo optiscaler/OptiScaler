@@ -2784,8 +2784,6 @@ void MenuCommon::RenderUpscalerStateMessage(RenderMenuContext& ctx)
     }
 }
 
-static const char* ApiName(API api);
-
 void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
 {
     auto& state = ctx.state;
@@ -2796,14 +2794,6 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
 
     // UPSCALERS -----------------------------
     SectionTitle("Upscalers");
-
-    // Row - API | GPU | Upscaler input
-    ImGui::TextWrapped("%s%s | %s | Input: %s", ApiName(state.api),
-                       IdentifyGpu::gameUsesDxvk()          ? " (DXVK)"
-                       : IdentifyGpu::gameUsesVkd3dProton() ? " (VKD3D)"
-                                                            : "",
-                       primaryGpu.name.c_str(), ApiUpscalerInputName(state.currentInputApiName).c_str());
-    ImGui::Spacing();
 
     GetCurrentBackendInfo(state.api, currentBackend, &currentBackendName);
 
@@ -8308,12 +8298,8 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
                 ImGui::GetColorU32(ImGuiCol_Text), tabs[i].label);
         }
 
-        // OptiPatcher status only visible when used
-        const bool optiPatcher = state.isOptiPatcherSucceed;
-
         // Compact state of the upscaler and FG pinned to the bottom of the sidebar
-        const float statusLines = 3.0f + (optiPatcher ? 1.0f : 0.0f);
-        const float statusHeight = 1.0f + ImGui::GetTextLineHeightWithSpacing() * statusLines + style.ItemSpacing.y;
+        const float statusHeight = 1.0f + ImGui::GetTextLineHeightWithSpacing() * 2.0f + style.ItemSpacing.y;
         const float gap = ImGui::GetContentRegionAvail().y - statusHeight - style.ItemSpacing.y;
         if (gap > 0.0f)
             ImGui::Dummy(ImVec2(0.0f, gap));
@@ -8338,23 +8324,7 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
             ImGui::TextColored(toneMapColor(ImVec4(0.35f, 0.85f, 0.45f, 1.f)), "%s", std::string(fg->Name()).c_str());
         else
             ImGui::TextDisabled("Off");
-
-        const bool spoofing = config->DxgiSpoofing.value_or_default();
-        ImGui::TextDisabled("Spoof");
-        ImGui::SameLine(0.0f, 8.0f * menuResScale);
-        if (spoofing)
-            ImGui::TextColored(toneMapColor(ImVec4(0.35f, 0.85f, 0.45f, 1.f)), "Yes");
-        else
-            ImGui::TextDisabled("No");
-
-        if (optiPatcher)
-        {
-            ImGui::TextDisabled("OP");
-            ImGui::SameLine(0.0f, 8.0f * menuResScale);
-            ImGui::TextColored(toneMapColor(ImVec4(0.35f, 0.85f, 0.45f, 1.f)), "Yes");
-        }
     }
-
     ImGui::EndChild();
 
     ImGui::SameLine();
