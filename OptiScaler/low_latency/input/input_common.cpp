@@ -154,9 +154,13 @@ bool InputCommon::xefg_paced()
 LowLatencyInput InputCommon::default_input()
 {
     // With the XeFG input the game's own low latency for its frame generation is XeLL, Reflex markers it also sends
-    // belong to its other paths
-    if (State::Instance().activeFgInput == FGInput::XeFG && avaliableInputs[LowLatencyInput::XeLL])
+    // belong to its other paths. A game that turns XeLL off uses another frame generation, The Witcher 3 its DLSSG
+    // with Reflex.
+    if (State::Instance().activeFgInput == FGInput::XeFG && avaliableInputs[LowLatencyInput::XeLL] &&
+        get_sleep_copy(LowLatencyInput::XeLL).low_latency_enabled)
+    {
         return LowLatencyInput::XeLL;
+    }
 
     // The game's FSR-FG only reports its generated frames through AntiLag 2
     if (avaliableInputs[LowLatencyInput::AntiLag2] && reports_frame_generation(LowLatencyInput::AntiLag2))
