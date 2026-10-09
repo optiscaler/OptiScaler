@@ -56,7 +56,7 @@ class InputXeLL
     // The game's XeLL runs as without OptiScaler, only the FPS limit is OptiScaler's
     static bool IsNative() { return native; }
 
-    // OptiScaler's FPS limit on the game's XeLL when native, 0 = none. True when it limits.
+    // OptiScaler's FPS limit on the game's XeLL when native, 0 = none. True when it can limit.
     static bool LimitFps(uint32_t intervalUs);
 
     // Common

@@ -73,8 +73,12 @@ void InputXeLL::AttachXeFG(void* xellContext)
     auto context = gameContext.load();
 
     // Not a context OptiScaler gave out, it's already the real XeLL's
-    if (context != nullptr && context == xellContext && CreateReal(context))
-        LOG_INFO("The game's XeFG got its XeLL context");
+    if (context == nullptr || context != xellContext || context->real != nullptr || !CreateReal(context))
+        return;
+
+    LOG_INFO("The game's XeFG got its XeLL context");
+
+    SetRealSleepMode(context);
 }
 
 void InputXeLL::SetXeFGEnabled(bool enabled)
@@ -102,7 +106,7 @@ bool InputXeLL::LimitFps(uint32_t intervalUs)
     if (fpsLimitUs.exchange(intervalUs) != intervalUs)
         SetRealSleepMode(context);
 
-    return intervalUs != 0 && context->sleepParams.bLowLatencyMode;
+    return context->sleepParams.bLowLatencyMode;
 }
 
 // Common
@@ -130,8 +134,13 @@ xell_result_t InputXeLL::SetSleepMode(xell_input_handle_t context, const xell_sl
 
     context->sleepParams = *param;
 
-    if (PassesThrough(context))
-        return SetRealSleepMode(context);
+    if (context->real)
+    {
+        auto result = SetRealSleepMode(context);
+
+        if (PassesThrough(context))
+            return result;
+    }
 
     SleepMode sleepMode {};
     sleepMode.low_latency_enabled = param->bLowLatencyMode;
@@ -153,7 +162,7 @@ xell_result_t InputXeLL::GetSleepMode(xell_input_handle_t context, xell_sleep_pa
     if (!param)
         return XELL_RESULT_ERROR_INVALID_ARGUMENT;
 
-    if (PassesThrough(context))
+    if (context->real)
         return XeLLProxy::RealGetSleepMode()(context->real, param);
 
     if (!context->device)
