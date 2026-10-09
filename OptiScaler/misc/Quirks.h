@@ -437,6 +437,9 @@ static const QuirkEntry quirkTable[] = {
     // SL spoof enough to unlock everything DLSS, Preserve FG Swapchain just crashes the DLSSG inputs
     QUIRK_ENTRY("controlresonant.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::DoNotPreserveFGSwapChain),
 
+    // Clive Barker's Hellraiser: Revival
+    QUIRK_ENTRY_UE(hellraiser, GameQuirk::AlwaysCaptureFSRFGSwapchain),
+
     // SL spoof enough to unlock everything DLSS/No spoof needed for DLSS inputs
     //
     // The Witcher 3, Alan Wake 2, Crysis 3 Remastered, Marvel's Guardians of the Galaxy, UNCHARTED: Legacy of Thieves
