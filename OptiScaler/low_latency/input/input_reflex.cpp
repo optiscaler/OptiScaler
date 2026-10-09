@@ -131,11 +131,7 @@ NvAPI_Status InputReflex::D3D_Sleep(IUnknown* pDev)
 
     // The Reflex output's sleep goes through OptiScaler's Streamline itself, with the other outputs it still sleeps
     // for the game so DLSSG follows its frames
-    LowLatencyInput activeInput {};
-    LowLatencyMode activeOutput {};
-    InputCommon::get_currently_active(activeInput, activeOutput);
-
-    if (activeOutput != LowLatencyMode::Reflex)
+    if (InputCommon::active_output() != LowLatencyMode::Reflex)
         ReflexHooks::streamlineSleep();
 
     return ToNvApi(result, "sleep");
@@ -162,16 +158,12 @@ NvAPI_Status InputReflex::D3D_GetLatency(IUnknown* pDev, NV_LATENCY_RESULT_PARAM
 // itself with a marker it took, the other outputs get the game's.
 NvAPI_Status InputReflex::SendGameMarker(IUnknown* pDev, NV_LATENCY_MARKER_PARAMS* params, bool toStreamline)
 {
-    LowLatencyInput activeInput {};
-    LowLatencyMode activeOutput {};
-    InputCommon::get_currently_active(activeInput, activeOutput);
-
     MarkerParams markerParams {};
     markerParams.frame_id = params->frameID;
     markerParams.marker_type = (MarkerType) params->markerType; // requires enums to match
 
     return ToNvApi(InputCommon::set_marker(inputContext, pDev, markerParams,
-                                           !toStreamline || activeOutput != LowLatencyMode::Reflex),
+                                           !toStreamline || InputCommon::active_output() != LowLatencyMode::Reflex),
                    "set_marker");
 }
 

@@ -97,7 +97,7 @@ void InputXeLL::SetXeFGEnabled(bool enabled)
 
 bool InputXeLL::LimitFps(uint32_t intervalUs)
 {
-    // ponytail: only the game's latest context is limited, games use one
+    // Only game's latest context is limited
     auto context = gameContext.load();
 
     if (!native || context == nullptr || context->real == nullptr)

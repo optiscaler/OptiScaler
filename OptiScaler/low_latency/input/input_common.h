@@ -63,6 +63,9 @@ class InputCommon
     // The present each input last reported the game's own frame generation on (async markers), 0 = never
     inline static std::atomic_uint64_t present_count = 0;
     inline static std::array<std::atomic_uint64_t, static_cast<size_t>(LowLatencyInput::_)> last_fg_present {};
+    // Game frame id of the frames the FG presenter shows next, and whether a new batch of them started
+    inline static std::atomic_uint64_t fg_frame_id = 0;
+    inline static std::atomic_bool fg_new_batch = false;
 
     static void mark_frame_generation(LowLatencyInput input)
     {
@@ -108,6 +111,7 @@ class InputCommon
     static bool get_timing_data(TimingData& timingDataOut);
     static uint64_t get_last_present_start_frame_id() { return last_present_start_frame_id; };
     static flag_set<LowLatencyInput> get_avaliable_inputs() { return avaliableInputs; };
+    static LowLatencyMode active_output() { return activeOutput; }
     static void get_currently_active(LowLatencyInput& activeInput, LowLatencyMode& activeOutput)
     {
         activeInput = InputCommon::activeInput;

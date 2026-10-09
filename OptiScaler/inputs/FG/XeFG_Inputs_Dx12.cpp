@@ -1,24 +1,9 @@
 #include "pch.h"
 #include "XeFG_Inputs_Dx12.h"
-#include <framegen/IFGFeature_Dx12.h>
-#include <proxies/XeFG_Proxy.h>
 #include <proxies/XeLL_Proxy.h>
-#include <shaders/camera_motion/CM_Dx12.h>
 #include <detours/detours.h>
-#include <DirectXMath.h>
-#include <magic_enum.hpp>
 
-// XeFG output: the game's own XeFG and XeLL run on OptiScaler's libraries, as they would without OptiScaler.
-// Like Override DLSSG Ratio, "Override XeFG Ratio" replaces the game's count (0 = off), within what the game's
-// context was created with. Without an override the game's own count applies; XeFG itself would use its maximum.
-static xefg_swapchain_handle_t _passContext = nullptr;
-static uint32_t _passMax = 0;
-static uint32_t _passGameCount = 1;
-static uint32_t _passGameEnabled = 0;
-static uint32_t _passCount = 0;
-static uint32_t _passEnabled = UINT32_MAX;
-
-static void PassApply(xefg_swapchain_handle_t context)
+void XeFGInputs::PassApply(xefg_swapchain_handle_t context)
 {
     auto& setting = Config::Instance()->FGXeFGOverrideInterpolationCount;
     const uint32_t enabled = setting.has_value() && setting.value() == 0 ? 0 : _passGameEnabled;
@@ -41,7 +26,7 @@ static void PassApply(xefg_swapchain_handle_t context)
     }
 }
 
-static void PassInit(const xefg_swapchain_d3d12_init_params_t* params)
+void XeFGInputs::PassInit(const xefg_swapchain_d3d12_init_params_t* params)
 {
     // A new context starts with frame generation off until the game enables it
     _passContext = nullptr;
@@ -50,24 +35,24 @@ static void PassInit(const xefg_swapchain_d3d12_init_params_t* params)
     LOG_INFO("XeFG passthrough: game context init, interpolated frames: {}", _passGameCount);
 }
 
-static xefg_swapchain_result_t PassInitFromSwapChain(xefg_swapchain_handle_t context, ID3D12CommandQueue* queue,
-                                                     const xefg_swapchain_d3d12_init_params_t* params)
+xefg_swapchain_result_t XeFGInputs::PassInitFromSwapChain(xefg_swapchain_handle_t context, ID3D12CommandQueue* queue,
+                                                          const xefg_swapchain_d3d12_init_params_t* params)
 {
     PassInit(params);
     return XeFGProxy::D3D12InitFromSwapChain()(context, queue, params);
 }
 
-static xefg_swapchain_result_t PassInitFromSwapChainDesc(xefg_swapchain_handle_t context, HWND hwnd,
-                                                         const DXGI_SWAP_CHAIN_DESC1* desc,
-                                                         const DXGI_SWAP_CHAIN_FULLSCREEN_DESC* fullscreenDesc,
-                                                         ID3D12CommandQueue* queue, IDXGIFactory2* factory,
-                                                         const xefg_swapchain_d3d12_init_params_t* params)
+xefg_swapchain_result_t XeFGInputs::PassInitFromSwapChainDesc(xefg_swapchain_handle_t context, HWND hwnd,
+                                                              const DXGI_SWAP_CHAIN_DESC1* desc,
+                                                              const DXGI_SWAP_CHAIN_FULLSCREEN_DESC* fullscreenDesc,
+                                                              ID3D12CommandQueue* queue, IDXGIFactory2* factory,
+                                                              const xefg_swapchain_d3d12_init_params_t* params)
 {
     PassInit(params);
     return XeFGProxy::D3D12InitFromSwapChainDesc()(context, hwnd, desc, fullscreenDesc, queue, factory, params);
 }
 
-static xefg_swapchain_result_t PassSetEnabled(xefg_swapchain_handle_t context, uint32_t enable)
+xefg_swapchain_result_t XeFGInputs::PassSetEnabled(xefg_swapchain_handle_t context, uint32_t enable)
 {
     _passGameEnabled = enable;
 
@@ -77,7 +62,7 @@ static xefg_swapchain_result_t PassSetEnabled(xefg_swapchain_handle_t context, u
     return XEFG_SWAPCHAIN_RESULT_SUCCESS;
 }
 
-static xefg_swapchain_result_t PassSetNumInterpolatedFrames(xefg_swapchain_handle_t context, uint32_t count)
+xefg_swapchain_result_t XeFGInputs::PassSetNumInterpolatedFrames(xefg_swapchain_handle_t context, uint32_t count)
 {
     _passGameCount = count;
 
@@ -87,7 +72,7 @@ static xefg_swapchain_result_t PassSetNumInterpolatedFrames(xefg_swapchain_handl
     return XEFG_SWAPCHAIN_RESULT_SUCCESS;
 }
 
-static xefg_swapchain_result_t PassSetPresentId(xefg_swapchain_handle_t context, uint32_t presentId)
+xefg_swapchain_result_t XeFGInputs::PassSetPresentId(xefg_swapchain_handle_t context, uint32_t presentId)
 {
     if (context != _passContext)
     {
@@ -106,36 +91,9 @@ static xefg_swapchain_result_t PassSetPresentId(xefg_swapchain_handle_t context,
     return XeFGProxy::SetPresentId()(context, presentId);
 }
 
-// Other FG outputs: the game is only offered 1 interpolated frame, the FG output decides the real count
-static ID3D12Device* _device = nullptr;
-static IDXGISwapChain* _swapChain = nullptr; // Handed over by the game on init, released on destroy
-static xefg_swapchain_d3d12_init_params_t _initParams {};
-static FG_Constants _constants {};
-static xefg_swapchain_2d_t _mvSize {};
-static bool _enabled = false;
-static uint64_t _frameIds[BUFFER_COUNT] {}; // Present id + 1 of each buffer index, 0 = none
-static float _frameTimeScale = 0.0f;        // 1000 when the game passes seconds, 0 until decided
-static float _frameTimeMax = 0.0f;
-static int _frameTimeSamples = 0;
-static bool _gameDepthMV[BUFFER_COUNT] {}; // Frames without them from the game use the upscaler's
-static bool _upscalerMVs = false;
-
-// The Witcher 3 only writes velocity where objects move, alpha is 0 where only the camera moved. Those pixels get
-// the camera's motion from depth, the velocity waits for the frame's depth and both go through the shader.
-static std::unique_ptr<CM_Dx12> _cameraMotion;
-static ID3D12Device* _cameraMotionDevice = nullptr;
-static DirectX::XMFLOAT4X4 _reprojection[BUFFER_COUNT] {};
-static bool _reprojectionKnown[BUFFER_COUNT] {};
-static DirectX::XMFLOAT4X4 _viewProjection {}, _previousViewProjection {};
-static bool _cameraKnown = false, _previousCameraKnown = false;
-static uint64_t _cameraPresentId = 0; // Present id + 1 of the camera above
-static Dx12Resource _pendingDepth[BUFFER_COUNT] {}, _pendingVelocity[BUFFER_COUNT] {};
-
-static xefg_swapchain_result_t Ok() { return XEFG_SWAPCHAIN_RESULT_SUCCESS; }
-
 // Each new present id starts a new frame of the FG output and all tags of that frame use its buffer index.
 // The output's frame count may also follow the game's Reflex markers, so present ids are never written into it.
-static int FrameIndex(IFGFeature_Dx12* fg, uint32_t presentId)
+int XeFGInputs::FrameIndex(IFGFeature_Dx12* fg, uint32_t presentId)
 {
     static std::mutex mutex;
     std::scoped_lock lock(mutex);
@@ -155,6 +113,8 @@ static int FrameIndex(IFGFeature_Dx12* fg, uint32_t presentId)
     _pendingVelocity[index] = {};
     return index;
 }
+
+static bool CameraMotionFill() { return State::Instance().gameQuirks[GameQuirk::XeFGCameraMotionFill]; }
 
 // A projection matrix has w = +-z, no w translation and doesn't mix x and y (row or column major, either handedness).
 // The Witcher 3's has noise above 1e-4 in its w translation, a combined matrix of a turned camera mixes x and y.
@@ -211,8 +171,6 @@ static bool FindProjection(const xefg_swapchain_frame_constant_data_t* data, Dir
     return false;
 }
 
-static bool CameraMotionFill() { return State::Instance().gameQuirks[GameQuirk::XeFGCameraMotionFill]; }
-
 // The Witcher 3 passes the projection as the view matrix and the other way around
 static bool FindViewProjection(const xefg_swapchain_frame_constant_data_t* data, DirectX::XMFLOAT4X4& viewProjection)
 {
@@ -232,7 +190,7 @@ static bool FindViewProjection(const xefg_swapchain_frame_constant_data_t* data,
 }
 
 // Current clip space to the previous frame's
-static void UpdateReprojection(uint32_t presentId, const xefg_swapchain_frame_constant_data_t* data, int index)
+void XeFGInputs::UpdateReprojection(uint32_t presentId, const xefg_swapchain_frame_constant_data_t* data, int index)
 {
     // Constants sent again for the same frame keep its previous frame
     if (_cameraPresentId != (uint64_t) presentId + 1)
@@ -264,7 +222,7 @@ static void UpdateReprojection(uint32_t presentId, const xefg_swapchain_frame_co
 }
 
 // Velocity in pixels as previous - current position, with the camera's motion where the game wrote none
-static bool FillVelocity(IFGFeature_Dx12* fg, ID3D12GraphicsCommandList* cmdList, int index)
+bool XeFGInputs::FillVelocity(IFGFeature_Dx12* fg, ID3D12GraphicsCommandList* cmdList, int index)
 {
     auto& depth = _pendingDepth[index];
     auto& velocity = _pendingVelocity[index];
@@ -330,7 +288,7 @@ static bool FillVelocity(IFGFeature_Dx12* fg, ID3D12GraphicsCommandList* cmdList
 
 // XeFG takes the frame render time in milliseconds, some games (The Witcher 3, Cyberpunk 2077) pass seconds.
 // The first frames decide: below 1 it can't be milliseconds, frame generation doesn't run at 1000 fps.
-static float FrameTimeMs(float frameTime)
+float XeFGInputs::FrameTimeMs(float frameTime)
 {
     if (frameTime <= 0.0f)
         return 0.0f;
@@ -349,36 +307,36 @@ static float FrameTimeMs(float frameTime)
     return frameTime * _frameTimeScale;
 }
 
-static xefg_swapchain_result_t CreateContext(ID3D12Device* device, xefg_swapchain_handle_t* handle)
+xefg_swapchain_result_t XeFGInputs::CreateContext(ID3D12Device* device, xefg_swapchain_handle_t* handle)
 {
     _device = device;
     *handle = (xefg_swapchain_handle_t) &_device;
     return XEFG_SWAPCHAIN_RESULT_SUCCESS;
 }
 
-static xefg_swapchain_result_t GetProperties(xefg_swapchain_handle_t, xefg_swapchain_properties_t* properties)
+xefg_swapchain_result_t XeFGInputs::GetProperties(xefg_swapchain_handle_t, xefg_swapchain_properties_t* properties)
 {
     // Small non-zero sizes keep the game's optional heap allocations valid
     *properties = { 1, 65536, 65536, 256, 1 };
     return XEFG_SWAPCHAIN_RESULT_SUCCESS;
 }
 
-static xefg_swapchain_result_t D3D12GetProperties(xefg_swapchain_handle_t handle,
-                                                  const xefg_swapchain_d3d12_init_params_t*, uint32_t, uint32_t,
-                                                  DXGI_FORMAT, xefg_swapchain_properties_t* properties)
+xefg_swapchain_result_t XeFGInputs::D3D12GetProperties(xefg_swapchain_handle_t handle,
+                                                       const xefg_swapchain_d3d12_init_params_t*, uint32_t, uint32_t,
+                                                       DXGI_FORMAT, xefg_swapchain_properties_t* properties)
 {
     return GetProperties(handle, properties);
 }
 
-static void SetGameMVFlags()
+void XeFGInputs::SetGameMVFlags()
 {
     auto flags = _initParams.initFlags;
     _constants.flags.set(FG_Flags::JitteredMVs, flags & XEFG_SWAPCHAIN_INIT_FLAG_JITTERED_MV);
     _constants.flags.set(FG_Flags::DisplayResolutionMVs, flags & XEFG_SWAPCHAIN_INIT_FLAG_HIGH_RES_MV);
 }
 
-static xefg_swapchain_result_t InitFromSwapChain(xefg_swapchain_handle_t, ID3D12CommandQueue*,
-                                                 const xefg_swapchain_d3d12_init_params_t* params)
+xefg_swapchain_result_t XeFGInputs::InitFromSwapChain(xefg_swapchain_handle_t, ID3D12CommandQueue*,
+                                                      const xefg_swapchain_d3d12_init_params_t* params)
 {
     // The game's swapchain was created through OptiScaler's hooks, so it already is the FG output's swapchain
     if (State::Instance().currentFGSwapchain == nullptr || params->pApplicationSwapChain == nullptr)
@@ -409,11 +367,11 @@ static xefg_swapchain_result_t InitFromSwapChain(xefg_swapchain_handle_t, ID3D12
     return XEFG_SWAPCHAIN_RESULT_SUCCESS;
 }
 
-static xefg_swapchain_result_t InitFromSwapChainDesc(xefg_swapchain_handle_t handle, HWND hwnd,
-                                                     const DXGI_SWAP_CHAIN_DESC1* desc,
-                                                     const DXGI_SWAP_CHAIN_FULLSCREEN_DESC* fullscreenDesc,
-                                                     ID3D12CommandQueue* queue, IDXGIFactory2* factory,
-                                                     const xefg_swapchain_d3d12_init_params_t* params)
+xefg_swapchain_result_t XeFGInputs::InitFromSwapChainDesc(xefg_swapchain_handle_t handle, HWND hwnd,
+                                                          const DXGI_SWAP_CHAIN_DESC1* desc,
+                                                          const DXGI_SWAP_CHAIN_FULLSCREEN_DESC* fullscreenDesc,
+                                                          ID3D12CommandQueue* queue, IDXGIFactory2* factory,
+                                                          const xefg_swapchain_d3d12_init_params_t* params)
 {
     IDXGISwapChain1* swapChain = nullptr;
     auto appParams = *params;
@@ -430,7 +388,7 @@ static xefg_swapchain_result_t InitFromSwapChainDesc(xefg_swapchain_handle_t han
     return result;
 }
 
-static xefg_swapchain_result_t GetSwapChainPtr(xefg_swapchain_handle_t, REFIID riid, void** swapChain)
+xefg_swapchain_result_t XeFGInputs::GetSwapChainPtr(xefg_swapchain_handle_t, REFIID riid, void** swapChain)
 {
     if (_swapChain == nullptr || _swapChain->QueryInterface(riid, swapChain) != S_OK)
         return XEFG_SWAPCHAIN_RESULT_ERROR_UNINITIALIZED;
@@ -438,14 +396,14 @@ static xefg_swapchain_result_t GetSwapChainPtr(xefg_swapchain_handle_t, REFIID r
     return XEFG_SWAPCHAIN_RESULT_SUCCESS;
 }
 
-static xefg_swapchain_result_t GetInitializationParameters(xefg_swapchain_handle_t,
-                                                           xefg_swapchain_d3d12_init_params_t* params)
+xefg_swapchain_result_t XeFGInputs::GetInitializationParameters(xefg_swapchain_handle_t,
+                                                                xefg_swapchain_d3d12_init_params_t* params)
 {
     *params = _initParams;
     return XEFG_SWAPCHAIN_RESULT_SUCCESS;
 }
 
-static xefg_swapchain_result_t SetEnabled(xefg_swapchain_handle_t, uint32_t enable)
+xefg_swapchain_result_t XeFGInputs::SetEnabled(xefg_swapchain_handle_t, uint32_t enable)
 {
     if (_enabled != (enable != 0))
         LOG_INFO("XeFG input: game SetEnabled {}", enable);
@@ -462,8 +420,8 @@ static xefg_swapchain_result_t SetEnabled(xefg_swapchain_handle_t, uint32_t enab
     return XEFG_SWAPCHAIN_RESULT_SUCCESS;
 }
 
-static xefg_swapchain_result_t TagFrameConstants(xefg_swapchain_handle_t, uint32_t presentId,
-                                                 const xefg_swapchain_frame_constant_data_t* data)
+xefg_swapchain_result_t XeFGInputs::TagFrameConstants(xefg_swapchain_handle_t, uint32_t presentId,
+                                                      const xefg_swapchain_frame_constant_data_t* data)
 {
     auto fg = State::Instance().currentFG;
 
@@ -544,8 +502,9 @@ static xefg_swapchain_result_t TagFrameConstants(xefg_swapchain_handle_t, uint32
     return XEFG_SWAPCHAIN_RESULT_SUCCESS;
 }
 
-static xefg_swapchain_result_t TagFrameResource(xefg_swapchain_handle_t, ID3D12CommandList* cmdList, uint32_t presentId,
-                                                const xefg_swapchain_d3d12_resource_data_t* data)
+xefg_swapchain_result_t XeFGInputs::TagFrameResource(xefg_swapchain_handle_t, ID3D12CommandList* cmdList,
+                                                     uint32_t presentId,
+                                                     const xefg_swapchain_d3d12_resource_data_t* data)
 {
     static const FG_ResourceType types[] = { FG_ResourceType::HudlessColor, FG_ResourceType::Depth,
                                              FG_ResourceType::Velocity, FG_ResourceType::UIColor };
@@ -617,7 +576,8 @@ static xefg_swapchain_result_t TagFrameResource(xefg_swapchain_handle_t, ID3D12C
     return XEFG_SWAPCHAIN_RESULT_SUCCESS;
 }
 
-static xefg_swapchain_result_t GetLastPresentStatus(xefg_swapchain_handle_t, xefg_swapchain_present_status_t* status)
+xefg_swapchain_result_t XeFGInputs::GetLastPresentStatus(xefg_swapchain_handle_t,
+                                                         xefg_swapchain_present_status_t* status)
 {
     auto fg = State::Instance().currentFG;
     uint32_t active = fg != nullptr && fg->IsActive() && !fg->IsPaused();
@@ -625,7 +585,7 @@ static xefg_swapchain_result_t GetLastPresentStatus(xefg_swapchain_handle_t, xef
     return XEFG_SWAPCHAIN_RESULT_SUCCESS;
 }
 
-static xefg_swapchain_result_t Destroy(xefg_swapchain_handle_t)
+xefg_swapchain_result_t XeFGInputs::Destroy(xefg_swapchain_handle_t)
 {
     LOG_INFO("XeFG input: game context destroyed");
 
@@ -640,42 +600,7 @@ static xefg_swapchain_result_t Destroy(xefg_swapchain_handle_t)
     return XEFG_SWAPCHAIN_RESULT_SUCCESS;
 }
 
-struct HookEntry
-{
-    const char* name;
-    PVOID function;
-    PVOID target;
-};
-
-static HookEntry _xefgHooks[] = {
-    { "xefgSwapChainD3D12CreateContext", (PVOID) &CreateContext },
-    { "xefgSwapChainGetProperties", (PVOID) &GetProperties },
-    { "xefgSwapChainD3D12GetProperties", (PVOID) &D3D12GetProperties },
-    { "xefgSwapChainD3D12InitFromSwapChain", (PVOID) &InitFromSwapChain },
-    { "xefgSwapChainD3D12InitFromSwapChainDesc", (PVOID) &InitFromSwapChainDesc },
-    { "xefgSwapChainD3D12GetSwapChainPtr", (PVOID) &GetSwapChainPtr },
-    { "xefgSwapChainD3D12GetInitializationParameters", (PVOID) &GetInitializationParameters },
-    { "xefgSwapChainSetEnabled", (PVOID) &SetEnabled },
-    { "xefgSwapChainTagFrameConstants", (PVOID) &TagFrameConstants },
-    { "xefgSwapChainD3D12TagFrameResource", (PVOID) &TagFrameResource },
-    { "xefgSwapChainGetLastPresentStatus", (PVOID) &GetLastPresentStatus },
-    { "xefgSwapChainDestroy", (PVOID) &Destroy },
-
-    // Nothing for the FG output to do
-    { "xefgSwapChainSetPresentId", (PVOID) &Ok },
-    { "xefgSwapChainSetLatencyReduction", (PVOID) &Ok },
-    { "xefgSwapChainSetLoggingCallback", (PVOID) &Ok },
-    { "xefgSwapChainSetSceneChangeThreshold", (PVOID) &Ok },
-    { "xefgSwapChainGetPipelineBuildStatus", (PVOID) &Ok },
-    { "xefgSwapChainSetNumInterpolatedFrames", (PVOID) &Ok },
-    { "xefgSwapChainSetUiCompositionState", (PVOID) &Ok },
-    { "xefgSwapChainD3D12BuildPipelines", (PVOID) &Ok },
-    { "xefgSwapChainD3D12SetDescriptorHeap", (PVOID) &Ok },
-    { "xefgSwapChainD3D12UpdateExternalHeapOnResize", (PVOID) &Ok },
-    { "xefgSwapChainEnableDebugFeature", (PVOID) &Ok },
-};
-
-template <size_t N> static bool Attach(HMODULE module, HookEntry (&hooks)[N])
+template <size_t N> bool XeFGInputs::Attach(HMODULE module, HookEntry (&hooks)[N])
 {
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
@@ -691,28 +616,15 @@ template <size_t N> static bool Attach(HMODULE module, HookEntry (&hooks)[N])
     return DetourTransactionCommit() == NO_ERROR;
 }
 
-static PVOID _redirects[128] {};
-static size_t _redirectCount = 0;
-static bool _redirectIncomplete = false;
-
-static xefg_swapchain_result_t GameSetLatencyReduction(xefg_swapchain_handle_t hSwapChain, void* hXeLLContext);
-static xefg_swapchain_result_t GameSetEnabled(xefg_swapchain_handle_t hSwapChain, uint32_t enable);
-
-// The game's own XeFG without the XeFG input, only for its XeLL (the XeFG passthrough knows it from the start)
-static HookEntry _nativeHooks[] = {
-    { "xefgSwapChainSetLatencyReduction", (PVOID) &GameSetLatencyReduction },
-    { "xefgSwapChainSetEnabled", (PVOID) &GameSetEnabled },
-};
-
 // XeFG reads the XeLL context directly, it needs the real one behind it
-static xefg_swapchain_result_t GameSetLatencyReduction(xefg_swapchain_handle_t hSwapChain, void* hXeLLContext)
+xefg_swapchain_result_t XeFGInputs::GameSetLatencyReduction(xefg_swapchain_handle_t hSwapChain, void* hXeLLContext)
 {
     InputXeLL::AttachXeFG(hXeLLContext);
     return ((decltype(&xefgSwapChainSetLatencyReduction)) _nativeHooks[0].target)(hSwapChain, hXeLLContext);
 }
 
 // Only while it generates frames the game's XeLL runs as without OptiScaler
-static xefg_swapchain_result_t GameSetEnabled(xefg_swapchain_handle_t hSwapChain, uint32_t enable)
+xefg_swapchain_result_t XeFGInputs::GameSetEnabled(xefg_swapchain_handle_t hSwapChain, uint32_t enable)
 {
     auto result = ((decltype(&xefgSwapChainSetEnabled)) _nativeHooks[1].target)(hSwapChain, enable);
 
@@ -722,17 +634,8 @@ static xefg_swapchain_result_t GameSetEnabled(xefg_swapchain_handle_t hSwapChain
     return result;
 }
 
-// The calls that carry the game's frame generation choices go through the override
-static HookEntry _passHooks[] = {
-    { "xefgSwapChainD3D12InitFromSwapChain", (PVOID) &PassInitFromSwapChain },
-    { "xefgSwapChainD3D12InitFromSwapChainDesc", (PVOID) &PassInitFromSwapChainDesc },
-    { "xefgSwapChainSetEnabled", (PVOID) &PassSetEnabled },
-    { "xefgSwapChainSetNumInterpolatedFrames", (PVOID) &PassSetNumInterpolatedFrames },
-    { "xefgSwapChainSetPresentId", (PVOID) &PassSetPresentId },
-};
-
 // Every export of the game's library jumps to the same export of OptiScaler's copy
-static BOOL CALLBACK RedirectExport(PVOID library, ULONG, LPCSTR name, PVOID target)
+BOOL CALLBACK XeFGInputs::RedirectExport(PVOID library, ULONG, LPCSTR name, PVOID target)
 {
     PVOID replacement = nullptr;
 
@@ -757,7 +660,7 @@ static BOOL CALLBACK RedirectExport(PVOID library, ULONG, LPCSTR name, PVOID tar
     return TRUE;
 }
 
-static bool Redirect(HMODULE from, HMODULE to)
+bool XeFGInputs::Redirect(HMODULE from, HMODULE to)
 {
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
@@ -781,8 +684,6 @@ bool XeFGInputs::Passthrough()
                                     Config::Instance()->FGOutput.value_or_default() == FGOutput::XeFG;
     return passthrough;
 }
-
-uint32_t XeFGInputs::MaxInterpolations() { return _passMax; }
 
 void XeFGInputs::SetUpscalerInputs(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Parameter* parameters,
                                    IFeature_Dx12* feature)

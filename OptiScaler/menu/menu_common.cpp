@@ -5497,8 +5497,7 @@ void MenuCommon::RenderFramerateSettings(RenderMenuContext& ctx)
         }
         else if (InputCommon::can_limit_fps())
         {
-            LowLatencyInput activeInput {};
-            InputCommon::get_currently_active(activeInput, fakenvapiMode);
+            fakenvapiMode = InputCommon::active_output();
 
             // The game's XeFG with its own XeLL
             if (InputXeLL::IsNative())

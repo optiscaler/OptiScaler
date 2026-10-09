@@ -12,10 +12,6 @@
 #include <framegen/IFGFeature_Dx12.h>
 #include <nvapi/fakenvapi.h>
 
-// Game frame id of the frames the FG presenter shows next, and whether a new batch of them started
-static std::atomic<uint64_t> fg_frame_id = 0;
-static std::atomic<bool> fg_new_batch = false;
-
 static bool marker_supported(InputMarkerMode mode, MarkerType type)
 {
     switch (mode)
@@ -1013,6 +1009,7 @@ void InputCommon::update()
 
         if (xefg_paced())
         {
+            // XeLL already counts XeFG's generated frames
         }
         else if (fg != nullptr && fg->IsActive() && !fg->IsPaused())
         {
@@ -1024,7 +1021,7 @@ void InputCommon::update()
         }
         else if (activeInput == LowLatencyInput::AntiLag2 && reports_frame_generation(LowLatencyInput::AntiLag2))
         {
-            // ponytail: the game's FSR-FG as one generated frame, count AntiLag 2's interpolated presents for more
+            // TODO: The game's FSR-FG as one generated frame, count AntiLag 2's interpolated presents for more
             interval *= 2;
         }
     }

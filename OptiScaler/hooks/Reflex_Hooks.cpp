@@ -436,11 +436,7 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_SetReflexSync(IUnknown* pDev, NV_SET_REFLE
 #ifdef LOW_LATENCY_INPUTS
     // With the Reflex output OptiScaler's FSR-FG reports its own frame multiplier, the game's Streamline doesn't
     // know it
-    LowLatencyInput activeInput {};
-    LowLatencyMode activeOutput {};
-    InputCommon::get_currently_active(activeInput, activeOutput);
-
-    if (activeOutput == LowLatencyMode::Reflex && State::Instance().activeFgOutput == FGOutput::FSRFG)
+    if (InputCommon::active_output() == LowLatencyMode::Reflex && State::Instance().activeFgOutput == FGOutput::FSRFG)
         return NVAPI_OK;
 #endif
 
@@ -659,10 +655,7 @@ void ReflexHooks::update(bool fgActive, bool isVulkan)
     bool reflexOutput = true;
 
 #ifdef LOW_LATENCY_INPUTS
-    LowLatencyInput activeInput {};
-    LowLatencyMode activeOutput {};
-    InputCommon::get_currently_active(activeInput, activeOutput);
-    reflexOutput = activeOutput == LowLatencyMode::Reflex;
+    reflexOutput = InputCommon::active_output() == LowLatencyMode::Reflex;
 #endif
 
     if (_updatesWithoutMarker > 20 || !_inited)
