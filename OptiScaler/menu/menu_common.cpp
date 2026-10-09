@@ -37,6 +37,7 @@
 #include <misc/IdentifyGpu.h>
 #include <hooks/Xell_Hooks.h>
 #include <low_latency/input/input_common.h>
+#include <hooks/Vulkan_Hooks.h>
 #include <low_latency/input/input_xell.h>
 
 enum class UiTargetMode
@@ -5506,6 +5507,10 @@ void MenuCommon::RenderFramerateSettings(RenderMenuContext& ctx)
                 currentMethod = "FSR Anti-Lag 2.0";
             else if (fakenvapiMode == LowLatencyMode::LatencyFlex)
                 currentMethod = "LatencyFlex";
+            else if (fakenvapiMode == LowLatencyMode::AntiLagVk)
+                currentMethod = "Vulkan AntiLag";
+            else if (fakenvapiMode == LowLatencyMode::Reflex)
+                currentMethod = "Reflex";
             else
                 currentMethod = "XeLL";
         }
@@ -5776,13 +5781,40 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
         ImGui::TableNextColumn();
 
         lowLatencyOutput[(uint32_t) LowLatencyMode::None].set_hidden(true);
-        lowLatencyOutput[(uint32_t) LowLatencyMode::AntiLagVk].set_disabled(true, "No support");
-        lowLatencyOutput[(uint32_t) LowLatencyMode::Reflex].set_disabled(
-            IdentifyGpu::getPrimaryGpu().vendorId != VendorId::Nvidia || fakenvapi::isUsingAsMainNvapi(),
-            "Needs an Nvidia GPU");
+
+        // Each API has its own, the other API's selection maps to it. The API can change, so no sticky setters.
+        const bool vulkan = InputCommon::uses_vulkan();
+        const bool nvidia = IdentifyGpu::getPrimaryGpu().vendorId == VendorId::Nvidia;
+
+        lowLatencyOutput[(uint32_t) LowLatencyMode::AntiLag2].hidden = vulkan;
+        lowLatencyOutput[(uint32_t) LowLatencyMode::XeLL].hidden = vulkan;
+        lowLatencyOutput[(uint32_t) LowLatencyMode::AntiLagVk].hidden = !vulkan;
+
+        auto disable = [](MenuOption<LowLatencyMode>& option, bool condition, const char* reason)
+        {
+            option.disabled = condition;
+            option.tooltip = condition ? reason : "";
+        };
+
+        disable(lowLatencyOutput[(uint32_t) LowLatencyMode::AntiLagVk], VulkanHooks::o_vkAntiLagUpdateAMD == nullptr,
+                "Needs an AMD GPU with VK_AMD_anti_lag");
+
+        if (vulkan)
+        {
+            disable(lowLatencyOutput[(uint32_t) LowLatencyMode::Reflex],
+                    !nvidia || VulkanHooks::o_vkSetLatencySleepModeNV == nullptr,
+                    "Needs an Nvidia GPU with VK_NV_low_latency2");
+        }
+        else
+        {
+            disable(lowLatencyOutput[(uint32_t) LowLatencyMode::Reflex], !nvidia || fakenvapi::isUsingAsMainNvapi(),
+                    "Needs an Nvidia GPU");
+        }
+
         lowLatencyOutput[(uint32_t) LowLatencyMode::Auto].label = "Auto";
         lowLatencyOutput[(uint32_t) LowLatencyMode::Auto].tooltip =
-            "The GPU's own: AntiLag 2 on AMD, Reflex on Nvidia, XeLL on Intel, LatencyFlex otherwise";
+            vulkan ? "The GPU's own: AntiLag on AMD, Reflex on Nvidia, LatencyFlex otherwise"
+                   : "The GPU's own: AntiLag 2 on AMD, Reflex on Nvidia, XeLL on Intel, LatencyFlex otherwise";
 
         // Frame generation decides the output it works with
         auto forcedOutput = InputCommon::forced_output();
@@ -5790,6 +5822,12 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
 
         if (output == LowLatencyMode::None)
             output = LowLatencyMode::Auto;
+
+        // The other API's AntiLag
+        if (vulkan && output == LowLatencyMode::AntiLag2)
+            output = LowLatencyMode::AntiLagVk;
+        else if (!vulkan && output == LowLatencyMode::AntiLagVk)
+            output = LowLatencyMode::AntiLag2;
 
         auto selectedOutput = output;
 

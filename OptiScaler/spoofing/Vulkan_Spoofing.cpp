@@ -474,6 +474,27 @@ VkResult VulkanSpoofing::hkvkCreateDevice(VkPhysicalDevice physicalDevice, VkDev
             newExtensionList.push_back(VK_NV_LOW_LATENCY_EXTENSION_NAME);
         }
 
+#ifdef LOW_LATENCY_INPUTS
+        // For the Reflex output, games with Vulkan Reflex already have it
+        auto hasExtension = [&](const char* name)
+        { return std::ranges::any_of(newExtensionList, [&](auto ext) { return std::strcmp(ext, name) == 0; }); };
+
+        if (vkDeviceExtensions.contains(std::string(VK_NV_LOW_LATENCY_2_EXTENSION_NAME)) &&
+            vkDeviceExtensions.contains(std::string(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME)) &&
+            !hasExtension(VK_NV_LOW_LATENCY_2_EXTENSION_NAME))
+        {
+            LOG_DEBUG("  Adding {}", VK_NV_LOW_LATENCY_2_EXTENSION_NAME);
+            newExtensionList.push_back(VK_NV_LOW_LATENCY_2_EXTENSION_NAME);
+
+            if (vkDeviceExtensions.contains(std::string(VK_KHR_PRESENT_ID_EXTENSION_NAME)) &&
+                !hasExtension(VK_KHR_PRESENT_ID_EXTENSION_NAME))
+            {
+                LOG_DEBUG("  Adding {}", VK_KHR_PRESENT_ID_EXTENSION_NAME);
+                newExtensionList.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
+            }
+        }
+#endif
+
         if (vkDeviceExtensions.contains(std::string(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME)))
         {
             LOG_DEBUG("  Adding {}", VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);

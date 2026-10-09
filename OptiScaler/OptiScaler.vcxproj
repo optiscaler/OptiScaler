@@ -342,6 +342,8 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="inputs\FG\Upscaler_Inputs_Dx11wDx12.h" />
     <ClInclude Include="low_latency\input\input_common.h" />
     <ClInclude Include="low_latency\input\input_reflex.h" />
+    <ClInclude Include="low_latency\input\input_reflex_vk.h" />
+    <ClInclude Include="low_latency\input\input_antilag_vk.h" />
     <ClInclude Include="low_latency\input\input_xell.h" />
     <ClInclude Include="low_latency\input\input_antilag2.h" />
     <ClInclude Include="framegen\reprojection\Reprojection_Dx12.h" />
@@ -364,6 +366,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="low_latency\low_latency_tech\ll_antilag_vk.h" />
     <ClInclude Include="low_latency\low_latency_tech\ll_latencyflex.h" />
     <ClInclude Include="low_latency\low_latency_tech\ll_reflex.h" />
+    <ClInclude Include="low_latency\low_latency_tech\ll_reflex_vk.h" />
     <ClInclude Include="low_latency\low_latency_tech\ll_xell.h" />
     <ClInclude Include="low_latency\low_latency_tech\low_latency_tech.h" />
     <ClInclude Include="nvapi\fakenvapi\nvapi_calls.h" />
@@ -653,6 +656,8 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="inputs\FG\Upscaler_Inputs_Dx11wDx12.cpp" />
     <ClCompile Include="low_latency\input\input_common.cpp" />
     <ClCompile Include="low_latency\input\input_reflex.cpp" />
+    <ClCompile Include="low_latency\input\input_reflex_vk.cpp" />
+    <ClCompile Include="low_latency\input\input_antilag_vk.cpp" />
     <ClCompile Include="low_latency\input\input_xell.cpp" />
     <ClCompile Include="low_latency\input\input_antilag2.cpp" />
     <ClCompile Include="framegen\reprojection\Reprojection_Dx12.cpp" />
@@ -681,6 +686,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="low_latency\low_latency_tech\ll_antilag_vk.cpp" />
     <ClCompile Include="low_latency\low_latency_tech\ll_latencyflex.cpp" />
     <ClCompile Include="low_latency\low_latency_tech\ll_reflex.cpp" />
+    <ClCompile Include="low_latency\low_latency_tech\ll_reflex_vk.cpp" />
     <ClCompile Include="low_latency\low_latency_tech\ll_xell.cpp" />
     <ClCompile Include="nvapi\fakenvapi\low_latency_vk.cpp" />
     <ClCompile Include="nvapi\fakenvapi\nvapi_calls.cpp" />

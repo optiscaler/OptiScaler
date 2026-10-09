@@ -8,6 +8,9 @@
 #include <low_latency/low_latency_tech/ll_antilag2.h>
 #include <low_latency/low_latency_tech/ll_latencyflex.h>
 #include <low_latency/low_latency_tech/ll_reflex.h>
+#include <low_latency/low_latency_tech/ll_reflex_vk.h>
+#include <low_latency/low_latency_tech/ll_antilag_vk.h>
+#include <hooks/Vulkan_Hooks.h>
 #include <inputs/FG/XeFG_Inputs_Dx12.h>
 #include <framegen/IFGFeature_Dx12.h>
 #include <nvapi/fakenvapi.h>
@@ -53,7 +56,7 @@ bool InputCommon::deinit_current_tech()
     return false;
 }
 
-bool InputCommon::init_tech(IUnknown* pDevice, LowLatencyMode desiredMode)
+bool InputCommon::init_tech(IUnknown* pDevice, bool vulkan, LowLatencyMode desiredMode)
 {
     if (!currently_active_tech.load() && delay_deinit == 0)
     {
@@ -78,7 +81,13 @@ bool InputCommon::init_tech(IUnknown* pDevice, LowLatencyMode desiredMode)
             isInitialized = try_init(std::make_shared<AntiLag2>(), "AntiLag2");
             break;
         case LowLatencyMode::Reflex:
-            isInitialized = try_init(std::make_shared<Reflex>(), "Reflex");
+            if (vulkan)
+                isInitialized = try_init(std::make_shared<ReflexVk>(), "Reflex Vulkan");
+            else
+                isInitialized = try_init(std::make_shared<Reflex>(), "Reflex");
+            break;
+        case LowLatencyMode::AntiLagVk:
+            isInitialized = try_init(std::make_shared<AntiLagVk>(), "AntiLag Vulkan");
             break;
         case LowLatencyMode::LatencyFlex:
             isInitialized = try_init(std::make_shared<LatencyFlex>(), "LatencyFlex");
@@ -101,6 +110,7 @@ bool InputCommon::init_tech(IUnknown* pDevice, LowLatencyMode desiredMode)
         if (auto current_tech = currently_active_tech.load(); current_tech && isInitialized)
         {
             activeOutput = current_tech->get_mode();
+            output_vulkan = vulkan;
 
             // XeFG needs XeLL in low latency mode, disabling it only stops sending the sleep and marker calls
             current_tech->set_forced_mode(xefg_paced());
@@ -114,10 +124,22 @@ bool InputCommon::init_tech(IUnknown* pDevice, LowLatencyMode desiredMode)
     return false;
 }
 
-LowLatencyMode InputCommon::default_output()
+LowLatencyMode InputCommon::default_output(bool vulkan)
 {
     // TODO: add avaliableOutput, somehow ?
     auto vendorId = IdentifyGpu::getPrimaryGpu().vendorId;
+
+    // Only the device's extensions, there's no XeLL for Vulkan
+    if (vulkan)
+    {
+        if (vendorId == VendorId::AMD && VulkanHooks::o_vkAntiLagUpdateAMD != nullptr)
+            return LowLatencyMode::AntiLagVk;
+
+        if (vendorId == VendorId::Nvidia && VulkanHooks::o_vkSetLatencySleepModeNV != nullptr)
+            return LowLatencyMode::Reflex;
+
+        return LowLatencyMode::LatencyFlex;
+    }
 
     if (vendorId == VendorId::Intel)
         return LowLatencyMode::XeLL;
@@ -129,6 +151,32 @@ LowLatencyMode InputCommon::default_output()
         return LowLatencyMode::Reflex;
 
     return LowLatencyMode::LatencyFlex;
+}
+
+LowLatencyMode InputCommon::for_api(LowLatencyMode mode, bool vulkan)
+{
+    if (vulkan)
+    {
+        if (mode == LowLatencyMode::AntiLag2)
+            return LowLatencyMode::AntiLagVk;
+
+        if (mode == LowLatencyMode::XeLL)
+            return default_output(true);
+    }
+    else if (mode == LowLatencyMode::AntiLagVk)
+    {
+        return LowLatencyMode::AntiLag2;
+    }
+
+    return mode;
+}
+
+bool InputCommon::uses_vulkan()
+{
+    if (activeInput != LowLatencyInput::None)
+        return input_vulkan[static_cast<size_t>(activeInput)];
+
+    return State::Instance().swapchainApi == Vulkan;
 }
 
 std::optional<LowLatencyMode> InputCommon::forced_output()
@@ -220,7 +268,7 @@ std::optional<LowLatencyInput> InputCommon::forced_input()
     return std::nullopt;
 }
 
-bool InputCommon::update_low_latency_tech(IUnknown* pDevice, std::optional<LowLatencyMode> mode)
+bool InputCommon::update_low_latency_tech(IUnknown* pDevice, bool vulkan, std::optional<LowLatencyMode> mode)
 {
     // The game's XeFG runs on its own XeLL, nothing else may drive an output next to it (update() removes it)
     if (InputXeLL::IsNative())
@@ -255,7 +303,7 @@ bool InputCommon::update_low_latency_tech(IUnknown* pDevice, std::optional<LowLa
     if (mode.has_value())
         desiredMode = mode.value();
 
-    if (desiredMode != LowLatencyMode::None && desiredMode == activeOutput)
+    if (desiredMode != LowLatencyMode::None && desiredMode == activeOutput && vulkan == output_vulkan)
     {
         // No need to do anything
         return true;
@@ -300,15 +348,21 @@ bool InputCommon::update_low_latency_tech(IUnknown* pDevice, std::optional<LowLa
             apply_sleep_mode(current_tech.get()); // Restore any potential sleep mode
     }
 
+    // The output runs on the active input's device, another API's device can't start it
+    if (vulkan != input_vulkan[static_cast<size_t>(activeInput)])
+        return true;
+
     if (desiredMode == LowLatencyMode::None)
         desiredMode = Config::Instance()->LowLatencyOutput.value_or_default();
 
     if (desiredMode == LowLatencyMode::Auto || desiredMode == LowLatencyMode::None)
-        desiredMode = default_output();
+        desiredMode = default_output(vulkan);
 
     // The frame generation output decides the low latency output it works with
     if (auto forced = forced_output())
         desiredMode = *forced;
+
+    desiredMode = for_api(desiredMode, vulkan);
 
     // An output that couldn't start keeps its fallback instead of being retried every call
     if (desiredMode == failed_output && currently_active_tech.load() != nullptr &&
@@ -317,7 +371,7 @@ bool InputCommon::update_low_latency_tech(IUnknown* pDevice, std::optional<LowLa
         desiredMode = activeOutput;
     }
 
-    if (activeOutput == desiredMode)
+    if (activeOutput == desiredMode && vulkan == output_vulkan)
     {
         delay_deinit = 0;
         return true;
@@ -327,7 +381,7 @@ bool InputCommon::update_low_latency_tech(IUnknown* pDevice, std::optional<LowLa
 
     std::scoped_lock lock(create_tech_mutex);
 
-    if (init_tech(pDevice, desiredMode))
+    if (init_tech(pDevice, vulkan, desiredMode))
         return true;
 
     auto try_reinit = [&]() -> bool
@@ -338,7 +392,7 @@ bool InputCommon::update_low_latency_tech(IUnknown* pDevice, std::optional<LowLa
             return false;
         }
 
-        return init_tech(pDevice, desiredMode);
+        return init_tech(pDevice, vulkan, desiredMode);
     };
 
     // WAR: FSR FG might still be using AntiLag 2, give Opti time to set AL2 context to null
@@ -423,7 +477,7 @@ void InputCommon::add_marker_to_report(const MarkerParams& marker_params)
 // public
 InputResult InputCommon::set_low_latency_tech(IUnknown* pDevice, LowLatencyMode mode)
 {
-    if (!update_low_latency_tech(pDevice, mode))
+    if (!update_low_latency_tech(pDevice, false, mode))
         return InputResult::LowLatencyUpdateFail;
 
     return InputResult::Ok;
@@ -433,9 +487,9 @@ InputResult InputCommon::sleep(const InputContext& inputContext, IUnknown* pDevi
 {
     // Ignore context that Opti creates
     if (!inputContext.localContext)
-        set_input_avaliable(inputContext.caller);
+        set_input_avaliable(inputContext);
 
-    if (!update_low_latency_tech(pDevice))
+    if (!update_low_latency_tech(pDevice, inputContext.vulkan))
         return InputResult::LowLatencyUpdateFail;
 
     if (inputContext.caller != activeInput)
@@ -456,9 +510,9 @@ InputResult InputCommon::set_marker(const InputContext& inputContext, IUnknown* 
 {
     // Ignore context that Opti creates
     if (!inputContext.localContext)
-        set_input_avaliable(inputContext.caller);
+        set_input_avaliable(inputContext);
 
-    if (!update_low_latency_tech(pDevice))
+    if (!update_low_latency_tech(pDevice, inputContext.vulkan))
         return InputResult::LowLatencyUpdateFail;
 
     if (inputContext.caller != activeInput)
@@ -553,11 +607,11 @@ InputResult InputCommon::set_sleep_mode(const InputContext& inputContext, IUnkno
     // is kept even without an output yet: AntiLag 2 and XeLL only send it when it changes.
     if (!inputContext.localContext)
     {
-        set_input_avaliable(inputContext.caller);
+        set_input_avaliable(inputContext);
         get_sleep_copy(inputContext.caller) = *sleep_mode;
     }
 
-    if (!update_low_latency_tech(pDevice))
+    if (!update_low_latency_tech(pDevice, inputContext.vulkan))
         return InputResult::LowLatencyUpdateFail;
 
     if (inputContext.caller != activeInput)
@@ -576,9 +630,9 @@ InputResult InputCommon::get_sleep_status(const InputContext& inputContext, IUnk
 {
     // Ignore context that Opti creates
     if (!inputContext.localContext)
-        set_input_avaliable(inputContext.caller);
+        set_input_avaliable(inputContext);
 
-    if (!update_low_latency_tech(pDevice))
+    if (!update_low_latency_tech(pDevice, inputContext.vulkan))
         return InputResult::LowLatencyUpdateFail;
 
     // Get functions don't really need to worry about this check
@@ -597,12 +651,12 @@ InputResult InputCommon::get_latency(const InputContext& inputContext, IUnknown*
 {
     // Ignore context that Opti creates
     if (!inputContext.localContext)
-        set_input_avaliable(inputContext.caller);
+        set_input_avaliable(inputContext);
 
     // if (inputContext.caller != activeInput)
     //     return InputResult::UsingDifferentInput;
 
-    if (!update_low_latency_tech(pDev))
+    if (!update_low_latency_tech(pDev, inputContext.vulkan))
         return InputResult::LowLatencyUpdateFail;
 
     if (!latency_params)
@@ -613,11 +667,8 @@ InputResult InputCommon::get_latency(const InputContext& inputContext, IUnknown*
     {
         if (activeOutput == LowLatencyMode::Reflex)
         {
-            if (auto current_tech = currently_active_tech.load();
-                current_tech && current_tech->get_mode() == LowLatencyMode::Reflex)
+            if (auto reflex_tech = std::dynamic_pointer_cast<Reflex>(currently_active_tech.load()))
             {
-                auto reflex_tech = std::static_pointer_cast<Reflex>(current_tech);
-
                 if (reflex_tech->get_latency((NV_LATENCY_RESULT_PARAMS*) latency_params) == NVAPI_OK)
                     return InputResult::Ok;
             }
@@ -631,36 +682,10 @@ InputResult InputCommon::get_latency(const InputContext& inputContext, IUnknown*
             return InputResult::InvalidParameter;
         }
 
-        // Assume no frame reports collected yet, report all zeros
-        if (frame_reports[FRAME_REPORTS_BUFFER_SIZE - 1].frameID == 0)
-        {
-            std::memset(reports->frameReport, 0, sizeof(reports->frameReport));
-            // spdlog::warn("GetLatency: Not enough data to report");
+        static_assert(sizeof(reports->frameReport) == NVAPI_BUFFER_SIZE * sizeof(FrameReport));
+
+        if (!copy_frame_reports((FrameReport*) reports->frameReport))
             return InputResult::NotEnoughReports;
-        }
-
-        // Sort frame reports, find the oldest
-        size_t minIdx = 0;
-        uint64_t minID = frame_reports[0].frameID;
-        for (size_t i = 1; i < FRAME_REPORTS_BUFFER_SIZE; i++)
-        {
-            if (frame_reports[i].frameID < minID)
-            {
-                minID = frame_reports[i].frameID;
-                minIdx = i;
-            }
-        }
-
-        // Copy starting from older before wrapping around
-        size_t firstChunk = std::min<uint64_t>(NVAPI_BUFFER_SIZE, FRAME_REPORTS_BUFFER_SIZE - minIdx);
-        std::memcpy(reports->frameReport, frame_reports + minIdx, firstChunk * sizeof(FrameReport));
-
-        // Copy the rest after wrapping around
-        if (firstChunk < NVAPI_BUFFER_SIZE)
-        {
-            std::memcpy(reports->frameReport + firstChunk, frame_reports,
-                        (NVAPI_BUFFER_SIZE - firstChunk) * sizeof(FrameReport));
-        }
 
         return InputResult::Ok;
     }
@@ -703,6 +728,54 @@ InputResult InputCommon::get_latency(const InputContext& inputContext, IUnknown*
     {
         return InputResult::InputNotSupported;
     }
+}
+
+bool InputCommon::copy_frame_reports(FrameReport* reports)
+{
+    // Assume no frame reports collected yet, report all zeros
+    if (frame_reports[FRAME_REPORTS_BUFFER_SIZE - 1].frameID == 0)
+    {
+        std::memset(reports, 0, NVAPI_BUFFER_SIZE * sizeof(FrameReport));
+        // spdlog::warn("GetLatency: Not enough data to report");
+        return false;
+    }
+
+    // Sort frame reports, find the oldest
+    size_t minIdx = 0;
+    uint64_t minID = frame_reports[0].frameID;
+    for (size_t i = 1; i < FRAME_REPORTS_BUFFER_SIZE; i++)
+    {
+        if (frame_reports[i].frameID < minID)
+        {
+            minID = frame_reports[i].frameID;
+            minIdx = i;
+        }
+    }
+
+    // Copy starting from older before wrapping around
+    size_t firstChunk = std::min<uint64_t>(NVAPI_BUFFER_SIZE, FRAME_REPORTS_BUFFER_SIZE - minIdx);
+    std::memcpy(reports, frame_reports + minIdx, firstChunk * sizeof(FrameReport));
+
+    // Copy the rest after wrapping around
+    if (firstChunk < NVAPI_BUFFER_SIZE)
+        std::memcpy(reports + firstChunk, frame_reports, (NVAPI_BUFFER_SIZE - firstChunk) * sizeof(FrameReport));
+
+    return true;
+}
+
+InputResult InputCommon::get_frame_reports(const InputContext& inputContext, IUnknown* pDev, FrameReport* reports)
+{
+    // Ignore context that Opti creates
+    if (!inputContext.localContext)
+        set_input_avaliable(inputContext);
+
+    if (!update_low_latency_tech(pDev, inputContext.vulkan))
+        return InputResult::LowLatencyUpdateFail;
+
+    if (reports == nullptr)
+        return InputResult::InvalidParameter;
+
+    return copy_frame_reports(reports) ? InputResult::Ok : InputResult::NotEnoughReports;
 }
 
 #define UPDATE_TIMING_ENTRY(name, type)                                                                                \
@@ -859,12 +932,11 @@ bool InputCommon::get_timing_data(TimingData& timingDataOut)
 // Reflex Sync in between. Every marker uses the game's frame id.
 void InputCommon::fg_game_present(ID3D12CommandQueue* gameQueue, bool presented, uint32_t frameMultiplier)
 {
-    auto current_tech = currently_active_tech.load();
+    auto reflex_tech = std::dynamic_pointer_cast<Reflex>(currently_active_tech.load());
 
-    if (current_tech == nullptr || current_tech->get_mode() != LowLatencyMode::Reflex || gameQueue == nullptr)
+    if (reflex_tech == nullptr || gameQueue == nullptr)
         return;
 
-    auto reflex_tech = std::static_pointer_cast<Reflex>(current_tech);
     uint64_t frame_id = last_present_start_frame_id;
     reflex_tech->set_async_marker(gameQueue,
                                   { frame_id, presented ? MarkerType::PRESENT_END : MarkerType::PRESENT_START });
@@ -886,12 +958,11 @@ void InputCommon::fg_output_present(ID3D12CommandQueue* presentQueue, bool prese
     static uint32_t batchPresents = 0;
     static bool batchOpen = false;
 
-    auto current_tech = currently_active_tech.load();
+    auto reflex_tech = std::dynamic_pointer_cast<Reflex>(currently_active_tech.load());
 
-    if (current_tech == nullptr || current_tech->get_mode() != LowLatencyMode::Reflex || presentQueue == nullptr)
+    if (reflex_tech == nullptr || presentQueue == nullptr)
         return;
 
-    auto reflex_tech = std::static_pointer_cast<Reflex>(current_tech);
     auto send = [&](MarkerType type) { reflex_tech->set_async_marker(presentQueue, { batchFrameId, type }); };
 
     if (!presented && fg_new_batch.exchange(false))
@@ -992,9 +1063,17 @@ void InputCommon::update()
     {
         auto mode = current_tech->get_mode();
 
-        // Their limiters only work with low latency enabled, for XeLL with XeFG it only skips the sleep calls
-        if (mode == LowLatencyMode::AntiLag2 || mode == LowLatencyMode::XeLL || mode == LowLatencyMode::LatencyFlex)
+        // Their limiters only work with low latency enabled, for XeLL with XeFG it only skips the sleep calls.
+        // Vulkan's Reflex has no hooks to limit through, its sleep mode limits without low latency too.
+        if (mode == LowLatencyMode::AntiLag2 || mode == LowLatencyMode::XeLL || mode == LowLatencyMode::LatencyFlex ||
+            mode == LowLatencyMode::AntiLagVk)
+        {
             active = current_tech->is_enabled();
+        }
+        else if (mode == LowLatencyMode::Reflex && output_vulkan)
+        {
+            active = true;
+        }
     }
 
     uint32_t interval = 0;
@@ -1062,6 +1141,11 @@ InputResult InputCommon::mark_present_start(IUnknown* pDevice)
     }
 
     return InputResult::Ok;
+}
+
+std::shared_ptr<ReflexVk> InputCommon::reflex_vk_output()
+{
+    return std::dynamic_pointer_cast<ReflexVk>(currently_active_tech.load());
 }
 
 xell_context_handle_t InputCommon::xell_output_context()
