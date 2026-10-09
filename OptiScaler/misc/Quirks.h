@@ -249,7 +249,8 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("em-win64-shipping.exe", GameQuirk::DontUseNtDllHooks),
 
     // The Talos Principle 2
-    QUIRK_ENTRY("talos2-win64-shipping.exe", GameQuirk::DoNotPreserveFGSwapChain, GameQuirk::DoNotSkipResize),
+    // Take Control Of The Simulation update - AlwaysCaptureFSRFGSwapchain and removed DoNotPreserveFGSwapChain
+    QUIRK_ENTRY("talos2-win64-shipping.exe", GameQuirk::DoNotSkipResize, GameQuirk::AlwaysCaptureFSRFGSwapchain),
 
     // The Callisto Protocol
     // FSR2 only, no spoof needed
