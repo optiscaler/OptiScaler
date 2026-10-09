@@ -3851,9 +3851,9 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
             ImGui::EndDisabled();
         }
 
-        const bool showOutputSpecificFGSettings = state.activeFgInput == FGInput::DLSSG ||
-                                                  state.activeFgInput == FGInput::FSRFG ||
-                                                  state.activeFgInput == FGInput::FSRFG30;
+        const bool showOutputSpecificFGSettings =
+            state.activeFgInput == FGInput::DLSSG || state.activeFgInput == FGInput::FSRFG ||
+            state.activeFgInput == FGInput::FSRFG30 || state.activeFgInput == FGInput::XeFG;
 
         const bool showHudCutoff = state.activeFgInput == FGInput::NvngxFG || state.activeFgOutput == FGOutput::FSRFG;
 
