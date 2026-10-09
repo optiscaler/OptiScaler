@@ -589,11 +589,12 @@ const std::vector<GameConfig> gameConfigs = {
     // The Witcher 3
     // SL spoof enough to unlock everything DLSS/No spoof needed for DLSS inputs,
     // WAR for our SL having to init on the real device that the game will actually be using
-    // early in boot it creates a device that it later *needs* to properly destroy
+    // early in boot it creates a device that it later *needs* to properly destroy,
+    // MVs with XeFG inputs don't include camera motion
     {
         .exes = { "witcher3.exe" },
         .defaults = { DxgiSpoofing = false },
-        .quirks = { CreateSLOnThe2ndDevice },
+        .quirks = { CreateSLOnThe2ndDevice, XeFGCameraMotionFill },
     },
 
     // No UE barriers to fix crash on upscaler init

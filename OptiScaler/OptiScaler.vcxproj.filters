@@ -302,6 +302,15 @@
     <ClInclude Include="OwnedMutex.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="shaders\camera_motion\CM_Common.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\camera_motion\CM_Dx12.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\camera_motion\precompiled\CM_Shader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="shaders\depth_scale\DS_Common.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1206,6 +1215,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="menu\menu_overlay_vk.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="shaders\camera_motion\CM_Dx12.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="shaders\depth_scale\DS_Dx12.cpp">

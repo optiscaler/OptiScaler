@@ -3,6 +3,7 @@
 #include <framegen/IFGFeature_Dx12.h>
 #include <proxies/XeFG_Proxy.h>
 #include <proxies/XeLL_Proxy.h>
+#include <shaders/camera_motion/CM_Dx12.h>
 #include <detours/detours.h>
 #include <DirectXMath.h>
 #include <magic_enum.hpp>
@@ -119,6 +120,17 @@ static int _frameTimeSamples = 0;
 static bool _gameDepthMV[BUFFER_COUNT] {}; // Frames without them from the game use the upscaler's
 static bool _upscalerMVs = false;
 
+// The Witcher 3 only writes velocity where objects move, alpha is 0 where only the camera moved. Those pixels get
+// the camera's motion from depth, the velocity waits for the frame's depth and both go through the shader.
+static std::unique_ptr<CM_Dx12> _cameraMotion;
+static ID3D12Device* _cameraMotionDevice = nullptr;
+static DirectX::XMFLOAT4X4 _reprojection[BUFFER_COUNT] {};
+static bool _reprojectionKnown[BUFFER_COUNT] {};
+static DirectX::XMFLOAT4X4 _viewProjection {}, _previousViewProjection {};
+static bool _cameraKnown = false, _previousCameraKnown = false;
+static uint64_t _cameraPresentId = 0; // Present id + 1 of the camera above
+static Dx12Resource _pendingDepth[BUFFER_COUNT] {}, _pendingVelocity[BUFFER_COUNT] {};
+
 static xefg_swapchain_result_t Ok() { return XEFG_SWAPCHAIN_RESULT_SUCCESS; }
 
 // Each new present id starts a new frame of the FG output and all tags of that frame use its buffer index.
@@ -138,14 +150,18 @@ static int FrameIndex(IFGFeature_Dx12* fg, uint32_t presentId)
     auto index = fg->GetIndex();
     _frameIds[index] = (uint64_t) presentId + 1;
     _gameDepthMV[index] = false;
+    _reprojectionKnown[index] = false;
+    _pendingDepth[index] = {};
+    _pendingVelocity[index] = {};
     return index;
 }
 
-// A projection matrix has w = +-z and no w translation (row or column major, either handedness)
+// A projection matrix has w = +-z, no w translation and doesn't mix x and y (row or column major, either handedness).
+// The Witcher 3's has noise above 1e-4 in its w translation, a combined matrix of a turned camera mixes x and y.
 static bool IsProjection(const DirectX::XMFLOAT4X4& matrix)
 {
     auto m = &matrix._11;
-    return std::abs(m[15]) < 1e-4f &&
+    return std::abs(m[15]) < 1e-2f && std::abs(m[1]) < 1e-3f && std::abs(m[4]) < 1e-3f &&
            (std::abs(std::abs(m[11]) - 1.0f) < 1e-3f || std::abs(std::abs(m[14]) - 1.0f) < 1e-3f);
 }
 
@@ -193,6 +209,123 @@ static bool FindProjection(const xefg_swapchain_frame_constant_data_t* data, Dir
     }
 
     return false;
+}
+
+static bool CameraMotionFill() { return State::Instance().gameQuirks[GameQuirk::XeFGCameraMotionFill]; }
+
+// The Witcher 3 passes the projection as the view matrix and the other way around
+static bool FindViewProjection(const xefg_swapchain_frame_constant_data_t* data, DirectX::XMFLOAT4X4& viewProjection)
+{
+    using namespace DirectX;
+    const XMFLOAT4X4 first(data->viewMatrix), second(data->projectionMatrix);
+
+    for (const auto& [view, projection] : { std::pair { &first, &second }, std::pair { &second, &first } })
+    {
+        if (IsView(*view) && IsProjection(*projection))
+        {
+            XMStoreFloat4x4(&viewProjection, XMMatrixMultiply(XMLoadFloat4x4(view), XMLoadFloat4x4(projection)));
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// Current clip space to the previous frame's
+static void UpdateReprojection(uint32_t presentId, const xefg_swapchain_frame_constant_data_t* data, int index)
+{
+    // Constants sent again for the same frame keep its previous frame
+    if (_cameraPresentId != (uint64_t) presentId + 1)
+    {
+        _cameraPresentId = (uint64_t) presentId + 1;
+        _previousViewProjection = _viewProjection;
+        _previousCameraKnown = _cameraKnown;
+    }
+
+    _cameraKnown = FindViewProjection(data, _viewProjection);
+
+    static bool warned = false;
+
+    if (!_cameraKnown && !std::exchange(warned, true))
+        LOG_WARN("XeFG input: no view and projection matrices, camera motion is left out");
+    else if (!_cameraKnown)
+        LOG_DEBUG("XeFG input: no view and projection matrices for present id {}", presentId);
+
+    using namespace DirectX;
+    auto reprojection = XMMatrixIdentity();
+    XMVECTOR determinant {};
+    auto inverse = XMMatrixInverse(&determinant, XMLoadFloat4x4(&_viewProjection));
+
+    if (_cameraKnown && _previousCameraKnown && !data->resetHistory && XMVectorGetX(determinant) != 0.0f)
+        reprojection = XMMatrixMultiply(inverse, XMLoadFloat4x4(&_previousViewProjection));
+
+    XMStoreFloat4x4(&_reprojection[index], reprojection);
+    _reprojectionKnown[index] = true;
+}
+
+// Velocity in pixels as previous - current position, with the camera's motion where the game wrote none
+static bool FillVelocity(IFGFeature_Dx12* fg, ID3D12GraphicsCommandList* cmdList, int index)
+{
+    auto& depth = _pendingDepth[index];
+    auto& velocity = _pendingVelocity[index];
+
+    if (depth.resource == nullptr || velocity.resource == nullptr)
+        return false;
+
+    if (_cameraMotion == nullptr || _cameraMotionDevice != _device)
+    {
+        _cameraMotion = std::make_unique<CM_Dx12>("CameraMotion", _device);
+        _cameraMotionDevice = _device;
+    }
+
+    static bool listWarned = false;
+
+    if (depth.cmdList != velocity.cmdList && !std::exchange(listWarned, true))
+        LOG_WARN("XeFG input: depth and motion vectors are tagged on different command lists");
+
+    if (cmdList == nullptr)
+        cmdList = fg->GetUICommandList(index);
+
+    static bool warned = false;
+
+    if (!_reprojectionKnown[index] && !std::exchange(warned, true))
+        LOG_WARN("XeFG input: depth and motion vectors came before the frame constants, camera motion is left out");
+
+    CMConstants constants {};
+
+    if (_reprojectionKnown[index])
+        constants.Reprojection = _reprojection[index];
+    else
+        DirectX::XMStoreFloat4x4(&constants.Reprojection, DirectX::XMMatrixIdentity());
+
+    constants.Width = (uint32_t) velocity.width;
+    constants.Height = velocity.height;
+    constants.Left = velocity.left;
+    constants.Top = velocity.top;
+    constants.DepthScaleX = (float) depth.width / (float) velocity.width;
+    constants.DepthScaleY = (float) depth.height / (float) velocity.height;
+    constants.DepthLeft = depth.left;
+    constants.DepthTop = depth.top;
+
+    auto output = _cameraMotion->Dispatch(cmdList, index, velocity.resource, velocity.state, depth.resource,
+                                          depth.state, constants);
+
+    if (output == nullptr)
+    {
+        LOG_ERROR("XeFG input: camera motion failed, frame {} has no motion vectors", index);
+        return false;
+    }
+
+    // The output belongs to this frame index, it stays valid until the frame is presented
+    velocity.resource = output;
+    velocity.state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    velocity.cmdList = cmdList;
+    velocity.validity = FG_ResourceValidity::UntilPresent;
+    fg->SetResource(&velocity);
+
+    depth = {};
+    velocity = {};
+    return true;
 }
 
 // XeFG takes the frame render time in milliseconds, some games (The Witcher 3, Cyberpunk 2077) pass seconds.
@@ -259,6 +392,9 @@ static xefg_swapchain_result_t InitFromSwapChain(xefg_swapchain_handle_t, ID3D12
     _upscalerMVs = false;
     std::fill(std::begin(_frameIds), std::end(_frameIds), 0);
     std::fill(std::begin(_gameDepthMV), std::end(_gameDepthMV), false);
+    _cameraKnown = false;
+    _previousCameraKnown = false;
+    _cameraPresentId = 0;
     _initParams = *params;
     _initParams.pApplicationSwapChain = nullptr;
     _initParams.maxInterpolatedFrames = 1;
@@ -386,7 +522,14 @@ static xefg_swapchain_result_t TagFrameConstants(xefg_swapchain_handle_t, uint32
     float mvScaleX = data->motionVectorScaleX;
     float mvScaleY = data->motionVectorScaleY;
 
-    if (_initParams.initFlags & XEFG_SWAPCHAIN_INIT_FLAG_USE_NDC_VELOCITY)
+    if (CameraMotionFill())
+    {
+        // The camera motion shader outputs pixels
+        UpdateReprojection(presentId, data, index);
+        mvScaleX = 1.0f;
+        mvScaleY = 1.0f;
+    }
+    else if (_initParams.initFlags & XEFG_SWAPCHAIN_INIT_FLAG_USE_NDC_VELOCITY)
     {
         mvScaleX *= _mvSize.x * 0.5f;
         mvScaleY *= _mvSize.y * -0.5f;
@@ -452,6 +595,23 @@ static xefg_swapchain_result_t TagFrameResource(xefg_swapchain_handle_t, ID3D12C
     res.validity = data->validity == XEFG_SWAPCHAIN_RV_ONLY_NOW && cmdList != nullptr
                        ? FG_ResourceValidity::ValidNow
                        : FG_ResourceValidity::UntilPresent;
+
+    if (CameraMotionFill() &&
+        (data->type == XEFG_SWAPCHAIN_RES_DEPTH || data->type == XEFG_SWAPCHAIN_RES_MOTION_VECTOR))
+    {
+        if (data->type == XEFG_SWAPCHAIN_RES_DEPTH)
+        {
+            fg->SetResource(&res);
+            _pendingDepth[index] = res;
+        }
+        else
+        {
+            _pendingVelocity[index] = res;
+        }
+
+        FillVelocity(fg, res.cmdList, index);
+        return XEFG_SWAPCHAIN_RESULT_SUCCESS;
+    }
 
     fg->SetResource(&res);
     return XEFG_SWAPCHAIN_RESULT_SUCCESS;

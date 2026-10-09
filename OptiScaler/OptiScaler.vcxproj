@@ -512,6 +512,9 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="shaders\resource_flip\precompiled\RF_Shader.h" />
     <ClInclude Include="shaders\resource_flip\RF_Common.h" />
     <ClInclude Include="shaders\resource_flip\RF_Dx12.h" />
+    <ClInclude Include="shaders\camera_motion\CM_Common.h" />
+    <ClInclude Include="shaders\camera_motion\CM_Dx12.h" />
+    <ClInclude Include="shaders\camera_motion\precompiled\CM_Shader.h" />
     <ClInclude Include="shaders\depth_scale\DS_Common.h" />
     <ClInclude Include="shaders\depth_scale\DS_Dx12.h" />
     <ClInclude Include="shaders\depth_scale\precompiled\DS_Shader.h" />
@@ -783,6 +786,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="resource_tracking\ResTrack_dx12.cpp" />
     <ClCompile Include="shaders\hudless_compare\HC_Dx12.cpp" />
     <ClCompile Include="shaders\resource_flip\RF_Dx12.cpp" />
+    <ClCompile Include="shaders\camera_motion\CM_Dx12.cpp" />
     <ClCompile Include="shaders\depth_scale\DS_Dx12.cpp" />
     <ClCompile Include="shaders\depth_transfer\DT_Dx11.cpp" />
     <ClCompile Include="upscalers\dlssd\DLSSDFeature.cpp" />
