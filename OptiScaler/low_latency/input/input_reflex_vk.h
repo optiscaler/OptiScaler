@@ -10,7 +10,7 @@ class InputReflexVk
     const static inline InputContext inputContext { .caller = LowLatencyInput::Reflex,
                                                     .noFrameId = false,
                                                     .markerMode = InputMarkerMode::FullMarkers,
-                                                    .vulkan = true };
+                                                    .api = API::Vulkan };
 
   public:
     static VkResult VKAPI_CALL SetLatencySleepMode(VkDevice device, VkSwapchainKHR swapchain,

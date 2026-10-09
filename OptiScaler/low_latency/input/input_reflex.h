@@ -30,7 +30,7 @@ class InputReflex
     const static inline InputContext vulkanContext { .caller = LowLatencyInput::Reflex,
                                                      .noFrameId = false,
                                                      .markerMode = InputMarkerMode::FullMarkers,
-                                                     .vulkan = true };
+                                                     .api = API::Vulkan };
 
     // The game waits on it after each sleep
     static inline VkSemaphore vkSemaphore = VK_NULL_HANDLE;

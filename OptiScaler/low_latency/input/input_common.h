@@ -20,7 +20,7 @@ struct InputContext
     bool localContext; // input created by Opti
     bool noFrameId;
     InputMarkerMode markerMode;
-    bool vulkan; // pDevice is a VkDevice
+    API api; // pDevice's API, NotSelected for a D3D11 or D3D12 device, told apart by the device
 };
 
 enum class InputResult : uint32_t
@@ -89,23 +89,23 @@ class InputCommon
     inline static bool enabled = false;
 
     // The API of each input's device, the output runs on the active input's
-    inline static std::array<std::atomic_bool, static_cast<size_t>(LowLatencyInput::_)> input_vulkan {};
-    inline static std::atomic_bool output_vulkan = false;
+    inline static std::array<std::atomic<API>, static_cast<size_t>(LowLatencyInput::_)> input_api {};
+    inline static std::atomic<API> output_api = API::NotSelected;
 
     static bool deinit_current_tech();
-    static bool init_tech(IUnknown* pDevice, bool vulkan, LowLatencyMode desiredMode);
-    static bool update_low_latency_tech(IUnknown* pDevice, bool vulkan,
-                                        std::optional<LowLatencyMode> mode = std::nullopt);
+    static bool init_tech(IUnknown* pDevice, API api, LowLatencyMode desiredMode);
+    static bool update_low_latency_tech(IUnknown* pDevice, API api, std::optional<LowLatencyMode> mode = std::nullopt);
     static void add_marker_to_report(const MarkerParams& marker_params);
     static bool copy_frame_reports(FrameReport* reports); // NVAPI_BUFFER_SIZE reports, oldest first
-    static void set_input_avaliable(const InputContext& inputContext)
-    {
-        input_vulkan[static_cast<size_t>(inputContext.caller)] = inputContext.vulkan;
-        avaliableInputs.set(inputContext.caller);
-    };
 
-    // The output that does the same on the other API, XeLL is D3D12 only
-    static LowLatencyMode for_api(LowLatencyMode mode, bool vulkan);
+    // The API of the call's device
+    static API device_api(const InputContext& inputContext, IUnknown* pDevice);
+
+    // Marks the game's input as available, returns the call's API
+    static API register_call(const InputContext& inputContext, IUnknown* pDevice);
+
+    // The output that does the same on the call's API: AntiLag Vk on Vulkan, AntiLag 2 on D3D, XeLL is D3D12 only
+    static LowLatencyMode for_api(LowLatencyMode mode, API api);
     static SleepMode& get_sleep_copy(LowLatencyInput input) { return sleep_mode_copies[static_cast<size_t>(input)]; }
     static void apply_sleep_mode(LowLatencyTech* tech);
 
@@ -132,7 +132,7 @@ class InputCommon
     static LowLatencyMode active_output() { return activeOutput; }
 
     // The active input's API, the swapchain's without one
-    static bool uses_vulkan();
+    static API uses_api();
     static void get_currently_active(LowLatencyInput& activeInput, LowLatencyMode& activeOutput)
     {
         activeInput = InputCommon::activeInput;
@@ -155,7 +155,7 @@ class InputCommon
     static LowLatencyInput default_input();
 
     // The GPU vendor's own low latency output
-    static LowLatencyMode default_output(bool vulkan);
+    static LowLatencyMode default_output(API api);
 
     // Why the input can't drive the output, nullptr when it can
     static const char* incompatibility(LowLatencyInput input, LowLatencyMode output);

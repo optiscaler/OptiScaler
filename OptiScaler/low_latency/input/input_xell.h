@@ -20,7 +20,8 @@ class InputXeLL
         InputContext inputContext { .caller = LowLatencyInput::XeLL,
                                     .localContext = false,
                                     .noFrameId = false,
-                                    .markerMode = InputMarkerMode::FullMarkers };
+                                    .markerMode = InputMarkerMode::FullMarkers,
+                                    .api = API::DX12 };
         ID3D12Device* device {};
         xell_sleep_params_t sleepParams {}; // The game's, to pass on once it goes to the real XeLL
     };

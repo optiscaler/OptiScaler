@@ -3,6 +3,13 @@
 #include <proxies/XeLL_Proxy.h>
 #include <detours/detours.h>
 
+#include <intrin.h>
+
+#pragma intrinsic(_ReturnAddress)
+
+// Without the game's own XeFG the hooked library is OptiScaler's, its XeFG output's calls aren't the game's
+static bool FromOptiScaler(void* returnAddress) { return Util::GetCallerModule(returnAddress) == dllModule; }
+
 void XeFGInputs::PassApply(xefg_swapchain_handle_t context)
 {
     auto& setting = Config::Instance()->FGXeFGOverrideInterpolationCount;
@@ -619,7 +626,9 @@ template <size_t N> bool XeFGInputs::Attach(HMODULE module, HookEntry (&hooks)[N
 // XeFG reads the XeLL context directly, it needs the real one behind it
 xefg_swapchain_result_t XeFGInputs::GameSetLatencyReduction(xefg_swapchain_handle_t hSwapChain, void* hXeLLContext)
 {
-    InputXeLL::AttachXeFG(hXeLLContext);
+    if (!FromOptiScaler(_ReturnAddress()))
+        InputXeLL::AttachXeFG(hXeLLContext);
+
     return ((decltype(&xefgSwapChainSetLatencyReduction)) _nativeHooks[0].target)(hSwapChain, hXeLLContext);
 }
 
@@ -628,7 +637,7 @@ xefg_swapchain_result_t XeFGInputs::GameSetEnabled(xefg_swapchain_handle_t hSwap
 {
     auto result = ((decltype(&xefgSwapChainSetEnabled)) _nativeHooks[1].target)(hSwapChain, enable);
 
-    if (result == XEFG_SWAPCHAIN_RESULT_SUCCESS)
+    if (result == XEFG_SWAPCHAIN_RESULT_SUCCESS && !FromOptiScaler(_ReturnAddress()))
         InputXeLL::SetXeFGEnabled(enable != 0);
 
     return result;

@@ -17,7 +17,8 @@ struct AmdExtAntiLagApi : public AMD::AntiLag2DX12::IAmdExtAntiLagApi
     InputContext inputContext { .caller = LowLatencyInput::AntiLag2,
                                 .localContext = false,
                                 .noFrameId = true,
-                                .markerMode = InputMarkerMode::SimStartOnly };
+                                .markerMode = InputMarkerMode::SimStartOnly,
+                                .api = API::DX12 };
 
     ID3D12Device* device = nullptr;
     uint64_t pseudoFrameId = 0;

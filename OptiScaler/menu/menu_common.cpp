@@ -5783,11 +5783,13 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
         lowLatencyOutput[(uint32_t) LowLatencyMode::None].set_hidden(true);
 
         // Each API has its own, the other API's selection maps to it. The API can change, so no sticky setters.
-        const bool vulkan = InputCommon::uses_vulkan();
+        const auto api = InputCommon::uses_api();
+        const bool vulkan = api == API::Vulkan;
+        const bool outputForced = InputCommon::forced_output().has_value();
         const bool nvidia = IdentifyGpu::getPrimaryGpu().vendorId == VendorId::Nvidia;
 
         lowLatencyOutput[(uint32_t) LowLatencyMode::AntiLag2].hidden = vulkan;
-        lowLatencyOutput[(uint32_t) LowLatencyMode::XeLL].hidden = vulkan;
+        lowLatencyOutput[(uint32_t) LowLatencyMode::XeLL].hidden = !outputForced && (vulkan || api == API::DX11);
         lowLatencyOutput[(uint32_t) LowLatencyMode::AntiLagVk].hidden = !vulkan;
 
         auto disable = [](MenuOption<LowLatencyMode>& option, bool condition, const char* reason)
@@ -5814,7 +5816,9 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
         lowLatencyOutput[(uint32_t) LowLatencyMode::Auto].label = "Auto";
         lowLatencyOutput[(uint32_t) LowLatencyMode::Auto].tooltip =
             vulkan ? "The GPU's own: AntiLag on AMD, Reflex on Nvidia, LatencyFlex otherwise"
-                   : "The GPU's own: AntiLag 2 on AMD, Reflex on Nvidia, XeLL on Intel, LatencyFlex otherwise";
+            : api == API::DX11
+                ? "The GPU's own: AntiLag 2 on AMD, Reflex on Nvidia, LatencyFlex otherwise"
+                : "The GPU's own: AntiLag 2 on AMD, Reflex on Nvidia, XeLL on Intel, LatencyFlex otherwise";
 
         // Frame generation decides the output it works with
         auto forcedOutput = InputCommon::forced_output();
@@ -5828,6 +5832,10 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
             output = LowLatencyMode::AntiLagVk;
         else if (!vulkan && output == LowLatencyMode::AntiLagVk)
             output = LowLatencyMode::AntiLag2;
+
+        // No XeLL on D3D11 unless OptiScaler's XeFG runs it on D3D12, Auto picks the GPU's own
+        if (!forcedOutput.has_value() && api == API::DX11 && output == LowLatencyMode::XeLL)
+            output = LowLatencyMode::Auto;
 
         auto selectedOutput = output;
 

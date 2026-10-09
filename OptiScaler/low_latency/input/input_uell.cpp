@@ -10,17 +10,13 @@ void InputUeLowLatency::init()
     if (inited)
         return;
 
-    // if (auto dx11device = State::Instance().currentD3D11Device; dx11device)
-    //{
-    //     device = dx11device;
-    //     inited = true;
-    // }
+    // The swapchain's device, D3D11 games can have a D3D12 device too
+    if (State::Instance().swapchainApi == DX11)
+        device = State::Instance().currentD3D11Device;
+    else
+        device = State::Instance().currentD3D12Device;
 
-    if (auto dx12device = State::Instance().currentD3D12Device; !inited && dx12device)
-    {
-        device = dx12device;
-        inited = true;
-    }
+    inited = device != nullptr;
 
     if (inited)
     {

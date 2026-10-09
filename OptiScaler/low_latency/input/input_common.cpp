@@ -56,7 +56,7 @@ bool InputCommon::deinit_current_tech()
     return false;
 }
 
-bool InputCommon::init_tech(IUnknown* pDevice, bool vulkan, LowLatencyMode desiredMode)
+bool InputCommon::init_tech(IUnknown* pDevice, API api, LowLatencyMode desiredMode)
 {
     if (!currently_active_tech.load() && delay_deinit == 0)
     {
@@ -81,7 +81,7 @@ bool InputCommon::init_tech(IUnknown* pDevice, bool vulkan, LowLatencyMode desir
             isInitialized = try_init(std::make_shared<AntiLag2>(), "AntiLag2");
             break;
         case LowLatencyMode::Reflex:
-            if (vulkan)
+            if (api == API::Vulkan)
                 isInitialized = try_init(std::make_shared<ReflexVk>(), "Reflex Vulkan");
             else
                 isInitialized = try_init(std::make_shared<Reflex>(), "Reflex");
@@ -110,7 +110,7 @@ bool InputCommon::init_tech(IUnknown* pDevice, bool vulkan, LowLatencyMode desir
         if (auto current_tech = currently_active_tech.load(); current_tech && isInitialized)
         {
             activeOutput = current_tech->get_mode();
-            output_vulkan = vulkan;
+            output_api = api;
 
             // XeFG needs XeLL in low latency mode, disabling it only stops sending the sleep and marker calls
             current_tech->set_forced_mode(xefg_paced());
@@ -124,13 +124,13 @@ bool InputCommon::init_tech(IUnknown* pDevice, bool vulkan, LowLatencyMode desir
     return false;
 }
 
-LowLatencyMode InputCommon::default_output(bool vulkan)
+LowLatencyMode InputCommon::default_output(API api)
 {
     // TODO: add avaliableOutput, somehow ?
     auto vendorId = IdentifyGpu::getPrimaryGpu().vendorId;
 
     // Only the device's extensions, there's no XeLL for Vulkan
-    if (vulkan)
+    if (api == API::Vulkan)
     {
         if (vendorId == VendorId::AMD && VulkanHooks::o_vkAntiLagUpdateAMD != nullptr)
             return LowLatencyMode::AntiLagVk;
@@ -141,7 +141,8 @@ LowLatencyMode InputCommon::default_output(bool vulkan)
         return LowLatencyMode::LatencyFlex;
     }
 
-    if (vendorId == VendorId::Intel)
+    // XeLL is D3D12 only
+    if (vendorId == VendorId::Intel && api != API::DX11)
         return LowLatencyMode::XeLL;
 
     if (vendorId == VendorId::AMD)
@@ -153,30 +154,77 @@ LowLatencyMode InputCommon::default_output(bool vulkan)
     return LowLatencyMode::LatencyFlex;
 }
 
-LowLatencyMode InputCommon::for_api(LowLatencyMode mode, bool vulkan)
+LowLatencyMode InputCommon::for_api(LowLatencyMode mode, API api)
 {
-    if (vulkan)
-    {
-        if (mode == LowLatencyMode::AntiLag2)
-            return LowLatencyMode::AntiLagVk;
+    if (api == API::Vulkan && mode == LowLatencyMode::AntiLag2)
+        return LowLatencyMode::AntiLagVk;
 
-        if (mode == LowLatencyMode::XeLL)
-            return default_output(true);
-    }
-    else if (mode == LowLatencyMode::AntiLagVk)
-    {
+    if (api != API::Vulkan && mode == LowLatencyMode::AntiLagVk)
         return LowLatencyMode::AntiLag2;
-    }
+
+    if (api != API::DX12 && mode == LowLatencyMode::XeLL)
+        return default_output(api);
 
     return mode;
 }
 
-bool InputCommon::uses_vulkan()
+API InputCommon::device_api(const InputContext& inputContext, IUnknown* pDevice)
+{
+    if (inputContext.api != API::NotSelected)
+        return inputContext.api;
+
+    // Reflex and UE take either D3D device
+    thread_local IUnknown* lastDevice = nullptr;
+    thread_local API lastApi = API::NotSelected;
+
+    if (pDevice == nullptr)
+        return lastApi;
+
+    if (pDevice != lastDevice)
+    {
+        ID3D11Device* device11 = nullptr;
+
+        if (pDevice->QueryInterface(IID_PPV_ARGS(&device11)) == S_OK)
+        {
+            device11->Release();
+            lastApi = API::DX11;
+        }
+        else
+        {
+            lastApi = API::DX12;
+        }
+
+        lastDevice = pDevice;
+    }
+
+    return lastApi;
+}
+
+API InputCommon::register_call(const InputContext& inputContext, IUnknown* pDevice)
+{
+    auto api = device_api(inputContext, pDevice);
+
+    // Ignore context that Opti creates
+    if (!inputContext.localContext)
+    {
+        if (api != API::NotSelected)
+            input_api[static_cast<size_t>(inputContext.caller)] = api;
+
+        avaliableInputs.set(inputContext.caller);
+    }
+
+    return api;
+}
+
+API InputCommon::uses_api()
 {
     if (activeInput != LowLatencyInput::None)
-        return input_vulkan[static_cast<size_t>(activeInput)];
+    {
+        if (auto api = input_api[static_cast<size_t>(activeInput)].load(); api != API::NotSelected)
+            return api;
+    }
 
-    return State::Instance().swapchainApi == Vulkan;
+    return State::Instance().swapchainApi;
 }
 
 std::optional<LowLatencyMode> InputCommon::forced_output()
@@ -268,7 +316,7 @@ std::optional<LowLatencyInput> InputCommon::forced_input()
     return std::nullopt;
 }
 
-bool InputCommon::update_low_latency_tech(IUnknown* pDevice, bool vulkan, std::optional<LowLatencyMode> mode)
+bool InputCommon::update_low_latency_tech(IUnknown* pDevice, API api, std::optional<LowLatencyMode> mode)
 {
     // The game's XeFG runs on its own XeLL, nothing else may drive an output next to it (update() removes it)
     if (InputXeLL::IsNative())
@@ -303,7 +351,7 @@ bool InputCommon::update_low_latency_tech(IUnknown* pDevice, bool vulkan, std::o
     if (mode.has_value())
         desiredMode = mode.value();
 
-    if (desiredMode != LowLatencyMode::None && desiredMode == activeOutput && vulkan == output_vulkan)
+    if (desiredMode != LowLatencyMode::None && desiredMode == activeOutput && api == output_api)
     {
         // No need to do anything
         return true;
@@ -348,21 +396,31 @@ bool InputCommon::update_low_latency_tech(IUnknown* pDevice, bool vulkan, std::o
             apply_sleep_mode(current_tech.get()); // Restore any potential sleep mode
     }
 
-    // The output runs on the active input's device, another API's device can't start it
-    if (vulkan != input_vulkan[static_cast<size_t>(activeInput)])
+    // The output runs on the active input's device, another API's device can't start it. OptiScaler's frame
+    // generation asks for its output with its own device.
+    if (auto inputApi = input_api[static_cast<size_t>(activeInput)].load();
+        !mode.has_value() && inputApi != API::NotSelected && api != inputApi)
+    {
+        return true;
+    }
+
+    // The frame generation that forces the output runs it on its own device, OptiScaler's XeFG on D3D12 also for
+    // D3D11 games through interop. Calls from an API without that output only drive it, the frame generation starts
+    // it (set_low_latency_tech).
+    if (auto forced = forced_output(); forced.has_value() && !mode.has_value() && for_api(*forced, api) != *forced)
         return true;
 
     if (desiredMode == LowLatencyMode::None)
         desiredMode = Config::Instance()->LowLatencyOutput.value_or_default();
 
     if (desiredMode == LowLatencyMode::Auto || desiredMode == LowLatencyMode::None)
-        desiredMode = default_output(vulkan);
+        desiredMode = default_output(api);
 
     // The frame generation output decides the low latency output it works with
     if (auto forced = forced_output())
         desiredMode = *forced;
 
-    desiredMode = for_api(desiredMode, vulkan);
+    desiredMode = for_api(desiredMode, api);
 
     // An output that couldn't start keeps its fallback instead of being retried every call
     if (desiredMode == failed_output && currently_active_tech.load() != nullptr &&
@@ -371,7 +429,7 @@ bool InputCommon::update_low_latency_tech(IUnknown* pDevice, bool vulkan, std::o
         desiredMode = activeOutput;
     }
 
-    if (activeOutput == desiredMode && vulkan == output_vulkan)
+    if (activeOutput == desiredMode && api == output_api)
     {
         delay_deinit = 0;
         return true;
@@ -381,7 +439,7 @@ bool InputCommon::update_low_latency_tech(IUnknown* pDevice, bool vulkan, std::o
 
     std::scoped_lock lock(create_tech_mutex);
 
-    if (init_tech(pDevice, vulkan, desiredMode))
+    if (init_tech(pDevice, api, desiredMode))
         return true;
 
     auto try_reinit = [&]() -> bool
@@ -392,7 +450,7 @@ bool InputCommon::update_low_latency_tech(IUnknown* pDevice, bool vulkan, std::o
             return false;
         }
 
-        return init_tech(pDevice, vulkan, desiredMode);
+        return init_tech(pDevice, api, desiredMode);
     };
 
     // WAR: FSR FG might still be using AntiLag 2, give Opti time to set AL2 context to null
@@ -477,7 +535,7 @@ void InputCommon::add_marker_to_report(const MarkerParams& marker_params)
 // public
 InputResult InputCommon::set_low_latency_tech(IUnknown* pDevice, LowLatencyMode mode)
 {
-    if (!update_low_latency_tech(pDevice, false, mode))
+    if (!update_low_latency_tech(pDevice, API::DX12, mode))
         return InputResult::LowLatencyUpdateFail;
 
     return InputResult::Ok;
@@ -485,11 +543,7 @@ InputResult InputCommon::set_low_latency_tech(IUnknown* pDevice, LowLatencyMode 
 
 InputResult InputCommon::sleep(const InputContext& inputContext, IUnknown* pDevice, std::optional<uint32_t> frame_id)
 {
-    // Ignore context that Opti creates
-    if (!inputContext.localContext)
-        set_input_avaliable(inputContext);
-
-    if (!update_low_latency_tech(pDevice, inputContext.vulkan))
+    if (!update_low_latency_tech(pDevice, register_call(inputContext, pDevice)))
         return InputResult::LowLatencyUpdateFail;
 
     if (inputContext.caller != activeInput)
@@ -508,11 +562,7 @@ InputResult InputCommon::sleep(const InputContext& inputContext, IUnknown* pDevi
 InputResult InputCommon::set_marker(const InputContext& inputContext, IUnknown* pDevice,
                                     const MarkerParams& marker_params, bool toOutput)
 {
-    // Ignore context that Opti creates
-    if (!inputContext.localContext)
-        set_input_avaliable(inputContext);
-
-    if (!update_low_latency_tech(pDevice, inputContext.vulkan))
+    if (!update_low_latency_tech(pDevice, register_call(inputContext, pDevice)))
         return InputResult::LowLatencyUpdateFail;
 
     if (inputContext.caller != activeInput)
@@ -606,12 +656,9 @@ InputResult InputCommon::set_sleep_mode(const InputContext& inputContext, IUnkno
     // Ignore context that Opti creates. Its contexts (XeFG's XeLL) don't stand for the game's setting either, which
     // is kept even without an output yet: AntiLag 2 and XeLL only send it when it changes.
     if (!inputContext.localContext)
-    {
-        set_input_avaliable(inputContext);
         get_sleep_copy(inputContext.caller) = *sleep_mode;
-    }
 
-    if (!update_low_latency_tech(pDevice, inputContext.vulkan))
+    if (!update_low_latency_tech(pDevice, register_call(inputContext, pDevice)))
         return InputResult::LowLatencyUpdateFail;
 
     if (inputContext.caller != activeInput)
@@ -628,11 +675,7 @@ InputResult InputCommon::set_sleep_mode(const InputContext& inputContext, IUnkno
 InputResult InputCommon::get_sleep_status(const InputContext& inputContext, IUnknown* pDevice,
                                           SleepParams* sleep_params)
 {
-    // Ignore context that Opti creates
-    if (!inputContext.localContext)
-        set_input_avaliable(inputContext);
-
-    if (!update_low_latency_tech(pDevice, inputContext.vulkan))
+    if (!update_low_latency_tech(pDevice, register_call(inputContext, pDevice)))
         return InputResult::LowLatencyUpdateFail;
 
     // Get functions don't really need to worry about this check
@@ -649,14 +692,10 @@ InputResult InputCommon::get_sleep_status(const InputContext& inputContext, IUnk
 
 InputResult InputCommon::get_latency(const InputContext& inputContext, IUnknown* pDev, void* latency_params)
 {
-    // Ignore context that Opti creates
-    if (!inputContext.localContext)
-        set_input_avaliable(inputContext);
-
     // if (inputContext.caller != activeInput)
     //     return InputResult::UsingDifferentInput;
 
-    if (!update_low_latency_tech(pDev, inputContext.vulkan))
+    if (!update_low_latency_tech(pDev, register_call(inputContext, pDev)))
         return InputResult::LowLatencyUpdateFail;
 
     if (!latency_params)
@@ -765,11 +804,7 @@ bool InputCommon::copy_frame_reports(FrameReport* reports)
 
 InputResult InputCommon::get_frame_reports(const InputContext& inputContext, IUnknown* pDev, FrameReport* reports)
 {
-    // Ignore context that Opti creates
-    if (!inputContext.localContext)
-        set_input_avaliable(inputContext);
-
-    if (!update_low_latency_tech(pDev, inputContext.vulkan))
+    if (!update_low_latency_tech(pDev, register_call(inputContext, pDev)))
         return InputResult::LowLatencyUpdateFail;
 
     if (reports == nullptr)
@@ -1070,7 +1105,7 @@ void InputCommon::update()
         {
             active = current_tech->is_enabled();
         }
-        else if (mode == LowLatencyMode::Reflex && output_vulkan)
+        else if (mode == LowLatencyMode::Reflex && output_api == API::Vulkan)
         {
             active = true;
         }
