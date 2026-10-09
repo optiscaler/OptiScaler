@@ -381,6 +381,11 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
     const bool outputMismatch = outputFfx.description.width != InOurHandle->swapchainWidth ||
                                 outputFfx.description.height != InOurHandle->swapchainHeight;
 
+    if (State::Instance().fgChanged || outputMismatch)
+        InOurHandle->createFailed = false;
+    else if (InOurHandle->createFailed)
+        return NVSDK_NGX_Result_Fail;
+
     if ((State::Instance().fgChanged || outputMismatch) && InOurHandle->fgContext && InOurHandle->fgContext->ctx)
     {
         if (outputMismatch)
@@ -496,7 +501,11 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
 
             if (retCode != FFX_API_RETURN_OK)
             {
-                LOG_ERROR("Failed to create FFX context");
+                LOG_ERROR("Failed to create FFX context: {:X}", retCode);
+
+                // Only retry on change, failed create context seems to leak memory
+                InOurHandle->createFailed = true;
+
                 return NVSDK_NGX_Result_Fail;
             }
         }
