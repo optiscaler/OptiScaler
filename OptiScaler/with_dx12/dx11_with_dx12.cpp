@@ -41,35 +41,13 @@ Dx11WithDx12::D3D11_TEXTURE2D_DESC_C CaptureDesc(const D3D11_TEXTURE2D_DESC& des
     return result;
 }
 
-Dx11WithDx12::D3D11_UPSCALER_RESOURCE_CACHE_C& Dx11WithDx12::GetUpscalerResourceCache()
-{
-    return UpscalerResourceCache;
-}
-
-Dx11WithDx12::D3D11_TEXTURE2D_RESOURCE_C* Dx11WithDx12::GetUpscalerOutputResource(UINT frameIndex)
-{
-    return &UpscalerResourceCache.Output[frameIndex % DX11_WITH_DX12_CACHED_FRAMES];
-}
-
-void Dx11WithDx12::SetUpscalerFrameIndex(UINT frameIndex)
-{
-    UpscalerFrameIndex = frameIndex % DX11_WITH_DX12_CACHED_FRAMES;
-}
-
-UINT Dx11WithDx12::GetUpscalerFrameIndex() { return UpscalerFrameIndex; }
-
+// Frame ids are shared by all caches and never reset, so a stale id can't match a newer frame
 UINT64 Dx11WithDx12::NextUpscalerFrameId() { return ++UpscalerLocalFrameId; }
 
-void Dx11WithDx12::ResetUpscalerFrameId() { UpscalerLocalFrameId = 0; }
-
-UINT64 Dx11WithDx12::GetLastPreparedUpscalerFrameId() { return LastPreparedUpscalerFrameId; }
-
-Dx11WithDx12::ResourceMask Dx11WithDx12::GetLastPreparedUpscalerMask() { return LastPreparedUpscalerMask; }
-
-void Dx11WithDx12::ClearLastPreparedUpscalerFrameState()
+void Dx11WithDx12::ClearLastPreparedUpscalerFrameState(D3D11_UPSCALER_RESOURCE_CACHE_C& cache)
 {
-    LastPreparedUpscalerFrameId = 0;
-    LastPreparedUpscalerMask = ResourceMask::None;
+    cache.LastPreparedFrameId = 0;
+    cache.LastPreparedMask = ResourceMask::None;
 }
 
 ID3D11Device5* Dx11WithDx12::GetD3D11Device() { return Dx11Device; }
@@ -325,27 +303,26 @@ bool Dx11WithDx12::SyncDx12ToDx11()
     return true;
 }
 
-void Dx11WithDx12::ResetUpscalerResourceCache(bool releaseSyncResources)
+void Dx11WithDx12::ResetUpscalerResourceCache(D3D11_UPSCALER_RESOURCE_CACHE_C& cache, bool releaseSyncResources)
 {
-    ReleaseSharedResource(&UpscalerResourceCache.Color);
-    ReleaseSharedResource(&UpscalerResourceCache.Mv);
-    ReleaseSharedResource(&UpscalerResourceCache.Depth);
-    ReleaseSharedResource(&UpscalerResourceCache.Reactive);
-    ReleaseSharedResource(&UpscalerResourceCache.Exposure);
+    ReleaseSharedResource(&cache.Color);
+    ReleaseSharedResource(&cache.Mv);
+    ReleaseSharedResource(&cache.Depth);
+    ReleaseSharedResource(&cache.Reactive);
+    ReleaseSharedResource(&cache.Exposure);
 
     for (UINT i = 0; i < DX11_WITH_DX12_CACHED_FRAMES; ++i)
     {
-        ReleaseSharedResource(&UpscalerResourceCache.Output[i]);
-        UpscalerResourceCache.ParamOutput[i] = nullptr;
+        ReleaseSharedResource(&cache.Output[i]);
+        cache.ParamOutput[i] = nullptr;
     }
 
-    ClearLastPreparedUpscalerFrameState();
+    ClearLastPreparedUpscalerFrameState(cache);
+    cache.FrameIndex = 0;
+    cache.Generation = CacheGeneration;
 
     if (releaseSyncResources)
         ReleaseSyncResources();
-
-    ClearLastPreparedUpscalerFrameState();
-    ResetUpscalerFrameId();
 }
 
 void Dx11WithDx12::Init(ID3D11Device* dx11Device, ID3D11DeviceContext* dx11Context)
@@ -415,7 +392,9 @@ void Dx11WithDx12::Init(ID3D11Device* dx11Device, ID3D11DeviceContext* dx11Conte
 
     if (dx11Changed || dx12Changed)
     {
-        ResetUpscalerResourceCache(true);
+        // Caches are owned by features, they will release their resources on next use
+        CacheGeneration++;
+        ReleaseSyncResources();
 
         if (DT != nullptr || DT.get() != nullptr)
             DT.reset();
@@ -798,18 +777,18 @@ bool Dx11WithDx12::CheckMask(ResourceMask mask, ResourceMask resource)
     return (mask & resource) != ResourceMask::None;
 }
 
-bool Dx11WithDx12::HasPreparedUpscalerResources(ResourceMask mask, UINT64 frameId)
+bool Dx11WithDx12::HasPreparedUpscalerResources(const D3D11_UPSCALER_RESOURCE_CACHE_C& cache, ResourceMask mask,
+                                                UINT64 frameId)
 {
-    const auto currentFrameId = frameId != 0 ? frameId : LastPreparedUpscalerFrameId;
+    const auto currentFrameId = frameId != 0 ? frameId : cache.LastPreparedFrameId;
 
-    if (currentFrameId == 0)
+    if (currentFrameId == 0 || cache.Generation != CacheGeneration)
         return false;
 
-    if ((LastPreparedUpscalerMask & mask) != mask)
+    if ((cache.LastPreparedMask & mask) != mask)
         return false;
 
-    auto& cache = GetUpscalerResourceCache();
-    const auto outputIndex = UpscalerFrameIndex % DX11_WITH_DX12_CACHED_FRAMES;
+    const auto outputIndex = cache.FrameIndex % DX11_WITH_DX12_CACHED_FRAMES;
 
     if (CheckMask(mask, ResourceMask::Color) &&
         (cache.Color.Dx12Resource == nullptr || cache.Color.LastPreparedFrame != currentFrameId))
@@ -897,11 +876,10 @@ bool PrepareCachedResource(const char* name, const NVSDK_NGX_Parameter* paramete
 }
 } // namespace
 
-Dx11WithDx12::PrepareResourcesResult Dx11WithDx12::PrepareUpscalerResources(const NVSDK_NGX_Parameter* parameters,
-                                                                            ResourceMask mask, UINT frameIndex,
-                                                                            UINT64 frameId, bool dontUseNTShared,
-                                                                            bool reactiveRequired,
-                                                                            bool syncAfterPrepare)
+Dx11WithDx12::PrepareResourcesResult
+Dx11WithDx12::PrepareUpscalerResources(D3D11_UPSCALER_RESOURCE_CACHE_C& cache, const NVSDK_NGX_Parameter* parameters,
+                                       ResourceMask mask, UINT frameIndex, UINT64 frameId, bool dontUseNTShared,
+                                       bool reactiveRequired, bool syncAfterPrepare)
 {
     PrepareResourcesResult result = {};
 
@@ -923,7 +901,12 @@ Dx11WithDx12::PrepareResourcesResult Dx11WithDx12::PrepareUpscalerResources(cons
         return result;
     }
 
-    auto& cache = GetUpscalerResourceCache();
+    if (cache.Generation != CacheGeneration)
+    {
+        LOG_INFO("Dx11WithDx12 resource cache belongs to old devices, releasing it");
+        ResetUpscalerResourceCache(cache);
+    }
+
     const auto outputIndex = frameIndex % DX11_WITH_DX12_CACHED_FRAMES;
     cache.frameId = frameId;
     bool ok = true;
@@ -992,15 +975,15 @@ Dx11WithDx12::PrepareResourcesResult Dx11WithDx12::PrepareUpscalerResources(cons
 
     if (ok)
     {
-        UpscalerFrameIndex = outputIndex;
-        LastPreparedUpscalerFrameId = frameId;
-        LastPreparedUpscalerMask = mask;
+        cache.FrameIndex = outputIndex;
+        cache.LastPreparedFrameId = frameId;
+        cache.LastPreparedMask = mask;
     }
 
     return result;
 }
 
-bool Dx11WithDx12::CopyUpscalerOutputToDx11(UINT frameIndex)
+bool Dx11WithDx12::CopyUpscalerOutputToDx11(D3D11_UPSCALER_RESOURCE_CACHE_C& cache, UINT frameIndex)
 {
     if (Dx11DeviceContext == nullptr)
     {
@@ -1008,7 +991,6 @@ bool Dx11WithDx12::CopyUpscalerOutputToDx11(UINT frameIndex)
         return false;
     }
 
-    auto& cache = GetUpscalerResourceCache();
     const auto outputIndex = frameIndex % DX11_WITH_DX12_CACHED_FRAMES;
 
     if (cache.ParamOutput[outputIndex] == nullptr || cache.Output[outputIndex].SharedTexture == nullptr)

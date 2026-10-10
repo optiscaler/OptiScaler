@@ -118,13 +118,17 @@ class Dx11WithDx12
         D3D11_TEXTURE2D_RESOURCE_C Output[DX11_WITH_DX12_CACHED_FRAMES] = {};
         ID3D11Resource* ParamOutput[DX11_WITH_DX12_CACHED_FRAMES] = {};
         UINT64 frameId = 0;
+        UINT FrameIndex = 0;
+        UINT64 LastPreparedFrameId = 0;
+        ResourceMask LastPreparedMask = ResourceMask::None;
+        UINT64 Generation = 0;
     };
 
-    inline static D3D11_UPSCALER_RESOURCE_CACHE_C UpscalerResourceCache = {};
-    inline static UINT UpscalerFrameIndex = 0;
+    // Each upscaler feature owns its own cache, games can run more than one at the same time
     inline static UINT64 UpscalerLocalFrameId = 0;
-    inline static UINT64 LastPreparedUpscalerFrameId = 0;
-    inline static ResourceMask LastPreparedUpscalerMask = ResourceMask::None;
+
+    // Bumped when the devices change, caches from an older generation get released on next use
+    inline static UINT64 CacheGeneration = 1;
 
     static bool CopyTextureFrom11To12(ID3D11Resource* InResource, D3D11_TEXTURE2D_RESOURCE_C* OutResource, bool InCopy,
                                       bool InDepth, bool InDontUseNTShared);
@@ -136,31 +140,23 @@ class Dx11WithDx12
                                          D3D11_TEXTURE2D_RESOURCE_C* shared, bool copy, bool depth,
                                          bool dontUseNTShared, UINT64 frameId);
 
-    static D3D11_UPSCALER_RESOURCE_CACHE_C& GetUpscalerResourceCache();
-    static D3D11_TEXTURE2D_RESOURCE_C* GetUpscalerOutputResource(UINT frameIndex);
-
-    static void SetUpscalerFrameIndex(UINT frameIndex);
-    static UINT GetUpscalerFrameIndex();
-
     static UINT64 NextUpscalerFrameId();
-    static void ResetUpscalerFrameId();
 
     static void ReleaseSharedResource(D3D11_TEXTURE2D_RESOURCE_C* resource);
-    static void ResetUpscalerResourceCache(bool releaseSyncResources = false);
+    static void ResetUpscalerResourceCache(D3D11_UPSCALER_RESOURCE_CACHE_C& cache, bool releaseSyncResources = false);
 
     static bool SyncDx11ToDx12();
     static bool SyncDx12ToDx11();
-    static bool CopyUpscalerOutputToDx11(UINT frameIndex);
+    static bool CopyUpscalerOutputToDx11(D3D11_UPSCALER_RESOURCE_CACHE_C& cache, UINT frameIndex);
 
     static bool CheckMask(ResourceMask mask, ResourceMask resource);
 
-    static UINT64 GetLastPreparedUpscalerFrameId();
-    static ResourceMask GetLastPreparedUpscalerMask();
+    static void ClearLastPreparedUpscalerFrameState(D3D11_UPSCALER_RESOURCE_CACHE_C& cache);
+    static bool HasPreparedUpscalerResources(const D3D11_UPSCALER_RESOURCE_CACHE_C& cache, ResourceMask mask,
+                                             UINT64 frameId = 0);
 
-    static void ClearLastPreparedUpscalerFrameState();
-    static bool HasPreparedUpscalerResources(ResourceMask mask, UINT64 frameId = 0);
-
-    static PrepareResourcesResult PrepareUpscalerResources(const NVSDK_NGX_Parameter* parameters, ResourceMask mask,
+    static PrepareResourcesResult PrepareUpscalerResources(D3D11_UPSCALER_RESOURCE_CACHE_C& cache,
+                                                           const NVSDK_NGX_Parameter* parameters, ResourceMask mask,
                                                            UINT frameIndex, UINT64 frameId, bool dontUseNTShared,
                                                            bool reactiveRequired, bool syncAfterPrepare);
 

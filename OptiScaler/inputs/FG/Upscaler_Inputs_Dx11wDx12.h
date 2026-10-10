@@ -17,6 +17,7 @@ class UpscalerInputsDx11wDx12
     static void Init(ID3D11Device* dx11Device, ID3D11DeviceContext* dx11Context, ID3D12Device* dx12Device,
                      ID3D12CommandQueue* dx12CommandQueue);
     static void Reset();
+    static void Shutdown();
 
     // Input parameters are D3D11 resources. This bridge copies/prepares them through Dx11WithDx12 before FG use.
     static void UpscaleStart(NVSDK_NGX_Parameter* InParameters, IFeature_Dx11* feature);

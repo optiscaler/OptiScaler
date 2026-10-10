@@ -40,6 +40,47 @@ class ScopedInitDx11
     ~ScopedInitDx11() { _skipInit = previousState; }
 };
 
+// Games can run more than one upscaler at the same time (e.g. a separate one for the minimap).
+// FG has to be fed by the one producing the actual game image, prefer the one matching the swapchain
+// and then the biggest output. Features that are no longer evaluated are ignored.
+static bool IsFGSourceFeature(unsigned int handleId)
+{
+    auto& state = State::Instance();
+    const auto& scDesc = state.currentSwapchainDesc.BufferDesc;
+
+    unsigned int bestHandle = 0;
+    bool bestMatchesSwapchain = false;
+    UINT64 bestArea = 0;
+
+    for (const auto& [id, context] : Dx11Contexts)
+    {
+        auto feature = context.feature.get();
+
+        if (feature == nullptr || !feature->IsInited())
+            continue;
+
+        if (id != handleId && context.lastEvalFrame + 2 < state.frameCount)
+            continue;
+
+        const bool matchesSwapchain =
+            feature->DisplayWidth() == scDesc.Width && feature->DisplayHeight() == scDesc.Height;
+        const auto area = (UINT64) feature->DisplayWidth() * feature->DisplayHeight();
+
+        const bool better =
+            bestHandle == 0 || (matchesSwapchain && !bestMatchesSwapchain) ||
+            (matchesSwapchain == bestMatchesSwapchain && (area > bestArea || (area == bestArea && id < bestHandle)));
+
+        if (better)
+        {
+            bestHandle = id;
+            bestMatchesSwapchain = matchesSwapchain;
+            bestArea = area;
+        }
+    }
+
+    return bestHandle == handleId;
+}
+
 static void UpdateInitPaths(NVSDK_NGX_FeatureCommonInfo* InFeatureInfo)
 {
     State::Instance().NVNGX_FeatureInfo_Paths.clear();
@@ -350,8 +391,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_Shutdown()
     shutdown = false;
     State::Instance().nvngxDx11Inited = false;
 
-    UpscalerInputsDx11wDx12::Reset();
-    Dx11WithDx12::ResetUpscalerResourceCache(true);
+    UpscalerInputsDx11wDx12::Shutdown();
 
     return NVSDK_NGX_Result_Success;
 }
@@ -638,7 +678,8 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_ReleaseFeature(NVSDK_NGX_Handle* 
         }
     }
 
-    if (State::Instance().currentFG != nullptr && State::Instance().activeFgInput == FGInput::Upscaler)
+    if (State::Instance().currentFG != nullptr && State::Instance().activeFgInput == FGInput::Upscaler &&
+        IsFGSourceFeature(handleId))
     {
         State::Instance().fgChanged = true;
         State::Instance().currentFG->DestroyFGContext();
@@ -780,7 +821,10 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_EvaluateFeature(ID3D11DeviceConte
     else
     {
         deviceContext = activeContext->feature.get();
-        state.currentFeature = deviceContext;
+
+        // FG reads render size etc. from currentFeature, so it has to stay on the game image upscaler
+        if (state.currentFeature == nullptr || IsFGSourceFeature(handleId))
+            state.currentFeature = deviceContext;
     }
 
     const auto targetApiName =
@@ -804,8 +848,9 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_EvaluateFeature(ID3D11DeviceConte
         Hudfix_Dx11::SetSkipStatus(true);
 
     auto upscaleResult = deviceContext->Evaluate(InDevCtx, InParameters);
+    activeContext->lastEvalFrame = state.frameCount;
 
-    if (State::Instance().activeFgInput == FGInput::Upscaler)
+    if (State::Instance().activeFgInput == FGInput::Upscaler && IsFGSourceFeature(handleId))
     {
         if (WithDx12::IsInited())
         {

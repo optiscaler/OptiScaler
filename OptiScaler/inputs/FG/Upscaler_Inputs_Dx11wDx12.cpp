@@ -4,12 +4,16 @@
 #include "MathUtils.h"
 
 #include <with_dx12/with_dx12.h>
+#include <upscalers/IFeature_Dx11wDx12.h>
 #include <hudfix/Hudfix_Dx11.h>
 #include <resource_tracking/ResTrack_dx11.h>
 #include "shaders/depth_scale/DS_Dx12.h"
 
 using namespace OptiMath;
 static DS_Dx12* DepthScaleDx11wDx12 = nullptr;
+
+// Used when the upscaler is native DX11 and doesn't have its own D3D12 shared resources
+static Dx11WithDx12::D3D11_UPSCALER_RESOURCE_CACHE_C FgResourceCache = {};
 
 static bool PrepareFgResourceCache(NVSDK_NGX_Parameter* parameters, UINT64 frameKey)
 {
@@ -18,10 +22,9 @@ static bool PrepareFgResourceCache(NVSDK_NGX_Parameter* parameters, UINT64 frame
 
     const auto mask = Dx11WithDx12::ResourceMask::Mv | Dx11WithDx12::ResourceMask::Depth;
     const auto dontUseNtShared = Config::Instance()->DontUseNTShared.value_or_default();
-    const auto frameIndex = Dx11WithDx12::GetUpscalerFrameIndex();
 
-    const auto result =
-        Dx11WithDx12::PrepareUpscalerResources(parameters, mask, frameIndex, frameKey, dontUseNtShared, false, true);
+    const auto result = Dx11WithDx12::PrepareUpscalerResources(
+        FgResourceCache, parameters, mask, FgResourceCache.FrameIndex, frameKey, dontUseNtShared, false, true);
 
     if (!result.Success)
     {
@@ -32,12 +35,11 @@ static bool PrepareFgResourceCache(NVSDK_NGX_Parameter* parameters, UINT64 frame
     return true;
 }
 
-static bool ReusePreparedUpscalerCacheForFg(UINT64 frameKey)
+static bool ReusePreparedUpscalerCacheForFg(const Dx11WithDx12::D3D11_UPSCALER_RESOURCE_CACHE_C& cache)
 {
     const auto mask = Dx11WithDx12::ResourceMask::Mv | Dx11WithDx12::ResourceMask::Depth;
-    const auto resolvedFrameKey = frameKey != 0 ? frameKey : Dx11WithDx12::GetLastPreparedUpscalerFrameId();
 
-    if (!Dx11WithDx12::HasPreparedUpscalerResources(mask, resolvedFrameKey))
+    if (!Dx11WithDx12::HasPreparedUpscalerResources(cache, mask))
     {
         LOG_WARN("Dx11wDx12 FG input cache miss");
         return false;
@@ -71,6 +73,12 @@ void UpscalerInputsDx11wDx12::Reset()
 {
     ResTrack_Dx11::ClearPossibleHudless();
     Hudfix_Dx11::ResetCounters();
+}
+
+void UpscalerInputsDx11wDx12::Shutdown()
+{
+    Reset();
+    Dx11WithDx12::ResetUpscalerResourceCache(FgResourceCache, true);
 }
 
 void UpscalerInputsDx11wDx12::UpscaleStart(NVSDK_NGX_Parameter* InParameters, IFeature_Dx11* feature)
@@ -145,11 +153,13 @@ void UpscalerInputsDx11wDx12::UpscaleStart(NVSDK_NGX_Parameter* InParameters, IF
     if (State::Instance().activeFgInput != FGInput::Upscaler || _dx12Device == nullptr)
         return;
 
-    if (feature->IsWithDx12())
-    {
-        const auto cacheFrameKey = Dx11WithDx12::GetLastPreparedUpscalerFrameId();
+    const Dx11WithDx12::D3D11_UPSCALER_RESOURCE_CACHE_C* cache = &FgResourceCache;
 
-        if (!ReusePreparedUpscalerCacheForFg(cacheFrameKey))
+    if (auto withDx12Feature = dynamic_cast<IFeature_Dx11wDx12*>(feature); withDx12Feature != nullptr)
+    {
+        cache = &withDx12Feature->GetResourceCache();
+
+        if (!ReusePreparedUpscalerCacheForFg(*cache))
             return;
     }
     else if (!PrepareFgResourceCache(InParameters, Dx11WithDx12::NextUpscalerFrameId()))
@@ -217,13 +227,12 @@ void UpscalerInputsDx11wDx12::UpscaleStart(NVSDK_NGX_Parameter* InParameters, IF
         fg->Mutex.unlockThis(4);
     }
 
-    auto& cache = Dx11WithDx12::GetUpscalerResourceCache();
     const auto frameIndex = fg->GetIndex();
 
     LOG_DEBUG("(FG Dx11wDx12) using cached inputs for fgUpscaledImage[{}], frame: {}", frameIndex, fg->FrameCount());
 
-    ID3D12Resource* paramVelocity = cache.Mv.Dx12Resource;
-    ID3D12Resource* paramDepth = cache.Depth.Dx12Resource;
+    ID3D12Resource* paramVelocity = cache->Mv.Dx12Resource;
+    ID3D12Resource* paramDepth = cache->Depth.Dx12Resource;
 
     auto cmdList = fg->GetUICommandList();
 
