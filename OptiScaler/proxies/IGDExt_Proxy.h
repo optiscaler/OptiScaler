@@ -231,8 +231,7 @@ class IGDExtProxy
                 DestroyContext();
         }
 
-        if (extensionsVersions != nullptr)
-            delete[] extensionsVersions;
+        delete[] extensionsVersions;
 
         return true;
     }
