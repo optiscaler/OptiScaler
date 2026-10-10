@@ -771,6 +771,10 @@ void XeFGInputs::Hook(HMODULE libxessFg)
     if (State::Instance().activeFgInput != FGInput::XeFG)
     {
 #ifdef LOW_LATENCY_INPUTS
+        // OptiScaler's own XeFG isn't the game's, a game without one finds OptiScaler's copy by name
+        if (libxessFg == XeFGProxy::Module())
+            return;
+
         // One library, its trampoline is kept in the table
         if (_nativeHooks[0].target == nullptr)
         {
