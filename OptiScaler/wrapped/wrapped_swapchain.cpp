@@ -18,6 +18,7 @@
 #include <misc/IdentifyGpu.h>
 #include <hooks/Xell_Hooks.h>
 #include <low_latency/input/input_common.h>
+#include <inputs/FG/XeFG_Inputs_Dx12.h>
 
 #include <magic_enum.hpp>
 
@@ -677,6 +678,13 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::QueryInterface(REFIID riid, vo
     {
         AddRef();
         *ppvObject = (IDXGIDeviceSubObject*) this;
+        return S_OK;
+    }
+    else if (XeFGInputs::IsXeFGSwapChainIID(riid))
+    {
+        // Only checked for, never called
+        AddRef();
+        *ppvObject = this;
         return S_OK;
     }
 

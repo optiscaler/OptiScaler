@@ -14,6 +14,7 @@ class LibraryLoadHooks
 
     // Call after the original FreeLibrary / LdrUnloadDll returned
     static void AfterFreeLibrary(PVOID library);
+    static void AfterLoadLibrary(HMODULE library);
 
     static HMODULE LoadNvApi();
     // static HMODULE LoadFfxapiVk(std::wstring originalPath);

@@ -164,5 +164,8 @@ class XeFGInputs
 
     // XeFG output: the game's own XeFG runs; Override XeFG Ratio sets its count
     static bool Passthrough();
+
+    // The FG output's swapchain stands in for libxess_fg's, Unreal's XeFG only tags frames when it answers as one
+    static bool IsXeFGSwapChainIID(REFIID riid);
     static uint32_t MaxInterpolations() { return _passMax; }
 };

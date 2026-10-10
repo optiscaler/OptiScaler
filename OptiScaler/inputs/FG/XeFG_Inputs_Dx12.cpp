@@ -460,10 +460,34 @@ xefg_swapchain_result_t XeFGInputs::TagFrameConstants(xefg_swapchain_handle_t, u
 
     // A zero far plane is infinite
     bool infiniteDepth = cameraKnown && nearZ != 0.0f && farZ == 0.0f;
+
+    // Unreal's XeFG plugin passes the engine's projection, infinite unless the game sets a far clip plane. Not every FG
+    // output takes an infinite far plane, Unreal's own DLSSG integration sends this one instead
+    // (r.Streamline.CustomCameraFarPlane, which doesn't need to match the engine's)
+    if (infiniteDepth && (State::Instance().gameEngine == GameEngineType::Unreal ||
+                          State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
+                          State::Instance().gameQuirks & GameQuirk::ForceUnrealEngine))
+    {
+        infiniteDepth = false;
+        farZ = 75000.0f;
+    }
+
     _constants.flags.set(FG_Flags::InfiniteDepth, infiniteDepth);
 
     if (infiniteDepth)
         farZ = nearZ + 1.0f;
+
+    static float lastNear = 0.0f, lastFar = 0.0f;
+    bool planesChanged = std::exchange(lastNear, nearZ) != nearZ;
+    planesChanged |= std::exchange(lastFar, farZ) != farZ;
+
+    if (cameraKnown && planesChanged)
+    {
+        LOG_DEBUG("XeFG input: near {}, far {}, infinite {}, projection [{} {} {} {}] [{} {} {} {}] [{} {} {} {}] "
+                  "[{} {} {} {}]",
+                  nearZ, farZ, infiniteDepth, m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11],
+                  m[12], m[13], m[14], m[15]);
+    }
 
     fg->EvaluateState(_device, _constants);
 
@@ -694,6 +718,17 @@ bool XeFGInputs::Passthrough()
     return passthrough;
 }
 
+bool XeFGInputs::IsXeFGSwapChainIID(REFIID riid)
+{
+    // libxess_fg's swapchain interface
+    static constexpr GUID xefgSwapChain = {
+        0x157e1000, 0x16f8, 0x16f8, { 0x16, 0xf8, 0x15, 0x7e, 0x94, 0x01, 0xa7, 0x10 }
+    };
+
+    return riid == xefgSwapChain && State::Instance().activeFgInput == FGInput::XeFG && !Passthrough() &&
+           _swapChain != nullptr;
+}
+
 void XeFGInputs::SetUpscalerInputs(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Parameter* parameters,
                                    IFeature_Dx12* feature)
 {
@@ -771,10 +806,6 @@ void XeFGInputs::Hook(HMODULE libxessFg)
     if (State::Instance().activeFgInput != FGInput::XeFG)
     {
 #ifdef LOW_LATENCY_INPUTS
-        // OptiScaler's own XeFG isn't the game's, a game without one finds OptiScaler's copy by name
-        if (libxessFg == XeFGProxy::Module())
-            return;
-
         // One library, its trampoline is kept in the table
         if (_nativeHooks[0].target == nullptr)
         {

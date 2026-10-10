@@ -3,11 +3,51 @@
 #include <proxies/XeLL_Proxy.h>
 #include <inputs/FG/XeFG_Inputs_Dx12.h>
 
-// Context free calls can be answered by the real XeLL
+#include <shared_mutex>
+#include <unordered_set>
+
+// The real XeLL's function, its exports go to OptiScaler's
 static FARPROC RealExport(const char* name)
 {
+#ifdef LOW_LATENCY_INPUTS
+    return (FARPROC) XeLLProxy::RealFunction(name);
+#else
     auto module = XeLLProxy::Module();
     return module != nullptr ? KernelBaseProxy::GetProcAddress_()(module, name) : nullptr;
+#endif
+}
+
+// The contexts OptiScaler gave out. A context the real XeLL made before it was redirected goes to it untouched.
+static std::shared_mutex contextsMutex;
+static std::unordered_set<void*> contexts;
+
+static void AddContext(void* context)
+{
+    std::unique_lock lock(contextsMutex);
+    contexts.insert(context);
+}
+
+static void RemoveContext(void* context)
+{
+    std::unique_lock lock(contextsMutex);
+    contexts.erase(context);
+}
+
+static bool IsForeign(void* context)
+{
+    if (context == nullptr)
+        return false;
+
+    std::shared_lock lock(contextsMutex);
+    return !contexts.contains(context);
+}
+
+template <typename Fn, typename... Args> static xell_result_t CallForeign(const char* name, Args... args)
+{
+    if (auto real = (Fn) RealExport(name))
+        return real(args...);
+
+    return XELL_RESULT_ERROR_INVALID_CONTEXT;
 }
 
 // Calls XeFG makes on the real XeLL, older libxell versions might not have them
@@ -64,6 +104,7 @@ xell_result_t InputXeLL::D3D12CreateLocalContext(ID3D12Device* device, xell_inpu
         return XELL_RESULT_ERROR_UNKNOWN;
     }
 
+    AddContext(context);
     *out_context = context;
     return XELL_RESULT_SUCCESS;
 }
@@ -117,6 +158,7 @@ xell_result_t InputXeLL::DestroyContext(xell_input_handle_t context)
 
     auto expected = context;
     gameContext.compare_exchange_strong(expected, nullptr);
+    RemoveContext(context);
 
     if (context->real)
         XeLLProxy::RealDestroyContext()(context->real);
@@ -302,6 +344,7 @@ xell_result_t InputXeLL::D3D12CreateContext(ID3D12Device* device, xell_input_han
         CreateReal(context);
     }
 
+    AddContext(context);
     gameContext = context;
     *out_context = context;
 
@@ -452,29 +495,39 @@ xell_result_t InputXeLL::SetGeneratedFramesCount(xell_input_handle_t context, ui
 
 #ifdef LOW_LATENCY_INPUTS
 
+// A context OptiScaler didn't give out goes to the real XeLL as is
+#define FORWARD_FOREIGN(name, context, ...)                                                                            \
+    if (IsForeign(context))                                                                                            \
+    return CallForeign<decltype(&name)>(#name, context, ##__VA_ARGS__)
+
 XELL_EXPORT xell_result_t xellDestroyContext(xell_context_handle_t context)
 {
+    FORWARD_FOREIGN(xellDestroyContext, context);
     return InputXeLL::DestroyContext((InputXeLL::xell_input_handle_t) context);
 }
 
 XELL_EXPORT xell_result_t xellSetSleepMode(xell_context_handle_t context, const xell_sleep_params_t* param)
 {
+    FORWARD_FOREIGN(xellSetSleepMode, context, param);
     return InputXeLL::SetSleepMode((InputXeLL::xell_input_handle_t) context, param);
 }
 
 XELL_EXPORT xell_result_t xellGetSleepMode(xell_context_handle_t context, xell_sleep_params_t* param)
 {
+    FORWARD_FOREIGN(xellGetSleepMode, context, param);
     return InputXeLL::GetSleepMode((InputXeLL::xell_input_handle_t) context, param);
 }
 
 XELL_EXPORT xell_result_t xellSleep(xell_context_handle_t context, uint32_t frame_id)
 {
+    FORWARD_FOREIGN(xellSleep, context, frame_id);
     return InputXeLL::Sleep((InputXeLL::xell_input_handle_t) context, frame_id);
 }
 
 XELL_EXPORT xell_result_t xellAddMarkerData(xell_context_handle_t context, uint32_t frame_id,
                                             xell_latency_marker_type_t marker)
 {
+    FORWARD_FOREIGN(xellAddMarkerData, context, frame_id, marker);
     return InputXeLL::AddMarkerData((InputXeLL::xell_input_handle_t) context, frame_id, marker);
 }
 
@@ -483,57 +536,72 @@ XELL_EXPORT xell_result_t xellGetVersion(xell_version_t* pVersion) { return Inpu
 XELL_EXPORT xell_result_t xellSetLoggingCallback(xell_context_handle_t hContext, xell_logging_level_t loggingLevel,
                                                  xell_app_log_callback_t loggingCallback)
 {
+    FORWARD_FOREIGN(xellSetLoggingCallback, hContext, loggingLevel, loggingCallback);
     return InputXeLL::SetLoggingCallback((InputXeLL::xell_input_handle_t) hContext, loggingLevel, loggingCallback);
 }
 
 XELL_EXPORT xell_result_t xellGetFramesReports(xell_context_handle_t context, xell_frame_report_t* outdata)
 {
+    FORWARD_FOREIGN(xellGetFramesReports, context, outdata);
     return InputXeLL::GetFramesReports((InputXeLL::xell_input_handle_t) context, outdata);
 }
 
 XELL_EXPORT xell_result_t xellD3D12CreateContext(ID3D12Device* device, xell_context_handle_t* out_context)
 {
+    // XeFG's built-in context when the game gave it none, it isn't the game's and stays on the real XeLL
+    if (_stricmp(Util::WhoIsTheCaller(_ReturnAddress()).c_str(), "libxess_fg.dll") == 0)
+        return InputXeLL::D3D12CreateLocalContext(device, (InputXeLL::xell_input_handle_t*) out_context);
+
     return InputXeLL::D3D12CreateContext(device, (InputXeLL::xell_input_handle_t*) out_context);
 }
 
 XELL_EXPORT xell_result_t xellD3D12SetAppQueue(xell_context_handle_t context, ID3D12CommandQueue* appQueue)
 {
+    FORWARD_FOREIGN(xellD3D12SetAppQueue, context, appQueue);
     return InputXeLL::D3D12SetAppQueue((InputXeLL::xell_input_handle_t) context, appQueue);
 }
 
 XELL_EXPORT xell_result_t xellSetDisplayInfo(xell_context_handle_t context, void* displayInfo)
 {
+    FORWARD_FOREIGN(xellSetDisplayInfo, context, displayInfo);
     return InputXeLL::SetDisplayInfo((InputXeLL::xell_input_handle_t) context, displayInfo);
 }
 XELL_EXPORT xell_result_t xellSetFgEnabled(xell_context_handle_t context, uint32_t param1, uint32_t param2)
 {
+    FORWARD_FOREIGN(xellSetFgEnabled, context, param1, param2);
     return InputXeLL::SetFgEnabled((InputXeLL::xell_input_handle_t) context, param1, param2);
 }
 
 XELL_EXPORT xell_result_t xellSetGeneratedFramesCount(xell_context_handle_t context, uint32_t frameId,
                                                       uint32_t framesCount)
 {
+    FORWARD_FOREIGN(xellSetGeneratedFramesCount, context, frameId, framesCount);
     return InputXeLL::SetGeneratedFramesCount((InputXeLL::xell_input_handle_t) context, frameId, framesCount);
 }
 
 XELL_EXPORT xell_result_t xellGetLastPresentStartFrameId(xell_context_handle_t context, uint32_t* p_frame_id)
 {
+    FORWARD_FOREIGN(xellGetLastPresentStartFrameId, context, p_frame_id);
     return InputXeLL::GetLastPresentStartFrameId((InputXeLL::xell_input_handle_t) context, p_frame_id);
 };
 
 // The rest of libxell's exports, so a redirected libxell never sees our contexts
 XELL_EXPORT xell_result_t xellQueryInterface(xell_context_handle_t context, LPCSTR lpProcName, FARPROC* outFunc)
 {
+    // Also its functions, ours only know our contexts
+    FORWARD_FOREIGN(xellQueryInterface, context, lpProcName, outFunc);
     return InputXeLL::QueryInterface((InputXeLL::xell_input_handle_t) context, lpProcName, outFunc);
 }
 
 XELL_EXPORT xell_result_t xellGetContextParameterP(xell_context_handle_t context, uint32_t param1, uint64_t param2)
 {
+    FORWARD_FOREIGN(xellGetContextParameterP, context, param1, param2);
     return InputXeLL::GetContextParameterP((InputXeLL::xell_input_handle_t) context, param1, param2);
 }
 
 XELL_EXPORT xell_result_t xellSetContextParameterP(xell_context_handle_t context, uint32_t param1, uint64_t param2)
 {
+    FORWARD_FOREIGN(xellSetContextParameterP, context, param1, param2);
     return InputXeLL::SetContextParameterP((InputXeLL::xell_input_handle_t) context, param1, param2);
 }
 

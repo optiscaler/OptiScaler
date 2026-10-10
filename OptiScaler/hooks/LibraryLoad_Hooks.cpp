@@ -734,6 +734,27 @@ void LibraryLoadHooks::AfterFreeLibrary(PVOID lpLibrary)
     StreamlineHooks::onModuleFreed(lpLibrary);
 }
 
+void LibraryLoadHooks::AfterLoadLibrary(HMODULE library)
+{
+#ifdef LOW_LATENCY_INPUTS
+    if (library == nullptr || State::Instance().isShuttingDown)
+        return;
+
+    // libxell also comes in as another library's import, which isn't loaded through here
+    if (auto libxell = KernelBaseProxy::GetModuleHandleW_()(L"libxell.dll"))
+        XeLLProxy::RedirectToInput(libxell);
+
+    // Or as another copy by its full path
+    wchar_t path[MAX_PATH];
+
+    if (GetModuleFileNameW(library, path, MAX_PATH) != 0 &&
+        EndsWithInsensitive(std::wstring_view(path), std::wstring_view(L"\\libxell.dll")))
+    {
+        XeLLProxy::RedirectToInput(library);
+    }
+#endif
+}
+
 HMODULE LibraryLoadHooks::LoadNvApi()
 {
     LOG_FUNC();

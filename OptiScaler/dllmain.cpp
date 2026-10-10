@@ -1420,11 +1420,14 @@ void CheckMemoryForProxies()
     FfxApiProxy::InitFfxDx12_Denoiser();
     FfxApiProxy::InitFfxDx12_Radiance();
 
+    // Only the game's XeFG already in memory, the one OptiScaler loads next is hooked once the game loads it too
+    auto gameXeFG = KernelBaseProxy::GetModuleHandleW_()(L"libxess_fg.dll");
+
     XeSSProxy::InitXeSS();
     XeSSProxy::InitXeSSDx11();
     XeFGProxy::InitXeFG();
     XeLLProxy::InitXeLL();
-    XeFGInputs::Hook(KernelBaseProxy::GetModuleHandleW_()(L"libxess_fg.dll"));
+    XeFGInputs::Hook(gameXeFG);
 
     XellHooks::Hook();
 
