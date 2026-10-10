@@ -19,6 +19,19 @@ static inline IUnknown* _lastDev[20] = { 0 };
 
 // #define LOG_REFLEX_CALLS
 
+// Without the low latency inputs XeFG's Reflex is fakenvapi's translation. With them the game's D3D Reflex reaches
+// these hooks only through the Reflex output (XeFG then paces from its own XeLL context) and OptiScaler's own
+// Streamline, both meant for the driver.
+static bool XeFGUsesFakenvapi()
+{
+#ifdef LOW_LATENCY_INPUTS
+    return false;
+#else
+    return State::Instance().activeFgOutput == FGOutput::XeFG &&
+           !Config::Instance()->ImASillyGooseThatIsAboutToMisuseReflex.value_or_default();
+#endif
+}
+
 std::optional<TimingEntry> ReflexHooks::timingData[TimingType::TimingTypeCOUNT] {};
 
 NvAPI_Status ReflexHooks::hkNvAPI_D3D_SetSleepMode(IUnknown* pDev, NV_SET_SLEEP_MODE_PARAMS* pSetSleepModeParams)
@@ -36,8 +49,7 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_SetSleepMode(IUnknown* pDev, NV_SET_SLEEP_
     if (_minimumIntervalUs != 0)
         pSetSleepModeParams->minimumIntervalUs = _minimumIntervalUs;
 
-    if (State::Instance().activeFgOutput == FGOutput::XeFG &&
-        !Config::Instance()->ImASillyGooseThatIsAboutToMisuseReflex.value_or_default())
+    if (XeFGUsesFakenvapi())
     {
         return nvapi_calls::NvAPI_D3D_SetSleepMode(pDev, pSetSleepModeParams);
     }
@@ -69,8 +81,7 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_Sleep(IUnknown* pDev)
         return o_NvAPI_D3D_Sleep(pDev);
     }
 
-    if (State::Instance().activeFgOutput == FGOutput::XeFG &&
-        !Config::Instance()->ImASillyGooseThatIsAboutToMisuseReflex.value_or_default())
+    if (XeFGUsesFakenvapi())
     {
         return nvapi_calls::NvAPI_D3D_Sleep(pDev);
     }
@@ -85,8 +96,7 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_GetLatency(IUnknown* pDev, NV_LATENCY_RESU
     LOG_FUNC();
 #endif
 
-    if (State::Instance().activeFgOutput == FGOutput::XeFG &&
-        !Config::Instance()->ImASillyGooseThatIsAboutToMisuseReflex.value_or_default())
+    if (XeFGUsesFakenvapi())
     {
         return nvapi_calls::NvAPI_D3D_GetLatency(pDev, pGetLatencyParams);
     }
@@ -100,8 +110,7 @@ NvAPI_Status ReflexHooks::sendMarker(IUnknown* pDev, NV_LATENCY_MARKER_PARAMS* p
     if (toStreamline)
         return NVAPI_OK;
 
-    if (State::Instance().activeFgOutput == FGOutput::XeFG &&
-        !Config::Instance()->ImASillyGooseThatIsAboutToMisuseReflex.value_or_default())
+    if (XeFGUsesFakenvapi())
     {
         return nvapi_calls::NvAPI_D3D_SetLatencyMarker(pDev, pSetLatencyMarkerParams);
     }
@@ -414,8 +423,7 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D12_SetAsyncFrameMarker(ID3D12CommandQueue* 
     //    }
     //}
 
-    if (State::Instance().activeFgOutput == FGOutput::XeFG &&
-        !Config::Instance()->ImASillyGooseThatIsAboutToMisuseReflex.value_or_default())
+    if (XeFGUsesFakenvapi())
     {
         return nvapi_calls::NvAPI_D3D12_SetAsyncFrameMarker(pCommandQueue, pSetAsyncFrameMarkerParams);
     }
@@ -788,8 +796,7 @@ void ReflexHooks::setFPSLimit(float fps)
         memcpy(&temp, &_lastSleepParams, sizeof(NV_SET_SLEEP_MODE_PARAMS));
         temp.minimumIntervalUs = _minimumIntervalUs;
 
-        if (State::Instance().activeFgOutput == FGOutput::XeFG &&
-            !Config::Instance()->ImASillyGooseThatIsAboutToMisuseReflex.value_or_default())
+        if (XeFGUsesFakenvapi())
         {
             nvapi_calls::NvAPI_D3D_SetSleepMode(_lastSleepDev, &temp);
         }

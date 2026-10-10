@@ -14,6 +14,14 @@ class XeLL : public LowLatencyTech
 
     xell_context_handle_t xell_context {};
 
+    // The sleep mode last sent to this context, the first one always goes out
+    uint32_t last_low_latency_mode = UINT32_MAX;
+    uint32_t last_minimum_interval_us = UINT32_MAX;
+    uint32_t last_low_latency_boost = UINT32_MAX;
+
+    // XeFG's own context next to a Reflex or AntiLag 2 output: it gets the game's markers and never sleeps
+    bool markers_only = false;
+
     decltype(&xellDestroyContext) o_xellDestroyContext = nullptr;
     decltype(&xellSetSleepMode) o_xellSetSleepMode = nullptr;
     decltype(&xellGetSleepMode) o_xellGetSleepMode = nullptr;
@@ -71,4 +79,6 @@ class XeLL : public LowLatencyTech
     void set_async_marker(IUnknown* pCommandQueue, const MarkerParams& marker_params) override;
 
     xell_result_t xellGetFramesReports(xell_frame_report_t* outdata) const;
+
+    void set_markers_only(bool value) { markers_only = value; }
 };

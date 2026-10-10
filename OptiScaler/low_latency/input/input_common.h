@@ -53,6 +53,13 @@ class InputCommon
     inline static std::atomic<std::shared_ptr<LowLatencyTech>> currently_active_tech;
     inline static std::mutex create_tech_mutex {};
 
+    // OptiScaler's XeFG paces with an XeLL context. With the XeLL output it's that output's own (which then stays the
+    // output until XeFG lets go of it), with a Reflex or AntiLag 2 output XeFG gets one of its own that follows the
+    // game's markers while the output does the sleeping.
+    inline static std::atomic<std::shared_ptr<LowLatencyTech>> xefg_xell;
+    inline static std::atomic_bool xefg_uses_output_xell = false;
+    static LowLatencyMode xefg_output(LowLatencyMode configured);
+
     inline static FrameReport frame_reports[FRAME_REPORTS_BUFFER_SIZE] {};
     inline static std::array<std::atomic_uint64_t, 6> last_marker_frame_ids {}; // Simulation start to present end
     inline static LowLatencyMode failed_output = LowLatencyMode::None;
@@ -157,11 +164,15 @@ class InputCommon
     // The GPU vendor's own low latency output
     static LowLatencyMode default_output(API api);
 
+    // Why the GPU can't run the output, nullptr when it can: Reflex needs an Nvidia GPU (and its nvapi on D3D),
+    // AntiLag 2 an AMD GPU
+    static const char* output_unavailable(LowLatencyMode output, API api);
+
     // Why the input can't drive the output, nullptr when it can
     static const char* incompatibility(LowLatencyInput input, LowLatencyMode output);
 
-    // Set when the frame generation in use decides the low latency output or input: OptiScaler's XeFG needs XeLL,
-    // the game's XeFG keeps its own XeLL
+    // Set when the frame generation in use decides the low latency output or input: the game's XeFG keeps its own
+    // XeLL
     static std::optional<LowLatencyMode> forced_output();
     static std::optional<LowLatencyInput> forced_input();
 
@@ -170,4 +181,11 @@ class InputCommon
 
     // The Vulkan Reflex output, for passing the game's VK_NV_low_latency2 calls through
     static std::shared_ptr<ReflexVk> reflex_vk_output();
+
+    // The XeLL context OptiScaler's XeFG paces with (see xefg_xell), released after XeFG's context is destroyed
+    static xell_context_handle_t acquire_xefg_xell(IUnknown* pDevice);
+    static void release_xefg_xell();
+
+    // A changed output that waits for XeFG to let go of the XeLL output's context
+    static bool xefg_output_change_pending();
 };

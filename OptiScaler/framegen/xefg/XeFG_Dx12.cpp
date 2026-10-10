@@ -133,12 +133,11 @@ bool XeFG_Dx12::CreateSwapchainContext(ID3D12Device* device)
             }
         }
 #else
-        // XeFG reads the frames of the XeLL context it gets, the one the low latency input feeds. The output keeps it
-        // in low latency mode while XeFG runs.
-        if (InputCommon::set_low_latency_tech(device, LowLatencyMode::XeLL) == InputResult::Ok &&
-            InputCommon::xell_output_context() != nullptr)
+        // XeFG reads the frames of the XeLL context it gets: the XeLL output's, or its own next to a Reflex or
+        // AntiLag 2 output. Either stays valid until this context is destroyed.
+        if (auto xellContext = InputCommon::acquire_xefg_xell(device); xellContext != nullptr)
         {
-            result = XeFGProxy::SetLatencyReduction()(_swapChainContext, InputCommon::xell_output_context());
+            result = XeFGProxy::SetLatencyReduction()(_swapChainContext, xellContext);
 
             if (result != XEFG_SWAPCHAIN_RESULT_SUCCESS)
             {
@@ -211,6 +210,9 @@ bool XeFG_Dx12::DestroySwapchainContext()
         else
         {
             State::Instance().currentFGSwapchain = nullptr;
+
+            // Its XeLL context isn't read anymore
+            InputCommon::release_xefg_xell();
         }
     }
 
