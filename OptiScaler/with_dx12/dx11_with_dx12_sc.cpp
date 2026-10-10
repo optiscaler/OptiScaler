@@ -192,15 +192,6 @@ Dx11wDx12SC::Dx11wDx12SC(IDXGISwapChain* real, IDXGISwapChain4* fgSC, ID3D11Devi
 
     State::Instance().swapchainInteropApi = SwapchainInteropApi::Dx11wDx12;
 
-    // HACK: DLSSG through DX11 interop shows double images in generated frames with vsync on non Nvidia GPUs.
-    // Couldn't figure out the real cause
-    if (State::Instance().activeFgOutput == FGOutput::DLSSG && !Config::Instance()->ForceVsync.has_value() &&
-        IdentifyGpu::getPrimaryGpu().vendorId != VendorId::Nvidia)
-    {
-        LOG_INFO("DX11 DLSSG on non Nvidia GPU, forcing vsync off");
-        Config::Instance()->ForceVsync.set_volatile_value(false);
-    }
-
     _RefreshCachedSwapchainDesc();
 
     LOG_INFO("Dx11wDx12SC {} created, real: {:X}, fg: {:X}, dx11: {:X}, dx12: {:X}, queue: {:X}", _id, (UINT64) _real,

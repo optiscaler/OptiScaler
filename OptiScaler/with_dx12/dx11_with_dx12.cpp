@@ -58,7 +58,8 @@ ID3D12Device* Dx11WithDx12::GetD3D12Device() { return Dx12Device; }
 
 ID3D12CommandQueue* Dx11WithDx12::GetD3D12CommandQueue() { return Dx12CommandQueue; }
 
-void Dx11WithDx12::ReleaseSharedResource(D3D11_TEXTURE2D_RESOURCE_C* resource)
+// Keeps the depth transfer, it can be reused when the shared texture is recreated
+void Dx11WithDx12::ReleaseSharedTexture(D3D11_TEXTURE2D_RESOURCE_C* resource)
 {
     if (resource == nullptr)
         return;
@@ -84,6 +85,19 @@ void Dx11WithDx12::ReleaseSharedResource(D3D11_TEXTURE2D_RESOURCE_C* resource)
     resource->LastPreparedFrame = 0;
     resource->LastPreparedCopy = false;
     resource->LastPreparedDepth = false;
+}
+
+void Dx11WithDx12::ReleaseSharedResource(D3D11_TEXTURE2D_RESOURCE_C* resource)
+{
+    if (resource == nullptr)
+        return;
+
+    // Shared texture can be the depth transfer's buffer
+    ReleaseSharedTexture(resource);
+
+    delete resource->DepthTransfer;
+    resource->DepthTransfer = nullptr;
+    resource->DepthTransferSourceDesc = {};
 }
 
 void Dx11WithDx12::ReleaseSyncResourcesLocked()
@@ -306,10 +320,14 @@ bool Dx11WithDx12::SyncDx12ToDx11()
 void Dx11WithDx12::ResetUpscalerResourceCache(D3D11_UPSCALER_RESOURCE_CACHE_C& cache, bool releaseSyncResources)
 {
     ReleaseSharedResource(&cache.Color);
-    ReleaseSharedResource(&cache.Mv);
-    ReleaseSharedResource(&cache.Depth);
     ReleaseSharedResource(&cache.Reactive);
     ReleaseSharedResource(&cache.Exposure);
+
+    for (UINT i = 0; i < DX11_WITH_DX12_INPUT_FRAMES; ++i)
+    {
+        ReleaseSharedResource(&cache.Mv[i]);
+        ReleaseSharedResource(&cache.Depth[i]);
+    }
 
     for (UINT i = 0; i < DX11_WITH_DX12_CACHED_FRAMES; ++i)
     {
@@ -395,14 +413,6 @@ void Dx11WithDx12::Init(ID3D11Device* dx11Device, ID3D11DeviceContext* dx11Conte
         // Caches are owned by features, they will release their resources on next use
         CacheGeneration++;
         ReleaseSyncResources();
-
-        if (DT != nullptr || DT.get() != nullptr)
-            DT.reset();
-
-        DepthTransferSourceDesc = {};
-        DepthTransferSourceDescValid = false;
-
-        DT = std::make_unique<DepthTransfer_Dx11>("DT", newDx11Device);
     }
 
     Dx11DeviceContext = newDx11Context;
@@ -496,21 +506,17 @@ bool Dx11WithDx12::CopyTextureFrom11To12(ID3D11Resource* InResource, D3D11_TEXTU
         if (InDepth &&
             (sourceDesc.Format == DXGI_FORMAT_R24G8_TYPELESS || sourceDesc.Format == DXGI_FORMAT_R32G8X24_TYPELESS))
         {
-            const bool depthTransferDescChanged =
-                !DepthTransferSourceDescValid || !D3D11DescEquals(DepthTransferSourceDesc, sourceDesc);
+            // Each cache entry has its own depth transfer so its buffer isn't shared between frames or features
+            auto& DT = OutResource->DepthTransfer;
 
-            if (depthTransferDescChanged)
+            if (DT != nullptr && !D3D11DescEquals(OutResource->DepthTransferSourceDesc, sourceDesc))
+                ReleaseSharedResource(OutResource);
+
+            if (DT == nullptr)
             {
-                if (DT != nullptr && OutResource->SharedTexture == DT->Buffer())
-                    ReleaseSharedResource(OutResource);
-
-                DT.reset();
-                DepthTransferSourceDesc = sourceDesc;
-                DepthTransferSourceDescValid = true;
+                DT = new DepthTransfer_Dx11("DT", Dx11Device);
+                OutResource->DepthTransferSourceDesc = sourceDesc;
             }
-
-            if (DT == nullptr || DT.get() == nullptr)
-                DT = std::make_unique<DepthTransfer_Dx11>("DT", Dx11Device);
 
             if (DT->Buffer() == nullptr)
                 DT->CreateBufferResource(Dx11Device, InResource);
@@ -525,7 +531,7 @@ bool Dx11WithDx12::CopyTextureFrom11To12(ID3D11Resource* InResource, D3D11_TEXTU
             if (DT->Dispatch(Dx11Device, Dx11DeviceContext, originalTexture, DT->Buffer()))
             {
                 if (OutResource->SharedTexture != DT->Buffer())
-                    ReleaseSharedResource(OutResource);
+                    ReleaseSharedTexture(OutResource);
 
                 IDXGIResource1* resource = nullptr;
                 result = DT->Buffer()->QueryInterface(IID_PPV_ARGS(&resource));
@@ -789,6 +795,8 @@ bool Dx11WithDx12::HasPreparedUpscalerResources(const D3D11_UPSCALER_RESOURCE_CA
         return false;
 
     const auto outputIndex = cache.FrameIndex % DX11_WITH_DX12_CACHED_FRAMES;
+    const auto& mv = cache.CurrentMv();
+    const auto& depth = cache.CurrentDepth();
 
     if (CheckMask(mask, ResourceMask::Color) &&
         (cache.Color.Dx12Resource == nullptr || cache.Color.LastPreparedFrame != currentFrameId))
@@ -796,14 +804,13 @@ bool Dx11WithDx12::HasPreparedUpscalerResources(const D3D11_UPSCALER_RESOURCE_CA
         return false;
     }
 
-    if (CheckMask(mask, ResourceMask::Mv) &&
-        (cache.Mv.Dx12Resource == nullptr || cache.Mv.LastPreparedFrame != currentFrameId))
+    if (CheckMask(mask, ResourceMask::Mv) && (mv.Dx12Resource == nullptr || mv.LastPreparedFrame != currentFrameId))
     {
         return false;
     }
 
     if (CheckMask(mask, ResourceMask::Depth) &&
-        (cache.Depth.Dx12Resource == nullptr || cache.Depth.LastPreparedFrame != currentFrameId))
+        (depth.Dx12Resource == nullptr || depth.LastPreparedFrame != currentFrameId))
     {
         return false;
     }
@@ -908,6 +915,7 @@ Dx11WithDx12::PrepareUpscalerResources(D3D11_UPSCALER_RESOURCE_CACHE_C& cache, c
     }
 
     const auto outputIndex = frameIndex % DX11_WITH_DX12_CACHED_FRAMES;
+    const auto inputIndex = frameIndex % DX11_WITH_DX12_INPUT_FRAMES;
     cache.frameId = frameId;
     bool ok = true;
     bool missing = false;
@@ -923,16 +931,17 @@ Dx11WithDx12::PrepareUpscalerResources(D3D11_UPSCALER_RESOURCE_CACHE_C& cache, c
     if (CheckMask(mask, ResourceMask::Mv))
     {
         missing = false;
-        ok &= PrepareCachedResource("MotionVectors", parameters, NVSDK_NGX_Parameter_MotionVectors, &cache.Mv, true,
-                                    false, true, dontUseNTShared, frameId, Dx12Device, &missing);
+        ok &=
+            PrepareCachedResource("MotionVectors", parameters, NVSDK_NGX_Parameter_MotionVectors, &cache.Mv[inputIndex],
+                                  true, false, true, dontUseNTShared, frameId, Dx12Device, &missing);
         result.MissingMv = missing;
     }
 
     if (CheckMask(mask, ResourceMask::Depth))
     {
         missing = false;
-        ok &= PrepareCachedResource("Depth", parameters, NVSDK_NGX_Parameter_Depth, &cache.Depth, true, true, true,
-                                    dontUseNTShared, frameId, Dx12Device, &missing);
+        ok &= PrepareCachedResource("Depth", parameters, NVSDK_NGX_Parameter_Depth, &cache.Depth[inputIndex], true,
+                                    true, true, dontUseNTShared, frameId, Dx12Device, &missing);
         result.MissingDepth = missing;
     }
 
@@ -975,7 +984,7 @@ Dx11WithDx12::PrepareUpscalerResources(D3D11_UPSCALER_RESOURCE_CACHE_C& cache, c
 
     if (ok)
     {
-        cache.FrameIndex = outputIndex;
+        cache.FrameIndex = frameIndex;
         cache.LastPreparedFrameId = frameId;
         cache.LastPreparedMask = mask;
     }

@@ -15,6 +15,10 @@
 
 #define DX11_WITH_DX12_CACHED_FRAMES 2
 
+// FG reads after the upscaler is done (MV, depth). FG and SL can consume them a few frames late,
+// so they get one set per FG frame instead of being rewritten by D3D11 every frame
+#define DX11_WITH_DX12_INPUT_FRAMES BUFFER_COUNT
+
 class Dx11WithDx12
 {
   private:
@@ -23,8 +27,6 @@ class Dx11WithDx12
 
     inline static ID3D12Device* Dx12Device = nullptr;
     inline static ID3D12CommandQueue* Dx12CommandQueue = nullptr;
-
-    inline static std::unique_ptr<DepthTransfer_Dx11> DT = nullptr;
 
     inline static ID3D11Fence* Dx11FenceTextureCopy = nullptr;
     inline static ID3D12Fence* Dx12FenceTextureCopy = nullptr;
@@ -39,9 +41,6 @@ class Dx11WithDx12
     inline static ID3D11Device5* SyncDx11Device = nullptr;
     inline static ID3D12Device* SyncDx12Device = nullptr;
     inline static ID3D12CommandQueue* SyncDx12CommandQueue = nullptr;
-
-    inline static D3D11_TEXTURE2D_DESC DepthTransferSourceDesc = {};
-    inline static bool DepthTransferSourceDescValid = false;
 
     static void ReleaseSyncResources();
     static void ReleaseSyncResourcesLocked();
@@ -106,19 +105,31 @@ class Dx11WithDx12
         UINT64 LastPreparedFrame = 0;
         bool LastPreparedCopy = false;
         bool LastPreparedDepth = false;
+
+        // Owned, used when depth needs a format conversion before sharing
+        DepthTransfer_Dx11* DepthTransfer = nullptr;
+        D3D11_TEXTURE2D_DESC DepthTransferSourceDesc = {};
     };
 
     using D3D11_UPSCALER_RESOURCE_CACHE_C = struct D3D11_UPSCALER_RESOURCE_CACHE_C
     {
         D3D11_TEXTURE2D_RESOURCE_C Color = {};
-        D3D11_TEXTURE2D_RESOURCE_C Mv = {};
-        D3D11_TEXTURE2D_RESOURCE_C Depth = {};
+        D3D11_TEXTURE2D_RESOURCE_C Mv[DX11_WITH_DX12_INPUT_FRAMES] = {};
+        D3D11_TEXTURE2D_RESOURCE_C Depth[DX11_WITH_DX12_INPUT_FRAMES] = {};
         D3D11_TEXTURE2D_RESOURCE_C Reactive = {};
         D3D11_TEXTURE2D_RESOURCE_C Exposure = {};
         D3D11_TEXTURE2D_RESOURCE_C Output[DX11_WITH_DX12_CACHED_FRAMES] = {};
         ID3D11Resource* ParamOutput[DX11_WITH_DX12_CACHED_FRAMES] = {};
         UINT64 frameId = 0;
-        UINT FrameIndex = 0;
+        UINT FrameIndex = 0; // Not wrapped, use the helpers below
+
+        D3D11_TEXTURE2D_RESOURCE_C& CurrentMv() { return Mv[FrameIndex % DX11_WITH_DX12_INPUT_FRAMES]; }
+        D3D11_TEXTURE2D_RESOURCE_C& CurrentDepth() { return Depth[FrameIndex % DX11_WITH_DX12_INPUT_FRAMES]; }
+        const D3D11_TEXTURE2D_RESOURCE_C& CurrentMv() const { return Mv[FrameIndex % DX11_WITH_DX12_INPUT_FRAMES]; }
+        const D3D11_TEXTURE2D_RESOURCE_C& CurrentDepth() const
+        {
+            return Depth[FrameIndex % DX11_WITH_DX12_INPUT_FRAMES];
+        }
         UINT64 LastPreparedFrameId = 0;
         ResourceMask LastPreparedMask = ResourceMask::None;
         UINT64 Generation = 0;
@@ -142,6 +153,7 @@ class Dx11WithDx12
 
     static UINT64 NextUpscalerFrameId();
 
+    static void ReleaseSharedTexture(D3D11_TEXTURE2D_RESOURCE_C* resource);
     static void ReleaseSharedResource(D3D11_TEXTURE2D_RESOURCE_C* resource);
     static void ResetUpscalerResourceCache(D3D11_UPSCALER_RESOURCE_CACHE_C& cache, bool releaseSyncResources = false);
 

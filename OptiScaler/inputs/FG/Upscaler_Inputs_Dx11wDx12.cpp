@@ -23,8 +23,9 @@ static bool PrepareFgResourceCache(NVSDK_NGX_Parameter* parameters, UINT64 frame
     const auto mask = Dx11WithDx12::ResourceMask::Mv | Dx11WithDx12::ResourceMask::Depth;
     const auto dontUseNtShared = Config::Instance()->DontUseNTShared.value_or_default();
 
+    // Next slot, the previous ones can still be in use by FG
     const auto result = Dx11WithDx12::PrepareUpscalerResources(
-        FgResourceCache, parameters, mask, FgResourceCache.FrameIndex, frameKey, dontUseNtShared, false, true);
+        FgResourceCache, parameters, mask, FgResourceCache.FrameIndex + 1, frameKey, dontUseNtShared, false, true);
 
     if (!result.Success)
     {
@@ -231,8 +232,8 @@ void UpscalerInputsDx11wDx12::UpscaleStart(NVSDK_NGX_Parameter* InParameters, IF
 
     LOG_DEBUG("(FG Dx11wDx12) using cached inputs for fgUpscaledImage[{}], frame: {}", frameIndex, fg->FrameCount());
 
-    ID3D12Resource* paramVelocity = cache->Mv.Dx12Resource;
-    ID3D12Resource* paramDepth = cache->Depth.Dx12Resource;
+    ID3D12Resource* paramVelocity = cache->CurrentMv().Dx12Resource;
+    ID3D12Resource* paramDepth = cache->CurrentDepth().Dx12Resource;
 
     auto cmdList = fg->GetUICommandList();
 
