@@ -2,6 +2,17 @@
 
 #include "low_latency_tech.h"
 
+// Ignores volatile ForceDisable
+inline ForceReflex RealReflexForceState()
+{
+    auto& force = Config::Instance()->FN_ForceReflex;
+
+    if (force.value_or_default() == ForceReflex::ForceDisable && !force.value_for_config().has_value())
+        return ForceReflex::InGame;
+
+    return force.value_or_default();
+}
+
 // NVIDIA Reflex as an output. Calls go through OptiScaler's Reflex hooks, so DLSSG output, the FPS limit and the
 // Reflex timings work as they do for games with Reflex.
 class Reflex : public LowLatencyTech

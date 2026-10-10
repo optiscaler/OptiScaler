@@ -64,7 +64,7 @@ void Reflex::deinit()
 
 bool Reflex::is_enabled()
 {
-    auto force = Config::Instance()->FN_ForceReflex.value_or_default();
+    auto force = RealReflexForceState();
     return force != ForceReflex::InGame ? force == ForceReflex::ForceEnable : low_latency_enabled;
 }
 

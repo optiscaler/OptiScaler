@@ -2,6 +2,7 @@
 #include "ll_reflex_vk.h"
 
 #include <hooks/Vulkan_Hooks.h>
+#include "ll_reflex.h"
 
 bool ReflexVk::init(IUnknown* pDevice)
 {
@@ -78,7 +79,7 @@ VkSwapchainKHR ReflexVk::swapchain()
 
 bool ReflexVk::is_enabled()
 {
-    auto force = Config::Instance()->FN_ForceReflex.value_or_default();
+    auto force = RealReflexForceState();
     return force != ForceReflex::InGame ? force == ForceReflex::ForceEnable : low_latency_enabled;
 }
 
