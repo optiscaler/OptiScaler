@@ -32,6 +32,7 @@ struct Luid
 std::filesystem::path ExePath();
 std::filesystem::path DllPath();
 std::optional<std::filesystem::path> NvngxPath();
+std::filesystem::path ReShadePath();
 
 double MillisecondsNow();
 std::wstring ToLower(std::wstring value);

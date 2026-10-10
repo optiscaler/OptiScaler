@@ -370,6 +370,18 @@ std::filesystem::path Util::ExePath()
     return exe;
 }
 
+// ReShade checks for "d3d12" in its own name so also accept d3d12-ReShade64.dll
+std::filesystem::path Util::ReShadePath()
+{
+    auto dir = ExePath().parent_path();
+    auto rsFile = dir / L"ReShade64.dll";
+
+    if (!std::filesystem::exists(rsFile) && std::filesystem::exists(dir / L"d3d12-ReShade64.dll"))
+        rsFile = dir / L"d3d12-ReShade64.dll";
+
+    return rsFile;
+}
+
 static BOOL CALLBACK EnumWindowsCallback(HWND handle, LPARAM lParam)
 {
     const auto isMainWindow = [handle]()

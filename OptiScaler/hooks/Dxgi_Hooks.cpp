@@ -43,7 +43,7 @@ static void CheckLumaAndReShade(IDXGIFactory* factory)
         return;
     }
 
-    auto rsFile = Util::ExePath().parent_path() / L"ReShade64.dll";
+    auto rsFile = Util::ReShadePath();
     if (reshadeModule == nullptr)
     {
         auto rsFileExist = std::filesystem::exists(rsFile);
@@ -81,7 +81,7 @@ static void CheckLumaAndReShade(IDXGIFactory* factory)
         reshadeModule = NtdllProxy::LoadLibraryExW_Ldr(rsFile.c_str(), NULL, 0);
         State::DisableServeOriginal(201);
 
-        LOG_INFO("Loading ReShade64.dll, result: {0:X}", (size_t) reshadeModule);
+        LOG_INFO("Loading {}, result: {:X}", rsFile.filename().string(), (size_t) reshadeModule);
     }
 }
 
