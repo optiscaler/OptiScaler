@@ -9,8 +9,8 @@ void XeLL::xell_sleep(uint32_t frame_id)
 {
     sent_sleep_frame_ids[frame_id % 64] = true;
 
-    // Don't call XeLL when trying to disable XeLL with XeFG active
-    if (!forced_mode || is_enabled())
+    // Don't call XeLL when trying to disable XeLL with XeFG active, or when another output does the sleeping
+    if (!markers_only && (!forced_mode || is_enabled()))
     {
         LOG_TRACE_LOWLATENCY("Sleeping with frame_id: {}", frame_id);
         o_xellSleep(xell_context, frame_id);
@@ -19,14 +19,14 @@ void XeLL::xell_sleep(uint32_t frame_id)
 
 void XeLL::add_marker(uint32_t frame_id, xell_latency_marker_type_t marker)
 {
-    if (!sent_sleep_frame_ids[frame_id % 64])
+    if (!markers_only && !sent_sleep_frame_ids[frame_id % 64])
     {
         LOG_DEBUG("Skipping reporting {} for XeLL because sleep wasn't sent for frame id: {}",
                   magic_enum::enum_name(marker), frame_id);
         return;
     }
 
-    if (!forced_mode || is_enabled())
+    if (markers_only || !forced_mode || is_enabled())
         o_xellAddMarkerData(xell_context, frame_id, marker);
 }
 
@@ -102,24 +102,20 @@ void XeLL::set_sleep_mode(SleepMode* sleep_mode)
     xell_sleep_params.minimumIntervalUs = sleep_mode->minimum_interval_us;
     xell_sleep_params.bLowLatencyBoost = sleep_mode->low_latency_boost;
 
-    static uint32_t last_bLowLatencyMode = 0;
-    static uint32_t last_minimumIntervalUs = 0;
-    static uint32_t last_bLowLatencyBoost = 0;
-
     // With ForceXeLL we have FG enabled but not actually working
     // but their FPS limit thinks that the FG is working
     if (Config::Instance()->ForceXeLL.value_or_default())
         xell_sleep_params.minimumIntervalUs /= 2;
 
-    if (xell_sleep_params.bLowLatencyMode != last_bLowLatencyMode ||
-        xell_sleep_params.minimumIntervalUs != last_minimumIntervalUs ||
-        xell_sleep_params.bLowLatencyBoost != last_bLowLatencyBoost)
+    if (xell_sleep_params.bLowLatencyMode != last_low_latency_mode ||
+        xell_sleep_params.minimumIntervalUs != last_minimum_interval_us ||
+        xell_sleep_params.bLowLatencyBoost != last_low_latency_boost)
     {
         auto result = o_xellSetSleepMode(xell_context, &xell_sleep_params) == XELL_RESULT_SUCCESS;
 
-        last_bLowLatencyMode = xell_sleep_params.bLowLatencyMode;
-        last_minimumIntervalUs = xell_sleep_params.minimumIntervalUs;
-        last_bLowLatencyBoost = xell_sleep_params.bLowLatencyBoost;
+        last_low_latency_mode = xell_sleep_params.bLowLatencyMode;
+        last_minimum_interval_us = xell_sleep_params.minimumIntervalUs;
+        last_low_latency_boost = xell_sleep_params.bLowLatencyBoost;
     }
 }
 

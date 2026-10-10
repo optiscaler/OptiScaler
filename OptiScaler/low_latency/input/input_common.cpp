@@ -154,6 +154,23 @@ LowLatencyMode InputCommon::default_output(API api)
     return LowLatencyMode::LatencyFlex;
 }
 
+const char* InputCommon::output_unavailable(LowLatencyMode output, API api)
+{
+    auto vendorId = IdentifyGpu::getPrimaryGpu().vendorId;
+
+    // On D3D the driver's Reflex is reached through nvapi, fakenvapi's is a translation of its own
+    if (output == LowLatencyMode::Reflex &&
+        (vendorId != VendorId::Nvidia || (api != API::Vulkan && fakenvapi::isUsingAsMainNvapi())))
+    {
+        return "Needs an Nvidia GPU";
+    }
+
+    if ((output == LowLatencyMode::AntiLag2 || output == LowLatencyMode::AntiLagVk) && vendorId != VendorId::AMD)
+        return "Needs an AMD GPU";
+
+    return nullptr;
+}
+
 LowLatencyMode InputCommon::for_api(LowLatencyMode mode, API api)
 {
     if (api == API::Vulkan && mode == LowLatencyMode::AntiLag2)
@@ -229,12 +246,26 @@ API InputCommon::uses_api()
 
 std::optional<LowLatencyMode> InputCommon::forced_output()
 {
-    // OptiScaler's XeFG paces through XeLL, the game's XeFG through its own XeLL (no output). OptiScaler's DLSSG and
-    // FSR-FG take any output, the game's own FSR-FG and DLSSG default to their own (default_input, default_output).
-    if (State::Instance().activeFgOutput == FGOutput::XeFG || InputXeLL::IsNative())
+    // The game's XeFG paces through its own XeLL (no output). OptiScaler's XeFG takes XeLL, Reflex or AntiLag 2
+    // (xefg_output), its DLSSG and FSR-FG any output, the game's own FSR-FG and DLSSG default to their own
+    // (default_input, default_output).
+    if (InputXeLL::IsNative())
         return LowLatencyMode::XeLL;
 
     return std::nullopt;
+}
+
+// OptiScaler's XeFG paces with XeLL, the default. The GPU's Reflex or AntiLag 2 output can do the sleeping instead,
+// XeFG then keeps an XeLL context of its own (acquire_xefg_xell).
+LowLatencyMode InputCommon::xefg_output(LowLatencyMode configured)
+{
+    if ((configured == LowLatencyMode::Reflex || configured == LowLatencyMode::AntiLag2) &&
+        output_unavailable(configured, API::DX12) == nullptr)
+    {
+        return configured;
+    }
+
+    return LowLatencyMode::XeLL;
 }
 
 bool InputCommon::xefg_paced()
@@ -404,23 +435,45 @@ bool InputCommon::update_low_latency_tech(IUnknown* pDevice, API api, std::optio
         return true;
     }
 
-    // The frame generation that forces the output runs it on its own device, OptiScaler's XeFG on D3D12 also for
-    // D3D11 games through interop. Calls from an API without that output only drive it, the frame generation starts
-    // it (set_low_latency_tech).
-    if (auto forced = forced_output(); forced.has_value() && !mode.has_value() && for_api(*forced, api) != *forced)
+    // The frame generation output decides the low latency output it works with: the game's XeFG its own XeLL,
+    // OptiScaler's XeFG XeLL (also for Auto) or the GPU's Reflex or AntiLag 2
+    auto forced = forced_output();
+
+    if (!forced.has_value() && State::Instance().activeFgOutput == FGOutput::XeFG)
+        forced = xefg_output(Config::Instance()->LowLatencyOutput.value_or_default());
+
+    // The frame generation that decides the output runs it on its own device, OptiScaler's XeFG its XeLL on D3D12
+    // also for D3D11 games through interop. Calls from an API without that output only drive it, the frame
+    // generation starts it (set_low_latency_tech). Reflex and AntiLag 2 run on the game's device.
+    if (forced.has_value() && !mode.has_value() && for_api(*forced, api) != *forced)
         return true;
 
     if (desiredMode == LowLatencyMode::None)
         desiredMode = Config::Instance()->LowLatencyOutput.value_or_default();
 
-    if (desiredMode == LowLatencyMode::Auto || desiredMode == LowLatencyMode::None)
+    // An output the GPU can't run is Auto
+    if (desiredMode == LowLatencyMode::Auto || desiredMode == LowLatencyMode::None ||
+        output_unavailable(desiredMode, api) != nullptr)
+    {
         desiredMode = default_output(api);
+    }
 
-    // The frame generation output decides the low latency output it works with
-    if (auto forced = forced_output())
+    if (forced.has_value())
         desiredMode = *forced;
 
     desiredMode = for_api(desiredMode, api);
+
+    // XeFG paces with the XeLL output's own context, which stays the output until XeFG lets go of it
+    if (xefg_uses_output_xell && activeOutput == LowLatencyMode::XeLL && desiredMode != LowLatencyMode::XeLL)
+    {
+        static std::atomic<LowLatencyMode> waiting = LowLatencyMode::None;
+
+        if (waiting.exchange(desiredMode) != desiredMode)
+            LOG_INFO("Low latency output {} waits for XeFG to restart, it paces with the XeLL output's context",
+                     magic_enum::enum_name(desiredMode));
+
+        return true;
+    }
 
     // An output that couldn't start keeps its fallback instead of being retried every call
     if (desiredMode == failed_output && currently_active_tech.load() != nullptr &&
@@ -597,6 +650,13 @@ InputResult InputCommon::set_marker(const InputContext& inputContext, IUnknown* 
     if (!toOutput)
         return InputResult::Ok;
 
+    // XeFG's own XeLL context follows the game's frames while a Reflex or AntiLag 2 output sleeps
+    if (marker_params.frame_id != 0)
+    {
+        if (auto own = xefg_xell.load())
+            own->set_marker(pDevice, marker_params);
+    }
+
     // Markers without a frame id only let AntiLag 2 and LatencyFlex follow the sleep calls, Reflex and XeLL use ids
     if (marker_params.frame_id == 0 && (activeOutput == LowLatencyMode::Reflex || activeOutput == LowLatencyMode::XeLL))
     {
@@ -640,6 +700,9 @@ InputResult InputCommon::set_async_marker(const InputContext& inputContext, ID3D
 
     // TODO: could consider adding async markers to the report but would require some rewriting
     // add_marker_to_report(marker_params);
+
+    if (auto own = xefg_xell.load(); own != nullptr && !inputContext.localContext)
+        own->set_async_marker(pCommandQueue, marker_params);
 
     if (auto current_tech = currently_active_tech.load())
         current_tech->set_async_marker(pCommandQueue, marker_params);
@@ -1191,4 +1254,75 @@ xell_context_handle_t InputCommon::xell_output_context()
         return nullptr;
 
     return (xell_context_handle_t) current_tech->get_tech_context();
+}
+
+xell_context_handle_t InputCommon::acquire_xefg_xell(IUnknown* pDevice)
+{
+    auto output = xefg_output(Config::Instance()->LowLatencyOutput.value_or_default());
+
+    if (output == LowLatencyMode::XeLL)
+    {
+        // XeFG reads the frames of the XeLL context the low latency input feeds, the output keeps it in low latency
+        // mode while XeFG runs
+        if (set_low_latency_tech(pDevice, LowLatencyMode::XeLL) != InputResult::Ok)
+            return nullptr;
+
+        auto context = xell_output_context();
+        xefg_uses_output_xell = context != nullptr;
+        return context;
+    }
+
+    // A Reflex or AntiLag 2 output sleeps, XeFG gets an XeLL context of its own that follows the game's markers.
+    // XeFG needs it in low latency mode.
+    std::scoped_lock lock(create_tech_mutex);
+    xefg_uses_output_xell = false;
+
+    auto own = xefg_xell.load();
+
+    if (own == nullptr)
+    {
+        auto xell = std::make_shared<XeLL>();
+
+        if (!xell->init(pDevice))
+        {
+            LOG_ERROR("Couldn't create XeFG's own XeLL context");
+            return nullptr;
+        }
+
+        xell->set_markers_only(true);
+        xell->set_forced_mode(true);
+
+        SleepMode sleepMode {};
+        sleepMode.low_latency_enabled = true;
+        xell->set_sleep_mode(&sleepMode);
+
+        xefg_xell.store(xell);
+        own = xell;
+
+        LOG_INFO("XeFG paces with its own XeLL context, the low latency output is {}", magic_enum::enum_name(output));
+    }
+
+    return (xell_context_handle_t) own->get_tech_context();
+}
+
+void InputCommon::release_xefg_xell()
+{
+    xefg_uses_output_xell = false;
+
+    std::scoped_lock lock(create_tech_mutex);
+
+    // The markers may still be on their way to it
+    if (auto own = xefg_xell.exchange(nullptr))
+    {
+        while (own.use_count() > 1)
+            std::this_thread::yield();
+
+        own->deinit();
+    }
+}
+
+bool InputCommon::xefg_output_change_pending()
+{
+    return xefg_uses_output_xell && activeOutput == LowLatencyMode::XeLL &&
+           xefg_output(Config::Instance()->LowLatencyOutput.value_or_default()) != LowLatencyMode::XeLL;
 }

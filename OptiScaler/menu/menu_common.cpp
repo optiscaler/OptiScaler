@@ -5474,6 +5474,16 @@ void MenuCommon::RenderFramerateSettings(RenderMenuContext& ctx)
         {
             fakenvapiMode = fakenvapi::getCurrentMode();
 
+#ifdef LOW_LATENCY_INPUTS
+            // The D3D Reflex output limits through the driver's Reflex, fakenvapi's mode is only its own
+            LowLatencyInput activeInput {};
+            LowLatencyMode activeOutput {};
+            InputCommon::get_currently_active(activeInput, activeOutput);
+
+            if (activeOutput == LowLatencyMode::Reflex)
+                fakenvapiMode = LowLatencyMode::None;
+#endif
+
             if (fakenvapiMode == LowLatencyMode::AntiLag2)
                 currentMethod = "FSR Anti-Lag 2.0";
             else if (fakenvapiMode == LowLatencyMode::LatencyFlex)
@@ -5786,10 +5796,16 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
         const auto api = InputCommon::uses_api();
         const bool vulkan = api == API::Vulkan;
         const bool outputForced = InputCommon::forced_output().has_value();
-        const bool nvidia = IdentifyGpu::getPrimaryGpu().vendorId == VendorId::Nvidia;
+        const auto vendorId = IdentifyGpu::getPrimaryGpu().vendorId;
+        const bool nvidia = vendorId == VendorId::Nvidia;
+
+        // OptiScaler's XeFG paces with XeLL on D3D12 (also for D3D11 games through interop), the GPU's Reflex or
+        // AntiLag 2 output can sleep instead while XeFG keeps an XeLL context of its own
+        const bool optiXefg = state.activeFgOutput == FGOutput::XeFG;
 
         lowLatencyOutput[(uint32_t) LowLatencyMode::AntiLag2].hidden = vulkan;
-        lowLatencyOutput[(uint32_t) LowLatencyMode::XeLL].hidden = !outputForced && (vulkan || api == API::DX11);
+        lowLatencyOutput[(uint32_t) LowLatencyMode::XeLL].hidden =
+            !outputForced && !optiXefg && (vulkan || api == API::DX11);
         lowLatencyOutput[(uint32_t) LowLatencyMode::AntiLagVk].hidden = !vulkan;
 
         auto disable = [](MenuOption<LowLatencyMode>& option, bool condition, const char* reason)
@@ -5813,6 +5829,9 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
                     "Needs an Nvidia GPU");
         }
 
+        disable(lowLatencyOutput[(uint32_t) LowLatencyMode::AntiLag2], vendorId != VendorId::AMD, "Needs an AMD GPU");
+        disable(lowLatencyOutput[(uint32_t) LowLatencyMode::LatencyFlex], optiXefg, "Not with XeFG");
+
         lowLatencyOutput[(uint32_t) LowLatencyMode::Auto].label = "Auto";
         lowLatencyOutput[(uint32_t) LowLatencyMode::Auto].tooltip =
             vulkan ? "The GPU's own: AntiLag on AMD, Reflex on Nvidia, LatencyFlex otherwise"
@@ -5820,11 +5839,23 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
                 ? "The GPU's own: AntiLag 2 on AMD, Reflex on Nvidia, LatencyFlex otherwise"
                 : "The GPU's own: AntiLag 2 on AMD, Reflex on Nvidia, XeLL on Intel, LatencyFlex otherwise";
 
+        if (optiXefg)
+        {
+            auto& autoTooltip = lowLatencyOutput[(uint32_t) LowLatencyMode::Auto].tooltip;
+            autoTooltip = "XeLL, XeFG paces with it.";
+
+            if (!lowLatencyOutput[(uint32_t) LowLatencyMode::Reflex].disabled)
+                autoTooltip += "\nReflex can do the sleeping instead, XeFG keeps an XeLL context of its own.";
+            else if (!lowLatencyOutput[(uint32_t) LowLatencyMode::AntiLag2].disabled)
+                autoTooltip += "\nAntiLag 2 can do the sleeping instead, XeFG keeps an XeLL context of its own.";
+        }
+
         // Frame generation decides the output it works with
         auto forcedOutput = InputCommon::forced_output();
         auto output = forcedOutput.value_or(config->LowLatencyOutput.value_or_default());
 
-        if (output == LowLatencyMode::None)
+        // An output the GPU can't run works as Auto
+        if (output == LowLatencyMode::None || InputCommon::output_unavailable(output, api))
             output = LowLatencyMode::Auto;
 
         // The other API's AntiLag
@@ -5834,7 +5865,7 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
             output = LowLatencyMode::AntiLag2;
 
         // No XeLL on D3D11 unless OptiScaler's XeFG runs it on D3D12, Auto picks the GPU's own
-        if (!forcedOutput.has_value() && api == API::DX11 && output == LowLatencyMode::XeLL)
+        if (!forcedOutput.has_value() && !optiXefg && api == API::DX11 && output == LowLatencyMode::XeLL)
             output = LowLatencyMode::Auto;
 
         auto selectedOutput = output;
@@ -5844,12 +5875,19 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
         ImGui::EndDisabled();
 
         if (forcedOutput.has_value() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-            ImGui::SetTooltip("Set by XeFG: the game's own keeps its XeLL (only the FPS limit is OptiScaler's),\n"
-                              "OptiScaler's needs XeLL");
+            ImGui::SetTooltip("Set by XeFG: the game's own keeps its XeLL (only the FPS limit is OptiScaler's)");
         else if (selectedOutput != output)
             config->LowLatencyOutput = selectedOutput;
 
         ImGui::EndTable();
+    }
+
+    if (InputCommon::xefg_output_change_pending())
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)));
+        ImGui::TextWrapped("The new output applies when XeFG starts again (restart the game): XeFG paces with the "
+                           "XeLL output until then");
+        ImGui::PopStyleColor();
     }
 
     if (auto reason = InputCommon::incompatibility(activeInput, activeOutput))
