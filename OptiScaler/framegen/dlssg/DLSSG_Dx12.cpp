@@ -210,13 +210,17 @@ void DLSSG_Dx12::Deactivate()
         sl::DLSSGOptions options {};
         options.mode = sl::DLSSGMode::eOff;
         options.queueParallelismMode = sl::DLSSGQueueParallelismMode::eBlockPresentingClientQueue;
-        StreamlineProxy::DLSSGSetOptions()(viewport, options); // Potential crash point on exit
+
+        if (StreamlineProxy::DLSSGSetOptions() != nullptr)
+            StreamlineProxy::DLSSGSetOptions()(viewport, options); // Potential crash point on exit
 
         sl::ReflexOptions reflexConst = {};
         reflexConst.mode = sl::ReflexMode::eOff;
         reflexConst.useMarkersToOptimize = false;
         ScopedOptiScalerReflex optiScalerCall {};
-        StreamlineProxy::ReflexSetOptions()(reflexConst);
+
+        if (StreamlineProxy::ReflexSetOptions() != nullptr)
+            StreamlineProxy::ReflexSetOptions()(reflexConst);
 
         _isActive = false;
     }
@@ -509,7 +513,8 @@ void DLSSG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
     auto& state = State::Instance();
 
     // If needed hooks are missing or XeFG proxy is not inited or FG swapchain is not created
-    if (!StreamlineProxy::LoadStreamline() || state.currentFGSwapchain == nullptr)
+    // currentFGSwapchain can also be a plain fallback swapchain, so check that DLSSG created its own
+    if (!StreamlineProxy::LoadStreamline() || state.currentFGSwapchain == nullptr || _swapChain == nullptr)
         return;
 
     if (state.isShuttingDown)

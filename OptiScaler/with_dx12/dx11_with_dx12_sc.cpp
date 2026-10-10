@@ -12,6 +12,7 @@
 
 #include <Util.h>
 #include <Config.h>
+#include <misc/IdentifyGpu.h>
 
 #include <d3d11.h>
 #include <d3d11_4.h>
@@ -190,6 +191,15 @@ Dx11wDx12SC::Dx11wDx12SC(IDXGISwapChain* real, IDXGISwapChain4* fgSC, ID3D11Devi
     }
 
     State::Instance().swapchainInteropApi = SwapchainInteropApi::Dx11wDx12;
+
+    // HACK: DLSSG through DX11 interop shows double images in generated frames with vsync on non Nvidia GPUs.
+    // Couldn't figure out the real cause
+    if (State::Instance().activeFgOutput == FGOutput::DLSSG && !Config::Instance()->ForceVsync.has_value() &&
+        IdentifyGpu::getPrimaryGpu().vendorId != VendorId::Nvidia)
+    {
+        LOG_INFO("DX11 DLSSG on non Nvidia GPU, forcing vsync off");
+        Config::Instance()->ForceVsync.set_volatile_value(false);
+    }
 
     _RefreshCachedSwapchainDesc();
 
@@ -1234,13 +1244,18 @@ bool Dx11wDx12SC::_CopyDx11SharedToDx12FGBackBuffer(UINT dx11Index)
 
 bool Dx11wDx12SC::_WaitForInteropCopyOnPresentQueue()
 {
-    if (_fg == nullptr || _copyFence == nullptr)
+    if (_copyFence == nullptr)
         return false;
 
     if (_lastInteropCopyFenceValue == 0)
         return true;
 
-    auto result = _fg->GetCommandQueue()->Wait(_copyFence, _lastInteropCopyFenceValue);
+    auto presentQueue = _fg != nullptr ? _fg->GetCommandQueue() : nullptr;
+
+    if (presentQueue == nullptr || presentQueue == _dx12CommandQueue)
+        return true;
+
+    auto result = presentQueue->Wait(_copyFence, _lastInteropCopyFenceValue);
     if (FAILED(result))
     {
         LOG_ERROR("present queue Wait on interop copy fence failed: {:X}", (UINT) result);
