@@ -3398,6 +3398,28 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
     }
 }
 
+// Slider for overriding the game's FG ratio: Off, Default (no override), 2X, 3X... up to maxInterpolationCount
+static bool RenderRatioOverrideSlider(const char* label, CustomOptional<int, NoDefault>& setting,
+                                      int maxInterpolationCount)
+{
+    // 0 = Off, 1 = Default, 2+ = ratio (interpolated frame count + 1)
+    int index = 1;
+    if (setting.has_value())
+        index = setting.value() == 0 ? 0 : std::min(setting.value(), maxInterpolationCount) + 1;
+
+    const std::string preview = index == 0 ? "Off" : index == 1 ? "Default" : std::format("{}X", index);
+
+    if (!ImGui::SliderInt(label, &index, 0, maxInterpolationCount + 1, preview.c_str(), ImGuiSliderFlags_NoInput))
+        return false;
+
+    if (index == 1)
+        setting.reset();
+    else
+        setting = index == 0 ? 0 : index - 1;
+
+    return true;
+}
+
 void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 {
     auto& state = ctx.state;
@@ -3685,31 +3707,9 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
         // XeFG input to XeFG output: the game's own XeFG, like Override DLSSG Ratio
         if (XeFGInputs::Passthrough() && XeFGInputs::MaxInterpolations() >= 1)
         {
-            auto& setting = config->FGXeFGOverrideInterpolationCount;
-            const int currentSet = setting.has_value() ? setting.value() + 1 : 0;
-            auto label = [](int i)
-            {
-                return i == 0 ? std::string("Default") : i == 1 ? std::string("Off") : std::to_string(i) + "X";
-            };
-
-            ImGui::PushItemWidth(95.0f * menuResScale);
-
-            if (ImGui::BeginCombo("Override XeFG Ratio", label(currentSet).c_str()))
-            {
-                for (int i = 0; i <= (int) XeFGInputs::MaxInterpolations() + 1; i++)
-                {
-                    if (ImGui::Selectable(label(i).c_str(), currentSet == i))
-                    {
-                        if (i == 0)
-                            setting.reset();
-                        else
-                            setting = i - 1;
-                    }
-                }
-
-                ImGui::EndCombo();
-            }
-
+            ImGui::PushItemWidth(150.0f * menuResScale);
+            RenderRatioOverrideSlider("Override XeFG Ratio", config->FGXeFGOverrideInterpolationCount,
+                                      (int) XeFGInputs::MaxInterpolations());
             ImGui::PopItemWidth();
         }
 
@@ -3719,64 +3719,20 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
         ImGui::BeginDisabled(state.dlssgGameDMFGSupported && config->FGDLSSGOverrideForceDMFG.value_or_default());
         if (state.dlssgMfgMax.has_value() && state.dlssgMfgMax.value() >= 1 && !dlssgInputOrOutput)
         {
-            auto maxInterpolationCount = state.dlssgMfgMax.value();
+            ImGui::PushItemWidth(150.0f * menuResScale);
 
-            if (maxInterpolationCount >= 1)
+            if (RenderRatioOverrideSlider("Override DLSSG Ratio", config->FGDLSSGOverrideInterpolationCount,
+                                          state.dlssgMfgMax.value()))
             {
-                // Map config value to UI index
-                int currentSet = 0;
-                if (config->FGDLSSGOverrideInterpolationCount.has_value())
-                {
-                    currentSet = config->FGDLSSGOverrideInterpolationCount.value() + 1;
-                }
+                LOG_DEBUG("DLSSG Interpolation Count set to: {}",
+                          config->FGDLSSGOverrideInterpolationCount.has_value()
+                              ? std::to_string(config->FGDLSSGOverrideInterpolationCount.value())
+                              : std::string("Default"));
 
-                std::string currentIntCountStr;
-                if (currentSet == 0)
-                    currentIntCountStr = "Default";
-                else if (currentSet == 1)
-                    currentIntCountStr = "Off";
-                else
-                    currentIntCountStr = std::to_string(currentSet) + "X";
-
-                ImGui::PushItemWidth(95.0f * menuResScale);
-
-                if (ImGui::BeginCombo("Override DLSSG Ratio", currentIntCountStr.c_str()))
-                {
-                    for (int i = 0; i <= maxInterpolationCount + 1; i++)
-                    {
-                        std::string modeStr;
-                        if (i == 0)
-                            modeStr = "Default";
-                        else if (i == 1)
-                            modeStr = "Off";
-                        else
-                            modeStr = std::to_string(i) + "X";
-
-                        if (ImGui::Selectable(modeStr.c_str(), (currentSet == i)))
-                        {
-                            if (i == 0)
-                            {
-                                // Default, no override
-                                config->FGDLSSGOverrideInterpolationCount.reset();
-                            }
-                            else
-                            {
-                                // UI index, store value
-                                int framesToGenerate = i - 1;
-
-                                LOG_DEBUG("DLSSG Interpolation Count set to: {}", framesToGenerate);
-                                config->FGDLSSGOverrideInterpolationCount = framesToGenerate;
-                            }
-
-                            StreamlineHooks::updateDlssgOptions();
-                        }
-                    }
-
-                    ImGui::EndCombo();
-                }
-
-                ImGui::PopItemWidth();
+                StreamlineHooks::updateDlssgOptions();
             }
+
+            ImGui::PopItemWidth();
         }
 
         ImGui::EndDisabled();
@@ -3794,7 +3750,8 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
             ImGui::BeginDisabled(state.dlssgLastSetMode != sl::DLSSGMode::eDynamic);
             static float fpsTarget = config->FGDLSSGFramerateTargetDMFG.value_or_default();
-            ImGui::SliderFloat("DMFG FPS Target", &fpsTarget, 0, 200, "%.0f");
+            const float fpsSliderMax = (float) std::max(200, refreshRate);
+            ImGui::SliderFloat("DMFG FPS Target", &fpsTarget, 0, fpsSliderMax, "%.0f");
 
             ShowTooltip("An active limit of 0 means auto-detect the display refresh rate");
 
@@ -4006,10 +3963,10 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     }
 }
 
-// Replaces the Active checkbox + MFG combo of FG outputs
+// Replaces the Active checkbox + MFG combo of FG outputs with a single slider
 // maxInterpolationCount of 0 means the output doesn't generate frames, "On" is shown instead of "2X"
-void MenuCommon::RenderFGModeCombo(RenderMenuContext& ctx, const char* label, int maxInterpolationCount,
-                                   CustomOptional<int>* countConfig)
+void MenuCommon::RenderFGModeSlider(RenderMenuContext& ctx, const char* label, int maxInterpolationCount,
+                                    CustomOptional<int>* countConfig)
 {
     auto& state = ctx.state;
     auto config = ctx.config;
@@ -4037,6 +3994,18 @@ void MenuCommon::RenderFGModeCombo(RenderMenuContext& ctx, const char* label, in
     else if (config->FGEnabled.value_or_default())
         current = countConfig != nullptr ? std::clamp(countConfig->value_or_default(), 1, maxMode) : 1;
 
+    // Slider order: Off, (Default), 2X, 3X... up to the output's max
+    std::vector<int> modes { 0 };
+    if (Config::FGCanFollowGame())
+        modes.push_back(-1);
+
+    for (int mode = 1; mode <= maxMode; mode++)
+        modes.push_back(mode);
+
+    int index = (int) (std::find(modes.begin(), modes.end(), current) - modes.begin());
+    if (index >= (int) modes.size())
+        index = 0;
+
     std::string preview = modeName(current);
     if (current < 0)
     {
@@ -4045,38 +4014,30 @@ void MenuCommon::RenderFGModeCombo(RenderMenuContext& ctx, const char* label, in
         preview += std::format(" ({})", modeName(gameMode));
     }
 
-    ImGui::PushItemWidth(115.0f * ctx.menuResScale);
+    ImGui::PushItemWidth(150.0f * ctx.menuResScale);
 
-    if (ImGui::BeginCombo(label, preview.c_str()))
+    if (ImGui::SliderInt(label, &index, 0, (int) modes.size() - 1, preview.c_str(), ImGuiSliderFlags_NoInput) &&
+        modes[index] != current)
     {
-        const int firstMode = Config::FGCanFollowGame() ? -1 : 0;
+        const int mode = modes[index];
+        fgHotkeyLeftDefault = false;
 
-        for (int mode = firstMode; mode <= maxMode; mode++)
+        if (mode < 0)
         {
-            if (!ImGui::Selectable(modeName(mode).c_str(), current == mode) || current == mode)
-                continue;
+            config->FGEnabled = std::optional<bool> {};
+        }
+        else
+        {
+            config->FGEnabled = mode > 0;
 
-            fgHotkeyLeftDefault = false;
-
-            if (mode < 0)
-            {
-                config->FGEnabled = std::optional<bool> {};
-            }
-            else
-            {
-                config->FGEnabled = mode > 0;
-
-                if (mode > 0 && countConfig != nullptr)
-                    *countConfig = mode;
-            }
-
-            LOG_DEBUG("FG mode set to: {}", modeName(mode));
-
-            if (config->IsFGEnabled())
-                state.fgChanged = true;
+            if (mode > 0 && countConfig != nullptr)
+                *countConfig = mode;
         }
 
-        ImGui::EndCombo();
+        LOG_DEBUG("FG mode set to: {}", modeName(mode));
+
+        if (config->IsFGEnabled())
+            state.fgChanged = true;
     }
 
     ImGui::PopItemWidth();
@@ -4137,7 +4098,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 ShowTooltip("List of FGs reported by FFX SDK");
             }
 
-            RenderFGModeCombo(ctx, "Frame Gen##fsrfg", 1, nullptr);
+            RenderFGModeSlider(ctx, "Frame Gen##fsrfg", 1, nullptr);
 
             bool fgAsync = config->FGAsync.value_or_default();
             if (ImGui::Checkbox("Allow Async", &fgAsync))
@@ -4405,19 +4366,8 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
         ImGui::BeginDisabled(!correctMVs || cantActivate);
 
-        RenderFGModeCombo(ctx, "Frame Gen##xefg", fgOutput->GetMaxInterpolationCount(),
-                          &config->FGXeFGInterpolationCount);
-
-        ImGui::SameLine(0.0f, 16.0f);
-        ImGui::BeginDisabled(!fgOutput->IsUsingHudlessAny() || XeFGProxy::SetUiCompositionState() == nullptr);
-        bool fgCompositeUI = config->FGXeFGUIComposition.value_or_default();
-        if (ImGui::Checkbox("UI Composition", &fgCompositeUI))
-            config->FGXeFGUIComposition = fgCompositeUI;
-
-        ShowTooltip("Disable HUD/UI interpolation\n"
-                    "Reverts back to previous XeFG 2 behaviour\n\n"
-                    "Fixes artifacting transparent HUD/UI");
-        ImGui::EndDisabled();
+        RenderFGModeSlider(ctx, "Frame Gen##xefg", fgOutput->GetMaxInterpolationCount(),
+                           &config->FGXeFGInterpolationCount);
 
         bool fgDV = config->FGXeFGDebugView.value_or_default();
         if (ImGui::Checkbox("Debug View##2", &fgDV))
@@ -4444,6 +4394,17 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                     "resolution to your display resolution\n"
                     "Might cause some instability issues.\n\n"
                     "NEEDS GAME RESTART TO BE ACTIVE!");
+
+        ImGui::SameLine(0.0f, 16.0f);
+        ImGui::BeginDisabled(!fgOutput->IsUsingHudlessAny() || XeFGProxy::SetUiCompositionState() == nullptr);
+        bool fgCompositeUI = config->FGXeFGUIComposition.value_or_default();
+        if (ImGui::Checkbox("UI Composition", &fgCompositeUI))
+            config->FGXeFGUIComposition = fgCompositeUI;
+
+        ShowTooltip("Disable HUD/UI interpolation\n"
+                    "Reverts back to previous XeFG 2 behaviour\n\n"
+                    "Fixes artifacting transparent HUD/UI");
+        ImGui::EndDisabled();
 
         // Disable this for now
         // ImGui::SameLine(0.0f, 16.0f);
@@ -4527,8 +4488,8 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)), "OFF");
         }
 
-        RenderFGModeCombo(ctx, "Frame Gen##dlssg", fgOutput->GetMaxInterpolationCount(),
-                          &config->FGDLSSGInterpolationCount);
+        RenderFGModeSlider(ctx, "Frame Gen##dlssg", fgOutput->GetMaxInterpolationCount(),
+                           &config->FGDLSSGInterpolationCount);
 
         if (fgOutput->GetMaxInterpolationCount() > 1)
         {
@@ -4593,7 +4554,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
         if (state.activeFgOutput == FGOutput::Reprojection)
         {
-            RenderFGModeCombo(ctx, "Reprojection##mode", 0, nullptr);
+            RenderFGModeSlider(ctx, "Reprojection##mode", 0, nullptr);
         }
         else
         {
