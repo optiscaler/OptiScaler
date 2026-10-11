@@ -219,7 +219,9 @@ enum class LowLatencyMode : uint32_t
     AntiLag2,
     XeLL,
     AntiLagVk,
-    Reflex
+    Reflex,
+    FpsLimiter,
+    _
 };
 
 enum class ReprojectionFill : uint32_t

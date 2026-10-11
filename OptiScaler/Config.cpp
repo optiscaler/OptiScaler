@@ -724,7 +724,7 @@ bool Config::Reload(std::filesystem::path iniPath)
                 LowLatencyInput.reset();
 
             if (auto v = readUInt("fakenvapi", "LowLatencyOutput");
-                v.has_value() && *v > (uint32_t) LowLatencyMode::Auto && *v <= (uint32_t) LowLatencyMode::Reflex)
+                v.has_value() && *v > (uint32_t) LowLatencyMode::Auto && *v < (uint32_t) LowLatencyMode::_)
                 LowLatencyOutput.set_from_config((LowLatencyMode) *v);
             else
                 LowLatencyOutput.reset();

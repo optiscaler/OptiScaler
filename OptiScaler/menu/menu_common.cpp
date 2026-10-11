@@ -5511,6 +5511,8 @@ void MenuCommon::RenderFramerateSettings(RenderMenuContext& ctx)
                 currentMethod = "Vulkan AntiLag";
             else if (fakenvapiMode == LowLatencyMode::Reflex)
                 currentMethod = "Reflex";
+            else if (fakenvapiMode == LowLatencyMode::FpsLimiter)
+                currentMethod = "FPS Limiter";
             else
                 currentMethod = "XeLL";
         }
@@ -5715,6 +5717,7 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
         { LowLatencyMode::XeLL, "XeLL" },
         { LowLatencyMode::AntiLagVk, "AntiLag Vk" },
         { LowLatencyMode::Reflex, "Reflex" },
+        { LowLatencyMode::FpsLimiter, "FPS Limiter", "Only limits the FPS" },
     };
 
     LowLatencyInput activeInput {};

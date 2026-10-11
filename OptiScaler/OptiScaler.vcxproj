@@ -365,6 +365,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="low_latency\low_latency_tech\ll_antilag2.h" />
     <ClInclude Include="low_latency\low_latency_tech\ll_antilag_vk.h" />
     <ClInclude Include="low_latency\low_latency_tech\ll_latencyflex.h" />
+    <ClInclude Include="low_latency\low_latency_tech\ll_fps_limiter.h" />
     <ClInclude Include="low_latency\low_latency_tech\ll_reflex.h" />
     <ClInclude Include="low_latency\low_latency_tech\ll_reflex_vk.h" />
     <ClInclude Include="low_latency\low_latency_tech\ll_xell.h" />
@@ -685,6 +686,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="low_latency\low_latency_tech\ll_antilag2.cpp" />
     <ClCompile Include="low_latency\low_latency_tech\ll_antilag_vk.cpp" />
     <ClCompile Include="low_latency\low_latency_tech\ll_latencyflex.cpp" />
+    <ClCompile Include="low_latency\low_latency_tech\ll_fps_limiter.cpp" />
     <ClCompile Include="low_latency\low_latency_tech\ll_reflex.cpp" />
     <ClCompile Include="low_latency\low_latency_tech\ll_reflex_vk.cpp" />
     <ClCompile Include="low_latency\low_latency_tech\ll_xell.cpp" />

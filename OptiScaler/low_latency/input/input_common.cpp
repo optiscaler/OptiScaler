@@ -10,6 +10,7 @@
 #include <low_latency/low_latency_tech/ll_reflex.h>
 #include <low_latency/low_latency_tech/ll_reflex_vk.h>
 #include <low_latency/low_latency_tech/ll_antilag_vk.h>
+#include <low_latency/low_latency_tech/ll_fps_limiter.h>
 #include <hooks/Vulkan_Hooks.h>
 #include <inputs/FG/XeFG_Inputs_Dx12.h>
 #include <framegen/IFGFeature_Dx12.h>
@@ -91,6 +92,9 @@ bool InputCommon::init_tech(IUnknown* pDevice, API api, LowLatencyMode desiredMo
             break;
         case LowLatencyMode::LatencyFlex:
             isInitialized = try_init(std::make_shared<LatencyFlex>(), "LatencyFlex");
+            break;
+        case LowLatencyMode::FpsLimiter:
+            isInitialized = try_init(std::make_shared<FpsLimiter>(), "FPS Limiter");
             break;
         default:
             break;
@@ -1064,13 +1068,14 @@ void InputCommon::update()
         bool xefgPaced = xefg_paced();
 
         // AntiLag 2, LatencyFlex and XeLL without XeFG fall apart with more than 1 generated DLSSG frame. Only when it
-        // starts, Force State can be changed back afterwards.
+        // starts, Force State can be changed back afterwards. The FPS Limiter doesn't care.
         static bool lastMultiFrame = false;
         bool multiFrame =
             state.dlssgLastSetMode == sl::DLSSGMode::eDynamic || state.dlssgDetectedInterpolationCount > 1;
 
         if (!std::exchange(lastMultiFrame, multiFrame) && multiFrame && activeOutput != LowLatencyMode::Reflex &&
-            !xefgPaced && Config::Instance()->FN_ForceReflex.value_or_default() != ForceReflex::ForceEnable)
+            activeOutput != LowLatencyMode::FpsLimiter && !xefgPaced &&
+            Config::Instance()->FN_ForceReflex.value_or_default() != ForceReflex::ForceEnable)
         {
             LOG_INFO("Multi frame generation, disabling {}", magic_enum::enum_name(activeOutput));
             Config::Instance()->FN_ForceReflex.set_volatile_value(ForceReflex::ForceDisable);
@@ -1100,6 +1105,7 @@ void InputCommon::update()
 
         // Their limiters only work with low latency enabled, for XeLL with XeFG it only skips the sleep calls.
         // Vulkan's Reflex has no hooks to limit through, its sleep mode limits without low latency too.
+        // The FPS Limiter is only a limiter, it ignores the game's state but can be force disabled.
         if (mode == LowLatencyMode::AntiLag2 || mode == LowLatencyMode::XeLL || mode == LowLatencyMode::LatencyFlex ||
             mode == LowLatencyMode::AntiLagVk)
         {
@@ -1108,6 +1114,10 @@ void InputCommon::update()
         else if (mode == LowLatencyMode::Reflex && output_api == API::Vulkan)
         {
             active = true;
+        }
+        else if (mode == LowLatencyMode::FpsLimiter)
+        {
+            active = static_cast<FpsLimiter*>(current_tech.get())->is_limiting();
         }
     }
 
