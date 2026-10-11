@@ -4670,6 +4670,10 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             ImGui::Text("Updated camera rotation by: %.1fms",
                         (float) fgOutput->GetLastTimeSinceSimStartNs() / 1'000'000.f);
         }
+        else if (fgOutput->IsActive() && fgOutput->GetReproject() && fgOutput->GetReproject()->IsBypassed())
+        {
+            ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)), "Paused, 3rd person detected");
+        }
         else
         {
             ImGui::TextDisabled("Not updating camera rotation");
@@ -4701,6 +4705,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
         // clang-format off
         static std::vector<MenuOption<ReprojectionFill>> fillModes = {
+            { ReprojectionFill::SoftEdge, "Soft edge" },
             { ReprojectionFill::StrechEdge, "Strech edge" },
             { ReprojectionFill::Dithering, "Dithering" },
             { ReprojectionFill::Noise, "Noise" },
@@ -4713,8 +4718,9 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             config->ReprojectionFillMode = config->ReprojectionFillMode.value_or_default();
 
         PopulateCombo("Edge fill mode", config->ReprojectionFillMode, fillModes);
-        ShowTooltip("You want either dither or noise\n"
-                    "Those two use the unprojected image as fill\n"
+        ShowTooltip("Soft edge and strech fill the screen edges with the edge pixels,\n"
+                    "soft edge blurs them more the further out it goes\n"
+                    "Dither and noise use the unprojected image as fill\n"
                     "and then some blending on the edges to fool the eye");
 
         float cutoff = config->ReprojectionDepthCutoff.value_or_default();
@@ -4741,6 +4747,92 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         ShowTooltip("Reads the mouse right when the GPU starts the reprojection\n"
                     "instead of when the frame is presented on the CPU.\n"
                     "Lowers latency, especially when GPU bound");
+
+        if (bool directionCache = config->ReprojectionDirectionCache.value_or_default();
+            ImGui::Checkbox("Direction cache", &directionCache))
+        {
+            config->ReprojectionDirectionCache = directionCache;
+        }
+        ShowTooltip("Remembers what was around the camera in previous frames\n"
+                    "and uses it to fill the screen edges and the area under your hands.\n"
+                    "Edge fill mode is only used where the cache has nothing.\n"
+                    "Shown with a blue tint in debug mode");
+
+        const auto reproject = fgOutput->GetReproject();
+        const bool hasMotionStats = reproject && reproject->HasMotionStats();
+
+        bool parallaxAuto = config->ReprojectionParallaxAuto.value_or_default();
+        const float parallaxRowStart = ImGui::GetCursorPosX();
+
+        if (ImGui::Checkbox("Auto##parallax", &parallaxAuto))
+            config->ReprojectionParallaxAuto = parallaxAuto;
+        ShowTooltip("Estimates the parallax scale from the game's motion vectors\n"
+                    "Needs some walking around, until then the cache only follows rotation");
+
+        ImGui::SameLine();
+
+        // The checkbox takes part of the row, the slider gets what is left so the label still fits
+        const float parallaxSliderWidth = ImGui::CalcItemWidth() - (ImGui::GetCursorPosX() - parallaxRowStart);
+
+        if (parallaxAuto)
+        {
+            float estimate = reproject ? reproject->ParallaxScaleEstimate() : 0.0f;
+
+            ImGui::BeginDisabled();
+            ImGui::SetNextItemWidth(parallaxSliderWidth);
+            ImGui::SliderFloat("Cache parallax scale", &estimate, 0.0f, 10000.0f,
+                               estimate > 0.0f ? "%.1f" : (hasMotionStats ? "Estimating..." : "No motion vectors"),
+                               ImGuiSliderFlags_Logarithmic);
+            ImGui::EndDisabled();
+        }
+        else
+        {
+            float parallaxScale = config->ReprojectionParallaxScale.value_or_default();
+            ImGui::SetNextItemWidth(parallaxSliderWidth);
+            if (ImGui::SliderFloat("Cache parallax scale", &parallaxScale, 0.0f, 10000.0f, "%.1f",
+                                   ImGuiSliderFlags_Logarithmic))
+            {
+                config->ReprojectionParallaxScale = parallaxScale;
+            }
+        }
+        ShowTooltip("Converts depth distances into the units of the camera position\n"
+                    "so the cache can follow the camera when you walk.\n"
+                    "0 = only follow rotation\n"
+                    "Wrong values make the cache fill wobble while walking\n"
+                    "Also used by the 3rd person detection\n"
+                    "Unreal Engine is usually around 1000");
+
+        if (bool thirdPersonDetection = config->ReprojectionThirdPersonDetection.value_or_default();
+            ImGui::Checkbox("Pause in 3rd person", &thirdPersonDetection))
+        {
+            config->ReprojectionThirdPersonDetection = thirdPersonDetection;
+        }
+        ShowTooltip("Reprojection would swing the character around with the camera,\n"
+                    "so it gets paused while something in the middle of the screen follows the camera.\n"
+                    "Uses the game's motion vectors and the cache parallax scale.\n"
+                    "Vehicle cockpits can count as 3rd person too.\n"
+                    "Disable to keep reprojection always active");
+
+        ImGui::SameLine();
+
+        if (!hasMotionStats)
+        {
+            ImGui::TextDisabled("(no usable motion vectors)");
+        }
+        else if (reproject->ParallaxScale() <= 0.0f)
+        {
+            ImGui::TextDisabled("(needs the parallax scale)");
+        }
+        else if (reproject->ThirdPersonDetected())
+        {
+            ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)), "3rd person detected (%.2f, orbit %.2f)",
+                               reproject->ThirdPersonScore(), reproject->OrbitScore());
+        }
+        else
+        {
+            ImGui::TextDisabled("1st person (%.2f, orbit %.2f)", reproject->ThirdPersonScore(),
+                                reproject->OrbitScore());
+        }
     }
 
     // OptiFG

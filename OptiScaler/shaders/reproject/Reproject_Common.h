@@ -41,6 +41,32 @@ cbuffer Params : register(b0)
 
     int2 MouseDelta;
     int2 SimStartMouse;
+
+    float4 CameraDelta; // xyz = camera position - cache origin, zero when parallax correction is off
+
+    float CameraNear;
+    float CameraFar; // 0 = infinite
+    uint CacheSize;
+    float InvCacheSize;
+
+    uint CacheEnabled;
+    uint CacheReset;
+    float CacheDecay;
+    float CacheMaxDistance;
+
+    // Motion vector statistics, see reproject_stats.hlsl
+    float4 PrevViewX; // rows of the rotation from the current view to the view of the previous rendered frame
+    float4 PrevViewY;
+    float4 PrevViewZ;
+    float4 PrevViewMove; // xyz = camera movement since the previous rendered frame in its view space, world units
+                         // w = world units -> depth units (1 / parallax scale), 0 when not known
+
+    float2 MvToUv; // motion vector -> uv offset to the previous frame
+    uint MvWidth;
+    uint MvHeight;
+
+    float OrbitPivotDepth; // distance to the pivot of an orbiting camera in depth units, 0 when there is none
+    float3 _Pad1;
 };
 
 Texture2D<float3> Hudless : register(t0);
@@ -49,11 +75,16 @@ Texture2D<float> Depth : register(t2);
 Texture2D<float3> FakePresent : register(t3);
 Texture2D<float> DepthMask : register(t4);
 
+// Direction cache, see reproject_cache.hlsl
+TextureCube<float3> CacheColor : register(t8);
+TextureCube<float2> CacheGeo : register(t9);
+
 RWTexture2D<float3> Present : register(u0);
 
 // Rows of the reprojection rotation, written once per dispatch by the latch pass
 RWStructuredBuffer<float4> Latched : register(u3);
 SamplerState LinearClampSampler : register(s0);
+SamplerState BilinearClampSampler : register(s1);
 
 float Bayer4x4(uint2 p)
 {
@@ -84,6 +115,170 @@ bool IsDepthCutout(float2 uv)
     return DepthMask.Load(int3(maskPixel, 0)) > 0.5f;
 }
 
+// Returns how much the cache can be trusted in that direction, color is only valid when > 0
+float SampleCache(float3 dir, out float3 color)
+{
+    color = 0.0f;
+
+    if (CacheEnabled == 0)
+        return 0.0f;
+
+    float2 geo = CacheGeo.SampleLevel(BilinearClampSampler, dir, 0.0f);
+
+    if (geo.y < 0.01f)
+        return 0.0f;
+
+    color = CacheColor.SampleLevel(BilinearClampSampler, dir, 0.0f) / geo.y;
+
+    // Fades out old data and softens the border of the area the cache knows about
+    return smoothstep(0.0f, 0.3f, geo.y);
+}
+
+float3 SourcePoint(float2 uv)
+{
+    float3 color;
+
+    if (FakeFrame == 1)
+        color = FakePresent.SampleLevel(LinearClampSampler, uv, 0.0f);
+    else
+        color = Hudless.SampleLevel(LinearClampSampler, uv, 0.0f);
+
+    return color;
+}
+
+float3 SourceBilinear(float2 uv)
+{
+    float3 color;
+
+    if (FakeFrame == 1)
+        color = FakePresent.SampleLevel(BilinearClampSampler, uv, 0.0f);
+    else
+        color = Hudless.SampleLevel(BilinearClampSampler, uv, 0.0f);
+
+    return color;
+}
+
+// Camera ray (un-normalized) through a screen uv
+float3 RayFromUV(float2 uv)
+{
+    float2 ndc = uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
+    return float3(ndc * float2(TanHalfFovX, TanHalfFovY), 1.0f);
+}
+
+// Perspective divide, false when the ray points behind the camera
+bool ProjectRay(float3 ray, out float2 uv)
+{
+    uv = 0.0f;
+
+    if (ray.z <= 0.00001f)
+        return false;
+
+    float2 ndc = (ray.xy / ray.z) * float2(InvTanHalfFovX, InvTanHalfFovY);
+    uv = ndc * float2(0.5f, -0.5f) + 0.5f;
+    return true;
+}
+
+// Source landed on the hands, take the nearest scene pixel past them along the reprojection
+bool StepPastCutout(float2 src, float2 uv, out float3 color)
+{
+    color = 0.0f;
+
+    const float2 screenSize = float2(ScreenWidth, ScreenHeight);
+    const float2 away = normalize((src - uv) * screenSize + float2(0.001f, 0.0f)) / screenSize;
+    const float stepPx = max(2.0f, ScreenHeight / 540.0f);
+
+    [loop]
+    for (int k = 1; k <= 48; ++k)
+    {
+        [unroll]
+        for (int side = 0; side < 2; ++side)
+        {
+            float2 q = src + away * (side ? -k : k) * stepPx;
+
+            if (all(q >= 0.0f) && all(q <= 1.0f) && !IsDepthCutout(q))
+            {
+                color = SourcePoint(q);
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+// Outside the rendered frame, a blur of the pixels along the edge that widens with the distance past it
+// Neighbouring rows get mixed so there are no streaks, hands are mostly left out so they don't smear into the edge
+float3 SoftEdge(float2 src)
+{
+    const float2 px = float2(ScreenWidth, ScreenHeight);
+    const float2 halfPx = 0.5f / px;
+    const float2 inside = clamp(src, halfPx, 1.0f - halfPx);
+
+    float2 beyond = (src - inside) * px;
+    float d = length(beyond);
+    float2 inward = -beyond / max(d, 0.001f);
+    float2 along = float2(-inward.y, inward.x);
+    float spread = min(4.0f + 0.6f * d, 192.0f);
+
+    float3 color = 0.0f;
+    float total = 0.0f;
+
+    [unroll]
+    for (int i = -3; i <= 3; ++i)
+    {
+        [unroll]
+        for (int j = 0; j < 3; ++j)
+        {
+            float2 q = inside + (along * (float(i) * spread / 3.0f) + inward * (float(j) * spread * 0.5f + 0.5f)) / px;
+            q = clamp(q, halfPx, 1.0f - halfPx);
+
+            float w = 1.0f / (1.0f + 0.25f * float(i * i) + float(j));
+            w *= IsDepthCutout(q) ? 0.01f : 1.0f;
+
+            color += SourceBilinear(q) * w;
+            total += w;
+        }
+    }
+
+    return color / total;
+}
+
+// How well the cache covers the strip past an edge of the rendered frame around beyond, along is one pixel along the edge
+// The least covered spot counts and only solid coverage does, the border of what the cache knows is patchy
+// and following it closely would make the dithering come and go in streaks along the edge
+float CacheCoverage(float2 beyond, float2 along)
+{
+    float coverage = 1.0f;
+
+    [unroll]
+    for (int i = -2; i <= 2; ++i)
+    {
+        float3 ray = RayFromUV(beyond + along * (float(i) * 0.5f * DitherWidthPx));
+        float3 dir = normalize(ray.x * CameraRight.xyz + ray.y * CameraUp.xyz + ray.z * CameraForward.xyz);
+
+        float3 color;
+        coverage = min(coverage, SampleCache(dir, color));
+    }
+
+    return smoothstep(0.5f, 1.0f, coverage);
+}
+
+// Fill for the parts of the screen the rendered frame doesn't cover, the direction cache goes over it where it can
+float3 EdgeFill(float2 src, float3 hudless)
+{
+    if (EdgeMode == 0) // Debug
+        return float3(0.0f, 1.0f, 0.0f);
+
+    if (EdgeMode == 1) // Strech
+        return SourcePoint(saturate(src));
+
+    if (EdgeMode == 4) // Soft edge
+        return SoftEdge(src);
+
+    // Dithering and noise, the unprojected image
+    return hudless;
+}
+
 [numthreads(16, 16, 1)]
 void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
@@ -91,7 +286,7 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
 
     if (pixelCoord.x >= ScreenWidth || pixelCoord.y >= ScreenHeight)
         return;
-    
+
     // Screen UV calculation
     float2 uv = (float2(pixelCoord) + 0.5f) * float2(InvScreenWidth, InvScreenHeight);
 
@@ -101,111 +296,122 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     float3 diff = abs(hudless - present);
     float delta = max(diff.x, max(diff.y, diff.z));
     float uiMask = smoothstep(UiDiffThreshold, UiDiffThreshold * 2.0f, delta);
-    
+
     // Add depth cutout mask to the uiMask
     bool isCutout = IsDepthCutout(uv);
     uiMask = max(uiMask, isCutout ? 1.0f : 0.0f);
-       
-    float3 reprojectedGame = 0.0f; // Black
-    
-    // Vectorized Camera Ray (un-normalized)
-    float2 ndc = uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
-    float3 ray = float3(ndc * float2(TanHalfFovX, TanHalfFovY), 1.0f);
 
-    // sourceUV is the reprojected position of the pixel that we want
-    float3 sourceRay = ray.x * Latched[0].xyz + ray.y * Latched[1].xyz + ray.z * Latched[2].xyz;
-
-    // Perspective Divide & Source UV Calculation
-    float2 sourceUV = 0.0f;
-    if (sourceRay.z > 0.00001f)
-    {
-        float2 sourceNDC = (sourceRay.xy / sourceRay.z) * float2(InvTanHalfFovX, InvTanHalfFovY);
-        sourceUV = sourceNDC * float2(0.5f, -0.5f) + 0.5f;
-    }
-    else
-    {
-        Present[pixelCoord] = lerp(reprojectedGame, present, uiMask);
-        return;
-    }
-
-    bool inside = all(sourceUV >= 0.0f) && all(sourceUV <= 1.0f);
-    bool modeWithBackground = EdgeMode == 2 || EdgeMode == 3;
-    
     const float3 pink = float3(1.0, 0.4, 0.6);
     const float3 green = float3(0.0f, 1.0f, 0.0f);
-    
+    const float3 blue = float3(0.0f, 0.3f, 1.0f);
+
     if (FakeFrame == 1)
         hudless = FakePresent.Load(int3(pixelCoord, 0));
-    
-    if (inside)
+
+    // src is the reprojected position of the pixel that we want
+    float3 sourceRay = RayFromUV(uv);
+    sourceRay = sourceRay.x * Latched[0].xyz + sourceRay.y * Latched[1].xyz + sourceRay.z * Latched[2].xyz;
+
+    float2 src;
+    bool valid = ProjectRay(sourceRay, src);
+
+    // World direction of the pixel that we want, for the direction cache
+    float3 worldDir = normalize(sourceRay.x * CameraRight.xyz + sourceRay.y * CameraUp.xyz + sourceRay.z * CameraForward.xyz);
+
+    float3 cacheColor;
+    float cacheWeight = SampleCache(worldDir, cacheColor);
+
+    // Tint cache fills in debug mode
+    if (EdgeMode == 0)
+        cacheColor = lerp(cacheColor, blue, 0.3f);
+
+    // Dithering and noise blend the reprojection into the unprojected image around the edges
+    bool modeWithBackground = EdgeMode == 2 || EdgeMode == 3;
+
+    float3 reprojectedGame = 0.0f; // Black
+
+    if (!valid)
     {
-        // Depth cutoff
-        bool isCutoutReprojected = IsDepthCutout(sourceUV);
-                
-        if (isCutoutReprojected)
+        // Behind the rendered camera
+        reprojectedGame = lerp(EdgeMode == 0 ? green : reprojectedGame, cacheColor, cacheWeight);
+    }
+    else if (all(src >= 0.0f) && all(src <= 1.0f))
+    {
+        if (!IsDepthCutout(src))
         {
-            reprojectedGame = lerp(hudless, green, EdgeMode == 0); // try to fill gap with unprojected hudless, or green for debug
+            // the fun part
+            reprojectedGame = SourcePoint(src);
+
+            if (modeWithBackground)
+            {
+                // Only measure distance to reprojected edges that fall inside the screen bounds
+                float distLeft = (src.x < uv.x) ? src.x * ScreenWidth : DitherWidthPx;
+                float distRight = (src.x > uv.x) ? (1.0f - src.x) * ScreenWidth : DitherWidthPx;
+                float distTop = (src.y < uv.y) ? src.y * ScreenHeight : DitherWidthPx;
+                float distBottom = (src.y > uv.y) ? (1.0f - src.y) * ScreenHeight : DitherWidthPx;
+
+                float edgeDistancePx = min(min(distLeft, distRight), min(distTop, distBottom));
+                float projectedProbability = smoothstep(0.0f, DitherWidthPx, edgeDistancePx);
+
+                // Where the cache continues the image past that edge there is no seam to hide
+                // The cache at this pixel itself is no help, it always holds the same view as the reprojection
+                if (edgeDistancePx < DitherWidthPx && CacheEnabled != 0)
+                {
+                    const float past = 0.125f * DitherWidthPx;
+
+                    float2 beyond = src;
+                    float2 along;
+                    if (edgeDistancePx == distLeft)
+                    {
+                        beyond.x = -past * InvScreenWidth;
+                        along = float2(0.0f, InvScreenHeight);
+                    }
+                    else if (edgeDistancePx == distRight)
+                    {
+                        beyond.x = 1.0f + past * InvScreenWidth;
+                        along = float2(0.0f, InvScreenHeight);
+                    }
+                    else if (edgeDistancePx == distTop)
+                    {
+                        beyond.y = -past * InvScreenHeight;
+                        along = float2(InvScreenWidth, 0.0f);
+                    }
+                    else
+                    {
+                        beyond.y = 1.0f + past * InvScreenHeight;
+                        along = float2(InvScreenWidth, 0.0f);
+                    }
+
+                    projectedProbability = lerp(projectedProbability, 1.0f, CacheCoverage(beyond, along));
+                }
+
+                float pattern = EdgeMode == 2 ? Bayer4x4(pixelCoord) : HashNoise(pixelCoord);
+                reprojectedGame = pattern < projectedProbability ? reprojectedGame : hudless;
+            }
         }
         else
         {
-            // the fun part
-            if (FakeFrame == 1)
-                reprojectedGame = FakePresent.SampleLevel(LinearClampSampler, sourceUV, 0.0f);
-            else
-                reprojectedGame = Hudless.SampleLevel(LinearClampSampler, sourceUV, 0.0f);
-        }
-                
-        if (modeWithBackground)
-        {
-            // Only measure distance to reprojected edges that fall inside the screen bounds
-            float distLeft = (sourceUV.x < uv.x) ? sourceUV.x * ScreenWidth : DitherWidthPx;
-            float distRight = (sourceUV.x > uv.x) ? (1.0f - sourceUV.x) * ScreenWidth : DitherWidthPx;
-            float distTop = (sourceUV.y < uv.y) ? sourceUV.y * ScreenHeight : DitherWidthPx;
-            float distBottom = (sourceUV.y > uv.y) ? (1.0f - sourceUV.y) * ScreenHeight : DitherWidthPx;
+            // Landed on the hands, what's behind them was never rendered
+            float3 fill = green;
+            if (EdgeMode != 0 && (modeWithBackground || !StepPastCutout(src, uv, fill)))
+                fill = hudless;
 
-            float edgeDistancePx = min(min(distLeft, distRight), min(distTop, distBottom));
-            float projectedProbability = smoothstep(0.0f, DitherWidthPx, edgeDistancePx);
-        
-            float pattern = 0.0f;
-            if (EdgeMode == 2) // Dither
-            {
-                pattern = Bayer4x4(pixelCoord);
-            }
-            else if (EdgeMode == 3) // Noise
-            {
-                pattern = HashNoise(pixelCoord);
-            }
-            
-            reprojectedGame = pattern < projectedProbability ? reprojectedGame : hudless;
+            reprojectedGame = lerp(fill, cacheColor, cacheWeight);
         }
     }
     else
     {
-        // Outside the reprojection
-        if (EdgeMode == 0) // Debug
-        {
-            reprojectedGame = green;
-        }
-        else if (EdgeMode == 1) // Strech
-        {
-            if (FakeFrame == 1)
-                reprojectedGame = FakePresent.SampleLevel(LinearClampSampler, saturate(sourceUV), 0.0f);
-            else
-                reprojectedGame = Hudless.SampleLevel(LinearClampSampler, saturate(sourceUV), 0.0f);
-        }
-        else if (modeWithBackground)
-        {
-            reprojectedGame = hudless;
-        }
+        // Outside the rendered frame
+        reprojectedGame = lerp(EdgeFill(src, hudless), cacheColor, cacheWeight);
     }
-    
+
     // Final UI Blend
     float3 composedImage = lerp(reprojectedGame, present, uiMask);
-    
+
     // Pink line on fake frames
     if (FakeFrame == 1 && EdgeMode == 0)
         composedImage = lerp(composedImage, pink, uv.x < 0.02);
-    
+
     Present[pixelCoord] = lerp(composedImage, pink, uiMask * 0.6f * ShowStaticElements);
 }
 )";
@@ -430,5 +636,519 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     Latched[1] = float4(rotation[1], 0.0f);
     Latched[2] = float4(rotation[2], 0.0f);
     Latched[3] = float4(float2(delta), 0.0f, 0.0f); // for debugging
+}
+)";
+
+static std::string cacheShaderCode = R"(
+cbuffer Params : register(b0)
+{
+    uint ScreenWidth;
+    uint ScreenHeight;
+    float InvScreenWidth;
+    float InvScreenHeight;
+
+    uint DepthWidth;
+    uint DepthHeight;
+    float2 _Pad0;
+
+    float UiDiffThreshold;
+    float DepthCutoff;
+    float DitherWidthPx;
+    uint CutoffExpandPx;
+
+    uint EdgeMode;
+    uint ShowStaticElements;
+    uint InvertedDepth;
+    uint FakeFrame; // need to provide fakePresent
+
+    float TanHalfFovX;
+    float TanHalfFovY;
+    float InvTanHalfFovX;
+    float InvTanHalfFovY;
+
+    float4 CameraRight;
+    float4 CameraUp;
+    float4 CameraForward;
+    float4 Calibration; // yawFromX, yawFromY, pitchFromX, pitchFromY
+
+    float PixelAngle;
+    float YawSign;
+    float PitchSign;
+    uint LateLatch;
+
+    int2 MouseDelta;
+    int2 SimStartMouse;
+
+    float4 CameraDelta; // xyz = camera position - cache origin, zero when parallax correction is off
+
+    float CameraNear;
+    float CameraFar; // 0 = infinite
+    uint CacheSize;
+    float InvCacheSize;
+
+    uint CacheEnabled;
+    uint CacheReset;
+    float CacheDecay;
+    float CacheMaxDistance;
+
+    // Motion vector statistics, see reproject_stats.hlsl
+    float4 PrevViewX; // rows of the rotation from the current view to the view of the previous rendered frame
+    float4 PrevViewY;
+    float4 PrevViewZ;
+    float4 PrevViewMove; // xyz = camera movement since the previous rendered frame in its view space, world units
+                         // w = world units -> depth units (1 / parallax scale), 0 when not known
+
+    float2 MvToUv; // motion vector -> uv offset to the previous frame
+    uint MvWidth;
+    uint MvHeight;
+
+    float OrbitPivotDepth; // distance to the pivot of an orbiting camera in depth units, 0 when there is none
+    float3 _Pad1;
+};
+
+Texture2D<float3> Hudless : register(t0);
+Texture2D<float> Depth : register(t2);
+Texture2D<float> DepthMask : register(t4);
+TextureCube<float3> PrevCacheColor : register(t6);
+TextureCube<float2> PrevCacheGeo : register(t7);
+
+// Direction cache, a world space cubemap centered on the camera of the newest rendered frame
+// Color and distance are premultiplied by the confidence stored in Geo.y,
+// so bilinear filtering ignores texels that were never written
+RWTexture2DArray<float3> CacheColorOut : register(u4);
+RWTexture2DArray<float2> CacheGeoOut : register(u5);
+
+SamplerState BilinearClampSampler : register(s1);
+
+// Same as reproject.hlsl
+bool IsDepthCutout(float2 uv)
+{
+    int2 maskPixel = int2(uv * float2(DepthWidth - 1, DepthHeight - 1));
+    return DepthMask.Load(int3(maskPixel, 0)) > 0.5f;
+}
+
+float LinearViewZ(float2 uv)
+{
+    int2 depthPixel = min(int2(uv * float2(DepthWidth, DepthHeight)), int2(DepthWidth - 1, DepthHeight - 1));
+    float d = Depth.Load(int3(depthPixel, 0));
+
+    if (InvertedDepth)
+    {
+        if (CameraFar <= 0.0f)
+            return CameraNear / d;
+
+        return CameraNear * CameraFar / (CameraNear + d * (CameraFar - CameraNear));
+    }
+
+    if (CameraFar <= 0.0f)
+        return CameraNear / (1.0f - d);
+
+    return CameraNear * CameraFar / (CameraFar - d * (CameraFar - CameraNear));
+}
+
+// D3D cube face layout
+float3 CubeTexelDir(uint3 id)
+{
+    float2 st = (float2(id.xy) + 0.5f) * InvCacheSize * 2.0f - 1.0f;
+    float u = st.x;
+    float v = st.y;
+
+    float3 dir;
+    if (id.z == 0)
+        dir = float3(1.0f, -v, -u);
+    else if (id.z == 1)
+        dir = float3(-1.0f, -v, u);
+    else if (id.z == 2)
+        dir = float3(u, 1.0f, v);
+    else if (id.z == 3)
+        dir = float3(u, -1.0f, -v);
+    else if (id.z == 4)
+        dir = float3(u, -v, 1.0f);
+    else
+        dir = float3(-u, -v, -1.0f);
+
+    return normalize(dir);
+}
+
+bool SamplePrev(float3 dir, out float3 color, out float dist, out float weight)
+{
+    float2 geo = PrevCacheGeo.SampleLevel(BilinearClampSampler, dir, 0.0f);
+    weight = geo.y;
+
+    if (weight < 0.01f)
+    {
+        color = 0.0f;
+        dist = 0.0f;
+        return false;
+    }
+
+    color = PrevCacheColor.SampleLevel(BilinearClampSampler, dir, 0.0f) / weight;
+    dist = geo.x / weight;
+    return true;
+}
+
+void WriteCache(uint3 id, float3 color, float dist, float weight)
+{
+    // Also catches NaN and inf from the depth linearization
+    dist = (dist >= 0.0f && dist < CacheMaxDistance) ? dist : CacheMaxDistance;
+
+    CacheColorOut[id] = color * weight;
+    CacheGeoOut[id] = float2(dist * weight, weight);
+}
+
+// Runs once per rendered frame, before the reprojection
+// Texels visible in the new frame get its color, the rest is carried over from the previous cache
+// and moved to the new camera position using the stored distance
+[numthreads(8, 8, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= CacheSize || id.y >= CacheSize)
+        return;
+
+    float3 dir = CubeTexelDir(id);
+
+    // Camera basis is orthonormal so this is the inverse of the view to world used by the reprojection
+    float3 view = float3(dot(dir, CameraRight.xyz), dot(dir, CameraUp.xyz), dot(dir, CameraForward.xyz));
+
+    if (view.z > 0.0001f)
+    {
+        float2 ndc = (view.xy / view.z) * float2(InvTanHalfFovX, InvTanHalfFovY);
+        float2 uv = ndc * float2(0.5f, -0.5f) + 0.5f;
+
+        // Hands and guns stay out of the cache, the area under them is what we need it for
+        if (all(uv > 0.0f) && all(uv < 1.0f) && !IsDepthCutout(uv))
+        {
+            float3 color = Hudless.SampleLevel(BilinearClampSampler, uv, 0.0f);
+            WriteCache(id, color, LinearViewZ(uv) / view.z, 1.0f);
+            return;
+        }
+    }
+
+    if (CacheReset)
+    {
+        WriteCache(id, 0.0f, 0.0f, 0.0f);
+        return;
+    }
+
+    float3 color;
+    float dist;
+    float weight;
+
+    if (!SamplePrev(dir, color, dist, weight))
+    {
+        WriteCache(id, 0.0f, 0.0f, 0.0f);
+        return;
+    }
+
+    // Find the surface along dir from the new camera position
+    // Start with the distance stored in the same direction, then refine it against the old cache
+    float t = dist;
+    float3 prevDir = dir;
+
+    [unroll]
+    for (int i = 0; i < 3; ++i)
+    {
+        prevDir = normalize(dir * t + CameraDelta.xyz);
+
+        if (!SamplePrev(prevDir, color, dist, weight))
+        {
+            WriteCache(id, 0.0f, 0.0f, 0.0f);
+            return;
+        }
+
+        float3 surface = prevDir * dist - CameraDelta.xyz;
+        t = max(dot(surface, dir), CameraNear);
+    }
+
+    // Real parallax is tiny between two frames, a big jump means the distance doesn't match the camera units
+    // Dropping the texel is better than smearing it somewhere it doesn't belong
+    if (dot(prevDir, dir) < 0.996f) // ~5 degrees
+    {
+        WriteCache(id, 0.0f, 0.0f, 0.0f);
+        return;
+    }
+
+    WriteCache(id, color, t, saturate(weight - CacheDecay));
+}
+)";
+
+static std::string statsShaderCode = R"(
+cbuffer Params : register(b0)
+{
+    uint ScreenWidth;
+    uint ScreenHeight;
+    float InvScreenWidth;
+    float InvScreenHeight;
+
+    uint DepthWidth;
+    uint DepthHeight;
+    float2 _Pad0;
+
+    float UiDiffThreshold;
+    float DepthCutoff;
+    float DitherWidthPx;
+    uint CutoffExpandPx;
+
+    uint EdgeMode;
+    uint ShowStaticElements;
+    uint InvertedDepth;
+    uint FakeFrame; // need to provide fakePresent
+
+    float TanHalfFovX;
+    float TanHalfFovY;
+    float InvTanHalfFovX;
+    float InvTanHalfFovY;
+
+    float4 CameraRight;
+    float4 CameraUp;
+    float4 CameraForward;
+    float4 Calibration; // yawFromX, yawFromY, pitchFromX, pitchFromY
+
+    float PixelAngle;
+    float YawSign;
+    float PitchSign;
+    uint LateLatch;
+
+    int2 MouseDelta;
+    int2 SimStartMouse;
+
+    float4 CameraDelta; // xyz = camera position - cache origin, zero when parallax correction is off
+
+    float CameraNear;
+    float CameraFar; // 0 = infinite
+    uint CacheSize;
+    float InvCacheSize;
+
+    uint CacheEnabled;
+    uint CacheReset;
+    float CacheDecay;
+    float CacheMaxDistance;
+
+    // Motion vector statistics, see reproject_stats.hlsl
+    float4 PrevViewX; // rows of the rotation from the current view to the view of the previous rendered frame
+    float4 PrevViewY;
+    float4 PrevViewZ;
+    float4 PrevViewMove; // xyz = camera movement since the previous rendered frame in its view space, world units
+                         // w = world units -> depth units (1 / parallax scale), 0 when not known
+
+    float2 MvToUv; // motion vector -> uv offset to the previous frame
+    uint MvWidth;
+    uint MvHeight;
+
+    float OrbitPivotDepth; // distance to the pivot of an orbiting camera in depth units, 0 when there is none
+    float3 _Pad1;
+};
+
+Texture2D<float> Depth : register(t2);
+Texture2D<float> DepthMask : register(t4);
+Texture2D<float2> Velocity : register(t10);
+
+// STATS_BINS histogram of log10(parallax scale) followed by STATS_COUNTERS counters, read back by the CPU
+RWStructuredBuffer<uint> StatsOut : register(u6);
+
+#define STATS_BINS 128
+#define STATS_COUNTERS 6
+#define LOG_SCALE_MIN -3.0f
+#define LOG_SCALE_MAX 6.0f
+
+#define GRID_X 128
+#define GRID_Y 72
+#define THREADS 256
+
+// The camera has to move the scene by at least this much for a sample to say anything about 3rd person
+#define MIN_EXPECTED_PX 8.0f
+
+// Counters
+#define CENTER_SAMPLES 0 // middle of the screen, without hands and sky
+#define CENTER_VALID 1   // of those, the ones the camera moves by at least MIN_EXPECTED_PX
+#define CENTER_LOCKED 2  // of those, the ones that barely move, following the camera
+#define OUTER_VALID 3    // outside the middle, the ones the camera moves by at least MIN_EXPECTED_PX
+#define OUTER_MATCH 4    // of those, the ones whose motion vectors roughly match the camera motion
+#define CENTER_AT_PIVOT 5 // middle of the screen, around the distance of the pivot of an orbiting camera
+
+groupshared uint Histogram[STATS_BINS];
+groupshared uint Counters[STATS_COUNTERS];
+
+// Same as reproject.hlsl
+bool IsDepthCutout(float2 uv)
+{
+    int2 maskPixel = int2(uv * float2(DepthWidth - 1, DepthHeight - 1));
+    return DepthMask.Load(int3(maskPixel, 0)) > 0.5f;
+}
+
+float3 RayFromUV(float2 uv)
+{
+    float2 ndc = uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
+    return float3(ndc * float2(TanHalfFovX, TanHalfFovY), 1.0f);
+}
+
+bool ProjectRay(float3 ray, out float2 uv)
+{
+    uv = 0.0f;
+
+    if (ray.z <= 0.00001f)
+        return false;
+
+    float2 ndc = (ray.xy / ray.z) * float2(InvTanHalfFovX, InvTanHalfFovY);
+    uv = ndc * float2(0.5f, -0.5f) + 0.5f;
+    return true;
+}
+
+// Same as reproject_cache.hlsl, in units of the near plane distance
+float LinearViewZ(float d)
+{
+    if (InvertedDepth)
+    {
+        if (CameraFar <= 0.0f)
+            return CameraNear / d;
+
+        return CameraNear * CameraFar / (CameraNear + d * (CameraFar - CameraNear));
+    }
+
+    if (CameraFar <= 0.0f)
+        return CameraNear / (1.0f - d);
+
+    return CameraNear * CameraFar / (CameraFar - d * (CameraFar - CameraNear));
+}
+
+// Runs once per rendered frame on a sparse grid, compares the game's motion vectors with the camera motion
+//
+// 3rd person: a player character in the middle of the screen keeps its place on screen while the camera moves
+// the world past it. The expected motion includes the camera movement, so something that only stays in place because
+// the camera circles around it, like an object the player keeps aiming at while strafing, isn't counted.
+// When the camera orbits around a pivot instead, the character doesn't move against the scene around it, so the CPU
+// finds the orbit from the camera motion alone and this only checks there is something at the pivot.
+// The outer part of the screen tells whether the motion vectors match the camera at all.
+//
+// Parallax scale: depth is linearized in units of the near plane which don't always match the units of the camera
+// position. The part of the motion that the rotation doesn't explain comes from the camera movement, and its size
+// against the depth gives the ratio between the two for every sample. The CPU picks the most common one.
+[numthreads(16, 16, 1)]
+void CSMain(uint groupIndex : SV_GroupIndex)
+{
+    for (uint i = groupIndex; i < STATS_BINS; i += THREADS)
+        Histogram[i] = 0;
+
+    if (groupIndex < STATS_COUNTERS)
+        Counters[groupIndex] = 0;
+
+    GroupMemoryBarrierWithGroupSync();
+
+    const float2 screenPx = float2(ScreenWidth, ScreenHeight);
+    const float2 invTan = float2(InvTanHalfFovX, InvTanHalfFovY);
+    const bool parallax = CameraNear > 0.0f && dot(PrevViewMove.xyz, PrevViewMove.xyz) > 0.0f;
+    const bool knownScale = CameraNear > 0.0f && PrevViewMove.w > 0.0f;
+    const float binsPerDecade = STATS_BINS / (LOG_SCALE_MAX - LOG_SCALE_MIN);
+
+    [loop]
+    for (uint s = groupIndex; s < GRID_X * GRID_Y; s += THREADS)
+    {
+        float2 uv = (float2(s % GRID_X, s / GRID_X) + 0.5f) / float2(GRID_X, GRID_Y);
+
+        if (IsDepthCutout(uv))
+            continue;
+
+        int2 depthPixel = min(int2(uv * float2(DepthWidth, DepthHeight)), int2(DepthWidth - 1, DepthHeight - 1));
+        float d = Depth.Load(int3(depthPixel, 0));
+
+        // Sky often has no motion vectors
+        if (InvertedDepth ? d <= 0.0f : d >= 1.0f)
+            continue;
+
+        int2 mvPixel = min(int2(uv * float2(MvWidth, MvHeight)), int2(MvWidth - 1, MvHeight - 1));
+        float2 measured = uv + Velocity.Load(int3(mvPixel, 0)) * MvToUv;
+
+        // Where the sample was in the previous frame if only the camera rotated
+        float3 ray = RayFromUV(uv);
+        float3 rotated = float3(dot(ray, PrevViewX.xyz), dot(ray, PrevViewY.xyz), dot(ray, PrevViewZ.xyz));
+
+        float2 rotatedUV;
+        if (!ProjectRay(rotated, rotatedUV))
+            continue;
+
+        float viewZ = LinearViewZ(d);
+
+        // And with the camera movement too, as far as the parallax scale is known
+        float2 expectedUV = rotatedUV;
+        if (knownScale && !ProjectRay(rotated * viewZ + PrevViewMove.xyz * PrevViewMove.w, expectedUV))
+            continue;
+
+        float2 expectedPx = (expectedUV - uv) * screenPx;
+        float2 measuredPx = (measured - uv) * screenPx;
+        float expectedLen = length(expectedPx);
+        float measuredLen = length(measuredPx);
+
+        bool center = all(uv > float2(0.3f, 0.3f)) && all(uv < float2(0.7f, 0.9f));
+
+        if (center)
+        {
+            // Without the camera movement a circling camera can't be told apart from a 3rd person character
+            if (knownScale)
+            {
+                InterlockedAdd(Counters[CENTER_SAMPLES], 1);
+
+                if (viewZ > 0.5f * OrbitPivotDepth && viewZ < 1.3f * OrbitPivotDepth)
+                    InterlockedAdd(Counters[CENTER_AT_PIVOT], 1);
+
+                if (expectedLen >= MIN_EXPECTED_PX)
+                {
+                    InterlockedAdd(Counters[CENTER_VALID], 1);
+
+                    if (measuredLen < 0.25f * expectedLen)
+                        InterlockedAdd(Counters[CENTER_LOCKED], 1);
+                }
+            }
+        }
+        else if (expectedLen >= MIN_EXPECTED_PX)
+        {
+            InterlockedAdd(Counters[OUTER_VALID], 1);
+
+            // Loose, without a known scale the camera movement adds to the rotation for anything close
+            bool match = dot(measuredPx, expectedPx) > 0.7f * measuredLen * expectedLen &&
+                         measuredLen > 0.5f * expectedLen && measuredLen < 2.0f * expectedLen;
+
+            if (match)
+                InterlockedAdd(Counters[OUTER_MATCH], 1);
+        }
+
+        // Parallax scale estimate, always against the rotation only
+        expectedPx = (rotatedUV - uv) * screenPx;
+
+        if (!parallax || length(measuredPx - expectedPx) < 1.5f)
+            continue;
+
+        // Previous view position of the sample in depth units is a + b * k, k being world units -> depth units
+        // Solving the projection of it for the measured position gives k * c = e
+        float3 a = rotated * viewZ;
+        float3 b = PrevViewMove.xyz;
+        float2 ndc = measured * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
+
+        float2 c = invTan * b.xy - ndc * b.z;
+        float2 e = ndc * a.z - invTan * a.xy;
+
+        float cc = dot(c, c);
+        if (!(cc > 1e-20f))
+            continue;
+
+        float k = dot(c, e) / cc;
+        if (!(k > 0.0f))
+            continue;
+
+        // Moving on its own instead of with the camera movement
+        if (length(e - k * c) > 0.35f * length(e))
+            continue;
+
+        int bin = int(floor((-log10(k) - LOG_SCALE_MIN) * binsPerDecade));
+        if (bin >= 0 && bin < STATS_BINS)
+            InterlockedAdd(Histogram[bin], 1);
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+
+    for (uint j = groupIndex; j < STATS_BINS; j += THREADS)
+        StatsOut[j] = Histogram[j];
+
+    if (groupIndex < STATS_COUNTERS)
+        StatsOut[STATS_BINS + groupIndex] = Counters[groupIndex];
 }
 )";

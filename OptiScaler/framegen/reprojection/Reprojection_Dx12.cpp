@@ -266,6 +266,7 @@ bool Reprojection_Dx12::Present()
     {
         auto hudless = GetResource(FG_ResourceType::HudlessColor, fIndex);
         auto depth = GetResource(FG_ResourceType::Depth, fIndex);
+        auto velocity = GetResource(FG_ResourceType::Velocity, fIndex);
         if (hudless && (hudless->validity != FG_ResourceValidity::ValidNow) && depth &&
             (depth->validity != FG_ResourceValidity::ValidNow))
         {
@@ -300,10 +301,47 @@ bool Reprojection_Dx12::Present()
                 std::memcpy(data.cameraRight, _cameraRight[fIndex], 3 * sizeof(float));
                 std::memcpy(data.cameraForward, _cameraForward[fIndex], 3 * sizeof(float));
                 std::memcpy(data.cameraPrevForward, _cameraForward[previousIndex], 3 * sizeof(float));
+                std::memcpy(data.cameraPosition, _cameraPosition[fIndex], 3 * sizeof(float));
+                data.cameraNear = _cameraNear[fIndex];
+                data.cameraFar = _cameraFar[fIndex];
+
+                data.hasPrevCamera = _frameCount > 1;
+                std::memcpy(data.cameraPrevUp, _cameraUp[previousIndex], 3 * sizeof(float));
+                std::memcpy(data.cameraPrevRight, _cameraRight[previousIndex], 3 * sizeof(float));
+                std::memcpy(data.cameraPrevPosition, _cameraPosition[previousIndex], 3 * sizeof(float));
+
+                data.frameId = _frameCount;
+                data.reset = _reset[fIndex] != 0;
+
+                ID3D12Resource* velocityResource = nullptr;
+                D3D12_RESOURCE_STATES velocityState = D3D12_RESOURCE_STATE_COMMON;
+
+                if (velocity && velocity->validity != FG_ResourceValidity::ValidNow)
+                {
+                    velocityResource = velocity->GetResource();
+                    velocityState = velocity->state;
+
+                    data.hasMotionVectors = velocityResource != nullptr;
+                    data.mvScaleX = _mvScaleX[fIndex];
+                    data.mvScaleY = _mvScaleY[fIndex];
+                    data.mvWidth = (uint32_t) velocity->width;
+                    data.mvHeight = velocity->height;
+
+                    // Not every input provides the size
+                    if (velocityResource && (data.mvWidth == 0 || data.mvHeight == 0))
+                    {
+                        auto mvDesc = velocityResource->GetDesc();
+                        data.mvWidth = (uint32_t) mvDesc.Width;
+                        data.mvHeight = mvDesc.Height;
+                    }
+                }
 
                 _reproject->FilloutStruct(data, params);
                 _reproject->Dispatch((IDXGISwapChain3*) _swapChain, commandList, params, hudless->GetResource(),
-                                     hudless->state, depth->GetResource(), depth->state);
+                                     hudless->state, depth->GetResource(), depth->state, velocityResource,
+                                     velocityState);
+
+                _reprojectionActive = !_reproject->IsBypassed();
             }
         }
     }
@@ -361,7 +399,7 @@ bool Reprojection_Dx12::SetResource(Dx12Resource* inputResource)
             return false;
         }
     }
-    else if (type == FG_ResourceType::Depth)
+    else if (type == FG_ResourceType::Depth || type == FG_ResourceType::Velocity)
     {
         // Making a copy if it's just valid now to be able to use it later
         if (IsActive() && inputResource->validity == FG_ResourceValidity::ValidNow)

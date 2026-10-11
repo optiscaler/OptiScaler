@@ -234,10 +234,12 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="shaders\reproject\mouseInputs\InputCollection.h" />
     <ClInclude Include="shaders\hud_copy\HudCopy_Vk.h" />
     <ClInclude Include="shaders\hudless_compare_compute\HCC_Vk.h" />
+    <ClInclude Include="shaders\reproject\precompile\reproject_cache_Shader.h" />
     <ClInclude Include="shaders\reproject\precompile\reproject_latch_Shader.h" />
     <ClInclude Include="shaders\reproject\precompile\reproject_mask_h_Shader.h" />
     <ClInclude Include="shaders\reproject\precompile\reproject_mask_v_Shader.h" />
     <ClInclude Include="shaders\reproject\precompile\reproject_Shader.h" />
+    <ClInclude Include="shaders\reproject\precompile\reproject_stats_Shader.h" />
     <ClInclude Include="shaders\ui_unblend\precompile\UiUnblend_Shader_Vk.h" />
     <ClInclude Include="shaders\ui_unblend\UiUnblend_Vk.h" />
     <ClInclude Include="inputs\FG\Streamline_Inputs_Sl1_Dx12.h" />

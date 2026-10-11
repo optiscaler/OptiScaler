@@ -225,6 +225,10 @@ bool Config::Reload(std::filesystem::path iniPath)
             ReprojectionDepthCutoff.set_from_config(readFloat("Reprojection", "DepthCutoff"));
             ReprojectionCutoffExpand.set_from_config(readUInt("Reprojection", "CutoffExpand"));
             ReprojectionLateLatch.set_from_config(readBool("Reprojection", "LateLatch"));
+            ReprojectionDirectionCache.set_from_config(readBool("Reprojection", "DirectionCache"));
+            ReprojectionParallaxAuto.set_from_config(readBool("Reprojection", "ParallaxAuto"));
+            ReprojectionParallaxScale.set_from_config(readFloat("Reprojection", "ParallaxScale"));
+            ReprojectionThirdPersonDetection.set_from_config(readBool("Reprojection", "ThirdPersonDetection"));
         }
 
         // FSR FG Inputs
@@ -1019,6 +1023,14 @@ bool Config::SaveIni()
                      GetIntValue(Instance()->ReprojectionCutoffExpand.value_for_config()).c_str());
         ini.SetValue("Reprojection", "LateLatch",
                      GetBoolValue(Instance()->ReprojectionLateLatch.value_for_config()).c_str());
+        ini.SetValue("Reprojection", "DirectionCache",
+                     GetBoolValue(Instance()->ReprojectionDirectionCache.value_for_config()).c_str());
+        ini.SetValue("Reprojection", "ParallaxAuto",
+                     GetBoolValue(Instance()->ReprojectionParallaxAuto.value_for_config()).c_str());
+        ini.SetValue("Reprojection", "ParallaxScale",
+                     GetFloatValue(Instance()->ReprojectionParallaxScale.value_for_config()).c_str());
+        ini.SetValue("Reprojection", "ThirdPersonDetection",
+                     GetBoolValue(Instance()->ReprojectionThirdPersonDetection.value_for_config()).c_str());
     }
 
     // OptiFG

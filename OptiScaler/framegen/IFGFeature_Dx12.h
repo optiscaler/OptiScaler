@@ -142,6 +142,7 @@ class IFGFeature_Dx12 : public virtual IFGFeature
 
     virtual bool HasReprojection() { return false; };
     bool IsReprojectionActive() const { return _reprojectionActive; };
+    const Reproject_Dx12* GetReproject() const { return _reproject.get(); };
     uint64_t GetLastTimeSinceSimStartNs() const { return _timeSinceSimStart; };
 
     IFGFeature_Dx12() = default;
