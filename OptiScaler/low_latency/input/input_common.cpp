@@ -16,6 +16,8 @@
 #include <framegen/IFGFeature_Dx12.h>
 #include <nvapi/fakenvapi.h>
 
+#include <deque>
+
 static bool marker_supported(InputMarkerMode mode, MarkerType type)
 {
     switch (mode)
@@ -686,9 +688,10 @@ InputResult InputCommon::set_async_marker(const InputContext& inputContext, ID3D
     if (!inputContext.localContext)
         mark_frame_generation(inputContext.caller);
 
-    // With the Reflex output OptiScaler's FSR-FG sends the async markers of its own presents (fg_output_present),
-    // the game's describe presents that don't happen
-    if (activeOutput == LowLatencyMode::Reflex && fgOutput == FGOutput::FSRFG)
+    // The game's describe presents that don't happen. With the Reflex output OptiScaler's FSR-FG sends the async
+    // markers of its own presents (fg_output_present), its XeFG does for every output (also xefg_marker, XeFG itself
+    // for the XeLL output).
+    if (fgOutput == FGOutput::XeFG || (activeOutput == LowLatencyMode::Reflex && fgOutput == FGOutput::FSRFG))
         return InputResult::UsingDifferentInput;
 
     // Always allow Opti's local contexts through, like XeLL, AL2 or the async markers of its DLSSG output's
@@ -704,9 +707,6 @@ InputResult InputCommon::set_async_marker(const InputContext& inputContext, ID3D
 
     // TODO: could consider adding async markers to the report but would require some rewriting
     // add_marker_to_report(marker_params);
-
-    if (auto own = xefg_xell.load(); own != nullptr && !inputContext.localContext)
-        own->set_async_marker(pCommandQueue, marker_params);
 
     if (auto current_tech = currently_active_tech.load())
         current_tech->set_async_marker(pCommandQueue, marker_params);
@@ -1051,6 +1051,36 @@ void InputCommon::fg_game_present(ID3D12CommandQueue* gameQueue, bool presented,
     }
 }
 
+bool InputCommon::output_reports_fg_multiplier()
+{
+    auto reflex_tech = std::dynamic_pointer_cast<Reflex>(currently_active_tech.load());
+    return reflex_tech != nullptr && reflex_tech->has_reflex_sync();
+}
+
+// XeFG presents each batch on its own thread, paced over the game's frame, while the game already submits the next
+// one. Each batch keeps the frame id XeFG marked it with and the number of frames XeFG sends for it.
+namespace
+{
+struct XeFGBatch
+{
+    uint64_t frame_id = 0;
+    uint32_t frames = 0; // The multiplier until XeFG reports its own count after the game's present
+    uint32_t presented = 0;
+};
+
+std::mutex xefg_batch_mutex;
+std::deque<XeFGBatch> xefg_batches; // Marked, not presented yet
+XeFGBatch xefg_batch;               // Presenting
+constexpr size_t xefg_max_batches = 8;
+
+void reset_xefg_batches()
+{
+    std::scoped_lock lock(xefg_batch_mutex);
+    xefg_batches.clear();
+    xefg_batch = {};
+}
+} // namespace
+
 // As DLSSG on its present thread: out of band render submit markers around each batch of generated and real
 // frames, out of band present markers around each of their presents, all with the game's frame id
 void InputCommon::fg_output_present(ID3D12CommandQueue* presentQueue, bool presented, uint32_t frameMultiplier)
@@ -1059,6 +1089,55 @@ void InputCommon::fg_output_present(ID3D12CommandQueue* presentQueue, bool prese
     static uint64_t batchFrameId = 0;
     static uint32_t batchPresents = 0;
     static bool batchOpen = false;
+
+    // XeFG marks its batches itself (xefg_marker), each of its presents carries the frame id of its batch. The out of
+    // band presents also give AntiLag 2 the frame type, FSR-FG tells AntiLag 2 itself
+    // (InputAntiLag2::injectAl2Context).
+    if (State::Instance().activeFgOutput == FGOutput::XeFG)
+    {
+        if (presentQueue == nullptr)
+            return;
+
+        if (xefg_present_queue.load() != presentQueue)
+        {
+            presentQueue->AddRef();
+
+            if (auto old = xefg_present_queue.exchange(presentQueue))
+                old->Release();
+        }
+
+        auto tech = currently_active_tech.load();
+
+        if (xefg_xell.load() == nullptr || tech == nullptr)
+            return;
+
+        uint64_t frame_id = 0;
+
+        {
+            std::scoped_lock lock(xefg_batch_mutex);
+
+            // The next batch once this one has all its frames, without a next one it's still this one's
+            if (!presented && xefg_batch.presented >= xefg_batch.frames && !xefg_batches.empty())
+            {
+                xefg_batch = xefg_batches.front();
+                xefg_batches.pop_front();
+            }
+            else if (presented && xefg_batch.frame_id != 0)
+            {
+                xefg_batch.presented++;
+            }
+
+            frame_id = xefg_batch.frame_id;
+        }
+
+        if (frame_id != 0)
+        {
+            tech->set_async_marker(presentQueue, { frame_id, presented ? MarkerType::OUT_OF_BAND_PRESENT_END
+                                                                       : MarkerType::OUT_OF_BAND_PRESENT_START });
+        }
+
+        return;
+    }
 
     auto reflex_tech = std::dynamic_pointer_cast<Reflex>(currently_active_tech.load());
 
@@ -1089,6 +1168,87 @@ void InputCommon::fg_output_present(ID3D12CommandQueue* presentQueue, bool prese
         send(MarkerType::OUT_OF_BAND_RENDERSUBMIT_END);
         batchOpen = false;
     }
+}
+
+void InputCommon::xefg_marker(void* xellContext, uint32_t frame_id, uint32_t marker)
+{
+    static std::atomic_bool seen[2] {};
+
+    MarkerType type;
+
+    if (marker == 80860000)
+        type = MarkerType::OUT_OF_BAND_RENDERSUBMIT_START;
+    else if (marker == 80860001)
+        type = MarkerType::OUT_OF_BAND_RENDERSUBMIT_END;
+    else
+    {
+        LOG_WARN("Unknown XeFG XeLL marker {} for frame id {}", marker, frame_id);
+        return;
+    }
+
+    auto index = marker - 80860000;
+
+    if (!seen[index].exchange(true))
+        LOG_INFO("XeFG sends XeLL marker {} ({}), frame id {}", marker, magic_enum::enum_name(type), frame_id);
+
+    LOG_TRACE_LOWLATENCY("XeFG {}: {}", magic_enum::enum_name(type), frame_id);
+
+    // Only XeFG's own context next to a Reflex or AntiLag 2 output, the XeLL output's context has them already
+    auto own = xefg_xell.load();
+
+    if (own == nullptr || own->get_tech_context() != xellContext)
+        return;
+
+    // Without generated frames XeFG sends both right away, DLSSG doesn't send them
+    auto fg = State::Instance().currentFG;
+
+    if (fg == nullptr || !fg->IsActive() || fg->IsPaused())
+    {
+        reset_xefg_batches();
+        return;
+    }
+
+    if (type == MarkerType::OUT_OF_BAND_RENDERSUBMIT_START)
+    {
+        xefg_frame_id = frame_id;
+
+        std::scoped_lock lock(xefg_batch_mutex);
+
+        // Nothing takes them while XeFG's presents don't reach the wrapped swapchain, only the latest few are kept
+        if (xefg_batches.size() >= xefg_max_batches)
+            xefg_batches.pop_front();
+
+        xefg_batches.push_back({ frame_id, fg->GetInterpolatedFrameCount() + 1 });
+    }
+
+    // Known after XeFG's first present
+    auto queue = xefg_present_queue.load();
+
+    if (auto tech = currently_active_tech.load(); tech != nullptr && queue != nullptr)
+        tech->set_async_marker(queue, { frame_id, type });
+}
+
+// After the game's present: XeFG's own count for the batch it marked during it. The multiplier can be off, for a
+// frame it couldn't generate or a changed frame count.
+void InputCommon::xefg_present_status(uint64_t frameIdBefore, uint32_t framesPresented)
+{
+    auto frame_id = xefg_frame_id.load();
+
+    if (frame_id == 0 || frame_id == frameIdBefore || framesPresented == 0)
+        return;
+
+    std::scoped_lock lock(xefg_batch_mutex);
+
+    XeFGBatch* batch = xefg_batch.frame_id == frame_id ? &xefg_batch : nullptr;
+
+    for (auto it = xefg_batches.rbegin(); batch == nullptr && it != xefg_batches.rend(); ++it)
+    {
+        if (it->frame_id == frame_id)
+            batch = &*it;
+    }
+
+    if (batch != nullptr)
+        batch->frames = framesPresented;
 }
 
 void InputCommon::apply_sleep_mode(LowLatencyTech* tech)
@@ -1279,6 +1439,10 @@ xell_context_handle_t InputCommon::acquire_xefg_xell(IUnknown* pDevice)
 
         auto context = xell_output_context();
         xefg_uses_output_xell = context != nullptr;
+
+        if (context != nullptr)
+            xefg_started_output = output;
+
         return context;
     }
 
@@ -1312,12 +1476,15 @@ xell_context_handle_t InputCommon::acquire_xefg_xell(IUnknown* pDevice)
         LOG_INFO("XeFG paces with its own XeLL context, the low latency output is {}", magic_enum::enum_name(output));
     }
 
+    xefg_started_output = output;
+
     return (xell_context_handle_t) own->get_tech_context();
 }
 
 void InputCommon::release_xefg_xell()
 {
     xefg_uses_output_xell = false;
+    xefg_started_output = LowLatencyMode::None;
 
     std::scoped_lock lock(create_tech_mutex);
 
@@ -1329,10 +1496,20 @@ void InputCommon::release_xefg_xell()
 
         own->deinit();
     }
+
+    xefg_frame_id = 0;
+    reset_xefg_batches();
+
+    if (auto queue = xefg_present_queue.exchange(nullptr))
+        queue->Release();
 }
 
 bool InputCommon::xefg_output_change_pending()
 {
-    return xefg_uses_output_xell && activeOutput == LowLatencyMode::XeLL &&
-           xefg_output(Config::Instance()->LowLatencyOutput.value_or_default()) != LowLatencyMode::XeLL;
+    // XeFG keeps the XeLL context it got when it started, switching between the XeLL output's and its own needs a
+    // restart
+    auto started = xefg_started_output.load();
+
+    return started != LowLatencyMode::None &&
+           xefg_output(Config::Instance()->LowLatencyOutput.value_or_default()) != started;
 }

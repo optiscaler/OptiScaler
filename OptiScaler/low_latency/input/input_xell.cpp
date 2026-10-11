@@ -256,7 +256,11 @@ xell_result_t InputXeLL::AddMarkerData(xell_input_handle_t context, uint32_t fra
     if (!context)
         return XELL_RESULT_ERROR_INVALID_CONTEXT;
 
-    // XeFG's own markers (80860000, 80860001), only for the real XeLL
+    // XeFG's own markers (80860000, 80860001) around its interpolation work, only for the real XeLL. With a Reflex or
+    // AntiLag 2 output the output gets them too.
+    if (marker >= XELL_MARKER_COUNT && context->inputContext.localContext)
+        InputCommon::xefg_marker(context, frame_id, marker);
+
     if (PassesThrough(context) || (marker >= XELL_MARKER_COUNT && context->real))
         return XeLLProxy::RealAddMarkerData()(context->real, frame_id, marker);
 

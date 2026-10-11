@@ -61,4 +61,7 @@ class Reflex : public LowLatencyTech
 
     // The frame generation multiplier DLSSG reports every frame
     void set_reflex_sync(uint32_t frameMultiplier) const;
+
+    // Reflex Sync is there (R530+), with the multiplier the driver applies the FPS limit to the output frames
+    bool has_reflex_sync() const { return o_SetReflexSync != nullptr && device != nullptr; }
 };

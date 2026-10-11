@@ -483,12 +483,13 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         MenuOverlayDx::Present(pSwapChain, SyncInterval, Flags, pPresentParameters, pDevice, hWnd, isUWP);
 
 #ifdef LOW_LATENCY_INPUTS
-        if (State::Instance().activeFgOutput == FGOutput::FSRFG)
+        if (State::Instance().activeFgOutput == FGOutput::FSRFG || State::Instance().activeFgOutput == FGOutput::XeFG)
         {
             auto fgIsActive = fg != nullptr && fg->IsActive() && !fg->IsPaused();
             InputAntiLag2::injectAl2Context(pSwapChain, fgIsActive);
 
-            // For the Reflex output, the generated and real frames' presents as DLSSG reports them
+            // For the Reflex output (and AntiLag 2 with XeFG), the generated and real frames' presents as DLSSG
+            // reports them
             if (fgIsActive && pDevice != nullptr && pDevice->QueryInterface(IID_PPV_ARGS(&fgPresentQueue)) == S_OK)
             {
                 fgFrameMultiplier = fg->GetInterpolatedFrameCount() + 1;

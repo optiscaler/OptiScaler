@@ -58,6 +58,8 @@ class InputCommon
     // game's markers while the output does the sleeping.
     inline static std::atomic<std::shared_ptr<LowLatencyTech>> xefg_xell;
     inline static std::atomic_bool xefg_uses_output_xell = false;
+    // The output XeFG started with, None while it doesn't run
+    inline static std::atomic<LowLatencyMode> xefg_started_output = LowLatencyMode::None;
     static LowLatencyMode xefg_output(LowLatencyMode configured);
 
     inline static FrameReport frame_reports[FRAME_REPORTS_BUFFER_SIZE] {};
@@ -76,6 +78,10 @@ class InputCommon
     // Game frame id of the frames the FG presenter shows next, and whether a new batch of them started
     inline static std::atomic_uint64_t fg_frame_id = 0;
     inline static std::atomic_bool fg_new_batch = false;
+    // OptiScaler's XeFG's present queue for its out of band markers (referenced), and the game frame id of the batch
+    // it last marked
+    inline static std::atomic<ID3D12CommandQueue*> xefg_present_queue = nullptr;
+    inline static std::atomic_uint64_t xefg_frame_id = 0;
 
     static void mark_frame_generation(LowLatencyInput input)
     {
@@ -153,9 +159,24 @@ class InputCommon
     static void update();
     static bool can_limit_fps() { return limits_fps; }
 
-    // OptiScaler's own frame generation presenter (FSR-FG) gives the Reflex output the async calls DLSSG makes
+    // OptiScaler's own frame generation presenter (FSR-FG, XeFG) gives the Reflex output the async calls DLSSG makes,
+    // with XeFG AntiLag 2 also gets the out of band presents
     static void fg_game_present(ID3D12CommandQueue* gameQueue, bool presented, uint32_t frameMultiplier);
     static void fg_output_present(ID3D12CommandQueue* presentQueue, bool presented, uint32_t frameMultiplier);
+
+    // The Reflex output reports that frame multiplier to the driver (Reflex Sync), which then applies the FPS limit
+    // to the output frames itself
+    static bool output_reports_fg_multiplier();
+
+    // XeFG's own XeLL markers: 80860000 and 80860001 around the interpolation work it submits in its proxy swapchain's
+    // Present, with the game's last present start frame id (xellGetLastPresentStartFrameId). DLSSG's out of band render
+    // submit markers for the Reflex output.
+    static void xefg_marker(void* xellContext, uint32_t frame_id, uint32_t marker);
+
+    // Around the game's present on XeFG's proxy swapchain: the batch XeFG marked during it (a new frame id) and how
+    // many frames XeFG sends to its presenter for it (xefgSwapChainGetLastPresentStatus)
+    static uint64_t xefg_marked_frame_id() { return xefg_frame_id; }
+    static void xefg_present_status(uint64_t frameIdBefore, uint32_t framesPresented);
 
     // The best of the inputs the game sends: Reflex, XeLL enabled in the game, AntiLag 2, UE, XeLL, then
     // OptiScaler's own Streamline
@@ -186,6 +207,6 @@ class InputCommon
     static xell_context_handle_t acquire_xefg_xell(IUnknown* pDevice);
     static void release_xefg_xell();
 
-    // A changed output that waits for XeFG to let go of the XeLL output's context
+    // A changed output that waits for XeFG to start again
     static bool xefg_output_change_pending();
 };

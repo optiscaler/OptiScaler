@@ -5849,8 +5849,7 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
     if (InputCommon::xefg_output_change_pending())
     {
         ImGui::PushStyleColor(ImGuiCol_Text, toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)));
-        ImGui::TextWrapped("The new output applies when XeFG starts again (restart the game): XeFG paces with the "
-                           "XeLL output until then");
+        ImGui::TextWrapped("Save Settings and restart the game: XeFG keeps the low latency output it started with");
         ImGui::PopStyleColor();
     }
 

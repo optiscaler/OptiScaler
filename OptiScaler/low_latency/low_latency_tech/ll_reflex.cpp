@@ -164,7 +164,13 @@ void Reflex::set_reflex_sync(uint32_t frameMultiplier) const
     params.version = NV_SET_REFLEX_SYNC_PARAMS_VER;
     params.fgMultiplier = (NvU8) frameMultiplier;
 
-    o_SetReflexSync(device, &params);
+    auto result = o_SetReflexSync(device, &params);
+
+    // Once per change: whether the driver knows the generated frames
+    static std::atomic<uint32_t> lastLogged { 0 };
+
+    if (lastLogged.exchange(frameMultiplier) != frameMultiplier)
+        LOG_INFO("Reflex Sync frame multiplier: {}, result: {}", frameMultiplier, (int) result);
 }
 
 NvAPI_Status Reflex::get_latency(NV_LATENCY_RESULT_PARAMS* latency_params) const

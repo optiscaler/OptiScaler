@@ -442,10 +442,13 @@ void* ReflexHooks::getHookedReflexSync(PFN_NvApi_QueryInterface& queryInterface)
 NvAPI_Status ReflexHooks::hkNvAPI_D3D_SetReflexSync(IUnknown* pDev, NV_SET_REFLEX_SYNC_PARAMS* pSetReflexSyncParams)
 {
 #ifdef LOW_LATENCY_INPUTS
-    // With the Reflex output OptiScaler's FSR-FG reports its own frame multiplier, the game's Streamline doesn't
-    // know it
-    if (InputCommon::active_output() == LowLatencyMode::Reflex && State::Instance().activeFgOutput == FGOutput::FSRFG)
+    // With the Reflex output OptiScaler's FSR-FG and XeFG report their own frame multiplier, the game's Streamline
+    // doesn't know it
+    if (InputCommon::active_output() == LowLatencyMode::Reflex &&
+        (State::Instance().activeFgOutput == FGOutput::FSRFG || State::Instance().activeFgOutput == FGOutput::XeFG))
+    {
         return NVAPI_OK;
+    }
 #endif
 
     return o_NvAPI_D3D_SetReflexSync(pDev, pSetReflexSyncParams);
@@ -766,7 +769,15 @@ void ReflexHooks::update(bool fgActive, bool isVulkan)
     // _FgNumFramesToGenerate needs to be correctly updated
     if (fgActive && State::Instance().activeFgOutput == FGOutput::FSRFG)
     {
-        currentFps /= 2;
+        bool driverCountsFg = false;
+
+#ifdef LOW_LATENCY_INPUTS
+        // The Reflex output reports FSR-FG's frame multiplier (Reflex Sync), the driver limits the output frames
+        driverCountsFg = reflexOutput && InputCommon::output_reports_fg_multiplier();
+#endif
+
+        if (!driverCountsFg)
+            currentFps /= 2;
     }
     else if (_FgNumFramesToGenerate > 0 && fakenvapi::isUsingAsMainNvapi() &&
              fakenvapi::getCurrentMode() != LowLatencyMode::XeLL)
