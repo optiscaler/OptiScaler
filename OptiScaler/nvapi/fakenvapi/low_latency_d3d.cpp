@@ -39,9 +39,8 @@ bool LowLatency::update_low_latency_tech(IUnknown* pDevice)
             }
         }
 
-        // Don't use AL2 and XeLL when using DMFG or MFG
+        // Don't use AL2 and XeLL when using DMFG
         if (!Config::Instance()->FN_ForceLatencyFlex.value_or_default() &&
-            State::Instance().dlssgDetectedInterpolationCount <= 1 &&
             State::Instance().dlssgLastSetMode != sl::DLSSGMode::eDynamic)
         {
             auto new_tech_al2 = std::make_shared<AntiLag2>();

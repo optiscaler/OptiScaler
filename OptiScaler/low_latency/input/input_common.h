@@ -163,6 +163,9 @@ class InputCommon
     // with XeFG AntiLag 2 also gets the out of band presents
     static void fg_game_present(ID3D12CommandQueue* gameQueue, bool presented, uint32_t frameMultiplier);
     static void fg_output_present(ID3D12CommandQueue* presentQueue, bool presented, uint32_t frameMultiplier);
+    // The game's DLSSG presents through the wrapped swapchain, AntiLag 2 gets the frame type of each present there
+    static bool dlssg_types_presents();
+    static void dlssg_present();
 
     // The Reflex output reports that frame multiplier to the driver (Reflex Sync), which then applies the FPS limit
     // to the output frames itself

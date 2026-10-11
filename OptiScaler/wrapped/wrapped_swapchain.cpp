@@ -496,6 +496,11 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
                 InputCommon::fg_output_present(fgPresentQueue, false, fgFrameMultiplier);
             }
         }
+        else
+        {
+            // The game's DLSSG presents through here
+            InputCommon::dlssg_present();
+        }
 #else
         if (State::Instance().activeFgOutput == FGOutput::FSRFG || State::Instance().activeFgOutput == FGOutput::XeFG)
         {

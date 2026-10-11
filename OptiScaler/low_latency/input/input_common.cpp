@@ -694,6 +694,13 @@ InputResult InputCommon::set_async_marker(const InputContext& inputContext, ID3D
     if (fgOutput == FGOutput::XeFG || (activeOutput == LowLatencyMode::Reflex && fgOutput == FGOutput::FSRFG))
         return InputResult::UsingDifferentInput;
 
+    // The presents give AntiLag 2 the frame types of the game's DLSSG (dlssg_present)
+    if (marker_params.marker_type == MarkerType::OUT_OF_BAND_PRESENT_START && !marker_params.interpolated.has_value() &&
+        dlssg_types_presents())
+    {
+        return InputResult::Ok;
+    }
+
     // Always allow Opti's local contexts through, like XeLL, AL2 or the async markers of its DLSSG output's
     // Streamline (with the Reflex output those go to the driver directly)
     if (inputContext.caller != activeInput && !inputContext.localContext)
@@ -1170,6 +1177,39 @@ void InputCommon::fg_output_present(ID3D12CommandQueue* presentQueue, bool prese
     }
 }
 
+// AntiLag 2 only knows the generated frames from the frame type set right before each present. DLSSG's out of band
+// present markers don't give a usable one with more than 1 generated frame, like OptiScaler's XeFG (fg_output_present)
+// the presents themselves do: the first of each batch as the real frame.
+bool InputCommon::dlssg_types_presents()
+{
+    auto fgOutput = State::Instance().activeFgOutput;
+
+    return activeOutput == LowLatencyMode::AntiLag2 && fgOutput != FGOutput::FSRFG && fgOutput != FGOutput::XeFG &&
+           State::Instance().dlssgDetectedInterpolationCount > 0;
+}
+
+void InputCommon::dlssg_present()
+{
+    // Only the present thread calls this
+    static uint32_t presents = 0;
+
+    if (!dlssg_types_presents())
+    {
+        presents = 0;
+        return;
+    }
+
+    auto tech = currently_active_tech.load();
+
+    if (tech == nullptr)
+        return;
+
+    auto frames = static_cast<uint32_t>(State::Instance().dlssgDetectedInterpolationCount) + 1;
+    bool interpolated = presents++ % frames != 0;
+
+    tech->set_async_marker(nullptr, { 0, MarkerType::OUT_OF_BAND_PRESENT_START, interpolated });
+}
+
 void InputCommon::xefg_marker(void* xellContext, uint32_t frame_id, uint32_t marker)
 {
     static std::atomic_bool seen[2] {};
@@ -1290,11 +1330,12 @@ void InputCommon::update()
     {
         bool xefgPaced = xefg_paced();
 
-        // AntiLag 2, LatencyFlex and XeLL without XeFG fall apart with more than 1 generated DLSSG frame. Only when it
-        // starts, Force State can be changed back afterwards. The FPS Limiter doesn't care.
+        // LatencyFlex and XeLL without XeFG fall apart with more than 1 generated DLSSG frame, AntiLag 2 only with
+        // Dynamic MFG (its frame types come from the presents, dlssg_present). Only when it starts, Force State can be
+        // changed back afterwards. The FPS Limiter doesn't care.
         static bool lastMultiFrame = false;
-        bool multiFrame =
-            state.dlssgLastSetMode == sl::DLSSGMode::eDynamic || state.dlssgDetectedInterpolationCount > 1;
+        bool multiFrame = state.dlssgLastSetMode == sl::DLSSGMode::eDynamic ||
+                          (state.dlssgDetectedInterpolationCount > 1 && activeOutput != LowLatencyMode::AntiLag2);
 
         if (!std::exchange(lastMultiFrame, multiFrame) && multiFrame && activeOutput != LowLatencyMode::Reflex &&
             activeOutput != LowLatencyMode::FpsLimiter && !xefgPaced &&
