@@ -8495,7 +8495,32 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
         ImGui::TextDisabled("FG");
         ImGui::SameLine(0.0f, 8.0f * menuResScale);
         auto fg = state.currentFG;
-        if (fg != nullptr && fg->IsActive() && !fg->IsPaused())
+
+        // Nvngx replacements don't use currentFG, have to use the DLSSG state detected from the game
+        const FGNvngxReplacement activeNvngxFg = state.activeFgNvngx;
+
+        if (activeNvngxFg != FGNvngxReplacement::None)
+        {
+            const char* nvngxName = activeNvngxFg == FGNvngxReplacement::Nukems   ? "Nukems"
+                                    : activeNvngxFg == FGNvngxReplacement::Arturs ? "Enabler"
+                                    : activeNvngxFg == FGNvngxReplacement::FFX    ? "FFX"
+                                                                                  : "Combo";
+            const int detectedCount = state.dlssgDetectedInterpolationCount;
+
+            if (detectedCount <= 0)
+            {
+                ImGui::TextDisabled("Off");
+            }
+
+            else
+            {
+                const bool unsupported = detectedCount > Nvngx_FG::getMaxFakeFramesCount();
+                const ImVec4 color = unsupported ? ImVec4(1.f, 0.8f, 0.f, 1.f) : ImVec4(0.35f, 0.85f, 0.45f, 1.f);
+                ImGui::TextColored(toneMapColor(color), "%s %dx", nvngxName, detectedCount + 1);
+            }
+        }
+
+        else if (fg != nullptr && fg->IsActive() && !fg->IsPaused())
         {
             const UINT multiplier = fg->GetInterpolatedFrameCount() + 1;
 
