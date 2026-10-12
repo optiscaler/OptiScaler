@@ -322,8 +322,10 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="exports\winmm.h" />
     <ClInclude Include="framegen\dlssg\DLSSG_Dx12.h" />
     <ClInclude Include="framegen\ffx\FSRFG_Dx12.h" />
+    <ClInclude Include="framegen\ffx\FSRFG_Vk.h" />
     <ClInclude Include="framegen\IFGFeature.h" />
     <ClInclude Include="framegen\IFGFeature_Dx12.h" />
+    <ClInclude Include="framegen\IFGFeature_Vk.h" />
     <ClInclude Include="framegen\nvngx\Nvngx_FG.h" />
     <ClInclude Include="fsr4\FSR4ModelSelection.h" />
     <ClInclude Include="hooks\D3D12_Hooks.h" />
@@ -337,6 +339,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="framegen\nvngx\IFGNvngx.h" />
     <ClInclude Include="shaders\reproject\mouseInputs\InputCollection.h" />
     <ClInclude Include="shaders\hud_copy\HudCopy_Vk.h" />
+    <ClInclude Include="shaders\hudless_compare_compute\HCC_Vk.h" />
     <ClInclude Include="inputs\FG\Streamline_Inputs_Sl1_Dx12.h" />
     <ClInclude Include="include\device_info\device_info.hpp" />
     <ClInclude Include="inputs\FG\Upscaler_Inputs_Dx11wDx12.h" />
@@ -466,7 +469,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="wrapped\wrapped_factory.h" />
     <ClInclude Include="include\spdlog_sink\debug_sink.h" />
     <ClInclude Include="inputs\FG\FSR3_Dx12_FG.h" />
-    <ClInclude Include="inputs\FG\Streamline_Inputs_Dx12.h" />
+    <ClInclude Include="inputs\FG\Streamline_Inputs.h" />
     <ClInclude Include="framegen\xefg\XeFG_Dx12.h" />
     <ClInclude Include="hooks\Advapi32_Hooks.h" />
     <ClInclude Include="hooks\Crypt32_Hooks.h" />
@@ -637,8 +640,10 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="hooks\Amdxc64_Hooks.cpp" />
     <ClCompile Include="framegen\dlssg\DLSSG_Dx12.cpp" />
     <ClCompile Include="framegen\ffx\FSRFG_Dx12.cpp" />
+    <ClCompile Include="framegen\ffx\FSRFG_Vk.cpp" />
     <ClCompile Include="framegen\IFGFeature.cpp" />
     <ClCompile Include="framegen\IFGFeature_Dx12.cpp" />
+    <ClCompile Include="framegen\IFGFeature_Vk.cpp" />
     <ClCompile Include="framegen\nvngx\Nvngx_FG.cpp" />
     <ClCompile Include="fsr4\FSR4ModelSelection.cpp" />
     <ClCompile Include="hooks\D3D12_Hooks.cpp" />
@@ -741,7 +746,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="with_dx12\dx11_with_dx12_sc.cpp" />
     <ClCompile Include="wrapped\wrapped_factory.cpp" />
     <ClCompile Include="inputs\FG\FSR3_Dx12_FG.cpp" />
-    <ClCompile Include="inputs\FG\Streamline_Inputs_Dx12.cpp" />
+    <ClCompile Include="inputs\FG\Streamline_Inputs.cpp" />
     <ClCompile Include="framegen\xefg\XeFG_Dx12.cpp" />
     <ClCompile Include="hooks\Streamline_Hooks.cpp" />
     <ClCompile Include="hudfix\Hudfix_Dx11.cpp" />

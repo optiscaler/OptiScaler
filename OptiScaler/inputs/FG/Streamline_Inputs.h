@@ -1,9 +1,11 @@
 #pragma once
 #include "SysUtils.h"
 #include <sl.h>
-#include <framegen/IFGFeature_Dx12.h>
 
-class Sl_Inputs_Dx12
+class IFGFeature;
+
+// DLSSG inputs for both the DX12 and Vulkan FG outputs
+class Sl_Inputs
 {
   private:
     bool infiniteDepth = false;
@@ -20,13 +22,14 @@ class Sl_Inputs_Dx12
     uint64_t mvsWidth = 0;
     uint32_t mvsHeight = 0;
 
-    void CheckForFrame(IFGFeature_Dx12* fg, uint32_t frameId);
+    void CheckForFrame(IFGFeature* fg, uint32_t frameId);
     int IndexForFrameId(uint32_t frameId) const;
 
   public:
     bool setConstants(const sl::Constants& constants, uint32_t frameId);
     bool evaluateState();
-    bool reportResource(const sl::ResourceTag& tag, ID3D12GraphicsCommandList* cmdBuffer, uint32_t frameId);
+    // cmdBuffer is ID3D12GraphicsCommandList* or VkCommandBuffer
+    bool reportResource(const sl::ResourceTag& tag, void* cmdBuffer, uint32_t frameId);
     void reportEngineType(sl::EngineType type) { engineType = type; };
     bool dispatchFG();
     void markPresent(uint64_t frameId);

@@ -19,7 +19,7 @@ class VulkanHooks
 
     // The swapchain with VK_NV_low_latency2's low latency mode, for the Reflex output
     static VkSwapchainKHR LowLatencySwapchain() { return lowLatencySwapchain; }
-    static void SetLowLatencySwapchain(VkSwapchainKHR swapchain) { lowLatencySwapchain = swapchain; }
+    static void SetLowLatencySwapchain(VkSwapchainKHR swapchain);
     static void ForgetLowLatencySwapchain(VkSwapchainKHR swapchain)
     {
         lowLatencySwapchain.compare_exchange_strong(swapchain, VK_NULL_HANDLE);

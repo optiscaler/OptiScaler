@@ -1,10 +1,10 @@
 #include "pch.h"
-#include "Streamline_Inputs_Dx12.h"
+#include "Streamline_Inputs.h"
 #include <Config.h>
 #include <resource_tracking/ResTrack_dx12.h>
 #include <magic_enum.hpp>
 
-void Sl_Inputs_Dx12::CheckForFrame(IFGFeature_Dx12* fg, uint32_t frameId)
+void Sl_Inputs::CheckForFrame(IFGFeature* fg, uint32_t frameId)
 {
     std::scoped_lock lock(_frameBoundaryMutex);
 
@@ -39,7 +39,7 @@ void Sl_Inputs_Dx12::CheckForFrame(IFGFeature_Dx12* fg, uint32_t frameId)
     }
 }
 
-int Sl_Inputs_Dx12::IndexForFrameId(uint32_t frameId) const
+int Sl_Inputs::IndexForFrameId(uint32_t frameId) const
 {
     for (int i = 0; i < BUFFER_COUNT; i++)
     {
@@ -50,9 +50,10 @@ int Sl_Inputs_Dx12::IndexForFrameId(uint32_t frameId) const
     return -1;
 }
 
-bool Sl_Inputs_Dx12::setConstants(const sl::Constants& values, uint32_t frameId)
+bool Sl_Inputs::setConstants(const sl::Constants& values, uint32_t frameId)
 {
-    auto fgOutput = State::Instance().currentFG;
+    auto& state = State::Instance();
+    auto fgOutput = state.CurrentFG();
 
     if (fgOutput == nullptr)
         return false;
@@ -124,7 +125,10 @@ bool Sl_Inputs_Dx12::setConstants(const sl::Constants& values, uint32_t frameId)
             config->SaveXeFG();
         }
 
-        fgOutput->EvaluateState(State::Instance().currentD3D12Device, fgConstants);
+        if (state.currentFG != nullptr)
+            state.currentFG->EvaluateState(state.currentD3D12Device, fgConstants);
+        else
+            state.currentVkFG->EvaluateState(fgConstants);
 
         if (!config->IsFGEnabled())
         {
@@ -248,9 +252,9 @@ bool Sl_Inputs_Dx12::setConstants(const sl::Constants& values, uint32_t frameId)
     return dataFound;
 }
 
-bool Sl_Inputs_Dx12::evaluateState()
+bool Sl_Inputs::evaluateState()
 {
-    auto fgOutput = State::Instance().currentFG;
+    auto fgOutput = State::Instance().CurrentFG();
 
     if (fgOutput == nullptr)
         return false;
@@ -280,15 +284,33 @@ bool Sl_Inputs_Dx12::evaluateState()
     return true;
 }
 
-bool Sl_Inputs_Dx12::reportResource(const sl::ResourceTag& tag, ID3D12GraphicsCommandList* cmdBuffer, uint32_t frameId)
+static std::optional<FG_ResourceType> GetResourceType(sl::BufferType type)
+{
+    if (type == sl::kBufferTypeDepth || type == sl::kBufferTypeHiResDepth || type == sl::kBufferTypeLinearDepth)
+        return FG_ResourceType::Depth;
+
+    if (type == sl::kBufferTypeMotionVectors)
+        return FG_ResourceType::Velocity;
+
+    if (type == sl::kBufferTypeHUDLessColor)
+        return FG_ResourceType::HudlessColor;
+
+    if (type == sl::kBufferTypeUIColorAndAlpha)
+        return FG_ResourceType::UIColor;
+
+    return std::nullopt;
+}
+
+bool Sl_Inputs::reportResource(const sl::ResourceTag& tag, void* cmdBuffer, uint32_t frameId)
 {
     auto& state = State::Instance();
     state.dlssgLastFrame = state.fgLastFrame;
 
-    auto fgOutput = reinterpret_cast<IFGFeature_Dx12*>(state.currentFG);
+    auto fgOutput = state.CurrentFG();
+    auto config = Config::Instance();
 
     // It's possible for only some resources to be marked ready if FGEnabled is enabled during resource tagging
-    if (fgOutput == nullptr || !Config::Instance()->IsFGEnabled())
+    if (fgOutput == nullptr || !config->IsFGEnabled())
         return false;
 
     static const bool ignoreValidUntilEvaluateForFG =
@@ -314,143 +336,128 @@ bool Sl_Inputs_Dx12::reportResource(const sl::ResourceTag& tag, ID3D12GraphicsCo
     if (!cmdBuffer && tag.lifecycle == sl::eOnlyValidNow)
         LOG_TRACE("cmdBuffer is null");
 
-    auto d3dRes = (ID3D12Resource*) tag.resource->native;
-    auto desc = d3dRes->GetDesc();
+    auto type = GetResourceType(tag.type);
 
-    Dx12Resource res = {};
-    res.resource = d3dRes;
-    res.cmdList = cmdBuffer; // Critical for eOnlyValidNow
-    res.width = tag.extent ? tag.extent.width : desc.Width;
-    res.height = tag.extent ? tag.extent.height : desc.Height;
-    res.state = (D3D12_RESOURCE_STATES) tag.resource->state;
-    res.validity =
+    if (!type.has_value())
+        return false;
+
+    auto validity =
         (tag.lifecycle == sl::eValidUntilPresent) ? FG_ResourceValidity::UntilPresent : FG_ResourceValidity::ValidNow;
 
     // If eValidUntilEvaluate is provided without cmdList when there's not much we can do
-    if (!res.cmdList && res.validity != FG_ResourceValidity::UntilPresent)
+    if (!cmdBuffer && validity != FG_ResourceValidity::UntilPresent)
     {
         LOG_WARN("YOLOing resource validity due to missing cmdList");
-        res.validity = FG_ResourceValidity::UntilPresent;
+        validity = FG_ResourceValidity::UntilPresent;
     }
+
+    if ((type == FG_ResourceType::Depth && config->FGDepthValidNow.value_or_default()) ||
+        (type == FG_ResourceType::Velocity && config->FGVelocityValidNow.value_or_default()) ||
+        (type == FG_ResourceType::HudlessColor && config->FGHudlessValidNow.value_or_default()))
+    {
+        validity = FG_ResourceValidity::ValidNow;
+    }
+
+    int frameIndex = -1;
 
     if (frameId > 0)
     {
-        int index = IndexForFrameId(frameId);
+        frameIndex = IndexForFrameId(frameId);
 
-        if (index >= 0)
-        {
-            res.frameIndex = index;
-        }
-        else
+        if (frameIndex < 0)
         {
             LOG_WARN("Frame ID {} not found in tracking, using current index {}", frameId, _currentIndex);
-            res.frameIndex = _currentIndex;
+            frameIndex = _currentIndex;
         }
     }
     else
     {
-        res.frameIndex = -1;
+        frameIndex = fgOutput->GetIndexWillBeDispatched();
+
+        if (fgOutput->HasResource(type.value(), frameIndex))
+            frameIndex = fgOutput->GetIndex();
     }
 
-    bool handled = true;
+    // Vulkan resources come with their size
+    const bool isVulkan = state.currentFG == nullptr;
+    auto d3dRes = (ID3D12Resource*) tag.resource->native;
+    D3D12_RESOURCE_DESC desc {};
 
-    // Map types
-    if (tag.type == sl::kBufferTypeDepth || tag.type == sl::kBufferTypeHiResDepth ||
-        tag.type == sl::kBufferTypeLinearDepth)
+    if (!isVulkan)
+        desc = d3dRes->GetDesc();
+
+    uint64_t width = tag.extent ? tag.extent.width : (isVulkan ? tag.resource->width : desc.Width);
+    uint32_t height = tag.extent ? tag.extent.height : (isVulkan ? tag.resource->height : desc.Height);
+
+    if (type == FG_ResourceType::Velocity)
     {
-        if (res.frameIndex < 0)
-        {
-            res.frameIndex = fgOutput->GetIndexWillBeDispatched();
-
-            if (fgOutput->HasResource(FG_ResourceType::Depth, res.frameIndex))
-                res.frameIndex = fgOutput->GetIndex();
-        }
-
-        if (Config::Instance()->FGDepthValidNow.value_or_default())
-            res.validity = FG_ResourceValidity::ValidNow;
-
-        res.type = FG_ResourceType::Depth;
-        fgOutput->SetResource(&res);
+        // Track locally for dispatch logic
+        mvsWidth = width;
+        mvsHeight = height;
     }
-    else if (tag.type == sl::kBufferTypeMotionVectors)
+    else if (type == FG_ResourceType::HudlessColor)
     {
-        if (res.frameIndex < 0)
-        {
-            res.frameIndex = fgOutput->GetIndexWillBeDispatched();
-
-            if (fgOutput->HasResource(FG_ResourceType::Velocity, res.frameIndex))
-                res.frameIndex = fgOutput->GetIndex();
-        }
-
-        if (Config::Instance()->FGVelocityValidNow.value_or_default())
-            res.validity = FG_ResourceValidity::ValidNow;
-
-        res.type = FG_ResourceType::Velocity;
-        mvsWidth = res.width; // Track locally for dispatch logic
-        mvsHeight = res.height;
-        fgOutput->SetResource(&res);
+        fgOutput->SetInterpolationRect(width, height);
     }
-    else if (tag.type == sl::kBufferTypeHUDLessColor)
+    else if (type == FG_ResourceType::UIColor)
     {
-        if (res.frameIndex < 0)
-        {
-            res.frameIndex = fgOutput->GetIndexWillBeDispatched();
-
-            if (fgOutput->HasResource(FG_ResourceType::HudlessColor, res.frameIndex))
-                res.frameIndex = fgOutput->GetIndex();
-        }
-
-        res.type = FG_ResourceType::HudlessColor;
-
-        if (Config::Instance()->FGHudlessValidNow.value_or_default())
-            res.validity = FG_ResourceValidity::ValidNow;
-
-        fgOutput->SetInterpolationRect(res.width, res.height);
-        fgOutput->SetResource(&res);
-    }
-    else if (tag.type == sl::kBufferTypeUIColorAndAlpha)
-    {
-        if (res.frameIndex < 0)
-        {
-            res.frameIndex = fgOutput->GetIndexWillBeDispatched();
-
-            if (fgOutput->HasResource(FG_ResourceType::UIColor, res.frameIndex))
-                res.frameIndex = fgOutput->GetIndex();
-        }
-
-        res.type = FG_ResourceType::UIColor;
-
         // Fallback size logic
-        UINT64 width = 0;
-        UINT height = 0;
-        fgOutput->GetInterpolationRect(width, height, _currentIndex);
+        UINT64 rectWidth = 0;
+        UINT rectHeight = 0;
+        fgOutput->GetInterpolationRect(rectWidth, rectHeight, _currentIndex);
 
-        if (width == 0)
-            fgOutput->SetInterpolationRect(res.width, res.height);
+        if (rectWidth == 0)
+            fgOutput->SetInterpolationRect(width, height);
+    }
 
-        fgOutput->SetResource(&res);
+    if (isVulkan)
+    {
+        VkFGResource res {};
+        res.type = type.value();
+        res.image = (VkImage) tag.resource->native;
+        res.format = (VkFormat) tag.resource->nativeFormat;
+        res.layout = (VkImageLayout) tag.resource->state;
+        res.imageWidth = tag.resource->width;
+        res.imageHeight = tag.resource->height;
+        res.width = (uint32_t) width;
+        res.height = height;
+        res.cmdBuffer = (VkCommandBuffer) cmdBuffer;
+        res.validity = validity;
+        res.frameIndex = frameIndex;
+
+        state.currentVkFG->SetResource(&res);
     }
     else
     {
-        handled = false;
+        Dx12Resource res {};
+        res.type = type.value();
+        res.resource = d3dRes;
+        res.cmdList = (ID3D12GraphicsCommandList*) cmdBuffer; // Critical for eOnlyValidNow
+        res.width = width;
+        res.height = height;
+        res.state = (D3D12_RESOURCE_STATES) tag.resource->state;
+        res.validity = validity;
+        res.frameIndex = frameIndex;
+
+        state.currentFG->SetResource(&res);
     }
 
-    return handled;
+    return true;
 }
 
-bool Sl_Inputs_Dx12::dispatchFG()
+bool Sl_Inputs::dispatchFG()
 {
     LOG_FUNC();
     return true;
 }
 
-void Sl_Inputs_Dx12::markPresent(uint64_t frameId)
+void Sl_Inputs::markPresent(uint64_t frameId)
 {
     std::scoped_lock lock(_frameBoundaryMutex);
     LOG_TRACE("frameId: {}", frameId);
     _isFrameFinished = true;
     _lastPresentFrameId = static_cast<uint32_t>(frameId);
 
-    if (State::Instance().currentFG != nullptr)
-        State::Instance().currentFG->SetFrameCount(frameId);
+    if (auto fg = State::Instance().CurrentFG(); fg != nullptr)
+        fg->SetFrameCount(frameId);
 }

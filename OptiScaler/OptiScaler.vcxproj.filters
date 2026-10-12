@@ -413,10 +413,16 @@
     <ClInclude Include="framegen\ffx\FSRFG_Dx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="framegen\ffx\FSRFG_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="framegen\IFGFeature.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="framegen\IFGFeature_Dx12.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="framegen\IFGFeature_Vk.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="hudfix\Hudfix_Dx11.h">
@@ -503,7 +509,7 @@
     <ClInclude Include="shaders\hudless_compare\precompile\hudless_compare_VShader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="inputs\FG\Streamline_Inputs_Dx12.h">
+    <ClInclude Include="inputs\FG\Streamline_Inputs.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="framegen\xefg\XeFG_Dx12.h">
@@ -1022,6 +1028,9 @@
     <ClInclude Include="shaders\hud_copy\HudCopy_Vk.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="shaders\hudless_compare_compute\HCC_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="shaders\hud_copy\precompile\HudCopy_Shader_Vk.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1277,10 +1286,16 @@
     <ClCompile Include="framegen\ffx\FSRFG_Dx12.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="framegen\ffx\FSRFG_Vk.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="framegen\IFGFeature.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="framegen\IFGFeature_Dx12.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="framegen\IFGFeature_Vk.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="hudfix\Hudfix_Dx11.cpp">
@@ -1322,7 +1337,7 @@
     <ClCompile Include="include\sl.param\parameters.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="inputs\FG\Streamline_Inputs_Dx12.cpp">
+    <ClCompile Include="inputs\FG\Streamline_Inputs.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="framegen\xefg\XeFG_Dx12.cpp">

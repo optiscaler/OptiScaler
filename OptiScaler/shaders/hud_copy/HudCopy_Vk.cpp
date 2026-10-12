@@ -5,6 +5,12 @@
 #include "precompile/HudCopy_Shader_Vk.h"
 
 HudCopy_Vk::HudCopy_Vk(std::string InName, VkDevice InDevice, VkPhysicalDevice InPhysicalDevice)
+    : HudCopy_Vk(InName, InDevice, InPhysicalDevice, HudCopy_spv, sizeof(InternalHudCopyParams))
+{
+}
+
+HudCopy_Vk::HudCopy_Vk(std::string InName, VkDevice InDevice, VkPhysicalDevice InPhysicalDevice,
+                       std::span<const unsigned char> InShaderCode, size_t InParamsSize)
     : Shader_Vk(InName, InDevice, InPhysicalDevice)
 {
     if (InDevice == VK_NULL_HANDLE)
@@ -17,7 +23,7 @@ HudCopy_Vk::HudCopy_Vk(std::string InName, VkDevice InDevice, VkPhysicalDevice I
 
     // Setup descriptor layouts (0: Params, 1: Hudless, 2: PresentCopy, 3: PresentOut)
     CreateSampler(VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
-    CreateConstantBuffer(sizeof(InternalHudCopyParams));
+    CreateConstantBuffer(InParamsSize);
 
     std::vector<VkDescriptorSetLayoutBinding> bindings = { CreateBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER),
                                                            CreateBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
@@ -32,7 +38,7 @@ HudCopy_Vk::HudCopy_Vk(std::string InName, VkDevice InDevice, VkPhysicalDevice I
     CreateDescriptorPool(poolSizes, _maxFramesInFlight);
     CreateDescriptorSets(_descriptorSetLayout, _descriptorPool, _descriptorSets);
 
-    std::vector<char> shaderCode(HudCopy_spv, HudCopy_spv + sizeof(HudCopy_spv));
+    std::vector<char> shaderCode(InShaderCode.begin(), InShaderCode.end());
     if (!CreateComputePipeline(_device, _pipelineLayout, &_pipeline, shaderCode))
     {
         LOG_ERROR("[{0}] Failed to create pipeline!", _name);
@@ -45,6 +51,17 @@ HudCopy_Vk::HudCopy_Vk(std::string InName, VkDevice InDevice, VkPhysicalDevice I
 
 bool HudCopy_Vk::Dispatch(VkCommandBuffer InCmdList, const VkImageInfo& InHudlessInfo, VkImageLayout HudlessState,
                           const VkImageInfo& InPresentInfo, VkImageLayout PresentState, float HudDetectionThreshold)
+{
+    InternalHudCopyParams constants {};
+    constants.DiffThreshold = HudDetectionThreshold;
+
+    return DispatchShader(InCmdList, InHudlessInfo, HudlessState, InPresentInfo, PresentState, &constants,
+                          sizeof(constants));
+}
+
+bool HudCopy_Vk::DispatchShader(VkCommandBuffer InCmdList, const VkImageInfo& InHudlessInfo, VkImageLayout HudlessState,
+                                const VkImageInfo& InPresentInfo, VkImageLayout PresentState, const void* InParams,
+                                size_t InParamsSize)
 {
     if (!_init || InCmdList == VK_NULL_HANDLE || InHudlessInfo.Image == VK_NULL_HANDLE ||
         InPresentInfo.Image == VK_NULL_HANDLE)
@@ -85,15 +102,12 @@ bool HudCopy_Vk::Dispatch(VkCommandBuffer InCmdList, const VkImageInfo& InHudles
     SetImageLayout(InCmdList, InHudlessInfo.Image, HudlessState, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                    InHudlessInfo.SubresourceRange);
 
-    InternalHudCopyParams constants {};
-    constants.DiffThreshold = HudDetectionThreshold;
-
     if (_mappedConstantBuffer)
-        memcpy(_mappedConstantBuffer, &constants, sizeof(InternalHudCopyParams));
+        memcpy(_mappedConstantBuffer, InParams, InParamsSize);
 
     VkDescriptorSet descriptorSet = _descriptorSets[_currentSetIndex];
 
-    VkDescriptorBufferInfo bufferInfo { _constantBuffer, 0, sizeof(InternalHudCopyParams) };
+    VkDescriptorBufferInfo bufferInfo { _constantBuffer, 0, InParamsSize };
     VkDescriptorImageInfo hudlessInfo { _textureSampler, InHudlessInfo.ImageView,
                                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
     VkDescriptorImageInfo presentInfo { _textureSampler, InPresentInfo.ImageView,
