@@ -1187,6 +1187,8 @@ bool FSRFG_Dx12::ReleaseSwapchain(HWND hwnd)
 
     LOG_DEBUG("");
 
+    // Setting can be changed from the menu while we are in here
+    bool mutexLocked = false;
     if (Config::Instance()->FGUseMutexForSwapchain.value_or_default())
     {
         if (Mutex.getOwner() == 1)
@@ -1197,6 +1199,7 @@ bool FSRFG_Dx12::ReleaseSwapchain(HWND hwnd)
 
         LOG_TRACE("Waiting Mutex 1, current: {}", Mutex.getOwner());
         Mutex.lock(1);
+        mutexLocked = true;
         LOG_TRACE("Accuired Mutex: {}", Mutex.getOwner());
     }
 
@@ -1217,7 +1220,7 @@ bool FSRFG_Dx12::ReleaseSwapchain(HWND hwnd)
         State::Instance().currentFGSwapchain = nullptr;
     }
 
-    if (Config::Instance()->FGUseMutexForSwapchain.value_or_default())
+    if (mutexLocked)
     {
         LOG_TRACE("Releasing Mutex: {}", Mutex.getOwner());
         Mutex.unlockThis(1);
