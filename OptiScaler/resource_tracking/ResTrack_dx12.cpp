@@ -1095,6 +1095,11 @@ CommandListBindingState* ResTrack_Dx12::GetOrCreateBindingState(ID3D12GraphicsCo
         State::Instance().isShuttingDown)
         return nullptr;
 
+    // Bindings are only read when hudfix is active (see IsHudFixActive)
+    const auto config = Config::Instance();
+    if (!config->IsFGEnabled() || !config->FGHUDFix.value_or_default())
+        return nullptr;
+
     CommandListBindingState* state = nullptr;
     bool created = false;
 
