@@ -631,12 +631,6 @@ bool FSRFG_Dx12::Dispatch()
         }
     }
 
-    if (config->FGUseMutexForSwapchain.value_or_default() && Mutex.getOwner() == 1)
-    {
-        LOG_TRACE("Releasing FG->Mutex: {}", Mutex.getOwner());
-        Mutex.unlockThis(1);
-    };
-
     return dispatchResult;
 }
 
