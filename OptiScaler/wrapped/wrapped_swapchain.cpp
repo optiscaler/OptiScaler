@@ -903,11 +903,14 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
     }
 #endif
 
+    // Setting can be changed from the menu during the resize, unlock what we locked
+    IFGFeature_Dx12* lockedFg = nullptr;
     if (State::Instance().currentFG != nullptr && Config::Instance()->FGUseMutexForSwapchain.value_or_default())
     {
-        LOG_TRACE("Waiting ffxMutex 3, current: {}", State::Instance().currentFG->Mutex.getOwner());
-        State::Instance().currentFG->Mutex.lock(3);
-        LOG_TRACE("Accuired ffxMutex: {}", State::Instance().currentFG->Mutex.getOwner());
+        lockedFg = State::Instance().currentFG;
+        LOG_TRACE("Waiting ffxMutex 3, current: {}", lockedFg->Mutex.getOwner());
+        lockedFg->Mutex.lock(3);
+        LOG_TRACE("Accuired ffxMutex: {}", lockedFg->Mutex.getOwner());
     }
 
     HRESULT result;
@@ -1102,10 +1105,10 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
 
     LOG_DEBUG("result: {0:X}", (UINT) result);
 
-    if (State::Instance().currentFG != nullptr && Config::Instance()->FGUseMutexForSwapchain.value_or_default())
+    if (lockedFg != nullptr)
     {
-        LOG_TRACE("Releasing ffxMutex: {}", State::Instance().currentFG->Mutex.getOwner());
-        State::Instance().currentFG->Mutex.unlockThis(3);
+        LOG_TRACE("Releasing ffxMutex: {}", lockedFg->Mutex.getOwner());
+        lockedFg->Mutex.unlockThis(3);
     }
 
     CheckForHdrOutput();
@@ -1294,19 +1297,22 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
     }
 #endif
 
-    if (*ppPresentQueue != nullptr)
+    if (ppPresentQueue != nullptr && *ppPresentQueue != nullptr)
     {
         auto state = &State::Instance();
         state->currentCommandQueue = (ID3D12CommandQueue*) *ppPresentQueue;
         _device = state->currentCommandQueue;
     }
 
-    if (State::Instance().activeFgOutput == FGOutput::FSRFG &&
+    // currentFG can still be null here
+    IFGFeature_Dx12* lockedFg = nullptr;
+    if (State::Instance().activeFgOutput == FGOutput::FSRFG && State::Instance().currentFG != nullptr &&
         Config::Instance()->FGUseMutexForSwapchain.value_or_default())
     {
-        LOG_TRACE("Waiting ffxMutex 3, current: {}", State::Instance().currentFG->Mutex.getOwner());
-        State::Instance().currentFG->Mutex.lock(3);
-        LOG_TRACE("Accuired ffxMutex: {}", State::Instance().currentFG->Mutex.getOwner());
+        lockedFg = State::Instance().currentFG;
+        LOG_TRACE("Waiting ffxMutex 3, current: {}", lockedFg->Mutex.getOwner());
+        lockedFg->Mutex.lock(3);
+        LOG_TRACE("Accuired ffxMutex: {}", lockedFg->Mutex.getOwner());
     }
 
     HRESULT result = E_FAIL;
@@ -1521,11 +1527,10 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
 
     LOG_DEBUG("result: {0:X}", (UINT) result);
 
-    if (State::Instance().activeFgOutput == FGOutput::FSRFG &&
-        Config::Instance()->FGUseMutexForSwapchain.value_or_default())
+    if (lockedFg != nullptr)
     {
-        LOG_TRACE("Releasing ffxMutex: {}", State::Instance().currentFG->Mutex.getOwner());
-        State::Instance().currentFG->Mutex.unlockThis(3);
+        LOG_TRACE("Releasing ffxMutex: {}", lockedFg->Mutex.getOwner());
+        lockedFg->Mutex.unlockThis(3);
     }
 
     CheckForHdrOutput();
