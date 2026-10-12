@@ -39,8 +39,13 @@ UINT64 IFGFeature::StartNewFrame()
 
     if (_lastDispatchedFrame == 0 || (_frameCount - _lastDispatchedFrame) > 2)
     {
-        LOG_WARN("Frame count jumped too much! _frameCount: {}, _lastDispatchedFrame: {}", _frameCount,
-                 _lastDispatchedFrame);
+        // Nothing dispatches with FG off, so this isn't worth a warning then
+        if (Config::Instance()->IsFGEnabled())
+            LOG_WARN("Frame count jumped too much! _frameCount: {}, _lastDispatchedFrame: {}", _frameCount,
+                     _lastDispatchedFrame);
+        else
+            LOG_DEBUG("Resync without FG, _frameCount: {}, _lastDispatchedFrame: {}", _frameCount,
+                      _lastDispatchedFrame);
 
         _lastDispatchedFrame = _frameCount - 1;
     }
