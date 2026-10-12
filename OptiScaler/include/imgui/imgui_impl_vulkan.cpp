@@ -1328,6 +1328,12 @@ void ImGui_ImplVulkan_SetMinImageCount(uint32_t min_image_count)
     bd->VulkanInitInfo.MinImageCount = min_image_count;
 }
 
+void ImGui_ImplVulkan_SetQueue(VkQueue queue)
+{
+    ImGui_ImplVulkan_Data* bd = ImGui_ImplVulkan_GetBackendData();
+    bd->VulkanInitInfo.Queue = queue;
+}
+
 // Register a texture by creating a descriptor
 // FIXME: This is experimental in the sense that we are unsure how to best design/tackle this problem, please post to https://github.com/ocornut/imgui/pull/914 if you have suggestions.
 VkDescriptorSet ImGui_ImplVulkan_AddTexture(VkSampler sampler, VkImageView image_view, VkImageLayout image_layout)

@@ -554,10 +554,10 @@ bool MenuOverlayVk::QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo)
     {
         auto semaphoreIndex = _frameCount % _scImageCount;
 
+        // With DLSSG the present comes from Streamline's thread, while the game's queue
+        // can be waiting on that thread. Using the presenting queue avoids a deadlock.
+        ImGui_ImplVulkan_SetQueue(queue);
         ImGui_ImplVulkan_NewFrame();
-
-        if (State::Instance().delayMenuRenderBy > 0)
-            State::Instance().delayMenuRenderBy--;
 
         // Blur images are only created once the menu is opened, menu decides if they are used
         bool blurReady = false;
@@ -576,81 +576,73 @@ bool MenuOverlayVk::QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo)
 
         if (MenuOverlayBase::RenderMenu())
         {
-            if (State::Instance().delayMenuRenderBy == 0)
+            uint32_t idx = pPresentInfo->pImageIndices[0];
+            ImGui_ImplVulkanH_Frame* fd = &_ImVulkan_Frames[idx];
+            const bool blurMenu = blurReady && MenuCommon::BackgroundBlurUsed();
+
+            vkWaitForFences(_ImVulkan_Info.Device, 1, &fd->Fence, VK_TRUE, UINT64_MAX);
+            vkResetFences(_ImVulkan_Info.Device, 1, &fd->Fence);
+
             {
-                uint32_t idx = pPresentInfo->pImageIndices[0];
-                ImGui_ImplVulkanH_Frame* fd = &_ImVulkan_Frames[idx];
-                const bool blurMenu = blurReady && MenuCommon::BackgroundBlurUsed();
-
-                vkWaitForFences(_ImVulkan_Info.Device, 1, &fd->Fence, VK_TRUE, UINT64_MAX);
-                vkResetFences(_ImVulkan_Info.Device, 1, &fd->Fence);
-
-                {
-                    vkResetCommandPool(_ImVulkan_Info.Device, fd->CommandPool, 0);
-                    VkCommandBufferBeginInfo info = {};
-                    info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-                    info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-                    vkBeginCommandBuffer(fd->CommandBuffer, &info);
-                }
-
-                // Needs to be outside of the render pass
-                if (blurMenu)
-                    _menuBlur->Dispatch(fd->CommandBuffer, fd->Backbuffer);
-
-                {
-                    VkRenderPassBeginInfo info = {};
-                    info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-                    info.renderPass = _vkRenderPass;
-                    info.framebuffer = fd->Framebuffer;
-                    info.renderArea.extent.width = static_cast<uint32_t>(ImGui::GetIO().DisplaySize.x);
-                    info.renderArea.extent.height = static_cast<uint32_t>(ImGui::GetIO().DisplaySize.y);
-                    vkCmdBeginRenderPass(fd->CommandBuffer, &info, VK_SUBPASS_CONTENTS_INLINE);
-                }
-
-                ImGui::Render();
-                ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), fd->CommandBuffer);
-
-                // Submit command buffer
-                vkCmdEndRenderPass(fd->CommandBuffer);
-                auto ecbResult = vkEndCommandBuffer(fd->CommandBuffer);
-                if (ecbResult != VK_SUCCESS)
-                {
-                    LOG_ERROR("vkQueueSubmit error: {0:X}", (UINT) ecbResult);
-                    return false;
-                }
-
-                // Submit queue and semaphores
-                LOG_DEBUG("waitSemaphoreCount: {0}", pPresentInfo->waitSemaphoreCount);
-                // Blur copies the image with a transfer, so everything has to wait for the game
-                VkPipelineStageFlags waitStages[8];
-                std::fill(std::begin(waitStages), std::end(waitStages),
-                          blurMenu ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-
-                VkSubmitInfo submit_info = {};
-                submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-                submit_info.commandBufferCount = 1;
-                submit_info.pCommandBuffers = &fd->CommandBuffer;
-                submit_info.pWaitDstStageMask = waitStages;
-                submit_info.waitSemaphoreCount = pPresentInfo->waitSemaphoreCount;
-                submit_info.pWaitSemaphores = pPresentInfo->pWaitSemaphores;
-                submit_info.signalSemaphoreCount = 1;
-                submit_info.pSignalSemaphores = &_ImVulkan_Semaphores[semaphoreIndex];
-
-                auto qResult = vkQueueSubmit(_ImVulkan_Info.Queue, 1, &submit_info, fd->Fence);
-                if (qResult != VK_SUCCESS)
-                {
-                    LOG_ERROR("vkQueueSubmit error: {0:X}", (UINT) qResult);
-                    return false;
-                }
-
-                pPresentInfo->waitSemaphoreCount = 1;
-                pPresentInfo->pWaitSemaphores = &_ImVulkan_Semaphores[semaphoreIndex];
+                vkResetCommandPool(_ImVulkan_Info.Device, fd->CommandPool, 0);
+                VkCommandBufferBeginInfo info = {};
+                info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+                info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+                vkBeginCommandBuffer(fd->CommandBuffer, &info);
             }
-            else
+
+            // Needs to be outside of the render pass
+            if (blurMenu)
+                _menuBlur->Dispatch(fd->CommandBuffer, fd->Backbuffer);
+
             {
-                // To make RenderMenu happy as it expects this
-                ImGui::Render();
+                VkRenderPassBeginInfo info = {};
+                info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+                info.renderPass = _vkRenderPass;
+                info.framebuffer = fd->Framebuffer;
+                info.renderArea.extent.width = static_cast<uint32_t>(ImGui::GetIO().DisplaySize.x);
+                info.renderArea.extent.height = static_cast<uint32_t>(ImGui::GetIO().DisplaySize.y);
+                vkCmdBeginRenderPass(fd->CommandBuffer, &info, VK_SUBPASS_CONTENTS_INLINE);
             }
+
+            ImGui::Render();
+            ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), fd->CommandBuffer);
+
+            // Submit command buffer
+            vkCmdEndRenderPass(fd->CommandBuffer);
+            auto ecbResult = vkEndCommandBuffer(fd->CommandBuffer);
+            if (ecbResult != VK_SUCCESS)
+            {
+                LOG_ERROR("vkQueueSubmit error: {0:X}", (UINT) ecbResult);
+                return false;
+            }
+
+            // Submit queue and semaphores
+            LOG_DEBUG("waitSemaphoreCount: {0}", pPresentInfo->waitSemaphoreCount);
+            // Blur copies the image with a transfer, so everything has to wait for the game
+            VkPipelineStageFlags waitStages[8];
+            std::fill(std::begin(waitStages), std::end(waitStages),
+                      blurMenu ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+
+            VkSubmitInfo submit_info = {};
+            submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            submit_info.commandBufferCount = 1;
+            submit_info.pCommandBuffers = &fd->CommandBuffer;
+            submit_info.pWaitDstStageMask = waitStages;
+            submit_info.waitSemaphoreCount = pPresentInfo->waitSemaphoreCount;
+            submit_info.pWaitSemaphores = pPresentInfo->pWaitSemaphores;
+            submit_info.signalSemaphoreCount = 1;
+            submit_info.pSignalSemaphores = &_ImVulkan_Semaphores[semaphoreIndex];
+
+            auto qResult = vkQueueSubmit(queue, 1, &submit_info, fd->Fence);
+            if (qResult != VK_SUCCESS)
+            {
+                LOG_ERROR("vkQueueSubmit error: {0:X}", (UINT) qResult);
+                return false;
+            }
+
+            pPresentInfo->waitSemaphoreCount = 1;
+            pPresentInfo->pWaitSemaphores = &_ImVulkan_Semaphores[semaphoreIndex];
         }
     }
 

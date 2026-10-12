@@ -194,7 +194,6 @@ class State
     bool dlssgDebugView = false;
     bool dlssgInterpolatedOnly = false;
     uint64_t dlssgLastFrame = 0;
-    uint32_t delayMenuRenderBy = 0;
 
     // FSR Common
     float lastFsrCameraNear = 0.0f;

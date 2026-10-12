@@ -5027,12 +5027,6 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                                 "GPUs under Windows\nCan cause stutters, so best to use only when necessary");
                 }
             }
-            else if (state.swapchainApi == Vulkan)
-            {
-                ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)),
-                                   "DLSSG is purposefully disabled when this menu is visible");
-                ImGui::Spacing();
-            }
         }
 
         bool isLoaded = false;
