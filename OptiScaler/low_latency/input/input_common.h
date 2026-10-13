@@ -50,13 +50,13 @@ struct TimingData
 
 class InputCommon
 {
-    inline static std::atomic<std::shared_ptr<LowLatencyTech>> currently_active_tech;
+    static std::atomic<std::shared_ptr<LowLatencyTech>> currently_active_tech;
     inline static std::mutex create_tech_mutex {};
 
     // OptiScaler's XeFG paces with an XeLL context. With the XeLL output it's that output's own (which then stays the
     // output until XeFG lets go of it), with a Reflex or AntiLag 2 output XeFG gets one of its own that follows the
     // game's markers while the output does the sleeping.
-    inline static std::atomic<std::shared_ptr<LowLatencyTech>> xefg_xell;
+    static std::atomic<std::shared_ptr<LowLatencyTech>> xefg_xell;
     inline static std::atomic_bool xefg_uses_output_xell = false;
     // The output XeFG started with, None while it doesn't run
     inline static std::atomic<LowLatencyMode> xefg_started_output = LowLatencyMode::None;
