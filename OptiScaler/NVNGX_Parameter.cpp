@@ -810,14 +810,13 @@ void InitNGXParameters(NVSDK_NGX_Parameter* InParams, API api)
         InParams->Set(NVSDK_NGX_Parameter_FrameInterpolation_FeatureInitResult, 1);
 
         // Streamline handle the max interpolated frame count
-        int countMax = -1;
-        InParams->Get("DLSSG.MultiFrameCountMax", &countMax);
+        // Nvngx replacement overrides whatever the real driver table reports (e.g. 1 on RTX 40)
+        int countMax = 1;
 
-        if (countMax == -1)
-        {
-            countMax =
-                State::Instance().activeFgNvngx != FGNvngxReplacement::None ? Nvngx_FG::getMaxFakeFramesCount() : 1;
-        }
+        if (State::Instance().activeFgNvngx != FGNvngxReplacement::None)
+            countMax = std::max(1, Nvngx_FG::getMaxFakeFramesCount());
+        else
+            InParams->Get("DLSSG.MultiFrameCountMax", &countMax);
 
         InParams->Set("DLSSG.MultiFrameCountMax", countMax);
 
