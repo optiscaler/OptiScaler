@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "Reprojection_Dx12.h"
+#include <gpu_time/FgGpuTime_Dx12.h>
 #include "swapchain/reprojectionSwapchain.h"
 
 #include <hudfix/Hudfix_Dx12.h>
@@ -156,7 +157,10 @@ void Reprojection_Dx12::Activate()
 void Reprojection_Dx12::Deactivate()
 {
     if (_isActive)
+    {
+        _gpuTiming->Reset();
         _isActive = false;
+    }
 }
 
 void Reprojection_Dx12::DestroyFGContext()
@@ -302,8 +306,11 @@ bool Reprojection_Dx12::Present()
                 std::memcpy(data.cameraPrevForward, _cameraForward[previousIndex], 3 * sizeof(float));
 
                 _reproject->FilloutStruct(data, params);
-                _reproject->Dispatch((IDXGISwapChain3*) _swapChain, commandList, params, hudless->GetResource(),
-                                     hudless->state, depth->GetResource(), depth->state);
+                ScopedFgGpuTime_Dx12 timing(commandList, _gpuTiming, ++_gpuTimingSequence);
+                const auto dispatched =
+                    _reproject->Dispatch((IDXGISwapChain3*) _swapChain, commandList, params, hudless->GetResource(),
+                                         hudless->state, depth->GetResource(), depth->state);
+                timing.End(dispatched);
             }
         }
     }

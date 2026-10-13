@@ -4,6 +4,12 @@
 #include "input_common.h"
 
 #include <vulkan/vulkan.h>
+#include <memory>
+
+namespace FgTiming
+{
+class Channel;
+}
 
 class InputReflex
 {
@@ -38,6 +44,10 @@ class InputReflex
     static NvAPI_Status SendGameMarker(IUnknown* pDev, NV_LATENCY_MARKER_PARAMS* params, bool toStreamline);
 
   public:
+    // Poll completed NVIDIA driver reports without creating latency markers or changing the low-latency output.
+    static void PollFGTiming(bool fgActive);
+    static std::shared_ptr<FgTiming::Channel> GetFGTimingChannel();
+
     static NvAPI_Status D3D_SetSleepMode(IUnknown* pDev, NV_SET_SLEEP_MODE_PARAMS* pSetSleepModeParams);
     static NvAPI_Status D3D_GetSleepStatus(IUnknown* pDevice, NV_GET_SLEEP_STATUS_PARAMS* pGetSleepStatusParams);
     static NvAPI_Status D3D_Sleep(IUnknown* pDev);

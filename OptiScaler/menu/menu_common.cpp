@@ -14,6 +14,9 @@
 
 #include <framegen/nvngx/Nvngx_FG.h>
 #include <framegen/reprojection/Reprojection_Dx12.h>
+#include <gpu_time/FgGpuTime_Dx12.h>
+#include <gpu_time/FgGpuTime_Vk.h>
+#include <low_latency/input/input_reflex.h>
 
 #include <nvapi/fakenvapi.h>
 #include <hooks/Reflex_Hooks.h>
@@ -224,6 +227,41 @@ template <typename T, size_t N> struct RingBuffer
 const int plotWidth = 360;
 static RingBuffer<float, plotWidth> gFrameTimes;
 static RingBuffer<float, plotWidth> gUpscalerTimes;
+
+static FgTiming::Snapshot gFgTiming;
+static bool gFgTimingActive = false;
+static std::shared_ptr<FgTiming::Channel> gFgTimingChannel;
+
+static void UpdateFgTiming(State& state)
+{
+    FgGpuTime_Dx12::Poll();
+    FgGpuTime_Vk::Poll();
+
+    auto* fg = state.CurrentFG();
+    const bool ownedActive = fg != nullptr && fg->IsActive() && !fg->IsPaused();
+    const bool nativeActive = state.activeFgOutput == FGOutput::NoFG &&
+                              (state.dlssgInputGameEnabled || state.dlssgLastSetMode != sl::DLSSGMode::eOff);
+    const bool replaced = state.activeFgNvngx != FGNvngxReplacement::None;
+    const bool driverActive = !replaced && ((ownedActive && state.activeFgOutput == FGOutput::DLSSG) || nativeActive);
+    InputReflex::PollFGTiming(driverActive);
+
+    std::shared_ptr<FgTiming::Channel> channel;
+    if (ownedActive && state.activeFgOutput == FGOutput::DLSSG && replaced)
+        channel = Nvngx_FG::GetGpuTimingChannel();
+    else if (ownedActive)
+        channel = fg->GetGpuTimingChannel();
+    else if (nativeActive && replaced)
+        channel = Nvngx_FG::GetGpuTimingChannel();
+
+    if (!channel && driverActive)
+        channel = InputReflex::GetFGTimingChannel();
+
+    if (gFgTimingChannel != channel && gFgTimingChannel)
+        gFgTimingChannel->Reset();
+    gFgTimingChannel = std::move(channel);
+    gFgTimingActive = ownedActive || nativeActive;
+    gFgTiming = gFgTimingChannel ? gFgTimingChannel->Read() : FgTiming::Snapshot {};
+}
 
 struct FsExistsCache
 {
@@ -8698,10 +8736,46 @@ void MenuCommon::RenderUpscalerTimeGraph(RenderMenuContext& ctx)
     auto& menuResScale = ctx.menuResScale;
     auto& averageUpscalerFT = ctx.averageUpscalerFT;
 
-    if (!IsUpscalerActive(currentFeature))
-        return;
+    const bool upscalerActive = IsUpscalerActive(currentFeature) && !state.upscaleTimes.empty();
+    if (upscalerActive)
+    {
+        ImGui::Text("Upscaler GPU: %.2fms", state.upscaleTimes.back());
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Average upscaler GPU time: %.2fms", averageUpscalerFT);
+    }
+    else
+        ImGui::TextDisabled("Upscaler GPU: N/A");
 
-    ImGui::Text("Upscaler GPU time: %.2fms (avg: %.2fms)", state.upscaleTimes.back(), averageUpscalerFT);
+    ImGui::SameLine();
+    if (!gFgTimingActive)
+        ImGui::TextDisabled("| FG: Off");
+    else if (gFgTiming.milliseconds)
+        ImGui::Text(gFgTiming.scope.find("(partial)") != std::string::npos ? "| FG*: %.2fms" : "| FG: %.2fms",
+                    *gFgTiming.milliseconds);
+    else
+        ImGui::TextDisabled("| FG: N/A");
+
+    if (ImGui::IsItemHovered())
+    {
+        if (gFgTiming.milliseconds)
+            ImGui::SetTooltip("%s\n%s\nAverage: %.2fms (%zu completed samples)\nSample/frame ID: %llu, age: %.0fms\n"
+                              "GPU workload time can overlap other work; it is not an FPS penalty or input latency.",
+                              gFgTiming.backend.c_str(), gFgTiming.scope.c_str(), *gFgTiming.averageMilliseconds,
+                              gFgTiming.sampleCount, (unsigned long long) gFgTiming.frameId, gFgTiming.ageMilliseconds);
+        else if (!gFgTimingActive)
+            ImGui::SetTooltip("Frame generation is disabled or paused.");
+        else if (state.activeFgOutput == FGOutput::XeFG)
+            ImGui::SetTooltip("XeFG does not expose a documented GPU frame-generation timing API.");
+        else
+            ImGui::SetTooltip("No fresh completed GPU timing is available for this FG route.\n"
+                              "Unsupported routes and missing driver reports are shown as N/A.");
+    }
+
+    if (!upscalerActive)
+    {
+        ImGui::Dummy(ImVec2(0.0f, FooterPlotHeight()));
+        return;
+    }
 
     PlotLinesWithRange(
         "##UpscalerTime",
@@ -9253,6 +9327,7 @@ bool MenuCommon::RenderMenu()
     ctx.currentFeature = ctx.state.currentFeature;
 
     // 1) Collect timing and input state before any ImGui drawing.
+    UpdateFgTiming(ctx.state);
     UpdateRenderTiming(ctx);
     UpdateMenuInputMode(ctx);
     HandleMenuShortcuts(ctx);

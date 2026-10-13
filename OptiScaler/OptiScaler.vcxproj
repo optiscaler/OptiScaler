@@ -195,6 +195,10 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="fsr4\FSR4Upgrade.h" />
     <ClInclude Include="gpu_time\GpuTime_Dx11.h" />
     <ClInclude Include="gpu_time\GpuTime_Dx12.h" />
+    <ClInclude Include="gpu_time\FgTiming.h" />
+    <ClInclude Include="gpu_time\FgTimingHookThreads.h" />
+    <ClInclude Include="gpu_time\FgGpuTime_Dx12.h" />
+    <ClInclude Include="gpu_time\FgGpuTime_Vk.h" />
     <ClInclude Include="gpu_time\GpuTime_Vk.h" />
     <ClInclude Include="hooks\Amdxc64_Hooks.h" />
     <ClInclude Include="DllNames.h" />
@@ -526,6 +530,8 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="fsr4\FSR4Upgrade.cpp" />
     <ClCompile Include="gpu_time\GpuTime_Dx11.cpp" />
     <ClCompile Include="gpu_time\GpuTime_Dx12.cpp" />
+    <ClCompile Include="gpu_time\FgGpuTime_Dx12.cpp" />
+    <ClCompile Include="gpu_time\FgGpuTime_Vk.cpp" />
     <ClCompile Include="gpu_time\GpuTime_Vk.cpp" />
     <ClCompile Include="hooks\Amdxc64_Hooks.cpp" />
     <ClCompile Include="framegen\dlssg\DLSSG_Dx12.cpp" />

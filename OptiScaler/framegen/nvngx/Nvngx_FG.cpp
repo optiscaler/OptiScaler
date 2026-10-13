@@ -2,6 +2,7 @@
 
 #include <NVNGX_Parameter.h>
 #include "Nvngx_FG.h"
+#include <gpu_time/FgGpuTime_Dx12.h>
 
 #include "proxies/NVNGX_Proxy.h"
 #include "proxies/Ntdll_Proxy.h"
@@ -278,6 +279,14 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_CreateFeature(ID3D12GraphicsCommandList* InCmdL
 
     auto proxyHandle = new Nvngx_FG_Handle(lastIdCreated++ + NVNGX_PROVIDER_ID_OFFSET);
 
+    const auto type = provider->getType();
+    const char* name = type == FGNvngxReplacement::FFX      ? "NGX to FFX"
+                       : type == FGNvngxReplacement::Nukems ? "Nukem FSR-FG"
+                                                            : "NGX FG";
+    const char* scope = type == FGNvngxReplacement::Combo ? "Combo FSR middle-frame GPU workload (partial)"
+                                                          : "NGX evaluation GPU workload (preparation and generation)";
+    proxyHandle->gpuTiming = std::make_shared<FgTiming::Channel>(name, scope);
+
     std::scoped_lock lock(proxyHandle->handleMutex);
 
     auto result = provider->D3D12_CreateFeature(InCmdList, InFeatureID, InParameters, &proxyHandle->nativeHandle);
@@ -304,12 +313,21 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
 
     // LOG_TRACE("Handle received from the game: {:X}", (uint64_t) InHandle);
 
-    std::scoped_lock lock(((Nvngx_FG_Handle*) InHandle)->handleMutex);
-
-    auto result = provider->D3D12_ReleaseFeature(((Nvngx_FG_Handle*) InHandle)->nativeHandle);
+    auto* handle = (Nvngx_FG_Handle*) InHandle;
+    NVSDK_NGX_Result result;
+    {
+        std::scoped_lock lock(handle->handleMutex);
+        result = provider->D3D12_ReleaseFeature(handle->nativeHandle);
+    }
 
     if (result == NVSDK_NGX_Result_Success)
-        delete InHandle;
+    {
+        auto channel = handle->gpuTiming;
+        _gpuTiming.compare_exchange_strong(channel, nullptr);
+        if (handle->gpuTiming)
+            handle->gpuTiming->Reset();
+        delete handle;
+    }
 
     return result;
 }
@@ -395,8 +413,31 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InCm
 
     // LOG_TRACE("Handle received from the game: {:X}", (uint64_t) InFeatureHandle);
 
-    return provider->D3D12_EvaluateFeature(InCmdList, ((Nvngx_FG_Handle*) InFeatureHandle)->nativeHandle, InParameters,
-                                           InCallback);
+    auto* handle = (Nvngx_FG_Handle*) InFeatureHandle;
+    _gpuTiming.store(handle->gpuTiming);
+
+    const auto type = provider->getType();
+    uint32_t recording = 0;
+    uint32_t enabled = 0;
+    uint32_t generatedCount = 0;
+    InParameters->Get("DLSSG.IsRecording", &recording);
+    const bool interpolationEnabled =
+        InParameters->Get("DLSSG.EnableInterp", &enabled) == NVSDK_NGX_Result_Success && enabled != 0;
+    InParameters->Get("DLSSG.MultiFrameCount", &generatedCount);
+    const bool comboFfx = type == FGNvngxReplacement::Combo &&
+                          ((generatedCount == 1 && frameIndex == 1) || (generatedCount == 3 && frameIndex == 2) ||
+                           (generatedCount == 5 && frameIndex == 3));
+    const bool canTime = interpolationEnabled && (type == FGNvngxReplacement::FFX || comboFfx ||
+                                                  (type == FGNvngxReplacement::Nukems && recording != 0));
+
+    // A Nukem path that resets/closes the supplied list cannot be bracketed at this boundary.
+    if (!canTime && type != FGNvngxReplacement::Combo && handle->gpuTiming)
+        handle->gpuTiming->Reset();
+
+    ScopedFgGpuTime_Dx12 timing(InCmdList, canTime ? handle->gpuTiming : nullptr, ++handle->timingSequence);
+    const auto result = provider->D3D12_EvaluateFeature(InCmdList, handle->nativeHandle, InParameters, InCallback);
+    timing.End(result == NVSDK_NGX_Result_Success);
+    return result;
 }
 
 NVSDK_NGX_Result Nvngx_FG::D3D12_PopulateParameters_Impl(NVSDK_NGX_Parameter* InParameters)
@@ -552,12 +593,14 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
     // LOG_TRACE("Handle received from the game: {:X}", (uint64_t) InHandle);
 
     Nvngx_FG_Handle* ourHandle = (Nvngx_FG_Handle*) InHandle;
-    std::scoped_lock lock(ourHandle->handleMutex);
-
-    auto result = provider->VULKAN_ReleaseFeature(ourHandle->nativeHandle);
+    NVSDK_NGX_Result result;
+    {
+        std::scoped_lock lock(ourHandle->handleMutex);
+        result = provider->VULKAN_ReleaseFeature(ourHandle->nativeHandle);
+    }
 
     if (result == NVSDK_NGX_Result_Success)
-        delete InHandle;
+        delete ourHandle;
 
     return result;
 }

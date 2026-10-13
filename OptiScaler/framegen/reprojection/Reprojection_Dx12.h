@@ -4,6 +4,8 @@
 
 class Reprojection_Dx12 : public virtual IFGFeature_Dx12
 {
+    uint64_t _gpuTimingSequence = 0;
+
   protected:
     void ReleaseObjects() override final;
     void CreateObjects(ID3D12Device* InDevice) override final;
@@ -41,7 +43,11 @@ class Reprojection_Dx12 : public virtual IFGFeature_Dx12
 
     std::optional<double> ReadGpuTime(void* commandQueue) override final;
 
-    Reprojection_Dx12() : IFGFeature_Dx12(), IFGFeature() { _framesToInterpolate = 0; }
+    Reprojection_Dx12() : IFGFeature_Dx12(), IFGFeature()
+    {
+        _framesToInterpolate = 0;
+        _gpuTiming = std::make_shared<FgTiming::Channel>("Reprojection", "Reprojection GPU workload and output copies");
+    }
 
     ~Reprojection_Dx12() {};
 

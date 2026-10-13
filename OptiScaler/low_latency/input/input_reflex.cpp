@@ -3,6 +3,10 @@
 #include <nvapi/NvApiHooks.h>
 #include <hooks/Vulkan_Hooks.h>
 #include <low_latency/low_latency_tech/ll_reflex_vk.h>
+#include <gpu_time/FgTiming.h>
+
+#include <chrono>
+#include <mutex>
 
 #include <intrin.h>
 
@@ -47,6 +51,124 @@ static NvAPI_Status ToNvApi(InputResult result, const char* call)
     LOG_ERROR("{} result: {}", call, magic_enum::enum_name(result));
 
     return result == InputResult::NoReadyOutput ? NVAPI_OK : NVAPI_ERROR;
+}
+
+std::shared_ptr<FgTiming::Channel> InputReflex::GetFGTimingChannel()
+{
+    static const auto channel = std::make_shared<FgTiming::Channel>("DLSS-G", "NVIDIA driver-reported FG duration");
+    return channel;
+}
+
+void InputReflex::PollFGTiming(bool fgActive)
+{
+    using Clock = std::chrono::steady_clock;
+    using GetLatencyFn = decltype(&NvAPI_D3D_GetLatency);
+
+    struct PollState
+    {
+        std::mutex mutex;
+        ID3D12Device* device = nullptr;
+        GetLatencyFn driver = nullptr;
+        bool active = false;
+        bool baselinePending = true;
+        uint64_t lastFrameId = 0;
+        std::optional<Clock::time_point> lastPoll;
+    };
+    static PollState poll;
+
+    // Multiple rendering callbacks may visit the collector; skip a contending poll instead of waiting.
+    std::unique_lock lock(poll.mutex, std::try_to_lock);
+    if (!lock.owns_lock())
+        return;
+
+    auto channel = GetFGTimingChannel();
+    auto& state = State::Instance();
+    auto device = state.currentD3D12Device;
+    auto driver =
+        fgActive && device && !state.isShuttingDown ? ToDriver<GetLatencyFn>(GET_ID(NvAPI_D3D_GetLatency)) : nullptr;
+
+    if (!fgActive || !device || !driver || state.isShuttingDown)
+    {
+        if (poll.active)
+            channel->Reset();
+
+        poll.device = nullptr;
+        poll.driver = nullptr;
+        poll.active = false;
+        poll.baselinePending = true;
+        poll.lastFrameId = 0;
+        poll.lastPoll.reset();
+        return;
+    }
+
+    if (!poll.active || poll.device != device || poll.driver != driver)
+    {
+        channel->Reset();
+        poll.device = device;
+        poll.driver = driver;
+        poll.active = true;
+        poll.baselinePending = true;
+        poll.lastFrameId = 0;
+        poll.lastPoll.reset();
+    }
+
+    const auto now = Clock::now();
+    if (poll.lastPoll && now - *poll.lastPoll < std::chrono::milliseconds(100))
+        return;
+
+    poll.lastPoll = now;
+    const auto epoch = channel->Epoch();
+
+    // Calling the existing real-driver route bypasses InputCommon's synthesized CPU marker reports.
+    NV_LATENCY_RESULT_PARAMS reports {};
+    reports.version = NV_LATENCY_RESULT_PARAMS_VER1;
+    if (driver(device, &reports) != NVAPI_OK)
+    {
+        if (!poll.baselinePending || poll.lastFrameId != 0)
+            channel->Reset();
+
+        poll.baselinePending = true;
+        poll.lastFrameId = 0;
+        return;
+    }
+
+    // NVIDIA documents element 63 as the newest completed frame. All-zero reports mean unavailable/warmup.
+    const uint64_t newestFrameId = reports.frameReport[63].frameID;
+    if (newestFrameId == 0)
+    {
+        if (!poll.baselinePending || poll.lastFrameId != 0)
+            channel->Reset();
+
+        poll.baselinePending = true;
+        poll.lastFrameId = 0;
+        return;
+    }
+
+    // On activation, record a baseline without replaying the driver's history from the previous FG session.
+    // A backwards frame ID also begins a new marker sequence.
+    if (poll.baselinePending || newestFrameId < poll.lastFrameId)
+    {
+        if (!poll.baselinePending)
+            channel->Reset();
+
+        poll.lastFrameId = newestFrameId;
+        poll.baselinePending = false;
+        return;
+    }
+
+    for (const auto& report : reports.frameReport)
+    {
+        const uint64_t frameId = report.frameID;
+        if (frameId == 0 || frameId <= poll.lastFrameId || frameId > newestFrameId)
+            continue;
+
+        poll.lastFrameId = frameId;
+        if (report.aiFrameTimeUs == 0)
+            continue;
+
+        // Preserve the driver's scope; the public API does not define this as a per-generated-frame average.
+        channel->Publish(epoch, frameId, static_cast<double>(report.aiFrameTimeUs) / 1000.0);
+    }
 }
 
 NvAPI_Status InputReflex::D3D_SetSleepMode(IUnknown* pDev, NV_SET_SLEEP_MODE_PARAMS* pSetSleepModeParams)
