@@ -8521,7 +8521,7 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
 
         ImGui::TextDisabled("FG");
         ImGui::SameLine(0.0f, 8.0f * menuResScale);
-        auto fg = state.currentFG;
+        auto fg = state.CurrentFG();
 
         // Nvngx replacements don't use currentFG, have to use the DLSSG state detected from the game
         const FGNvngxReplacement activeNvngxFg = state.activeFgNvngx;
