@@ -498,7 +498,15 @@ bool Util::GetFileVersion(std::wstring dllPath, version_t* fileVersionOut, versi
 
 bool Util::IsSubpath(const std::filesystem::path& path, const std::filesystem::path& base)
 {
-    auto rel = std::filesystem::relative(path, base);
+    auto lowerPath = path.lexically_normal().wstring();
+    auto lowerBase = base.lexically_normal().wstring();
+    to_lower_in_place(lowerPath);
+    to_lower_in_place(lowerBase);
+
+    auto rel = std::filesystem::path(lowerPath).lexically_relative(lowerBase);
+    if (rel.empty())
+        return false;
+
     auto first = *rel.begin();
     return first != "." && first != "..";
 }
