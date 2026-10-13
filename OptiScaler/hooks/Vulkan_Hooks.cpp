@@ -367,6 +367,7 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
             _device = *pDevice;
             LOG_DEBUG("_device captured: {0:X}", (UINT64) _device);
             HookDevice(_device);
+            MenuOverlayVk::DeviceCreated(_device, &localCreteInfo);
         }
 
         ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
