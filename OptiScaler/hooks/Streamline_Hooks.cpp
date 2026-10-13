@@ -1726,6 +1726,14 @@ sl::Result StreamlineHooks::hkslPCLSetMarker(sl::PCLMarker marker, const sl::Fra
     if (o_slPCLSetMarker == nullptr)
         return sl::Result::eErrorFeatureMissing;
 
+    // Indiana Jones sends a nullptr on startup :)
+    const void* volatile framePtr = &frame;
+    if (framePtr == nullptr)
+    {
+        LOG_WARN("Null frame token for marker {}", (uint32_t) marker);
+        return o_slPCLSetMarker(marker, frame);
+    }
+
     // if (State::Instance().activeFgOutput == FGOutput::DLSSG && StreamlineProxy::IsD3D12Inited() &&
     //     Config::Instance()->FGDLSSGUseGamesReflexMarkers.value_or_default())
     //{
