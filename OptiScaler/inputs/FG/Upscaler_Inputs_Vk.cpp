@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "Upscaler_Inputs_Vk.h"
+#include "Upscaler_Inputs.h"
 
 #include <State.h>
 #include <Config.h>
@@ -8,50 +9,6 @@
 #include <nvsdk_ngx_vk.h>
 
 using namespace OptiMath;
-
-// Same camera values as the DX12 OptiFG
-static void SetCameraValues(IFGFeature* fg, const NVSDK_NGX_Parameter& parameters, IFeature* feature)
-{
-    auto& cfg = *Config::Instance();
-    const bool useFsrInputs = cfg.FsrUseFsrInputValues.value_or_default();
-
-    float cameraNear = 0.0f;
-    float cameraFar = 0.0f;
-    float cameraVFov = 0.0f;
-    float meterFactor = 0.0f;
-
-    parameters.Get(OptiKeys::FSR_NearPlane, &cameraNear);
-    parameters.Get(OptiKeys::FSR_FarPlane, &cameraFar);
-
-    if (!useFsrInputs || (cameraNear == 0.0f && cameraFar == 0.0f))
-    {
-        cameraNear = cfg.FsrCameraNear.value_or_default();
-        cameraFar = cfg.FsrCameraFar.value_or_default();
-
-        if (feature->DepthInverted())
-            std::swap(cameraNear, cameraFar);
-    }
-
-    if (!useFsrInputs || parameters.Get(OptiKeys::FSR_CameraFovVertical, &cameraVFov) != NVSDK_NGX_Result_Success)
-    {
-        if (cfg.FsrVerticalFov.has_value())
-            cameraVFov = GetRadiansFromDeg(cfg.FsrVerticalFov.value());
-        else if (cfg.FsrHorizontalFov.value_or_default() > 0.0f)
-            cameraVFov = GetVerticalFovFromHorizontal(GetRadiansFromDeg(cfg.FsrHorizontalFov.value()),
-                                                      (float) feature->TargetWidth(), (float) feature->TargetHeight());
-        else
-            cameraVFov = GetRadiansFromDeg(60);
-    }
-
-    if (!useFsrInputs)
-        parameters.Get(OptiKeys::FSR_ViewSpaceToMetersFactor, &meterFactor);
-
-    State::Instance().lastFsrCameraNear = cameraNear;
-    State::Instance().lastFsrCameraFar = cameraFar;
-
-    auto aspectRatio = (float) feature->DisplayWidth() / (float) feature->DisplayHeight();
-    fg->SetCameraValues(cameraNear, cameraFar, cameraVFov, aspectRatio, meterFactor);
-}
 
 static void SetResource(IFGFeature_Vk* fg, NVSDK_NGX_Parameter* parameters, const char* name, FG_ResourceType type,
                         VkCommandBuffer cmdBuffer, uint32_t width, uint32_t height)
@@ -87,27 +44,7 @@ void UpscalerInputsVk::UpscaleStart(VkCommandBuffer cmdBuffer, NVSDK_NGX_Paramet
     if (fg == nullptr || state.activeFgInput != FGInput::Upscaler || !fg->HasSwapchain())
         return;
 
-    auto config = Config::Instance();
-
-    FG_Constants constants {};
-    constants.displayWidth = feature->DisplayWidth();
-    constants.displayHeight = feature->DisplayHeight();
-
-    if (feature->IsHdr())
-        constants.flags |= FG_Flags::Hdr;
-
-    if (feature->DepthInverted())
-        constants.flags |= FG_Flags::InvertedDepth;
-
-    if (feature->JitteredMV())
-        constants.flags |= FG_Flags::JitteredMVs;
-
-    if (!feature->LowResMV())
-        constants.flags |= FG_Flags::DisplayResolutionMVs;
-
-    if (config->FGAsync.value_or_default())
-        constants.flags |= FG_Flags::Async;
-
+    auto constants = UpscalerInputs::GetFGConstants(feature);
     fg->EvaluateState(constants);
 
     // Present dispatches the previous frame's data
@@ -132,14 +69,16 @@ void UpscalerInputsVk::UpscaleStart(VkCommandBuffer cmdBuffer, NVSDK_NGX_Paramet
     parameters->Get(NVSDK_NGX_Parameter_Jitter_Offset_X, &jitterX);
     parameters->Get(NVSDK_NGX_Parameter_Jitter_Offset_Y, &jitterY);
 
-    SetCameraValues(fg, *parameters, feature);
+    auto camera = UpscalerInputs::GetCameraValues(*parameters, feature);
+    auto aspectRatio = (float) feature->DisplayWidth() / (float) feature->DisplayHeight();
+    fg->SetCameraValues(camera.cameraNear, camera.cameraFar, camera.cameraVFov, aspectRatio, camera.meterFactor);
     fg->SetFrameTimeDelta(state.lastFGFrameTime);
     fg->SetMVScale(mvScaleX, mvScaleY);
     fg->SetJitter(jitterX, jitterY);
     fg->SetReset(reset);
     fg->SetInterpolationRect(feature->DisplayWidth(), feature->DisplayHeight());
 
-    if (!config->IsFGEnabled())
+    if (!Config::Instance()->IsFGEnabled())
         return;
 
     if (!fg->IsActive() && !fg->IsPaused())

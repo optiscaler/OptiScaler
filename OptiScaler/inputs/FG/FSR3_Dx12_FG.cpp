@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "FSR3_Dx12_FG.h"
+#include "Upscaler_Inputs.h"
 
 #include "Config.h"
 #include "Util.h"
@@ -1312,65 +1313,13 @@ void FSR3FG::SetUpscalerInputs(ID3D12GraphicsCommandList* InCmdList, NVSDK_NGX_P
 
     fg->EvaluateState(_device, _fgConst);
 
-    // FSR Camera values
-    float cameraNear = 0.0f;
-    float cameraFar = 0.0f;
-    float cameraVFov = 0.0f;
-    float meterFactor = 0.0f;
     float mvScaleX = 0.0f;
     float mvScaleY = 0.0f;
     float jitterX = 0.0f;
     float jitterY = 0.0f;
 
-    float tempCameraNear = 0.0f;
-    float tempCameraFar = 0.0f;
-
-    auto& state = State::Instance();
-    auto& cfg = *Config::Instance();
-    const auto& ngxParams = *InParameters;
-
-    ngxParams.Get(OptiKeys::FSR_NearPlane, &tempCameraNear);
-    ngxParams.Get(OptiKeys::FSR_FarPlane, &tempCameraFar);
-
-    if (!cfg.FsrUseFsrInputValues.value_or_default() || (tempCameraNear == 0.0f && tempCameraFar == 0.0f))
-    {
-        if (feature->DepthInverted())
-        {
-            cameraFar = cfg.FsrCameraNear.value_or_default();
-            cameraNear = cfg.FsrCameraFar.value_or_default();
-        }
-        else
-        {
-            cameraFar = cfg.FsrCameraFar.value_or_default();
-            cameraNear = cfg.FsrCameraNear.value_or_default();
-        }
-    }
-    else
-    {
-        cameraNear = tempCameraNear;
-        cameraFar = tempCameraFar;
-    }
-
-    if (!cfg.FsrUseFsrInputValues.value_or_default() ||
-        ngxParams.Get(OptiKeys::FSR_CameraFovVertical, &cameraVFov) != NVSDK_NGX_Result_Success)
-    {
-        if (cfg.FsrVerticalFov.has_value())
-            cameraVFov = GetRadiansFromDeg(cfg.FsrVerticalFov.value());
-        else if (cfg.FsrHorizontalFov.value_or_default() > 0.0f)
-        {
-            const float hFovRad = GetRadiansFromDeg(cfg.FsrHorizontalFov.value());
-            cameraVFov =
-                GetVerticalFovFromHorizontal(hFovRad, (float) feature->TargetWidth(), (float) feature->TargetHeight());
-        }
-        else
-            cameraVFov = GetRadiansFromDeg(60);
-    }
-
-    if (!cfg.FsrUseFsrInputValues.value_or_default())
-        ngxParams.Get(OptiKeys::FSR_ViewSpaceToMetersFactor, &meterFactor);
-
-    State::Instance().lastFsrCameraFar = cameraFar;
-    State::Instance().lastFsrCameraNear = cameraNear;
+    // FSR Camera values
+    auto camera = UpscalerInputs::GetCameraValues(*InParameters, feature);
 
     int reset = 0;
     InParameters->Get(NVSDK_NGX_Parameter_Reset, &reset);
@@ -1381,7 +1330,7 @@ void FSR3FG::SetUpscalerInputs(ID3D12GraphicsCommandList* InCmdList, NVSDK_NGX_P
     InParameters->Get(NVSDK_NGX_Parameter_Jitter_Offset_Y, &jitterY);
 
     auto aspectRatio = (float) feature->DisplayWidth() / (float) feature->DisplayHeight();
-    fg->SetCameraValues(cameraNear, cameraFar, cameraVFov, aspectRatio, meterFactor);
+    fg->SetCameraValues(camera.cameraNear, camera.cameraFar, camera.cameraVFov, aspectRatio, camera.meterFactor);
     fg->SetFrameTimeDelta(State::Instance().lastFGFrameTime);
     fg->SetMVScale(mvScaleX, mvScaleY);
     fg->SetJitter(jitterX, jitterY);
