@@ -16,7 +16,7 @@
 
 #include <spoofing/Vulkan_Spoofing.h>
 
-#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan.h>
 
 #include <detours/detours.h>
 #include <misc/IdentifyGpu.h>

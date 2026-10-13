@@ -1,5 +1,5 @@
 #pragma once
-#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan.h>
 #include "IFeature.h"
 
 #include <shaders/rcas/RCAS_Vk.h>

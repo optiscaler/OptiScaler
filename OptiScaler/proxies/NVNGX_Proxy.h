@@ -13,7 +13,7 @@
 #include "detours/detours.h"
 
 #include <filesystem>
-#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan.h>
 
 inline const char* project_id_override = "24480451-f00d-face-1304-0308dabad187";
 constexpr unsigned long long app_id_override = 0x24480451;

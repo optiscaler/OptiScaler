@@ -1,7 +1,7 @@
 #pragma once
 
 #include "SysUtils.h"
-#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan.h>
 
 namespace MenuOverlayVk
 {
