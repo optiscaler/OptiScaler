@@ -551,6 +551,9 @@
     <ClInclude Include="inputs\FG\Upscaler_Inputs_Dx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="inputs\FG\Upscaler_Inputs_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="upscalers\FeatureProvider_Dx11.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1359,6 +1362,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="inputs\FG\Upscaler_Inputs_Dx12.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="inputs\FG\Upscaler_Inputs_Vk.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="upscalers\FeatureProvider_Dx11.cpp">

@@ -223,8 +223,9 @@ static IFGFeature_Vk* CreateFGFeature()
 {
     auto& state = State::Instance();
 
-    if (state.currentVkFG == nullptr && state.activeFgInput == FGInput::DLSSG &&
-        state.activeFgOutput == FGOutput::FSRFG)
+    const bool supportedInput = state.activeFgInput == FGInput::DLSSG || state.activeFgInput == FGInput::Upscaler;
+
+    if (state.currentVkFG == nullptr && supportedInput && state.activeFgOutput == FGOutput::FSRFG)
     {
         if (FfxApiProxy::InitFfxVk())
             state.currentVkFG = new FSRFG_Vk();

@@ -491,6 +491,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="inputs\FG\XeFG_Inputs_Dx12.h" />
     <ClInclude Include="inputs\FfxApi_Vk.h" />
     <ClInclude Include="inputs\FG\Upscaler_Inputs_Dx12.h" />
+    <ClInclude Include="inputs\FG\Upscaler_Inputs_Vk.h" />
     <ClInclude Include="inputs\NVNGX_DLSS.h" />
     <ClInclude Include="inputs\XeSS_Base.h" />
     <ClInclude Include="inputs\XeSS_Common.h" />
@@ -786,6 +787,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="inputs\FG\XeFG_Inputs_Dx12.cpp" />
     <ClCompile Include="inputs\FfxApi_Vk.cpp" />
     <ClCompile Include="inputs\FG\Upscaler_Inputs_Dx12.cpp" />
+    <ClCompile Include="inputs\FG\Upscaler_Inputs_Vk.cpp" />
     <ClCompile Include="inputs\XeSS_Base.cpp" />
     <ClCompile Include="inputs\XeSS_Common.cpp" />
     <ClCompile Include="inputs\XeSS_Dbg.cpp" />
