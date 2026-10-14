@@ -323,6 +323,15 @@ class State
     // quirks
     std::vector<std::string> detectedQuirks {};
 
+    // ASI plugins loaded from the plugins folder, late-load ones are added from another thread
+    struct LoadedAsiPlugin
+    {
+        std::string name;
+        bool isOptiPatcher;
+    };
+    std::vector<LoadedAsiPlugin> loadedAsiPlugins {};
+    std::mutex loadedAsiPluginsMutex;
+
     // FFX
     // Separate lists as DX12 (incl. w/Dx12) and Vulkan FFX can report different upscalers
     struct FfxVersionList

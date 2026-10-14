@@ -6616,9 +6616,36 @@ void MenuCommon::RenderMagnifierSettings(RenderMenuContext& ctx)
         ImGui::Spacing();
     }
 }
+
+// List loaded ASI plugins, excluding OptiPatcher
+static std::vector<std::string> ListedAsiPlugins(State& state)
+{
+    std::vector<std::string> names;
+    std::lock_guard<std::mutex> lock(state.loadedAsiPluginsMutex);
+    for (const auto& plugin : state.loadedAsiPlugins)
+    {
+        if (!plugin.isOptiPatcher)
+            names.push_back(plugin.name);
+    }
+    return names;
+}
+
+// Modular Quirks / ASI tab
+static bool QuirksTabVisible(State& state) { return !state.detectedQuirks.empty() || !ListedAsiPlugins(state).empty(); }
+static const char* QuirksTabLabel(State& state)
+{
+    const bool quirks = !state.detectedQuirks.empty();
+    const bool asi = !ListedAsiPlugins(state).empty();
+    if (quirks && asi)
+        return "Quirks / ASI";
+    return asi ? "ASI" : "Quirks";
+}
+
 void MenuCommon::RenderQuirksSettings(RenderMenuContext& ctx)
 {
     auto& state = ctx.state;
+
+    const auto asiPlugins = ListedAsiPlugins(state);
 
     // QUIRKS -----------------------------
     if (state.detectedQuirks.size() > 0)
@@ -6628,6 +6655,16 @@ void MenuCommon::RenderQuirksSettings(RenderMenuContext& ctx)
         for (const auto& quirk : state.detectedQuirks)
         {
             ImGui::TextWrapped("%s", quirk.c_str());
+        }
+    }
+
+    // ASI PLUGINS -----------------------------
+    if (asiPlugins.size() > 0)
+    {
+        SectionTitle("Loaded ASI Plugins");
+        for (const auto& name : asiPlugins)
+        {
+            ImGui::TextWrapped("%s", name.c_str());
         }
     }
 }
@@ -7995,6 +8032,18 @@ void MenuCommon::RenderStatusInfo(RenderMenuContext& ctx)
                 ImGui::TextWrapped("%s", quirks.c_str());
             }
 
+            const auto asiPlugins = ListedAsiPlugins(state);
+            if (asiPlugins.size() > 0)
+            {
+                std::string asi;
+                for (const auto& name : asiPlugins)
+                    asi += asi.empty() ? name : ", " + name;
+                ImGui::TableNextColumn();
+                ImGui::TextDisabled("ASI");
+                ImGui::TableNextColumn();
+                ImGui::TextWrapped("%s", asi.c_str());
+            }
+
             ImGui::EndTable();
         }
 
@@ -8398,7 +8447,8 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
         const char* description;
         DrawFn draw; // Drawn above the boxes of the tab
         bool hideLabelInMenu;
-        bool (*visible)(RenderMenuContext&) = nullptr; // Tab hidden when returned false
+        bool (*visible)(RenderMenuContext&) = nullptr;             // Tab hidden when returned false
+        const char* (*displayLabel)(RenderMenuContext&) = nullptr; // Name shown in the sidebar
     };
 
     // Boxes of a tab come from GetMenuBoxes, by the label of the tab
@@ -8411,9 +8461,10 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
         { "SYSTEM", "Textures", "Mipmap bias and anisotropic filtering." },
         { "SYSTEM", "Compatibility", "Init flags, hooks, plugins and game specific workarounds." },
         { "ADVANCED", "Menu", "Menu scale, theme, FPS overlay and keybinds." },
-        { "ADVANCED", "Quirks", "Game specific quirks applied by OptiScaler.",
-+          [](RenderMenuContext& c) { RenderCard(c, RenderQuirksSettings); }, false,
-+          [](RenderMenuContext& c) { return !c.state.detectedQuirks.empty(); } },
+        { "ADVANCED", "Quirks", "Game specific quirks applied by OptiScaler and loaded ASI plugins.",
+          [](RenderMenuContext& c) { RenderCard(c, RenderQuirksSettings); }, false,
+          [](RenderMenuContext& c) { return QuirksTabVisible(c.state); },
+          [](RenderMenuContext& c) { return QuirksTabLabel(c.state); } },
         { "ADVANCED", "Help / Status", "Support info. Filled dot: on or found, hollow dot: off or missing.", nullptr, true },
     };
     // clang-format on
@@ -8500,7 +8551,8 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
 
             drawList->AddText(
                 ImVec2(rectMin.x + 10.0f * menuResScale, rectMin.y + (tabHeight - ImGui::GetTextLineHeight()) * 0.5f),
-                ImGui::GetColorU32(ImGuiCol_Text), tabs[i].label);
+                ImGui::GetColorU32(ImGuiCol_Text),
+                tabs[i].displayLabel != nullptr ? tabs[i].displayLabel(ctx) : tabs[i].label);
         }
 
         // OptiPatcher status only visible when used

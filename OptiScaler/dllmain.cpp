@@ -211,6 +211,25 @@ static void RunAgilityUpgrade(HMODULE dx12Module)
     }
 }
 
+// Remembers the plugin for the menu
+static void RegisterLoadedAsi(const std::filesystem::path& path, bool hasPatchResult)
+{
+    std::string name = wstring_to_string(path.filename().wstring()); // .string() can crash
+    std::string lowerName(name);
+    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    const bool isOptiPatcher = hasPatchResult || lowerName.find("optipatcher") != std::string::npos;
+    auto& state = State::Instance();
+    std::lock_guard<std::mutex> lock(state.loadedAsiPluginsMutex);
+    // Late-load entries can be handled more than once
+    for (const auto& plugin : state.loadedAsiPlugins)
+    {
+        if (plugin.name == name)
+            return;
+    }
+    state.loadedAsiPlugins.push_back({ name, isOptiPatcher });
+}
+
 void LoadAsiPlugins()
 {
     std::filesystem::path pluginPath(Config::Instance()->PluginPath.value_or(L"plugins"));
@@ -249,6 +268,8 @@ void LoadAsiPlugins()
 
                 auto init = (PFN_InitializeASI) KernelBaseProxy::GetProcAddress_()(hMod, "InitializeASI");
                 auto patchResult = (PFN_PatchResult) KernelBaseProxy::GetProcAddress_()(hMod, "PatchResult");
+
+                RegisterLoadedAsi(entry.path(), patchResult != nullptr);
 
                 if (init != nullptr)
                     init();
@@ -310,6 +331,8 @@ void LoadAsiPlugins()
 
                                     auto patchResult =
                                         (PFN_PatchResult) KernelBaseProxy::GetProcAddress_()(hMod, "PatchResult");
+
+                                    RegisterLoadedAsi(entry.path(), patchResult != nullptr);
 
                                     if (init != nullptr)
                                         init();
