@@ -6648,9 +6648,9 @@ void MenuCommon::RenderQuirksSettings(RenderMenuContext& ctx)
     const auto asiPlugins = ListedAsiPlugins(state);
 
     // QUIRKS -----------------------------
-    if (state.detectedQuirks.size() > 0)
+    if (ScopedCard::Shows("active_quirks") && state.detectedQuirks.size() > 0)
     {
-        SectionTitle("Active Quirks");
+        ScopedCard card { "Active Quirks" };
 
         for (const auto& quirk : state.detectedQuirks)
         {
@@ -6659,9 +6659,9 @@ void MenuCommon::RenderQuirksSettings(RenderMenuContext& ctx)
     }
 
     // ASI PLUGINS -----------------------------
-    if (asiPlugins.size() > 0)
+    if (ScopedCard::Shows("loaded_asi_plugins") && asiPlugins.size() > 0)
     {
-        SectionTitle("Loaded ASI Plugins");
+        ScopedCard card { "Loaded ASI Plugins" };
         for (const auto& name : asiPlugins)
         {
             ImGui::TextWrapped("%s", name.c_str());
@@ -8262,6 +8262,9 @@ const MenuCommon::MenuBox* MenuCommon::GetMenuBoxes(size_t& count)
         { "keybinds", "Menu", "Keybinds", [](RenderMenuContext& c) { RenderCard(c, RenderKeybindSettings); } },
         { "custom_tab", "Menu", "Custom Tab", [](RenderMenuContext& c) { RenderCard(c, RenderCustomTabSettings); }, nullptr, false },
 
+        { "active_quirks", "Quirks / ASI", "Active Quirks", nullptr, RenderQuirksSettings },
+        { "loaded_asi_plugins", "Quirks / ASI", "Loaded ASI Plugins", nullptr, RenderQuirksSettings },
+
         { "status_system", "Help / Status", "System", nullptr, RenderStatusInfo },
         { "status_detected", "Help / Status", "Detected", nullptr, RenderStatusInfo },
         { "status_hooks", "Help / Status", "Hooks / Config", nullptr, RenderStatusInfo },
@@ -8462,8 +8465,7 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
         { "SYSTEM", "Compatibility", "Init flags, hooks, plugins and game specific workarounds." },
         { "ADVANCED", "Menu", "Menu scale, theme, FPS overlay and keybinds." },
         { "ADVANCED", "Quirks", "Game specific quirks applied by OptiScaler and loaded ASI plugins.",
-          [](RenderMenuContext& c) { RenderCard(c, RenderQuirksSettings); }, false,
-          [](RenderMenuContext& c) { return QuirksTabVisible(c.state); },
+          RenderQuirksSettings, false, [](RenderMenuContext& c) { return QuirksTabVisible(c.state); },
           [](RenderMenuContext& c) { return QuirksTabLabel(c.state); } },
         { "ADVANCED", "Help / Status", "Support info. Filled dot: on or found, hollow dot: off or missing.", nullptr, true },
     };
