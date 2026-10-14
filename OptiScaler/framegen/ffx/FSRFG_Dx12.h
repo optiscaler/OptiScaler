@@ -110,7 +110,8 @@ class FSRFG_Dx12 : public virtual IFGFeature_Dx12
 
     FSRFG_Dx12() : IFGFeature_Dx12(), IFGFeature()
     {
-        //
+        _gpuTiming =
+            std::make_shared<FgTiming::Channel>("FSR-FG", "Generation GPU workload (optical flow and interpolation)");
     }
 
     ~FSRFG_Dx12();

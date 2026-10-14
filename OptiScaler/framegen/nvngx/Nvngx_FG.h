@@ -7,6 +7,7 @@
 #include <shaders/hud_copy/HudCopy_Dx12.h>
 #include <shaders/hud_copy/HudCopy_Vk.h>
 #include "IFGNvngx.h"
+#include <gpu_time/FgTiming.h>
 
 class Nvngx_FG
 {
@@ -18,16 +19,20 @@ class Nvngx_FG
         unsigned int id;
         NVSDK_NGX_Handle* nativeHandle = nullptr;
         std::shared_mutex handleMutex {}; // FFX is not mutex'ed and replies on this
+        std::shared_ptr<FgTiming::Channel> gpuTiming;
+        std::atomic_uint64_t timingSequence { 0 };
     };
 
     static inline std::atomic_uint32_t lastIdCreated = 0;
     static inline std::unique_ptr<IFGNvngx> _provider;
     static inline std::unique_ptr<HudCopy_Dx12> _hudCopyDx12;
     static inline std::unique_ptr<HudCopy_Vk> _hudCopyVk;
+    static inline std::atomic<std::shared_ptr<FgTiming::Channel>> _gpuTiming;
 
     static IFGNvngx* getProvider();
 
   public:
+    static std::shared_ptr<FgTiming::Channel> GetGpuTimingChannel() { return _gpuTiming.load(); }
     static int getMaxFakeFramesCount();
     static bool isDx12Available();
     static bool isVulkanAvailable();

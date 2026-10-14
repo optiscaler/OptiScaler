@@ -3,6 +3,7 @@
 #include <OwnedMutex.h>
 #include <dxgi1_6.h>
 #include <flag-set-cpp/flag_set.hpp>
+#include <gpu_time/FgTiming.h>
 
 enum class FG_Flags : uint64_t
 {
@@ -47,6 +48,7 @@ enum class FG_ResourceValidity : uint32_t
 class IFGFeature
 {
   protected:
+    std::shared_ptr<FgTiming::Channel> _gpuTiming;
     float _jitterX[BUFFER_COUNT] = {};
     float _jitterY[BUFFER_COUNT] = {};
     float _mvScaleX[BUFFER_COUNT] = {};
@@ -108,6 +110,7 @@ class IFGFeature
     virtual bool HasResource(FG_ResourceType type, int index = -1) = 0;
     virtual bool SetInterpolatedFrameCount(UINT interpolatedFrameCount) = 0;
     virtual std::optional<double> ReadGpuTime(void* commandQueue) { return std::nullopt; }
+    std::shared_ptr<FgTiming::Channel> GetGpuTimingChannel() const { return _gpuTiming; }
 
     int GetIndex();
     int GetIndexWillBeDispatched();

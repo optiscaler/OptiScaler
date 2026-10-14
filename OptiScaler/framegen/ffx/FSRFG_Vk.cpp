@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "FSRFG_Vk.h"
+#include <gpu_time/FgGpuTime_Vk.h>
 
 #include <State.h>
 #include <hooks/Vulkan_Hooks.h>
@@ -118,6 +119,8 @@ static size_t SwapchainExtensionSize(VkStructureType type)
 
 FSRFG_Vk::FSRFG_Vk() : IFGFeature_Vk(), IFGFeature()
 {
+    _gpuTiming = std::make_shared<FgTiming::Channel>(
+        "FSR-FG Vulkan", "Generation GPU interval (may include preceding pending GPU work)");
     _extraQueues.resize(3);
     _extraQueues[PresentQueue].present = true;
     _extraQueues[AsyncComputeQueue].flags = VK_QUEUE_COMPUTE_BIT;
@@ -201,6 +204,14 @@ bool FSRFG_Vk::CreateSwapchain(VkDevice device, const VkSwapchainCreateInfoKHR* 
     desc.presentQueue = queueInfo(presentQueue);
     desc.imageAcquireQueue = queueInfo(acquireQueue);
 
+    FgGpuTime_Vk::Hook(device, _physicalDevice);
+    FgGpuTime_Vk::RegisterQueue(device, _gameQueue, _gameQueueFamily);
+    for (const auto& queue : _extraQueues)
+    {
+        if (queue.queue != VK_NULL_HANDLE)
+            FgGpuTime_Vk::RegisterQueue(device, queue.queue, queue.family);
+    }
+
     auto result = FfxApiProxy::VULKAN_CreateContext()(&_swapChainContext, &desc.header, nullptr);
     LOG_INFO("Swapchain context creation result: {}", FfxApiProxy::ReturnCodeToString(result));
 
@@ -281,6 +292,8 @@ void FSRFG_Vk::ReleaseSwapchainContext()
     {
         auto result = FfxApiProxy::VULKAN_DestroyContext()(&_swapChainContext, nullptr);
         LOG_INFO("Destroy swapchain context result: {}", FfxApiProxy::ReturnCodeToString(result));
+        if (result == FFX_API_RETURN_OK)
+            FgGpuTime_Vk::ForgetDevice(_device);
         _swapChainContext = nullptr;
     }
 
@@ -413,6 +426,7 @@ void FSRFG_Vk::CreateContext()
 
 void FSRFG_Vk::DestroyFGContext()
 {
+    _gpuTiming->Reset();
     Deactivate();
 
     if (_fgContext == nullptr)
@@ -455,6 +469,8 @@ void FSRFG_Vk::Deactivate()
 {
     if (!_isActive)
         return;
+
+    _gpuTiming->Reset();
 
     if (_fgContext == nullptr || ConfigureEnabled(false) == FFX_API_RETURN_OK)
         _isActive = false;
@@ -734,7 +750,12 @@ ffxReturnCode_t FSRFG_Vk::DispatchCallback(ffxDispatchDescFrameGeneration* param
 
     DispatchHudShaders(params);
 
-    return FfxApiProxy::VULKAN_Dispatch()(&_fgContext, &params->header);
+    ScopedFgGpuTime_Vk timing(_device, (VkCommandBuffer) params->commandList,
+                              params->numGeneratedFrames > 0 ? _gpuTiming : nullptr, params->frameID,
+                              params->numGeneratedFrames);
+    const auto result = FfxApiProxy::VULKAN_Dispatch()(&_fgContext, &params->header);
+    timing.End(result == FFX_API_RETURN_OK && params->numGeneratedFrames > 0);
+    return result;
 }
 
 void FSRFG_Vk::DispatchHudShaders(ffxDispatchDescFrameGeneration* params)

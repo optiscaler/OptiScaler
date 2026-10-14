@@ -1,0 +1,53 @@
+name: FG Timing DLL
+
+on:
+  push:
+    branches: [feature/fg-gpu-timings]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fg-timings-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+      - uses: microsoft/setup-msbuild@v3
+      - name: Test timing validity and history
+        shell: cmd
+        run: tests\Run-FgTimingTests.cmd
+      - name: Build x64 Release DLL
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path 'x64/Release/a/OptiScaler/Licenses' -Force | Out-Null
+          msbuild OptiScaler.sln /m /p:Configuration=Release /p:Platform=x64 /verbosity:minimal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Record build provenance
+        shell: pwsh
+        run: |
+          $metadata = [ordered]@{
+            repository = '${{ github.repository }}'
+            commit = '${{ github.sha }}'
+            run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            configuration = 'Release|x64'
+            runtimeValidated = $false
+            dllSha256 = (Get-FileHash 'x64/Release/a/OptiScaler.dll' -Algorithm SHA256).Hash
+          }
+          $metadata | ConvertTo-Json | Set-Content 'x64/Release/a/fg-timing-build.json'
+          Copy-Item 'docs/FG-Timings.md' 'x64/Release/a/FG-Timings.md'
+      - uses: actions/upload-artifact@v7.0.0
+        with:
+          name: OptiScaler-FG-Timings-${{ github.sha }}
+          path: x64/Release/a/
+          if-no-files-found: error
+          retention-days: 30

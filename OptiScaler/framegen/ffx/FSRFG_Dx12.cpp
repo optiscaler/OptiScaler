@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include "FSRFG_Dx12.h"
+#include <gpu_time/FgGpuTime_Dx12.h>
 
 #include <State.h>
 #include <Util.h>
@@ -1033,7 +1034,10 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
         }
     }
 
+    ScopedFgGpuTime_Dx12 timing(cmdList, params->numGeneratedFrames > 0 ? _gpuTiming : nullptr, params->frameID,
+                                params->numGeneratedFrames);
     auto dispatchResult = FfxApiProxy::D3D12_Dispatch(&_fgContext, &params->header);
+    timing.End(dispatchResult == FFX_API_RETURN_OK && params->numGeneratedFrames > 0);
     LOG_DEBUG("D3D12_Dispatch result: {}, fIndex: {}", (UINT) dispatchResult, fIndex);
 
     _lastFrameId = params->frameID;
@@ -1059,6 +1063,7 @@ void* FSRFG_Dx12::SwapchainContext()
 
 void FSRFG_Dx12::DestroyFGContext()
 {
+    _gpuTiming->Reset();
     _frameCount = 1;
     // _lastDispatchedFrame = 0;
     _version = {};
@@ -1409,6 +1414,7 @@ void FSRFG_Dx12::Deactivate()
 {
     if (_isActive)
     {
+        _gpuTiming->Reset();
         auto fIndex = GetIndex();
         if (_uiCommandListResetted[fIndex])
         {
