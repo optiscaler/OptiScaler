@@ -418,7 +418,7 @@ class Config
         L"qtwebengineprocess.exe|platformprocess.exe|bugsplathd64.exe|bssndrpt64.exe|pspcsdkappmgr.exe|pspcsdkcore.exe|"
         L"pspcsdkstttts.exe|pspcsdktelemetry.exe|pspcsdkui.exe|pspcsdkupdatechecker.exe|pspcsdkvoicechat.exe|"
         L"pspcsdkwebview.exe|windhawk.exe|vscodium.exe|crash_reporter.exe|steamerrorreporter64.exe|crashreportclient."
-        L"exe|edcefcrashpadprocess.exe|edcefrenderprocess.exe"
+        L"exe|edcefcrashpadprocess.exe|edcefrenderprocess.exe|unicrashreporter.exe"
     };
 
     // Hotfixes
