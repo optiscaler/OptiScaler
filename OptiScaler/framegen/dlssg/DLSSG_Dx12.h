@@ -1,18 +1,18 @@
 #pragma once
 
 #include <framegen/IFGFeature_Dx12.h>
+#include <framegen/dlssg/DLSSG_Common.h>
 
-#include <proxies/Streamline_Proxy.h>
+// DLSSG_Common overriding IFGFeature next to the API base is intended (C4250)
+#pragma warning(push)
+#pragma warning(disable : 4250)
 
-class DLSSG_Dx12 : public virtual IFGFeature_Dx12
+class DLSSG_Dx12 : public virtual IFGFeature_Dx12, public DLSSG_Common
 {
   private:
     uint32_t _width = 0;
     uint32_t _height = 0;
     std::optional<bool> _haveHudless = std::nullopt;
-
-    sl::ViewportHandle viewport { 0 };
-    sl::FrameToken* frameToken = nullptr;
 
     ID3D12Fence* dlssgFence[BUFFER_COUNT] = {};
     UINT64 lastOptionFrame = 0;
@@ -24,9 +24,6 @@ class DLSSG_Dx12 : public virtual IFGFeature_Dx12
     void CreateObjects(ID3D12Device* InDevice) override final;
 
   public:
-    // IFGFeature
-    const char* Name() override final { return "DLSSG"; };
-    feature_version Version() override final;
     HWND Hwnd() override final;
 
     // IFGFeature_Dx12
@@ -39,8 +36,6 @@ class DLSSG_Dx12 : public virtual IFGFeature_Dx12
     bool ReleaseSwapchain(HWND hwnd) override final;
 
     void CreateContext(ID3D12Device* device, FG_Constants& fgConstants) override final;
-    void Activate() override final;
-    void Deactivate() override final;
     void DestroyFGContext() override final;
     bool Shutdown() override final;
 
@@ -54,7 +49,7 @@ class DLSSG_Dx12 : public virtual IFGFeature_Dx12
     void* FrameGenerationContext() override final;
     void* SwapchainContext() override final;
 
-    DLSSG_Dx12() : IFGFeature_Dx12(), IFGFeature()
+    DLSSG_Dx12() : IFGFeature_Dx12(), DLSSG_Common(), IFGFeature()
     {
         if (StreamlineProxy::Module() == nullptr)
             StreamlineProxy::LoadStreamline();
@@ -67,7 +62,6 @@ class DLSSG_Dx12 : public virtual IFGFeature_Dx12
     }
 
     ~DLSSG_Dx12();
-
-    // Inherited via IFGFeature_Dx12
-    bool SetInterpolatedFrameCount(UINT interpolatedFrameCount) override;
 };
+
+#pragma warning(pop)

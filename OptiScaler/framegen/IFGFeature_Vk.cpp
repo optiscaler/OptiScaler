@@ -60,7 +60,7 @@ void IFGFeature_Vk::ImageBarrier(VkCommandBuffer cmdBuffer, VkImage image, VkFor
                          nullptr, 0, nullptr, 1, &barrier);
 }
 
-void IFGFeature_Vk::ReserveQueues(VkPhysicalDevice physicalDevice, VkDeviceCreateInfo& createInfo)
+void IFGFeature_Vk::PrepareDevice(VkPhysicalDevice physicalDevice, VkDeviceCreateInfo& createInfo)
 {
     _physicalDevice = physicalDevice;
 
@@ -311,6 +311,7 @@ bool IFGFeature_Vk::CopyImage(VkCommandBuffer cmdBuffer, VkFGResource& resource,
     ImageBarrier(cmdBuffer, resource.image, resource.format, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, resource.layout);
 
     resource.image = copy.image;
+    resource.view = copy.view;
     resource.format = copy.format;
     resource.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 

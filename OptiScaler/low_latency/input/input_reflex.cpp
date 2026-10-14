@@ -17,14 +17,7 @@ static bool FromOptiScaler(void* returnAddress)
 
     auto& state = State::Instance();
 
-    if (state.optiSlInterposer == nullptr)
-        return false;
-
-    auto module = Util::GetCallerModule(returnAddress);
-
-    return module != nullptr &&
-           (module == state.optiSlInterposer || module == state.optiSlCommon || module == state.optiSlDLSSG ||
-            module == state.optiSlReflex || module == state.optiSlPCL || module == state.optiDLSSG);
+    return state.optiSlInterposer != nullptr && state.IsOptiStreamlineModule(Util::GetCallerModule(returnAddress));
 }
 
 // With NVIDIA's nvapi OptiScaler's Streamline reaches the driver, with fakenvapi it's the OptiScaler input

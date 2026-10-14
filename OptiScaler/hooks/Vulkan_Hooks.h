@@ -25,6 +25,13 @@ class VulkanHooks
         lowLatencySwapchain.compare_exchange_strong(swapchain, VK_NULL_HANDLE);
     }
 
+    // Set while the FG output shows a surface the game created to its Streamline, whose vkCreateWin32SurfaceKHR gets
+    // this one instead of a new one
+    inline static thread_local VkSurfaceKHR existingSurface = VK_NULL_HANDLE;
+
+    // The window a surface was created for
+    static HWND SurfaceWindow(VkSurfaceKHR surface);
+
     // vkGetDeviceProcAddr without OptiScaler's hooks
     static PFN_vkVoidFunction GetDeviceProcAddr(VkDevice device, const char* pName);
 

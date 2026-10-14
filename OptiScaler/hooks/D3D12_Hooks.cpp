@@ -2304,7 +2304,10 @@ static void HookToDevice(ID3D12Device* InDevice)
         ResTrack_Dx12::HookDevice(InDevice);
     }
 
-    if (State::Instance().activeFgOutput == FGOutput::DLSSG && StreamlineProxy::LoadStreamline())
+    // Vulkan games can create D3D12 devices before their Vulkan one, which needs Streamline initialized for Vulkan.
+    // D3D12 games get it initialized with their FG swapchain otherwise.
+    if (State::Instance().activeFgOutput == FGOutput::DLSSG && vulkanModule == nullptr &&
+        StreamlineProxy::LoadStreamline())
     {
         StreamlineProxy::InitWithD3D12(InDevice);
     }

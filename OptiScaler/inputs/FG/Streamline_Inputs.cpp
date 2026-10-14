@@ -415,6 +415,7 @@ bool Sl_Inputs::reportResource(const sl::ResourceTag& tag, void* cmdBuffer, uint
         VkFGResource res {};
         res.type = type.value();
         res.image = (VkImage) tag.resource->native;
+        res.view = (VkImageView) tag.resource->view;
         res.format = (VkFormat) tag.resource->nativeFormat;
         res.layout = (VkImageLayout) tag.resource->state;
         res.imageWidth = tag.resource->width;

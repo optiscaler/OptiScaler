@@ -8,6 +8,7 @@ struct VkFGResource
 {
     FG_ResourceType type;
     VkImage image = VK_NULL_HANDLE;
+    VkImageView view = VK_NULL_HANDLE; // Sampled view of the image, if the input or a copy has one
     VkFormat format = VK_FORMAT_UNDEFINED;
     VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
     uint32_t imageWidth = 0; // Whole image
@@ -79,9 +80,9 @@ class IFGFeature_Vk : public virtual IFGFeature
     void DestroyCopy(ImageCopy& copy);
 
   public:
-    // Called around vkCreateDevice to add the extra queues to the game's device
-    void ReserveQueues(VkPhysicalDevice physicalDevice, VkDeviceCreateInfo& createInfo);
-    void OnDeviceCreated(VkDevice device);
+    // Called around vkCreateDevice to add what the output needs, like the extra queues, to the game's device
+    virtual void PrepareDevice(VkPhysicalDevice physicalDevice, VkDeviceCreateInfo& createInfo);
+    virtual void OnDeviceCreated(VkDevice device);
 
     bool HasSwapchain() const { return _swapchain != VK_NULL_HANDLE; }
     bool OwnsSwapchain(VkSwapchainKHR swapchain) const
