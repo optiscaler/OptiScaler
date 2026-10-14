@@ -100,12 +100,13 @@ template <class T, HasDefaultValue defaultState = WithDefault> class CustomOptio
     }
 
     constexpr T value_or_default() &&
-        requires(defaultState != NoDefault) {
-            return this->has_value() ? std::move(this->value()) : std::move(_defaultValue);
-        }
+        requires(defaultState != NoDefault)
+    {
+        return this->has_value() ? std::move(this->value()) : std::move(_defaultValue);
+    }
 
-        constexpr std::optional<T> value_for_config(bool forceSave = false)
-            requires(defaultState == WithDefault)
+    constexpr std::optional<T> value_for_config(bool forceSave = false)
+        requires(defaultState == WithDefault)
     {
         if (_volatile)
         {
@@ -344,7 +345,7 @@ class Config
         L"qtwebengineprocess.exe|platformprocess.exe|bugsplathd64.exe|bssndrpt64.exe|pspcsdkappmgr.exe|pspcsdkcore.exe|"
         L"pspcsdkstttts.exe|pspcsdktelemetry.exe|pspcsdkui.exe|pspcsdkupdatechecker.exe|pspcsdkvoicechat.exe|"
         L"pspcsdkwebview.exe|windhawk.exe|vscodium.exe|crash_reporter.exe|steamerrorreporter64.exe|crashreportclient."
-        L"exe|edcefcrashpadprocess.exe|edcefrenderprocess.exe"
+        L"exe|edcefcrashpadprocess.exe|edcefrenderprocess.exe|unicrashreporter.exe"
     };
 
     // Hotfixes
