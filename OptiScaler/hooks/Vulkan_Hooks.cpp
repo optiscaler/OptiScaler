@@ -82,6 +82,18 @@ static bool FromFGOutput(void* returnAddress)
     return state.optiSlInterposer != nullptr && state.IsOptiStreamlineModule(Util::GetCallerModule(returnAddress));
 }
 
+// OptiScaler's Streamline calls the driver's swapchain functions directly. Overlays like RTSS hook the same ones on top
+// of OptiScaler, through them its calls, also those from its own present thread, would look like the game's.
+static PFN_vkVoidFunction StreamlineSwapchainFunction(const char* pName, void* returnAddress)
+{
+    auto func = VulkanHooks::OriginalSwapchainFunction(pName);
+
+    if (func == nullptr || !State::Instance().IsOptiStreamlineModule(Util::GetCallerModule(returnAddress)))
+        return nullptr;
+
+    return func;
+}
+
 // VK_NV_low_latency2's sleep signals a timeline semaphore
 static bool TimelineSemaphoresEnabled(const VkDeviceCreateInfo* pCreateInfo)
 {
@@ -839,6 +851,9 @@ PFN_vkVoidFunction hkvkGetInstanceProcAddr(VkInstance instance, const char* pNam
         return (PFN_vkVoidFunction) hkvkCreateDevice;
     }
 
+    if (auto direct = StreamlineSwapchainFunction(pName, _ReturnAddress()))
+        return direct;
+
     if (auto lowLatencyInput = LowLatencyInputHook(pName, orgFunc, _ReturnAddress()))
         return lowLatencyInput;
 
@@ -876,6 +891,9 @@ PFN_vkVoidFunction hkvkGetDeviceProcAddr(VkDevice device, const char* pName)
         return (PFN_vkVoidFunction) hkvkCreateDevice;
     }
 
+    if (auto direct = StreamlineSwapchainFunction(pName, _ReturnAddress()))
+        return direct;
+
     if (auto lowLatencyInput = LowLatencyInputHook(pName, orgFunc, _ReturnAddress()))
         return lowLatencyInput;
 
@@ -909,6 +927,26 @@ PFN_vkVoidFunction VulkanHooks::GetDeviceProcAddr(VkDevice device, const char* p
         return o_vkGetDeviceProcAddr(device, pName);
 
     return vkGetDeviceProcAddr(device, pName);
+}
+
+PFN_vkVoidFunction VulkanHooks::OriginalSwapchainFunction(const char* pName)
+{
+    if (std::strcmp(pName, "vkCreateSwapchainKHR") == 0)
+        return (PFN_vkVoidFunction) o_CreateSwapchainKHR;
+
+    if (std::strcmp(pName, "vkDestroySwapchainKHR") == 0)
+        return (PFN_vkVoidFunction) o_DestroySwapchainKHR;
+
+    if (std::strcmp(pName, "vkGetSwapchainImagesKHR") == 0)
+        return (PFN_vkVoidFunction) o_GetSwapchainImagesKHR;
+
+    if (std::strcmp(pName, "vkAcquireNextImageKHR") == 0)
+        return (PFN_vkVoidFunction) o_AcquireNextImageKHR;
+
+    if (std::strcmp(pName, "vkQueuePresentKHR") == 0)
+        return (PFN_vkVoidFunction) o_QueuePresentKHR;
+
+    return nullptr;
 }
 
 void VulkanHooks::Hook(HMODULE vulkan1)

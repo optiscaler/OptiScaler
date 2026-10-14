@@ -92,6 +92,46 @@ static VkImageInfo GetImageInfo(VkImage image, VkImageView view, VkFormat format
     return { view, image, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }, format, width, height };
 }
 
+// FFX imports its swapchain functions from vulkan-1.dll. Overlays like RTSS hook those and the driver's functions
+// behind them, and don't expect the real swapchain created inside the game's swapchain call, or presents from FFX's
+// threads on queues they never saw. FFX calls the driver directly, the game's swapchain still goes through them.
+static void BypassOverlayHooks(HMODULE ffxModule)
+{
+    static bool vulkanImports = false;
+
+    auto file = [](PVOID, HMODULE, LPCSTR pszFile) -> BOOL
+    {
+        vulkanImports = pszFile != nullptr && _stricmp(pszFile, "vulkan-1.dll") == 0;
+        return TRUE;
+    };
+
+    auto func = [](PVOID, DWORD, LPCSTR pszFunc, PVOID* ppvFunc) -> BOOL
+    {
+        if (!vulkanImports || pszFunc == nullptr || ppvFunc == nullptr)
+            return TRUE;
+
+        auto deviceFunc = (PVOID) VulkanHooks::OriginalSwapchainFunction(pszFunc);
+
+        if (deviceFunc == nullptr || *ppvFunc == deviceFunc)
+            return TRUE;
+
+        DWORD oldProtect = 0;
+        if (!VirtualProtect(ppvFunc, sizeof(PVOID), PAGE_READWRITE, &oldProtect))
+        {
+            LOG_WARN("Can't redirect FFX's {}", pszFunc);
+            return TRUE;
+        }
+
+        *ppvFunc = deviceFunc;
+        VirtualProtect(ppvFunc, sizeof(PVOID), oldProtect, &oldProtect);
+        LOG_DEBUG("FFX's {} goes to the driver", pszFunc);
+
+        return TRUE;
+    };
+
+    DetourEnumerateImportsEx(ffxModule, nullptr, file, func);
+}
+
 // The ones FFX's getRealSwapchainCreateInfo accepts
 static size_t SwapchainExtensionSize(VkStructureType type)
 {
@@ -200,6 +240,8 @@ bool FSRFG_Vk::CreateSwapchain(VkDevice device, const VkSwapchainCreateInfoKHR* 
     desc.asyncComputeQueue = queueInfo(asyncQueue);
     desc.presentQueue = queueInfo(presentQueue);
     desc.imageAcquireQueue = queueInfo(acquireQueue);
+
+    BypassOverlayHooks(FfxApiProxy::VkModule());
 
     auto result = FfxApiProxy::VULKAN_CreateContext()(&_swapChainContext, &desc.header, nullptr);
     LOG_INFO("Swapchain context creation result: {}", FfxApiProxy::ReturnCodeToString(result));
