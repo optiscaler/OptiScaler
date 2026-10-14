@@ -3411,7 +3411,63 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
     }
 }
 
-static void DrawSliderStepMarks(const ImVec2& framePos, float frameWidth, float frameHeight, int stepCount);
+// Draws a line wherever an integer slider switches to the next step, so it's visible where to click
+static void DrawSliderStepMarks(const ImVec2& framePos, float frameWidth, float frameHeight, int stepCount)
+{
+    if (stepCount < 2)
+        return;
+
+    constexpr float grabPadding = 2.0f; // Hardcoded in ImGui as well
+    const float sliderSize = frameWidth - grabPadding * 2.0f;
+    const float grabSize =
+        std::min(std::max(sliderSize / (float) stepCount, ImGui::GetStyle().GrabMinSize), sliderSize);
+    const float firstGrabCenter = framePos.x + grabPadding + grabSize * 0.5f;
+    const float grabTravel = (sliderSize - grabSize) / (float) (stepCount - 1);
+    const float inset = frameHeight * 0.2f;
+    const ImU32 color = ImGui::GetColorU32(ImGuiCol_Text, 0.35f);
+    auto drawList = ImGui::GetWindowDrawList();
+
+    for (int step = 1; step < stepCount; step++)
+    {
+        // Snapped to the pixel grid to keep the 1 px line sharp, AddLine already centers it on the pixel
+        const float x = std::floor(firstGrabCenter + grabTravel * ((float) step - 0.5f));
+        drawList->AddLine(ImVec2(x, framePos.y + inset), ImVec2(x, framePos.y + frameHeight - inset), color);
+    }
+}
+
+// Integer slider over [0, stepCount) with step marks and stepName(step) as the shown text
+// Clicking a step applies it right away, while dragging only applies the step it's released on,
+// so switching e.g. from Off to 4X doesn't go through every mode in between
+// Returns true when step got changed
+static bool RenderStepSlider(const char* label, int& step, int stepCount,
+                             const std::function<std::string(int)>& stepName)
+{
+    // Step under the grab during a drag, -1 when not dragging
+    auto storage = ImGui::GetStateStorage();
+    const ImGuiID id = ImGui::GetID(label);
+    const int draggedStep = storage->GetInt(id, -1);
+    int shownStep = draggedStep >= 0 ? draggedStep : step;
+
+    const ImVec2 sliderPos = ImGui::GetCursorScreenPos();
+    const float sliderWidth = ImGui::CalcItemWidth();
+    const float sliderHeight = ImGui::GetFrameHeight();
+    ImGui::SliderInt(label, &shownStep, 0, stepCount - 1, stepName(shownStep).c_str(), ImGuiSliderFlags_NoInput);
+    DrawSliderStepMarks(sliderPos, sliderWidth, sliderHeight, stepCount);
+
+    // The click itself moves the grab on the activation frame, that's the only change applied immediately
+    const bool apply = (ImGui::IsItemActivated() || ImGui::IsItemDeactivated()) && shownStep != step;
+
+    if (ImGui::IsItemActive())
+        storage->SetInt(id, shownStep);
+    else if (draggedStep >= 0)
+        storage->SetInt(id, -1);
+
+    if (!apply)
+        return false;
+
+    step = shownStep;
+    return true;
+}
 
 // Slider for overriding the game's FG ratio: Off, Default (no override), 2X, 3X... up to maxInterpolationCount
 static bool RenderRatioOverrideSlider(const char* label, CustomOptional<int, NoDefault>& setting,
@@ -3422,15 +3478,12 @@ static bool RenderRatioOverrideSlider(const char* label, CustomOptional<int, NoD
     if (setting.has_value())
         index = setting.value() == 0 ? 0 : std::min(setting.value(), maxInterpolationCount) + 1;
 
-    const std::string preview = index == 0 ? "Off" : index == 1 ? "Default" : std::format("{}X", index);
+    auto stepName = [](int step) -> std::string
+    {
+        return step == 0 ? "Off" : step == 1 ? "Default" : std::format("{}X", step);
+    };
 
-    const ImVec2 sliderPos = ImGui::GetCursorScreenPos();
-    const float sliderWidth = ImGui::CalcItemWidth();
-    const float sliderHeight = ImGui::GetFrameHeight();
-    const bool changed =
-        ImGui::SliderInt(label, &index, 0, maxInterpolationCount + 1, preview.c_str(), ImGuiSliderFlags_NoInput);
-    DrawSliderStepMarks(sliderPos, sliderWidth, sliderHeight, maxInterpolationCount + 2);
-    if (!changed)
+    if (!RenderStepSlider(label, index, maxInterpolationCount + 2, stepName))
         return false;
 
     if (index == 1)
@@ -3979,28 +4032,6 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     }
 }
 
-// Draws a line wherever an integer slider switches to the next step, so it's visible where to click
-static void DrawSliderStepMarks(const ImVec2& framePos, float frameWidth, float frameHeight, int stepCount)
-{
-    if (stepCount < 2)
-        return;
-    constexpr float grabPadding = 2.0f; // Hardcoded in ImGui as well
-    const float sliderSize = frameWidth - grabPadding * 2.0f;
-    const float grabSize =
-        std::min(std::max(sliderSize / (float) stepCount, ImGui::GetStyle().GrabMinSize), sliderSize);
-    const float firstGrabCenter = framePos.x + grabPadding + grabSize * 0.5f;
-    const float grabTravel = (sliderSize - grabSize) / (float) (stepCount - 1);
-    const float inset = frameHeight * 0.2f;
-    const ImU32 color = ImGui::GetColorU32(ImGuiCol_Text, 0.35f);
-    auto drawList = ImGui::GetWindowDrawList();
-    for (int step = 1; step < stepCount; step++)
-    {
-        // Snapped to the pixel grid to keep the 1 px line sharp, AddLine already centers it on the pixel
-        const float x = std::floor(firstGrabCenter + grabTravel * ((float) step - 0.5f));
-        drawList->AddLine(ImVec2(x, framePos.y + inset), ImVec2(x, framePos.y + frameHeight - inset), color);
-    }
-}
-
 // Replaces the Active checkbox + MFG combo of FG outputs with a single slider
 // maxInterpolationCount of 0 means the output doesn't generate frames, "On" is shown instead of "2X"
 void MenuCommon::RenderFGModeSlider(RenderMenuContext& ctx, const char* label, int maxInterpolationCount,
@@ -4044,23 +4075,20 @@ void MenuCommon::RenderFGModeSlider(RenderMenuContext& ctx, const char* label, i
     if (index >= (int) modes.size())
         index = 0;
 
-    std::string preview = modeName(current);
-    if (current < 0)
+    auto stepName = [&](int step) -> std::string
     {
+        const int mode = modes[step];
+        if (mode >= 0)
+            return modeName(mode);
+
         const int gameMode =
             state.dlssgInputGameEnabled ? std::min(state.dlssgInputGameInterpolationCount, maxMode) : 0;
-        preview += std::format(" ({})", modeName(gameMode));
-    }
+        return std::format("{} ({})", modeName(mode), modeName(gameMode));
+    };
 
     ImGui::PushItemWidth(150.0f * ctx.menuResScale);
 
-    // Where the slider frame is going to be, used for the step lines
-    const ImVec2 sliderPos = ImGui::GetCursorScreenPos();
-    const float sliderWidth = ImGui::CalcItemWidth();
-    const float sliderHeight = ImGui::GetFrameHeight();
-
-    if (ImGui::SliderInt(label, &index, 0, (int) modes.size() - 1, preview.c_str(), ImGuiSliderFlags_NoInput) &&
-        modes[index] != current)
+    if (RenderStepSlider(label, index, (int) modes.size(), stepName) && modes[index] != current)
     {
         const int mode = modes[index];
         fgHotkeyLeftDefault = false;
@@ -4082,8 +4110,6 @@ void MenuCommon::RenderFGModeSlider(RenderMenuContext& ctx, const char* label, i
         if (config->IsFGEnabled())
             state.fgChanged = true;
     }
-
-    DrawSliderStepMarks(sliderPos, sliderWidth, sliderHeight, (int) modes.size());
 
     ImGui::PopItemWidth();
 
