@@ -786,6 +786,12 @@ class Config
     bool SaveIni();
     bool SaveXeFG();
 
+    // Keys that aren't OptiScaler options (plugin settings), kept in the ini as they are
+    std::optional<std::string> GetRawValue(const char* section, const char* key);
+    void SetRawValue(const char* section, const char* key, const char* value);
+    void DeleteRawValue(const char* section, const char* key);
+    bool SaveRawValues();
+
     void CheckUpscalerFiles();
 
     // FG on/off and interpolation count, following the game's DLSSG state when FGEnabled is unset
