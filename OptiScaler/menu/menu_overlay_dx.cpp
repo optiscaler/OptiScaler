@@ -38,6 +38,12 @@ static ID3D12Resource* g_mainRenderTargetResource[NUM_BACK_BUFFERS] = {};
 static D3D12_CPU_DESCRIPTOR_HANDLE g_mainRenderTargetDescriptor[NUM_BACK_BUFFERS] = {};
 static std::unique_ptr<MenuBlur_Dx12> g_menuBlur;
 
+// Tracks GPU completion of menu command lists so an allocator is never reset while still executing
+static ID3D12Fence* g_menuFence = nullptr;
+static HANDLE g_menuFenceEvent = nullptr;
+static UINT64 g_menuFenceValue = 0;
+static UINT64 g_allocatorFenceValues[NUM_BACK_BUFFERS] = {};
+
 // current command queue for dx12 swapchain
 static IUnknown* currentSCCommandQueue = nullptr;
 
@@ -154,6 +160,17 @@ static void CleanupRenderTargetDx12(bool clearQueue)
         }
 
         SAFE_RELEASE(g_pd3dCommandList);
+
+        SAFE_RELEASE(g_menuFence);
+
+        if (g_menuFenceEvent != nullptr)
+        {
+            CloseHandle(g_menuFenceEvent);
+            g_menuFenceEvent = nullptr;
+        }
+
+        g_menuFenceValue = 0;
+        memset(g_allocatorFenceValues, 0, sizeof(g_allocatorFenceValues));
 
         if (g_pd3dCommandQueue != nullptr)
             g_pd3dCommandQueue = nullptr;
@@ -430,6 +447,21 @@ static void RenderImGui_DX12(IDXGISwapChain* pSwapChainPlain)
             return;
         }
 
+        result = device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&g_menuFence));
+        g_menuFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+        if (result != S_OK || g_menuFenceEvent == nullptr)
+        {
+            LOG_ERROR("CreateFence: {0:X}, event: {1:X}", (unsigned long) result, (size_t) g_menuFenceEvent);
+            MenuOverlayBase::HideMenu();
+            CleanupRenderTargetDx12(true);
+            pSwapChain->Release();
+            return;
+        }
+
+        g_menuFence->SetName(L"MenuFence");
+        g_menuFenceValue = 0;
+        memset(g_allocatorFenceValues, 0, sizeof(g_allocatorFenceValues));
+
         DXGI_SWAP_CHAIN_DESC scDesc;
         pSwapChain->GetDesc(&scDesc);
 
@@ -494,6 +526,23 @@ static void RenderImGui_DX12(IDXGISwapChain* pSwapChainPlain)
                 const bool blurMenu = blurReady && MenuCommon::BackgroundBlurUsed();
                 ID3D12CommandAllocator* commandAllocator = g_commandAllocators[backBufferIdx];
 
+                // Previous command list recorded with this allocator might still be executing
+                const UINT64 waitValue = g_allocatorFenceValues[backBufferIdx];
+                if (g_menuFence != nullptr && g_menuFence->GetCompletedValue() < waitValue)
+                {
+                    DWORD waitResult = WAIT_FAILED;
+
+                    if (g_menuFence->SetEventOnCompletion(waitValue, g_menuFenceEvent) == S_OK)
+                        waitResult = WaitForSingleObject(g_menuFenceEvent, 2000);
+
+                    if (waitResult != WAIT_OBJECT_0)
+                    {
+                        LOG_ERROR("Menu fence wait failed: {:X}", waitResult);
+                        pSwapChain->Release();
+                        return;
+                    }
+                }
+
                 auto result = commandAllocator->Reset();
                 if (result != S_OK)
                 {
@@ -551,6 +600,16 @@ static void RenderImGui_DX12(IDXGISwapChain* pSwapChainPlain)
 
                 ID3D12CommandList* ppCommandLists[] = { g_pd3dCommandList };
                 ((ID3D12CommandQueue*) currentSCCommandQueue)->ExecuteCommandLists(1, ppCommandLists);
+
+                if (g_menuFence != nullptr)
+                {
+                    result = ((ID3D12CommandQueue*) currentSCCommandQueue)->Signal(g_menuFence, ++g_menuFenceValue);
+
+                    if (result == S_OK)
+                        g_allocatorFenceValues[backBufferIdx] = g_menuFenceValue;
+                    else
+                        LOG_ERROR("Menu fence Signal: {:X}", (unsigned long) result);
+                }
             }
         }
         else
