@@ -443,7 +443,7 @@ class NVNGXProxy
             _module.dll = nvngxModule;
         }
 
-        std::vector<std::wstring> dllNames = { L"_nvngx.dll", L"nvngx.dll" };
+        std::vector<std::wstring> dllNames = { L"dlss-enabler-ngx.dll", L"_nvngx.dll", L"nvngx.dll" };
 
         auto optiPath = Config::Instance()->MainDllPath.value();
         auto overridePath = Config::Instance()->NvngxPath.value_or(L"");
