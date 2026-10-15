@@ -4577,6 +4577,71 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         RenderFGModeSlider(ctx, "Frame Gen##xefg", fgOutput->GetMaxInterpolationCount(),
                            &config->FGXeFGInterpolationCount);
 
+        // Dynamic MFG: the Frame Gen setting is the most, the multiplier follows the game's frame rate
+        if (fgOutput->GetMaxInterpolationCount() > 1)
+        {
+            ImGui::SameLine(0.0f, 16.0f);
+
+            if (bool dynamicMFG = config->FGXeFGDynamicMFG.value_or_default();
+                ImGui::Checkbox("Dynamic MFG##xefg", &dynamicMFG))
+            {
+                config->FGXeFGDynamicMFG = dynamicMFG;
+            }
+
+            ShowTooltip("Picks the multiplier every frame, up to the Frame Gen setting,\n"
+                        "the lowest that reaches the target. It can go above the target,\n"
+                        "only the FPS limit or V-Sync caps the presented frame rate.\n"
+                        "When the target can't be reached, a higher multiplier is kept\n"
+                        "only if it raises the frame rate enough: each generated frame\n"
+                        "costs GPU time.");
+
+            ImGui::BeginDisabled(!config->FGXeFGDynamicMFG.value_or_default());
+            static float xefgFpsTarget = config->FGXeFGFramerateTargetDMFG.value_or_default();
+            const float fpsSliderMax = (float) std::max(200, refreshRate);
+            ImGui::SliderFloat("DMFG FPS Target##xefg", &xefgFpsTarget, 0, fpsSliderMax, "%.0f");
+
+            ShowTooltip("0 means OptiScaler's FPS limit, or without one just under the display\n"
+                        "refresh rate (116 at 120 Hz). A target above the FPS limit uses the limit.");
+
+            if (ImGui::Button("Apply Target##xefg"))
+                config->FGXeFGFramerateTargetDMFG = xefgFpsTarget;
+
+            ImGui::SameLine(0.0f, 16.0f);
+
+            if (ImGui::Button("Reset Target##xefg"))
+            {
+                xefgFpsTarget = 0.0f;
+                config->FGXeFGFramerateTargetDMFG.reset();
+            }
+
+            const char* roundings[] = { "Down", "Nearest", "Up" };
+            int rounding = std::clamp(config->FGXeFGRoundingDMFG.value_or_default(), 0, 2);
+
+            ImGui::SetNextItemWidth(150.0f * menuResScale);
+            if (ImGui::Combo("DMFG Rounding##xefg", &rounding, roundings, IM_ARRAYSIZE(roundings)))
+                config->FGXeFGRoundingDMFG = rounding;
+
+            ShowTooltip("How the multiplier the target asks for (target / real frame rate) is rounded.\n"
+                        "It changes only when clearly off, so the frame rate can sit under the target.\n"
+                        "Down: stays under the target (2X from 61% of it).\n"
+                        "Nearest: around the target (2X from 71%, 6X from 88%).\n"
+                        "Up: reaches the target (2X from 87%, 6X from 95%).");
+
+            ImGui::SameLine(0.0f, 16.0f);
+
+            if (bool allow1X = config->FGXeFGDynamicAllow1X.value_or_default();
+                ImGui::Checkbox("Allow 1X##xefg", &allow1X))
+            {
+                config->FGXeFGDynamicAllow1X = allow1X;
+            }
+
+            ShowTooltip("Lets Dynamic MFG turn frame generation off (1X) when the game alone\n"
+                        "is close enough to the target (to nearest: from 56% of it).\n"
+                        "Turning it back on shows one real frame without generated frames.");
+
+            ImGui::EndDisabled();
+        }
+
         bool fgDV = config->FGXeFGDebugView.value_or_default();
         if (ImGui::Checkbox("Debug View##2", &fgDV))
         {

@@ -374,6 +374,8 @@ class State
     std::vector<DetailedGpuTime> detailedGpuTimes;
     double lastFGFrameTime = 0.0;
     double presentFrameTime = 0.0;
+    // Time the game's last present to the FG swapchain took, with the FPS limiter's sleep (V-Sync, a full queue)
+    double lastFGPresentMs = 0.0;
     std::mutex frameTimeMutex;
 
     // Opti checking if everything is setup correctly on game launch

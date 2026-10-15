@@ -614,9 +614,15 @@ InputResult InputCommon::sleep(const InputContext& inputContext, IUnknown* pDevi
     presents_without_input = 0;
 
     if (auto current_tech = currently_active_tech.load())
+    {
+        const auto start = std::chrono::steady_clock::now();
         current_tech->sleep(frame_id);
+        last_sleep_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    }
     else
+    {
         return InputResult::NoReadyOutput;
+    }
 
     return InputResult::Ok;
 }
