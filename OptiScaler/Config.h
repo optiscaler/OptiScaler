@@ -285,7 +285,7 @@ class Config
 
     // Menu
     CustomOptional<float, NoDefault> MenuScale;
-    CustomOptional<bool> OverlayMenu { true };
+    CustomOptional<bool, SoftDefault> OverlayMenu { true };
     CustomOptional<int> ShortcutKey { VK_INSERT };
     CustomOptional<bool> ExtendedLimits { false };
     CustomOptional<bool> ShowFps { false };
@@ -317,7 +317,7 @@ class Config
     // Hooks
     CustomOptional<bool> HookOriginalNvngxOnly { false };
     CustomOptional<bool> EarlyHooking { false };
-    CustomOptional<bool> UseNtdllHooks { true };
+    CustomOptional<bool, SoftDefault> UseNtdllHooks { true };
 
     // Upscale Ratio Override
     CustomOptional<bool> UpscaleRatioOverrideEnabled { false };
@@ -350,7 +350,7 @@ class Config
     // Hotfixes
     CustomOptional<bool> CheckForUpdate { true };
     CustomOptional<bool, SoftDefault> DisableOverlays { false };
-    CustomOptional<bool> ManualInputPolling { false };
+    CustomOptional<bool, SoftDefault> ManualInputPolling { false };
 
     CustomOptional<bool> SimulateWaitableObject { false };
 
@@ -385,7 +385,7 @@ class Config
     CustomOptional<int32_t, NoDefault> MaskResourceBarrier;     // disabled by default
     CustomOptional<int32_t, NoDefault> OutputResourceBarrier;   // disabled by default
 
-    CustomOptional<bool> CreateD3D12DeviceForLuma { false };
+    CustomOptional<bool, SoftDefault> CreateD3D12DeviceForLuma { false };
 
     // Upscalers
     CustomOptional<std::string, SoftDefault> Dx11Upscaler { "fsr22" };
@@ -445,11 +445,11 @@ class Config
     // Spoofing
     CustomOptional<bool, SoftDefault> DxgiSpoofing { true };
     CustomOptional<bool> DxgiFactoryWrapping { false };
-    CustomOptional<bool> StreamlineSpoofing { true };
+    CustomOptional<bool, SoftDefault> StreamlineSpoofing { true };
     CustomOptional<std::string, NoDefault> DxgiBlacklist; // disabled by default
     CustomOptional<int, NoDefault> DxgiVRAM;              // disabled by default
-    CustomOptional<bool> VulkanSpoofing { false };
-    CustomOptional<bool> VulkanExtensionSpoofing { false };
+    CustomOptional<bool, SoftDefault> VulkanSpoofing { false };
+    CustomOptional<bool, SoftDefault> VulkanExtensionSpoofing { false };
     CustomOptional<int, NoDefault> VulkanVRAM; // disabled by default
     CustomOptional<bool> SpoofHAGS { false };
     CustomOptional<bool> SpoofFeatureLevel { false };
@@ -504,7 +504,7 @@ class Config
     CustomOptional<int, NoDefault> FGRectHeight;
 
     // OptiFG - Hudfix
-    CustomOptional<bool> FGDisableHUDFix { false };
+    CustomOptional<bool, SoftDefault> FGDisableHUDFix { false };
     CustomOptional<bool> FGHUDFix { false };
     CustomOptional<int> FGHUDLimit { 1 };
     CustomOptional<bool> FGHUDFixExtended { false };
@@ -555,7 +555,7 @@ class Config
     CustomOptional<bool> FGXeFGJitteredMV { false };
     CustomOptional<bool> FGXeFGHighResMV { false };
     CustomOptional<bool> FGXeFGDebugView { false };
-    CustomOptional<bool> FGXeFGForceBorderless { false };
+    CustomOptional<bool, SoftDefault> FGXeFGForceBorderless { false };
 
     // fakenvapi
     CustomOptional<bool> FN_EnableLogs { true };
@@ -567,17 +567,17 @@ class Config
     // Inputs
     CustomOptional<bool> EnableDlssInputs { true };
     CustomOptional<bool> EnableXeSSInputs { true };
-    CustomOptional<bool> UseFsr2Inputs { true };
-    CustomOptional<bool> UseFsr2Dx11Inputs { false };
-    CustomOptional<bool> UseFsr2VulkanInputs { false };
-    CustomOptional<bool> Fsr2Pattern { false };
-    CustomOptional<bool> UseFsr3Inputs { true };
-    CustomOptional<bool> Fsr3Pattern { false };
-    CustomOptional<bool> UseFfxInputs { true };
+    CustomOptional<bool, SoftDefault> UseFsr2Inputs { true };
+    CustomOptional<bool, SoftDefault> UseFsr2Dx11Inputs { false };
+    CustomOptional<bool, SoftDefault> UseFsr2VulkanInputs { false };
+    CustomOptional<bool, SoftDefault> Fsr2Pattern { false };
+    CustomOptional<bool, SoftDefault> UseFsr3Inputs { true };
+    CustomOptional<bool, SoftDefault> Fsr3Pattern { false };
+    CustomOptional<bool, SoftDefault> UseFfxInputs { true };
     CustomOptional<bool> EnableHotSwapping { false };
-    CustomOptional<bool> EnableFsr2Inputs { true };
-    CustomOptional<bool> EnableFsr3Inputs { true };
-    CustomOptional<bool> EnableFfxInputs { true };
+    CustomOptional<bool, SoftDefault> EnableFsr2Inputs { true };
+    CustomOptional<bool, SoftDefault> EnableFsr3Inputs { true };
+    CustomOptional<bool, SoftDefault> EnableFfxInputs { true };
 
     // Framerate
     CustomOptional<float> FramerateLimit { 0.0f };
@@ -588,7 +588,7 @@ class Config
     CustomOptional<bool> SkipColorSpace { false };
 
     // V-Sync
-    CustomOptional<bool> OverrideVsync { false };
+    CustomOptional<bool, SoftDefault> OverrideVsync { false };
     CustomOptional<bool, NoDefault> ForceVsync;
     CustomOptional<UINT> VsyncInterval { 0 };
 
