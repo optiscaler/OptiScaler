@@ -184,6 +184,17 @@ bool Config::Reload(std::filesystem::path iniPath)
             if (FGXeFGInterpolationCount.has_value() && FGXeFGInterpolationCount.value() < 1)
                 FGXeFGInterpolationCount.reset();
 
+            FGXeFGDynamicMFG.set_from_config(readBool("XeFG", "DynamicMFG"));
+            FGXeFGFramerateTargetDMFG.set_from_config(readFloat("XeFG", "FramerateTargetDMFG"));
+            if (FGXeFGFramerateTargetDMFG.has_value() && FGXeFGFramerateTargetDMFG.value() < 0.0f)
+                FGXeFGFramerateTargetDMFG.reset();
+
+            FGXeFGRoundingDMFG.set_from_config(readInt("XeFG", "RoundingDMFG"));
+            if (FGXeFGRoundingDMFG.has_value() && (FGXeFGRoundingDMFG.value() < 0 || FGXeFGRoundingDMFG.value() > 2))
+                FGXeFGRoundingDMFG.reset();
+
+            FGXeFGDynamicAllow1X.set_from_config(readBool("XeFG", "DynamicAllow1X"));
+
             FGXeFGOverrideInterpolationCount.set_from_config(readInt("XeFG", "OverrideInterpolationCount"));
             if (FGXeFGOverrideInterpolationCount.has_value() &&
                 (FGXeFGOverrideInterpolationCount.value() < 0 || FGXeFGOverrideInterpolationCount.value() > 5))
@@ -978,6 +989,12 @@ bool Config::SaveIni()
     {
         ini.SetValue("XeFG", "InterpolationCount",
                      GetIntValue(Instance()->FGXeFGInterpolationCount.value_for_config()).c_str());
+        ini.SetValue("XeFG", "DynamicMFG", GetBoolValue(Instance()->FGXeFGDynamicMFG.value_for_config()).c_str());
+        ini.SetValue("XeFG", "FramerateTargetDMFG",
+                     GetFloatValue(Instance()->FGXeFGFramerateTargetDMFG.value_for_config()).c_str());
+        ini.SetValue("XeFG", "RoundingDMFG", GetIntValue(Instance()->FGXeFGRoundingDMFG.value_for_config()).c_str());
+        ini.SetValue("XeFG", "DynamicAllow1X",
+                     GetBoolValue(Instance()->FGXeFGDynamicAllow1X.value_for_config()).c_str());
         ini.SetValue("XeFG", "OverrideInterpolationCount",
                      GetIntValue(Instance()->FGXeFGOverrideInterpolationCount.value_for_config()).c_str());
         ini.SetValue("XeFG", "IgnoreInitChecks",
