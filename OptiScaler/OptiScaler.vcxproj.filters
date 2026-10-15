@@ -431,6 +431,9 @@
     <ClInclude Include="hudfix\Hudfix_Dx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="hudfix\Hudfix_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="resource_tracking\ResTrack_dx11.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1043,6 +1046,9 @@
     <ClInclude Include="shaders\hudless_compare_compute\HCC_Vk.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="shaders\ui_unblend\UiUnblend_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="shaders\hud_copy\precompile\HudCopy_Shader_Vk.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1314,6 +1320,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="hudfix\Hudfix_Dx12.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hudfix\Hudfix_Vk.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="resource_tracking\ResTrack_dx11.cpp">

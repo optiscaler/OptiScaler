@@ -6,7 +6,7 @@
 #include <magic_enum.hpp>
 #include <bit>
 
-static VkFormat WithoutSrgb(VkFormat format)
+VkFormat IFGFeature_Vk::WithoutSrgb(VkFormat format)
 {
     switch (format)
     {
@@ -373,6 +373,29 @@ bool IFGFeature_Vk::SetResource(VkFGResource* inputResource)
 
     LOG_TRACE("_frameResources[{}][{}]: {:X}", fIndex, magic_enum::enum_name(type), (size_t) resource.image);
     return true;
+}
+
+void IFGFeature_Vk::RemoveUiFromHudless(VkCommandBuffer cmdBuffer, bool premultiplied)
+{
+    auto hudless = GetResource(FG_ResourceType::HudlessColor);
+    auto ui = GetResource(FG_ResourceType::UIColor);
+
+    if (!hudless || !ui || hudless->view == VK_NULL_HANDLE || ui->view == VK_NULL_HANDLE)
+        return;
+
+    if (_uiUnblend == nullptr)
+        _uiUnblend = std::make_unique<UiUnblend_Vk>("UiUnblend", _device, _physicalDevice);
+
+    if (!_uiUnblend->IsInit())
+        return;
+
+    auto imageInfo = [](const VkFGResource& resource) -> VkImageInfo
+    {
+        return { resource.view,   resource.image,      { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 },
+                 resource.format, resource.imageWidth, resource.imageHeight };
+    };
+
+    _uiUnblend->Dispatch(cmdBuffer, imageInfo(*ui), ui->layout, imageInfo(*hudless), hudless->layout, premultiplied);
 }
 
 std::optional<VkFGResource> IFGFeature_Vk::GetResource(FG_ResourceType type, int index)

@@ -230,6 +230,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="shaders\reproject\mouseInputs\InputCollection.h" />
     <ClInclude Include="shaders\hud_copy\HudCopy_Vk.h" />
     <ClInclude Include="shaders\hudless_compare_compute\HCC_Vk.h" />
+    <ClInclude Include="shaders\ui_unblend\UiUnblend_Vk.h" />
     <ClInclude Include="inputs\FG\Streamline_Inputs_Sl1_Dx12.h" />
     <ClInclude Include="include\device_info\device_info.hpp" />
     <ClInclude Include="inputs\FG\Upscaler_Inputs_Dx11wDx12.h" />
@@ -370,6 +371,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="hooks\Wintrust_Hooks.h" />
     <ClInclude Include="hudfix\Hudfix_Dx11.h" />
     <ClInclude Include="hudfix\Hudfix_Dx12.h" />
+    <ClInclude Include="hudfix\Hudfix_Vk.h" />
     <ClInclude Include="include\imgui\imgui_impl_dx11.h" />
     <ClInclude Include="include\imgui\imgui_impl_dx12.h" />
     <ClInclude Include="include\imgui\imgui_impl_uwp.h" />
@@ -645,6 +647,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="hooks\Streamline_Hooks.cpp" />
     <ClCompile Include="hudfix\Hudfix_Dx11.cpp" />
     <ClCompile Include="hudfix\Hudfix_Dx12.cpp" />
+    <ClCompile Include="hudfix\Hudfix_Vk.cpp" />
     <ClCompile Include="include\imgui\imgui_impl_dx11.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='ReleaseDebug|x64'">NotUsing</PrecompiledHeader>

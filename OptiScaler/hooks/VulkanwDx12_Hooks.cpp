@@ -1,5 +1,7 @@
 #include <pch.h>
 
+#include <unordered_set>
+
 #include "VulkanwDx12_Hooks.h"
 
 #include <State.h>
@@ -6671,6 +6673,19 @@ VkResult Vulkan_wDx12::hk_vkResetCommandPool(VkDevice device, VkCommandPool comm
     return o_vkResetCommandPool(device, commandPool, flags);
 }
 
+// vulkan-1.dll exports Hook detours to the same hooks GetAddress hands out
+static std::unordered_set<PFN_vkVoidFunction> _detouredExports;
+
+static FARPROC DetouredExport(HMODULE module, const char* name)
+{
+    auto address = GetProcAddress(module, name);
+
+    if (address != nullptr)
+        _detouredExports.insert((PFN_vkVoidFunction) address);
+
+    return address;
+}
+
 PFN_vkVoidFunction Vulkan_wDx12::GetDeviceProcAddr(const PFN_vkVoidFunction original, const char* pName)
 {
     if (State::Instance().creatingD3DDevice)
@@ -6693,6 +6708,11 @@ PFN_vkVoidFunction Vulkan_wDx12::GetAddress(const PFN_vkVoidFunction original, c
 {
     if (original == nullptr || pName == nullptr)
         return VK_NULL_HANDLE;
+
+    // A detoured export already leads to our hook. Under Wine the exports are the driver's own functions, which
+    // HUDFix detours too, handing out our hook instead would skip past its detour.
+    if (_detouredExports.contains(original))
+        return original;
 
     auto procName = std::string(pName);
 
@@ -9236,407 +9256,407 @@ void Vulkan_wDx12::Hook(HMODULE vulkanModule)
     if (State::Instance().creatingD3DDevice)
         return;
 
-    o_vkQueueSubmit = (PFN_vkQueueSubmit) GetProcAddress(vulkanModule, "vkQueueSubmit");
-    o_vkQueueSubmit2 = (PFN_vkQueueSubmit2) GetProcAddress(vulkanModule, "vkQueueSubmit2");
-    o_vkQueueSubmit2KHR = (PFN_vkQueueSubmit2KHR) GetProcAddress(vulkanModule, "vkQueueSubmit2KHR");
-    o_vkBeginCommandBuffer = (PFN_vkBeginCommandBuffer) GetProcAddress(vulkanModule, "vkBeginCommandBuffer");
-    o_vkEndCommandBuffer = (PFN_vkEndCommandBuffer) GetProcAddress(vulkanModule, "vkEndCommandBuffer");
-    o_vkResetCommandBuffer = (PFN_vkResetCommandBuffer) GetProcAddress(vulkanModule, "vkResetCommandBuffer");
-    o_vkFreeCommandBuffers = (PFN_vkFreeCommandBuffers) GetProcAddress(vulkanModule, "vkFreeCommandBuffers");
-    o_vkResetCommandPool = (PFN_vkResetCommandPool) GetProcAddress(vulkanModule, "vkResetCommandPool");
-    o_vkCmdExecuteCommands = (PFN_vkCmdExecuteCommands) GetProcAddress(vulkanModule, "vkCmdExecuteCommands");
+    o_vkQueueSubmit = (PFN_vkQueueSubmit) DetouredExport(vulkanModule, "vkQueueSubmit");
+    o_vkQueueSubmit2 = (PFN_vkQueueSubmit2) DetouredExport(vulkanModule, "vkQueueSubmit2");
+    o_vkQueueSubmit2KHR = (PFN_vkQueueSubmit2KHR) DetouredExport(vulkanModule, "vkQueueSubmit2KHR");
+    o_vkBeginCommandBuffer = (PFN_vkBeginCommandBuffer) DetouredExport(vulkanModule, "vkBeginCommandBuffer");
+    o_vkEndCommandBuffer = (PFN_vkEndCommandBuffer) DetouredExport(vulkanModule, "vkEndCommandBuffer");
+    o_vkResetCommandBuffer = (PFN_vkResetCommandBuffer) DetouredExport(vulkanModule, "vkResetCommandBuffer");
+    o_vkFreeCommandBuffers = (PFN_vkFreeCommandBuffers) DetouredExport(vulkanModule, "vkFreeCommandBuffers");
+    o_vkResetCommandPool = (PFN_vkResetCommandPool) DetouredExport(vulkanModule, "vkResetCommandPool");
+    o_vkCmdExecuteCommands = (PFN_vkCmdExecuteCommands) DetouredExport(vulkanModule, "vkCmdExecuteCommands");
     o_vkAllocateCommandBuffers =
-        (PFN_vkAllocateCommandBuffers) GetProcAddress(vulkanModule, "vkAllocateCommandBuffers");
-    o_vkDestroyCommandPool = (PFN_vkDestroyCommandPool) GetProcAddress(vulkanModule, "vkDestroyCommandPool");
-    o_vkCreateCommandPool = (PFN_vkCreateCommandPool) GetProcAddress(vulkanModule, "vkCreateCommandPool");
+        (PFN_vkAllocateCommandBuffers) DetouredExport(vulkanModule, "vkAllocateCommandBuffers");
+    o_vkDestroyCommandPool = (PFN_vkDestroyCommandPool) DetouredExport(vulkanModule, "vkDestroyCommandPool");
+    o_vkCreateCommandPool = (PFN_vkCreateCommandPool) DetouredExport(vulkanModule, "vkCreateCommandPool");
 
 #pragma region vkCmd functions
 
-    o_vkCmdBindPipeline = (PFN_vkCmdBindPipeline) GetProcAddress(vulkanModule, "vkCmdBindPipeline");
-    o_vkCmdSetViewport = (PFN_vkCmdSetViewport) GetProcAddress(vulkanModule, "vkCmdSetViewport");
-    o_vkCmdSetScissor = (PFN_vkCmdSetScissor) GetProcAddress(vulkanModule, "vkCmdSetScissor");
-    o_vkCmdSetLineWidth = (PFN_vkCmdSetLineWidth) GetProcAddress(vulkanModule, "vkCmdSetLineWidth");
-    o_vkCmdSetDepthBias = (PFN_vkCmdSetDepthBias) GetProcAddress(vulkanModule, "vkCmdSetDepthBias");
-    o_vkCmdSetBlendConstants = (PFN_vkCmdSetBlendConstants) GetProcAddress(vulkanModule, "vkCmdSetBlendConstants");
-    o_vkCmdSetDepthBounds = (PFN_vkCmdSetDepthBounds) GetProcAddress(vulkanModule, "vkCmdSetDepthBounds");
+    o_vkCmdBindPipeline = (PFN_vkCmdBindPipeline) DetouredExport(vulkanModule, "vkCmdBindPipeline");
+    o_vkCmdSetViewport = (PFN_vkCmdSetViewport) DetouredExport(vulkanModule, "vkCmdSetViewport");
+    o_vkCmdSetScissor = (PFN_vkCmdSetScissor) DetouredExport(vulkanModule, "vkCmdSetScissor");
+    o_vkCmdSetLineWidth = (PFN_vkCmdSetLineWidth) DetouredExport(vulkanModule, "vkCmdSetLineWidth");
+    o_vkCmdSetDepthBias = (PFN_vkCmdSetDepthBias) DetouredExport(vulkanModule, "vkCmdSetDepthBias");
+    o_vkCmdSetBlendConstants = (PFN_vkCmdSetBlendConstants) DetouredExport(vulkanModule, "vkCmdSetBlendConstants");
+    o_vkCmdSetDepthBounds = (PFN_vkCmdSetDepthBounds) DetouredExport(vulkanModule, "vkCmdSetDepthBounds");
     o_vkCmdSetStencilCompareMask =
-        (PFN_vkCmdSetStencilCompareMask) GetProcAddress(vulkanModule, "vkCmdSetStencilCompareMask");
+        (PFN_vkCmdSetStencilCompareMask) DetouredExport(vulkanModule, "vkCmdSetStencilCompareMask");
     o_vkCmdSetStencilWriteMask =
-        (PFN_vkCmdSetStencilWriteMask) GetProcAddress(vulkanModule, "vkCmdSetStencilWriteMask");
+        (PFN_vkCmdSetStencilWriteMask) DetouredExport(vulkanModule, "vkCmdSetStencilWriteMask");
     o_vkCmdSetStencilReference =
-        (PFN_vkCmdSetStencilReference) GetProcAddress(vulkanModule, "vkCmdSetStencilReference");
-    o_vkCmdBindDescriptorSets = (PFN_vkCmdBindDescriptorSets) GetProcAddress(vulkanModule, "vkCmdBindDescriptorSets");
-    o_vkCmdBindIndexBuffer = (PFN_vkCmdBindIndexBuffer) GetProcAddress(vulkanModule, "vkCmdBindIndexBuffer");
-    o_vkCmdBindVertexBuffers = (PFN_vkCmdBindVertexBuffers) GetProcAddress(vulkanModule, "vkCmdBindVertexBuffers");
-    o_vkCmdDraw = (PFN_vkCmdDraw) GetProcAddress(vulkanModule, "vkCmdDraw");
-    o_vkCmdDrawIndexed = (PFN_vkCmdDrawIndexed) GetProcAddress(vulkanModule, "vkCmdDrawIndexed");
-    o_vkCmdDrawIndirect = (PFN_vkCmdDrawIndirect) GetProcAddress(vulkanModule, "vkCmdDrawIndirect");
+        (PFN_vkCmdSetStencilReference) DetouredExport(vulkanModule, "vkCmdSetStencilReference");
+    o_vkCmdBindDescriptorSets = (PFN_vkCmdBindDescriptorSets) DetouredExport(vulkanModule, "vkCmdBindDescriptorSets");
+    o_vkCmdBindIndexBuffer = (PFN_vkCmdBindIndexBuffer) DetouredExport(vulkanModule, "vkCmdBindIndexBuffer");
+    o_vkCmdBindVertexBuffers = (PFN_vkCmdBindVertexBuffers) DetouredExport(vulkanModule, "vkCmdBindVertexBuffers");
+    o_vkCmdDraw = (PFN_vkCmdDraw) DetouredExport(vulkanModule, "vkCmdDraw");
+    o_vkCmdDrawIndexed = (PFN_vkCmdDrawIndexed) DetouredExport(vulkanModule, "vkCmdDrawIndexed");
+    o_vkCmdDrawIndirect = (PFN_vkCmdDrawIndirect) DetouredExport(vulkanModule, "vkCmdDrawIndirect");
     o_vkCmdDrawIndexedIndirect =
-        (PFN_vkCmdDrawIndexedIndirect) GetProcAddress(vulkanModule, "vkCmdDrawIndexedIndirect");
-    o_vkCmdDispatch = (PFN_vkCmdDispatch) GetProcAddress(vulkanModule, "vkCmdDispatch");
-    o_vkCmdDispatchIndirect = (PFN_vkCmdDispatchIndirect) GetProcAddress(vulkanModule, "vkCmdDispatchIndirect");
-    o_vkCmdCopyBuffer = (PFN_vkCmdCopyBuffer) GetProcAddress(vulkanModule, "vkCmdCopyBuffer");
-    o_vkCmdCopyImage = (PFN_vkCmdCopyImage) GetProcAddress(vulkanModule, "vkCmdCopyImage");
-    o_vkCmdBlitImage = (PFN_vkCmdBlitImage) GetProcAddress(vulkanModule, "vkCmdBlitImage");
-    o_vkCmdCopyBufferToImage = (PFN_vkCmdCopyBufferToImage) GetProcAddress(vulkanModule, "vkCmdCopyBufferToImage");
-    o_vkCmdCopyImageToBuffer = (PFN_vkCmdCopyImageToBuffer) GetProcAddress(vulkanModule, "vkCmdCopyImageToBuffer");
-    o_vkCmdUpdateBuffer = (PFN_vkCmdUpdateBuffer) GetProcAddress(vulkanModule, "vkCmdUpdateBuffer");
-    o_vkCmdFillBuffer = (PFN_vkCmdFillBuffer) GetProcAddress(vulkanModule, "vkCmdFillBuffer");
-    o_vkCmdClearColorImage = (PFN_vkCmdClearColorImage) GetProcAddress(vulkanModule, "vkCmdClearColorImage");
+        (PFN_vkCmdDrawIndexedIndirect) DetouredExport(vulkanModule, "vkCmdDrawIndexedIndirect");
+    o_vkCmdDispatch = (PFN_vkCmdDispatch) DetouredExport(vulkanModule, "vkCmdDispatch");
+    o_vkCmdDispatchIndirect = (PFN_vkCmdDispatchIndirect) DetouredExport(vulkanModule, "vkCmdDispatchIndirect");
+    o_vkCmdCopyBuffer = (PFN_vkCmdCopyBuffer) DetouredExport(vulkanModule, "vkCmdCopyBuffer");
+    o_vkCmdCopyImage = (PFN_vkCmdCopyImage) DetouredExport(vulkanModule, "vkCmdCopyImage");
+    o_vkCmdBlitImage = (PFN_vkCmdBlitImage) DetouredExport(vulkanModule, "vkCmdBlitImage");
+    o_vkCmdCopyBufferToImage = (PFN_vkCmdCopyBufferToImage) DetouredExport(vulkanModule, "vkCmdCopyBufferToImage");
+    o_vkCmdCopyImageToBuffer = (PFN_vkCmdCopyImageToBuffer) DetouredExport(vulkanModule, "vkCmdCopyImageToBuffer");
+    o_vkCmdUpdateBuffer = (PFN_vkCmdUpdateBuffer) DetouredExport(vulkanModule, "vkCmdUpdateBuffer");
+    o_vkCmdFillBuffer = (PFN_vkCmdFillBuffer) DetouredExport(vulkanModule, "vkCmdFillBuffer");
+    o_vkCmdClearColorImage = (PFN_vkCmdClearColorImage) DetouredExport(vulkanModule, "vkCmdClearColorImage");
     o_vkCmdClearDepthStencilImage =
-        (PFN_vkCmdClearDepthStencilImage) GetProcAddress(vulkanModule, "vkCmdClearDepthStencilImage");
-    o_vkCmdClearAttachments = (PFN_vkCmdClearAttachments) GetProcAddress(vulkanModule, "vkCmdClearAttachments");
-    o_vkCmdResolveImage = (PFN_vkCmdResolveImage) GetProcAddress(vulkanModule, "vkCmdResolveImage");
-    o_vkCmdSetEvent = (PFN_vkCmdSetEvent) GetProcAddress(vulkanModule, "vkCmdSetEvent");
-    o_vkCmdResetEvent = (PFN_vkCmdResetEvent) GetProcAddress(vulkanModule, "vkCmdResetEvent");
-    o_vkCmdWaitEvents = (PFN_vkCmdWaitEvents) GetProcAddress(vulkanModule, "vkCmdWaitEvents");
-    o_vkCmdPipelineBarrier = (PFN_vkCmdPipelineBarrier) GetProcAddress(vulkanModule, "vkCmdPipelineBarrier");
-    o_vkCmdBeginQuery = (PFN_vkCmdBeginQuery) GetProcAddress(vulkanModule, "vkCmdBeginQuery");
-    o_vkCmdEndQuery = (PFN_vkCmdEndQuery) GetProcAddress(vulkanModule, "vkCmdEndQuery");
-    o_vkCmdResetQueryPool = (PFN_vkCmdResetQueryPool) GetProcAddress(vulkanModule, "vkCmdResetQueryPool");
-    o_vkCmdWriteTimestamp = (PFN_vkCmdWriteTimestamp) GetProcAddress(vulkanModule, "vkCmdWriteTimestamp");
+        (PFN_vkCmdClearDepthStencilImage) DetouredExport(vulkanModule, "vkCmdClearDepthStencilImage");
+    o_vkCmdClearAttachments = (PFN_vkCmdClearAttachments) DetouredExport(vulkanModule, "vkCmdClearAttachments");
+    o_vkCmdResolveImage = (PFN_vkCmdResolveImage) DetouredExport(vulkanModule, "vkCmdResolveImage");
+    o_vkCmdSetEvent = (PFN_vkCmdSetEvent) DetouredExport(vulkanModule, "vkCmdSetEvent");
+    o_vkCmdResetEvent = (PFN_vkCmdResetEvent) DetouredExport(vulkanModule, "vkCmdResetEvent");
+    o_vkCmdWaitEvents = (PFN_vkCmdWaitEvents) DetouredExport(vulkanModule, "vkCmdWaitEvents");
+    o_vkCmdPipelineBarrier = (PFN_vkCmdPipelineBarrier) DetouredExport(vulkanModule, "vkCmdPipelineBarrier");
+    o_vkCmdBeginQuery = (PFN_vkCmdBeginQuery) DetouredExport(vulkanModule, "vkCmdBeginQuery");
+    o_vkCmdEndQuery = (PFN_vkCmdEndQuery) DetouredExport(vulkanModule, "vkCmdEndQuery");
+    o_vkCmdResetQueryPool = (PFN_vkCmdResetQueryPool) DetouredExport(vulkanModule, "vkCmdResetQueryPool");
+    o_vkCmdWriteTimestamp = (PFN_vkCmdWriteTimestamp) DetouredExport(vulkanModule, "vkCmdWriteTimestamp");
     o_vkCmdCopyQueryPoolResults =
-        (PFN_vkCmdCopyQueryPoolResults) GetProcAddress(vulkanModule, "vkCmdCopyQueryPoolResults");
-    o_vkCmdPushConstants = (PFN_vkCmdPushConstants) GetProcAddress(vulkanModule, "vkCmdPushConstants");
-    o_vkCmdBeginRenderPass = (PFN_vkCmdBeginRenderPass) GetProcAddress(vulkanModule, "vkCmdBeginRenderPass");
-    o_vkCmdNextSubpass = (PFN_vkCmdNextSubpass) GetProcAddress(vulkanModule, "vkCmdNextSubpass");
-    o_vkCmdEndRenderPass = (PFN_vkCmdEndRenderPass) GetProcAddress(vulkanModule, "vkCmdEndRenderPass");
-    o_vkCmdExecuteCommands = (PFN_vkCmdExecuteCommands) GetProcAddress(vulkanModule, "vkCmdExecuteCommands");
-    o_vkCmdSetDeviceMask = (PFN_vkCmdSetDeviceMask) GetProcAddress(vulkanModule, "vkCmdSetDeviceMask");
-    o_vkCmdDispatchBase = (PFN_vkCmdDispatchBase) GetProcAddress(vulkanModule, "vkCmdDispatchBase");
-    o_vkCmdDrawIndirectCount = (PFN_vkCmdDrawIndirectCount) GetProcAddress(vulkanModule, "vkCmdDrawIndirectCount");
+        (PFN_vkCmdCopyQueryPoolResults) DetouredExport(vulkanModule, "vkCmdCopyQueryPoolResults");
+    o_vkCmdPushConstants = (PFN_vkCmdPushConstants) DetouredExport(vulkanModule, "vkCmdPushConstants");
+    o_vkCmdBeginRenderPass = (PFN_vkCmdBeginRenderPass) DetouredExport(vulkanModule, "vkCmdBeginRenderPass");
+    o_vkCmdNextSubpass = (PFN_vkCmdNextSubpass) DetouredExport(vulkanModule, "vkCmdNextSubpass");
+    o_vkCmdEndRenderPass = (PFN_vkCmdEndRenderPass) DetouredExport(vulkanModule, "vkCmdEndRenderPass");
+    o_vkCmdExecuteCommands = (PFN_vkCmdExecuteCommands) DetouredExport(vulkanModule, "vkCmdExecuteCommands");
+    o_vkCmdSetDeviceMask = (PFN_vkCmdSetDeviceMask) DetouredExport(vulkanModule, "vkCmdSetDeviceMask");
+    o_vkCmdDispatchBase = (PFN_vkCmdDispatchBase) DetouredExport(vulkanModule, "vkCmdDispatchBase");
+    o_vkCmdDrawIndirectCount = (PFN_vkCmdDrawIndirectCount) DetouredExport(vulkanModule, "vkCmdDrawIndirectCount");
     o_vkCmdDrawIndexedIndirectCount =
-        (PFN_vkCmdDrawIndexedIndirectCount) GetProcAddress(vulkanModule, "vkCmdDrawIndexedIndirectCount");
-    o_vkCmdBeginRenderPass2 = (PFN_vkCmdBeginRenderPass2) GetProcAddress(vulkanModule, "vkCmdBeginRenderPass2");
-    o_vkCmdNextSubpass2 = (PFN_vkCmdNextSubpass2) GetProcAddress(vulkanModule, "vkCmdNextSubpass2");
-    o_vkCmdEndRenderPass2 = (PFN_vkCmdEndRenderPass2) GetProcAddress(vulkanModule, "vkCmdEndRenderPass2");
-    o_vkCmdSetEvent2 = (PFN_vkCmdSetEvent2) GetProcAddress(vulkanModule, "vkCmdSetEvent2");
-    o_vkCmdResetEvent2 = (PFN_vkCmdResetEvent2) GetProcAddress(vulkanModule, "vkCmdResetEvent2");
-    o_vkCmdWaitEvents2 = (PFN_vkCmdWaitEvents2) GetProcAddress(vulkanModule, "vkCmdWaitEvents2");
-    o_vkCmdPipelineBarrier2 = (PFN_vkCmdPipelineBarrier2) GetProcAddress(vulkanModule, "vkCmdPipelineBarrier2");
-    o_vkCmdWriteTimestamp2 = (PFN_vkCmdWriteTimestamp2) GetProcAddress(vulkanModule, "vkCmdWriteTimestamp2");
-    o_vkCmdCopyBuffer2 = (PFN_vkCmdCopyBuffer2) GetProcAddress(vulkanModule, "vkCmdCopyBuffer2");
-    o_vkCmdCopyImage2 = (PFN_vkCmdCopyImage2) GetProcAddress(vulkanModule, "vkCmdCopyImage2");
-    o_vkCmdCopyBufferToImage2 = (PFN_vkCmdCopyBufferToImage2) GetProcAddress(vulkanModule, "vkCmdCopyBufferToImage2");
-    o_vkCmdCopyImageToBuffer2 = (PFN_vkCmdCopyImageToBuffer2) GetProcAddress(vulkanModule, "vkCmdCopyImageToBuffer2");
-    o_vkCmdBlitImage2 = (PFN_vkCmdBlitImage2) GetProcAddress(vulkanModule, "vkCmdBlitImage2");
-    o_vkCmdResolveImage2 = (PFN_vkCmdResolveImage2) GetProcAddress(vulkanModule, "vkCmdResolveImage2");
-    o_vkCmdBeginRendering = (PFN_vkCmdBeginRendering) GetProcAddress(vulkanModule, "vkCmdBeginRendering");
-    o_vkCmdEndRendering = (PFN_vkCmdEndRendering) GetProcAddress(vulkanModule, "vkCmdEndRendering");
-    o_vkCmdSetCullMode = (PFN_vkCmdSetCullMode) GetProcAddress(vulkanModule, "vkCmdSetCullMode");
-    o_vkCmdSetFrontFace = (PFN_vkCmdSetFrontFace) GetProcAddress(vulkanModule, "vkCmdSetFrontFace");
+        (PFN_vkCmdDrawIndexedIndirectCount) DetouredExport(vulkanModule, "vkCmdDrawIndexedIndirectCount");
+    o_vkCmdBeginRenderPass2 = (PFN_vkCmdBeginRenderPass2) DetouredExport(vulkanModule, "vkCmdBeginRenderPass2");
+    o_vkCmdNextSubpass2 = (PFN_vkCmdNextSubpass2) DetouredExport(vulkanModule, "vkCmdNextSubpass2");
+    o_vkCmdEndRenderPass2 = (PFN_vkCmdEndRenderPass2) DetouredExport(vulkanModule, "vkCmdEndRenderPass2");
+    o_vkCmdSetEvent2 = (PFN_vkCmdSetEvent2) DetouredExport(vulkanModule, "vkCmdSetEvent2");
+    o_vkCmdResetEvent2 = (PFN_vkCmdResetEvent2) DetouredExport(vulkanModule, "vkCmdResetEvent2");
+    o_vkCmdWaitEvents2 = (PFN_vkCmdWaitEvents2) DetouredExport(vulkanModule, "vkCmdWaitEvents2");
+    o_vkCmdPipelineBarrier2 = (PFN_vkCmdPipelineBarrier2) DetouredExport(vulkanModule, "vkCmdPipelineBarrier2");
+    o_vkCmdWriteTimestamp2 = (PFN_vkCmdWriteTimestamp2) DetouredExport(vulkanModule, "vkCmdWriteTimestamp2");
+    o_vkCmdCopyBuffer2 = (PFN_vkCmdCopyBuffer2) DetouredExport(vulkanModule, "vkCmdCopyBuffer2");
+    o_vkCmdCopyImage2 = (PFN_vkCmdCopyImage2) DetouredExport(vulkanModule, "vkCmdCopyImage2");
+    o_vkCmdCopyBufferToImage2 = (PFN_vkCmdCopyBufferToImage2) DetouredExport(vulkanModule, "vkCmdCopyBufferToImage2");
+    o_vkCmdCopyImageToBuffer2 = (PFN_vkCmdCopyImageToBuffer2) DetouredExport(vulkanModule, "vkCmdCopyImageToBuffer2");
+    o_vkCmdBlitImage2 = (PFN_vkCmdBlitImage2) DetouredExport(vulkanModule, "vkCmdBlitImage2");
+    o_vkCmdResolveImage2 = (PFN_vkCmdResolveImage2) DetouredExport(vulkanModule, "vkCmdResolveImage2");
+    o_vkCmdBeginRendering = (PFN_vkCmdBeginRendering) DetouredExport(vulkanModule, "vkCmdBeginRendering");
+    o_vkCmdEndRendering = (PFN_vkCmdEndRendering) DetouredExport(vulkanModule, "vkCmdEndRendering");
+    o_vkCmdSetCullMode = (PFN_vkCmdSetCullMode) DetouredExport(vulkanModule, "vkCmdSetCullMode");
+    o_vkCmdSetFrontFace = (PFN_vkCmdSetFrontFace) DetouredExport(vulkanModule, "vkCmdSetFrontFace");
     o_vkCmdSetPrimitiveTopology =
-        (PFN_vkCmdSetPrimitiveTopology) GetProcAddress(vulkanModule, "vkCmdSetPrimitiveTopology");
+        (PFN_vkCmdSetPrimitiveTopology) DetouredExport(vulkanModule, "vkCmdSetPrimitiveTopology");
     o_vkCmdSetViewportWithCount =
-        (PFN_vkCmdSetViewportWithCount) GetProcAddress(vulkanModule, "vkCmdSetViewportWithCount");
+        (PFN_vkCmdSetViewportWithCount) DetouredExport(vulkanModule, "vkCmdSetViewportWithCount");
     o_vkCmdSetScissorWithCount =
-        (PFN_vkCmdSetScissorWithCount) GetProcAddress(vulkanModule, "vkCmdSetScissorWithCount");
-    o_vkCmdBindVertexBuffers2 = (PFN_vkCmdBindVertexBuffers2) GetProcAddress(vulkanModule, "vkCmdBindVertexBuffers2");
-    o_vkCmdSetDepthTestEnable = (PFN_vkCmdSetDepthTestEnable) GetProcAddress(vulkanModule, "vkCmdSetDepthTestEnable");
+        (PFN_vkCmdSetScissorWithCount) DetouredExport(vulkanModule, "vkCmdSetScissorWithCount");
+    o_vkCmdBindVertexBuffers2 = (PFN_vkCmdBindVertexBuffers2) DetouredExport(vulkanModule, "vkCmdBindVertexBuffers2");
+    o_vkCmdSetDepthTestEnable = (PFN_vkCmdSetDepthTestEnable) DetouredExport(vulkanModule, "vkCmdSetDepthTestEnable");
     o_vkCmdSetDepthWriteEnable =
-        (PFN_vkCmdSetDepthWriteEnable) GetProcAddress(vulkanModule, "vkCmdSetDepthWriteEnable");
-    o_vkCmdSetDepthCompareOp = (PFN_vkCmdSetDepthCompareOp) GetProcAddress(vulkanModule, "vkCmdSetDepthCompareOp");
+        (PFN_vkCmdSetDepthWriteEnable) DetouredExport(vulkanModule, "vkCmdSetDepthWriteEnable");
+    o_vkCmdSetDepthCompareOp = (PFN_vkCmdSetDepthCompareOp) DetouredExport(vulkanModule, "vkCmdSetDepthCompareOp");
     o_vkCmdSetDepthBoundsTestEnable =
-        (PFN_vkCmdSetDepthBoundsTestEnable) GetProcAddress(vulkanModule, "vkCmdSetDepthBoundsTestEnable");
+        (PFN_vkCmdSetDepthBoundsTestEnable) DetouredExport(vulkanModule, "vkCmdSetDepthBoundsTestEnable");
     o_vkCmdSetStencilTestEnable =
-        (PFN_vkCmdSetStencilTestEnable) GetProcAddress(vulkanModule, "vkCmdSetStencilTestEnable");
-    o_vkCmdSetStencilOp = (PFN_vkCmdSetStencilOp) GetProcAddress(vulkanModule, "vkCmdSetStencilOp");
+        (PFN_vkCmdSetStencilTestEnable) DetouredExport(vulkanModule, "vkCmdSetStencilTestEnable");
+    o_vkCmdSetStencilOp = (PFN_vkCmdSetStencilOp) DetouredExport(vulkanModule, "vkCmdSetStencilOp");
     o_vkCmdSetRasterizerDiscardEnable =
-        (PFN_vkCmdSetRasterizerDiscardEnable) GetProcAddress(vulkanModule, "vkCmdSetRasterizerDiscardEnable");
-    o_vkCmdSetDepthBiasEnable = (PFN_vkCmdSetDepthBiasEnable) GetProcAddress(vulkanModule, "vkCmdSetDepthBiasEnable");
+        (PFN_vkCmdSetRasterizerDiscardEnable) DetouredExport(vulkanModule, "vkCmdSetRasterizerDiscardEnable");
+    o_vkCmdSetDepthBiasEnable = (PFN_vkCmdSetDepthBiasEnable) DetouredExport(vulkanModule, "vkCmdSetDepthBiasEnable");
     o_vkCmdSetPrimitiveRestartEnable =
-        (PFN_vkCmdSetPrimitiveRestartEnable) GetProcAddress(vulkanModule, "vkCmdSetPrimitiveRestartEnable");
-    o_vkCmdSetLineStipple = (PFN_vkCmdSetLineStipple) GetProcAddress(vulkanModule, "vkCmdSetLineStipple");
-    o_vkCmdBindIndexBuffer2 = (PFN_vkCmdBindIndexBuffer2) GetProcAddress(vulkanModule, "vkCmdBindIndexBuffer2");
-    o_vkCmdPushDescriptorSet = (PFN_vkCmdPushDescriptorSet) GetProcAddress(vulkanModule, "vkCmdPushDescriptorSet");
+        (PFN_vkCmdSetPrimitiveRestartEnable) DetouredExport(vulkanModule, "vkCmdSetPrimitiveRestartEnable");
+    o_vkCmdSetLineStipple = (PFN_vkCmdSetLineStipple) DetouredExport(vulkanModule, "vkCmdSetLineStipple");
+    o_vkCmdBindIndexBuffer2 = (PFN_vkCmdBindIndexBuffer2) DetouredExport(vulkanModule, "vkCmdBindIndexBuffer2");
+    o_vkCmdPushDescriptorSet = (PFN_vkCmdPushDescriptorSet) DetouredExport(vulkanModule, "vkCmdPushDescriptorSet");
     o_vkCmdPushDescriptorSetWithTemplate =
-        (PFN_vkCmdPushDescriptorSetWithTemplate) GetProcAddress(vulkanModule, "vkCmdPushDescriptorSetWithTemplate");
+        (PFN_vkCmdPushDescriptorSetWithTemplate) DetouredExport(vulkanModule, "vkCmdPushDescriptorSetWithTemplate");
     o_vkCmdSetRenderingAttachmentLocations =
-        (PFN_vkCmdSetRenderingAttachmentLocations) GetProcAddress(vulkanModule, "vkCmdSetRenderingAttachmentLocations");
+        (PFN_vkCmdSetRenderingAttachmentLocations) DetouredExport(vulkanModule, "vkCmdSetRenderingAttachmentLocations");
     o_vkCmdSetRenderingInputAttachmentIndices = (PFN_vkCmdSetRenderingInputAttachmentIndices) GetProcAddress(
         vulkanModule, "vkCmdSetRenderingInputAttachmentIndices");
     o_vkCmdBindDescriptorSets2 =
-        (PFN_vkCmdBindDescriptorSets2) GetProcAddress(vulkanModule, "vkCmdBindDescriptorSets2");
-    o_vkCmdPushConstants2 = (PFN_vkCmdPushConstants2) GetProcAddress(vulkanModule, "vkCmdPushConstants2");
-    o_vkCmdPushDescriptorSet2 = (PFN_vkCmdPushDescriptorSet2) GetProcAddress(vulkanModule, "vkCmdPushDescriptorSet2");
+        (PFN_vkCmdBindDescriptorSets2) DetouredExport(vulkanModule, "vkCmdBindDescriptorSets2");
+    o_vkCmdPushConstants2 = (PFN_vkCmdPushConstants2) DetouredExport(vulkanModule, "vkCmdPushConstants2");
+    o_vkCmdPushDescriptorSet2 = (PFN_vkCmdPushDescriptorSet2) DetouredExport(vulkanModule, "vkCmdPushDescriptorSet2");
     o_vkCmdPushDescriptorSetWithTemplate2 =
-        (PFN_vkCmdPushDescriptorSetWithTemplate2) GetProcAddress(vulkanModule, "vkCmdPushDescriptorSetWithTemplate2");
+        (PFN_vkCmdPushDescriptorSetWithTemplate2) DetouredExport(vulkanModule, "vkCmdPushDescriptorSetWithTemplate2");
     o_vkCmdBeginVideoCodingKHR =
-        (PFN_vkCmdBeginVideoCodingKHR) GetProcAddress(vulkanModule, "vkCmdBeginVideoCodingKHR");
-    o_vkCmdEndVideoCodingKHR = (PFN_vkCmdEndVideoCodingKHR) GetProcAddress(vulkanModule, "vkCmdEndVideoCodingKHR");
+        (PFN_vkCmdBeginVideoCodingKHR) DetouredExport(vulkanModule, "vkCmdBeginVideoCodingKHR");
+    o_vkCmdEndVideoCodingKHR = (PFN_vkCmdEndVideoCodingKHR) DetouredExport(vulkanModule, "vkCmdEndVideoCodingKHR");
     o_vkCmdControlVideoCodingKHR =
-        (PFN_vkCmdControlVideoCodingKHR) GetProcAddress(vulkanModule, "vkCmdControlVideoCodingKHR");
-    o_vkCmdDecodeVideoKHR = (PFN_vkCmdDecodeVideoKHR) GetProcAddress(vulkanModule, "vkCmdDecodeVideoKHR");
-    o_vkCmdBeginRenderingKHR = (PFN_vkCmdBeginRenderingKHR) GetProcAddress(vulkanModule, "vkCmdBeginRenderingKHR");
-    o_vkCmdEndRenderingKHR = (PFN_vkCmdEndRenderingKHR) GetProcAddress(vulkanModule, "vkCmdEndRenderingKHR");
-    o_vkCmdSetDeviceMaskKHR = (PFN_vkCmdSetDeviceMaskKHR) GetProcAddress(vulkanModule, "vkCmdSetDeviceMaskKHR");
-    o_vkCmdDispatchBaseKHR = (PFN_vkCmdDispatchBaseKHR) GetProcAddress(vulkanModule, "vkCmdDispatchBaseKHR");
+        (PFN_vkCmdControlVideoCodingKHR) DetouredExport(vulkanModule, "vkCmdControlVideoCodingKHR");
+    o_vkCmdDecodeVideoKHR = (PFN_vkCmdDecodeVideoKHR) DetouredExport(vulkanModule, "vkCmdDecodeVideoKHR");
+    o_vkCmdBeginRenderingKHR = (PFN_vkCmdBeginRenderingKHR) DetouredExport(vulkanModule, "vkCmdBeginRenderingKHR");
+    o_vkCmdEndRenderingKHR = (PFN_vkCmdEndRenderingKHR) DetouredExport(vulkanModule, "vkCmdEndRenderingKHR");
+    o_vkCmdSetDeviceMaskKHR = (PFN_vkCmdSetDeviceMaskKHR) DetouredExport(vulkanModule, "vkCmdSetDeviceMaskKHR");
+    o_vkCmdDispatchBaseKHR = (PFN_vkCmdDispatchBaseKHR) DetouredExport(vulkanModule, "vkCmdDispatchBaseKHR");
     o_vkCmdPushDescriptorSetKHR =
-        (PFN_vkCmdPushDescriptorSetKHR) GetProcAddress(vulkanModule, "vkCmdPushDescriptorSetKHR");
+        (PFN_vkCmdPushDescriptorSetKHR) DetouredExport(vulkanModule, "vkCmdPushDescriptorSetKHR");
     o_vkCmdPushDescriptorSetWithTemplateKHR = (PFN_vkCmdPushDescriptorSetWithTemplateKHR) GetProcAddress(
         vulkanModule, "vkCmdPushDescriptorSetWithTemplateKHR");
     o_vkCmdBeginRenderPass2KHR =
-        (PFN_vkCmdBeginRenderPass2KHR) GetProcAddress(vulkanModule, "vkCmdBeginRenderPass2KHR");
-    o_vkCmdNextSubpass2KHR = (PFN_vkCmdNextSubpass2KHR) GetProcAddress(vulkanModule, "vkCmdNextSubpass2KHR");
-    o_vkCmdEndRenderPass2KHR = (PFN_vkCmdEndRenderPass2KHR) GetProcAddress(vulkanModule, "vkCmdEndRenderPass2KHR");
+        (PFN_vkCmdBeginRenderPass2KHR) DetouredExport(vulkanModule, "vkCmdBeginRenderPass2KHR");
+    o_vkCmdNextSubpass2KHR = (PFN_vkCmdNextSubpass2KHR) DetouredExport(vulkanModule, "vkCmdNextSubpass2KHR");
+    o_vkCmdEndRenderPass2KHR = (PFN_vkCmdEndRenderPass2KHR) DetouredExport(vulkanModule, "vkCmdEndRenderPass2KHR");
     o_vkCmdDrawIndirectCountKHR =
-        (PFN_vkCmdDrawIndirectCountKHR) GetProcAddress(vulkanModule, "vkCmdDrawIndirectCountKHR");
+        (PFN_vkCmdDrawIndirectCountKHR) DetouredExport(vulkanModule, "vkCmdDrawIndirectCountKHR");
     o_vkCmdDrawIndexedIndirectCountKHR =
-        (PFN_vkCmdDrawIndexedIndirectCountKHR) GetProcAddress(vulkanModule, "vkCmdDrawIndexedIndirectCountKHR");
+        (PFN_vkCmdDrawIndexedIndirectCountKHR) DetouredExport(vulkanModule, "vkCmdDrawIndexedIndirectCountKHR");
     o_vkCmdSetFragmentShadingRateKHR =
-        (PFN_vkCmdSetFragmentShadingRateKHR) GetProcAddress(vulkanModule, "vkCmdSetFragmentShadingRateKHR");
+        (PFN_vkCmdSetFragmentShadingRateKHR) DetouredExport(vulkanModule, "vkCmdSetFragmentShadingRateKHR");
     o_vkCmdSetRenderingAttachmentLocationsKHR = (PFN_vkCmdSetRenderingAttachmentLocationsKHR) GetProcAddress(
         vulkanModule, "vkCmdSetRenderingAttachmentLocationsKHR");
     o_vkCmdSetRenderingInputAttachmentIndicesKHR = (PFN_vkCmdSetRenderingInputAttachmentIndicesKHR) GetProcAddress(
         vulkanModule, "vkCmdSetRenderingInputAttachmentIndicesKHR");
-    o_vkCmdEncodeVideoKHR = (PFN_vkCmdEncodeVideoKHR) GetProcAddress(vulkanModule, "vkCmdEncodeVideoKHR");
-    o_vkCmdSetEvent2KHR = (PFN_vkCmdSetEvent2KHR) GetProcAddress(vulkanModule, "vkCmdSetEvent2KHR");
-    o_vkCmdResetEvent2KHR = (PFN_vkCmdResetEvent2KHR) GetProcAddress(vulkanModule, "vkCmdResetEvent2KHR");
-    o_vkCmdWaitEvents2KHR = (PFN_vkCmdWaitEvents2KHR) GetProcAddress(vulkanModule, "vkCmdWaitEvents2KHR");
+    o_vkCmdEncodeVideoKHR = (PFN_vkCmdEncodeVideoKHR) DetouredExport(vulkanModule, "vkCmdEncodeVideoKHR");
+    o_vkCmdSetEvent2KHR = (PFN_vkCmdSetEvent2KHR) DetouredExport(vulkanModule, "vkCmdSetEvent2KHR");
+    o_vkCmdResetEvent2KHR = (PFN_vkCmdResetEvent2KHR) DetouredExport(vulkanModule, "vkCmdResetEvent2KHR");
+    o_vkCmdWaitEvents2KHR = (PFN_vkCmdWaitEvents2KHR) DetouredExport(vulkanModule, "vkCmdWaitEvents2KHR");
     o_vkCmdPipelineBarrier2KHR =
-        (PFN_vkCmdPipelineBarrier2KHR) GetProcAddress(vulkanModule, "vkCmdPipelineBarrier2KHR");
-    o_vkCmdWriteTimestamp2KHR = (PFN_vkCmdWriteTimestamp2KHR) GetProcAddress(vulkanModule, "vkCmdWriteTimestamp2KHR");
-    o_vkCmdCopyBuffer2KHR = (PFN_vkCmdCopyBuffer2KHR) GetProcAddress(vulkanModule, "vkCmdCopyBuffer2KHR");
-    o_vkCmdCopyImage2KHR = (PFN_vkCmdCopyImage2KHR) GetProcAddress(vulkanModule, "vkCmdCopyImage2KHR");
+        (PFN_vkCmdPipelineBarrier2KHR) DetouredExport(vulkanModule, "vkCmdPipelineBarrier2KHR");
+    o_vkCmdWriteTimestamp2KHR = (PFN_vkCmdWriteTimestamp2KHR) DetouredExport(vulkanModule, "vkCmdWriteTimestamp2KHR");
+    o_vkCmdCopyBuffer2KHR = (PFN_vkCmdCopyBuffer2KHR) DetouredExport(vulkanModule, "vkCmdCopyBuffer2KHR");
+    o_vkCmdCopyImage2KHR = (PFN_vkCmdCopyImage2KHR) DetouredExport(vulkanModule, "vkCmdCopyImage2KHR");
     o_vkCmdCopyBufferToImage2KHR =
-        (PFN_vkCmdCopyBufferToImage2KHR) GetProcAddress(vulkanModule, "vkCmdCopyBufferToImage2KHR");
+        (PFN_vkCmdCopyBufferToImage2KHR) DetouredExport(vulkanModule, "vkCmdCopyBufferToImage2KHR");
     o_vkCmdCopyImageToBuffer2KHR =
-        (PFN_vkCmdCopyImageToBuffer2KHR) GetProcAddress(vulkanModule, "vkCmdCopyImageToBuffer2KHR");
-    o_vkCmdBlitImage2KHR = (PFN_vkCmdBlitImage2KHR) GetProcAddress(vulkanModule, "vkCmdBlitImage2KHR");
-    o_vkCmdResolveImage2KHR = (PFN_vkCmdResolveImage2KHR) GetProcAddress(vulkanModule, "vkCmdResolveImage2KHR");
+        (PFN_vkCmdCopyImageToBuffer2KHR) DetouredExport(vulkanModule, "vkCmdCopyImageToBuffer2KHR");
+    o_vkCmdBlitImage2KHR = (PFN_vkCmdBlitImage2KHR) DetouredExport(vulkanModule, "vkCmdBlitImage2KHR");
+    o_vkCmdResolveImage2KHR = (PFN_vkCmdResolveImage2KHR) DetouredExport(vulkanModule, "vkCmdResolveImage2KHR");
     o_vkCmdTraceRaysIndirect2KHR =
-        (PFN_vkCmdTraceRaysIndirect2KHR) GetProcAddress(vulkanModule, "vkCmdTraceRaysIndirect2KHR");
+        (PFN_vkCmdTraceRaysIndirect2KHR) DetouredExport(vulkanModule, "vkCmdTraceRaysIndirect2KHR");
     o_vkCmdBindIndexBuffer2KHR =
-        (PFN_vkCmdBindIndexBuffer2KHR) GetProcAddress(vulkanModule, "vkCmdBindIndexBuffer2KHR");
-    o_vkCmdSetLineStippleKHR = (PFN_vkCmdSetLineStippleKHR) GetProcAddress(vulkanModule, "vkCmdSetLineStippleKHR");
+        (PFN_vkCmdBindIndexBuffer2KHR) DetouredExport(vulkanModule, "vkCmdBindIndexBuffer2KHR");
+    o_vkCmdSetLineStippleKHR = (PFN_vkCmdSetLineStippleKHR) DetouredExport(vulkanModule, "vkCmdSetLineStippleKHR");
     o_vkCmdBindDescriptorSets2KHR =
-        (PFN_vkCmdBindDescriptorSets2KHR) GetProcAddress(vulkanModule, "vkCmdBindDescriptorSets2KHR");
-    o_vkCmdPushConstants2KHR = (PFN_vkCmdPushConstants2KHR) GetProcAddress(vulkanModule, "vkCmdPushConstants2KHR");
+        (PFN_vkCmdBindDescriptorSets2KHR) DetouredExport(vulkanModule, "vkCmdBindDescriptorSets2KHR");
+    o_vkCmdPushConstants2KHR = (PFN_vkCmdPushConstants2KHR) DetouredExport(vulkanModule, "vkCmdPushConstants2KHR");
     o_vkCmdPushDescriptorSet2KHR =
-        (PFN_vkCmdPushDescriptorSet2KHR) GetProcAddress(vulkanModule, "vkCmdPushDescriptorSet2KHR");
+        (PFN_vkCmdPushDescriptorSet2KHR) DetouredExport(vulkanModule, "vkCmdPushDescriptorSet2KHR");
     o_vkCmdPushDescriptorSetWithTemplate2KHR = (PFN_vkCmdPushDescriptorSetWithTemplate2KHR) GetProcAddress(
         vulkanModule, "vkCmdPushDescriptorSetWithTemplate2KHR");
     o_vkCmdSetDescriptorBufferOffsets2EXT =
-        (PFN_vkCmdSetDescriptorBufferOffsets2EXT) GetProcAddress(vulkanModule, "vkCmdSetDescriptorBufferOffsets2EXT");
+        (PFN_vkCmdSetDescriptorBufferOffsets2EXT) DetouredExport(vulkanModule, "vkCmdSetDescriptorBufferOffsets2EXT");
     o_vkCmdBindDescriptorBufferEmbeddedSamplers2EXT =
         (PFN_vkCmdBindDescriptorBufferEmbeddedSamplers2EXT) GetProcAddress(
             vulkanModule, "vkCmdBindDescriptorBufferEmbeddedSamplers2EXT");
     o_vkCmdDebugMarkerBeginEXT =
-        (PFN_vkCmdDebugMarkerBeginEXT) GetProcAddress(vulkanModule, "vkCmdDebugMarkerBeginEXT");
-    o_vkCmdDebugMarkerEndEXT = (PFN_vkCmdDebugMarkerEndEXT) GetProcAddress(vulkanModule, "vkCmdDebugMarkerEndEXT");
+        (PFN_vkCmdDebugMarkerBeginEXT) DetouredExport(vulkanModule, "vkCmdDebugMarkerBeginEXT");
+    o_vkCmdDebugMarkerEndEXT = (PFN_vkCmdDebugMarkerEndEXT) DetouredExport(vulkanModule, "vkCmdDebugMarkerEndEXT");
     o_vkCmdDebugMarkerInsertEXT =
-        (PFN_vkCmdDebugMarkerInsertEXT) GetProcAddress(vulkanModule, "vkCmdDebugMarkerInsertEXT");
+        (PFN_vkCmdDebugMarkerInsertEXT) DetouredExport(vulkanModule, "vkCmdDebugMarkerInsertEXT");
     o_vkCmdBindTransformFeedbackBuffersEXT =
-        (PFN_vkCmdBindTransformFeedbackBuffersEXT) GetProcAddress(vulkanModule, "vkCmdBindTransformFeedbackBuffersEXT");
+        (PFN_vkCmdBindTransformFeedbackBuffersEXT) DetouredExport(vulkanModule, "vkCmdBindTransformFeedbackBuffersEXT");
     o_vkCmdBeginTransformFeedbackEXT =
-        (PFN_vkCmdBeginTransformFeedbackEXT) GetProcAddress(vulkanModule, "vkCmdBeginTransformFeedbackEXT");
+        (PFN_vkCmdBeginTransformFeedbackEXT) DetouredExport(vulkanModule, "vkCmdBeginTransformFeedbackEXT");
     o_vkCmdEndTransformFeedbackEXT =
-        (PFN_vkCmdEndTransformFeedbackEXT) GetProcAddress(vulkanModule, "vkCmdEndTransformFeedbackEXT");
+        (PFN_vkCmdEndTransformFeedbackEXT) DetouredExport(vulkanModule, "vkCmdEndTransformFeedbackEXT");
     o_vkCmdBeginQueryIndexedEXT =
-        (PFN_vkCmdBeginQueryIndexedEXT) GetProcAddress(vulkanModule, "vkCmdBeginQueryIndexedEXT");
-    o_vkCmdEndQueryIndexedEXT = (PFN_vkCmdEndQueryIndexedEXT) GetProcAddress(vulkanModule, "vkCmdEndQueryIndexedEXT");
+        (PFN_vkCmdBeginQueryIndexedEXT) DetouredExport(vulkanModule, "vkCmdBeginQueryIndexedEXT");
+    o_vkCmdEndQueryIndexedEXT = (PFN_vkCmdEndQueryIndexedEXT) DetouredExport(vulkanModule, "vkCmdEndQueryIndexedEXT");
     o_vkCmdDrawIndirectByteCountEXT =
-        (PFN_vkCmdDrawIndirectByteCountEXT) GetProcAddress(vulkanModule, "vkCmdDrawIndirectByteCountEXT");
-    o_vkCmdCuLaunchKernelNVX = (PFN_vkCmdCuLaunchKernelNVX) GetProcAddress(vulkanModule, "vkCmdCuLaunchKernelNVX");
+        (PFN_vkCmdDrawIndirectByteCountEXT) DetouredExport(vulkanModule, "vkCmdDrawIndirectByteCountEXT");
+    o_vkCmdCuLaunchKernelNVX = (PFN_vkCmdCuLaunchKernelNVX) DetouredExport(vulkanModule, "vkCmdCuLaunchKernelNVX");
     o_vkCmdDrawIndirectCountAMD =
-        (PFN_vkCmdDrawIndirectCountAMD) GetProcAddress(vulkanModule, "vkCmdDrawIndirectCountAMD");
+        (PFN_vkCmdDrawIndirectCountAMD) DetouredExport(vulkanModule, "vkCmdDrawIndirectCountAMD");
     o_vkCmdDrawIndexedIndirectCountAMD =
-        (PFN_vkCmdDrawIndexedIndirectCountAMD) GetProcAddress(vulkanModule, "vkCmdDrawIndexedIndirectCountAMD");
+        (PFN_vkCmdDrawIndexedIndirectCountAMD) DetouredExport(vulkanModule, "vkCmdDrawIndexedIndirectCountAMD");
     o_vkCmdBeginConditionalRenderingEXT =
-        (PFN_vkCmdBeginConditionalRenderingEXT) GetProcAddress(vulkanModule, "vkCmdBeginConditionalRenderingEXT");
+        (PFN_vkCmdBeginConditionalRenderingEXT) DetouredExport(vulkanModule, "vkCmdBeginConditionalRenderingEXT");
     o_vkCmdEndConditionalRenderingEXT =
-        (PFN_vkCmdEndConditionalRenderingEXT) GetProcAddress(vulkanModule, "vkCmdEndConditionalRenderingEXT");
+        (PFN_vkCmdEndConditionalRenderingEXT) DetouredExport(vulkanModule, "vkCmdEndConditionalRenderingEXT");
     o_vkCmdSetViewportWScalingNV =
-        (PFN_vkCmdSetViewportWScalingNV) GetProcAddress(vulkanModule, "vkCmdSetViewportWScalingNV");
+        (PFN_vkCmdSetViewportWScalingNV) DetouredExport(vulkanModule, "vkCmdSetViewportWScalingNV");
     o_vkCmdSetDiscardRectangleEXT =
-        (PFN_vkCmdSetDiscardRectangleEXT) GetProcAddress(vulkanModule, "vkCmdSetDiscardRectangleEXT");
+        (PFN_vkCmdSetDiscardRectangleEXT) DetouredExport(vulkanModule, "vkCmdSetDiscardRectangleEXT");
     o_vkCmdSetDiscardRectangleEnableEXT =
-        (PFN_vkCmdSetDiscardRectangleEnableEXT) GetProcAddress(vulkanModule, "vkCmdSetDiscardRectangleEnableEXT");
+        (PFN_vkCmdSetDiscardRectangleEnableEXT) DetouredExport(vulkanModule, "vkCmdSetDiscardRectangleEnableEXT");
     o_vkCmdSetDiscardRectangleModeEXT =
-        (PFN_vkCmdSetDiscardRectangleModeEXT) GetProcAddress(vulkanModule, "vkCmdSetDiscardRectangleModeEXT");
+        (PFN_vkCmdSetDiscardRectangleModeEXT) DetouredExport(vulkanModule, "vkCmdSetDiscardRectangleModeEXT");
     o_vkCmdBeginDebugUtilsLabelEXT =
-        (PFN_vkCmdBeginDebugUtilsLabelEXT) GetProcAddress(vulkanModule, "vkCmdBeginDebugUtilsLabelEXT");
+        (PFN_vkCmdBeginDebugUtilsLabelEXT) DetouredExport(vulkanModule, "vkCmdBeginDebugUtilsLabelEXT");
     o_vkCmdEndDebugUtilsLabelEXT =
-        (PFN_vkCmdEndDebugUtilsLabelEXT) GetProcAddress(vulkanModule, "vkCmdEndDebugUtilsLabelEXT");
+        (PFN_vkCmdEndDebugUtilsLabelEXT) DetouredExport(vulkanModule, "vkCmdEndDebugUtilsLabelEXT");
     o_vkCmdInsertDebugUtilsLabelEXT =
-        (PFN_vkCmdInsertDebugUtilsLabelEXT) GetProcAddress(vulkanModule, "vkCmdInsertDebugUtilsLabelEXT");
+        (PFN_vkCmdInsertDebugUtilsLabelEXT) DetouredExport(vulkanModule, "vkCmdInsertDebugUtilsLabelEXT");
     o_vkCmdSetSampleLocationsEXT =
-        (PFN_vkCmdSetSampleLocationsEXT) GetProcAddress(vulkanModule, "vkCmdSetSampleLocationsEXT");
+        (PFN_vkCmdSetSampleLocationsEXT) DetouredExport(vulkanModule, "vkCmdSetSampleLocationsEXT");
     o_vkCmdBindShadingRateImageNV =
-        (PFN_vkCmdBindShadingRateImageNV) GetProcAddress(vulkanModule, "vkCmdBindShadingRateImageNV");
+        (PFN_vkCmdBindShadingRateImageNV) DetouredExport(vulkanModule, "vkCmdBindShadingRateImageNV");
     o_vkCmdSetViewportShadingRatePaletteNV =
-        (PFN_vkCmdSetViewportShadingRatePaletteNV) GetProcAddress(vulkanModule, "vkCmdSetViewportShadingRatePaletteNV");
+        (PFN_vkCmdSetViewportShadingRatePaletteNV) DetouredExport(vulkanModule, "vkCmdSetViewportShadingRatePaletteNV");
     o_vkCmdSetCoarseSampleOrderNV =
-        (PFN_vkCmdSetCoarseSampleOrderNV) GetProcAddress(vulkanModule, "vkCmdSetCoarseSampleOrderNV");
+        (PFN_vkCmdSetCoarseSampleOrderNV) DetouredExport(vulkanModule, "vkCmdSetCoarseSampleOrderNV");
     o_vkCmdBuildAccelerationStructureNV =
-        (PFN_vkCmdBuildAccelerationStructureNV) GetProcAddress(vulkanModule, "vkCmdBuildAccelerationStructureNV");
+        (PFN_vkCmdBuildAccelerationStructureNV) DetouredExport(vulkanModule, "vkCmdBuildAccelerationStructureNV");
     o_vkCmdCopyAccelerationStructureNV =
-        (PFN_vkCmdCopyAccelerationStructureNV) GetProcAddress(vulkanModule, "vkCmdCopyAccelerationStructureNV");
-    o_vkCmdTraceRaysNV = (PFN_vkCmdTraceRaysNV) GetProcAddress(vulkanModule, "vkCmdTraceRaysNV");
+        (PFN_vkCmdCopyAccelerationStructureNV) DetouredExport(vulkanModule, "vkCmdCopyAccelerationStructureNV");
+    o_vkCmdTraceRaysNV = (PFN_vkCmdTraceRaysNV) DetouredExport(vulkanModule, "vkCmdTraceRaysNV");
     o_vkCmdWriteAccelerationStructuresPropertiesNV = (PFN_vkCmdWriteAccelerationStructuresPropertiesNV) GetProcAddress(
         vulkanModule, "vkCmdWriteAccelerationStructuresPropertiesNV");
     o_vkCmdWriteBufferMarkerAMD =
-        (PFN_vkCmdWriteBufferMarkerAMD) GetProcAddress(vulkanModule, "vkCmdWriteBufferMarkerAMD");
+        (PFN_vkCmdWriteBufferMarkerAMD) DetouredExport(vulkanModule, "vkCmdWriteBufferMarkerAMD");
     o_vkCmdWriteBufferMarker2AMD =
-        (PFN_vkCmdWriteBufferMarker2AMD) GetProcAddress(vulkanModule, "vkCmdWriteBufferMarker2AMD");
-    o_vkCmdDrawMeshTasksNV = (PFN_vkCmdDrawMeshTasksNV) GetProcAddress(vulkanModule, "vkCmdDrawMeshTasksNV");
+        (PFN_vkCmdWriteBufferMarker2AMD) DetouredExport(vulkanModule, "vkCmdWriteBufferMarker2AMD");
+    o_vkCmdDrawMeshTasksNV = (PFN_vkCmdDrawMeshTasksNV) DetouredExport(vulkanModule, "vkCmdDrawMeshTasksNV");
     o_vkCmdDrawMeshTasksIndirectNV =
-        (PFN_vkCmdDrawMeshTasksIndirectNV) GetProcAddress(vulkanModule, "vkCmdDrawMeshTasksIndirectNV");
+        (PFN_vkCmdDrawMeshTasksIndirectNV) DetouredExport(vulkanModule, "vkCmdDrawMeshTasksIndirectNV");
     o_vkCmdDrawMeshTasksIndirectCountNV =
-        (PFN_vkCmdDrawMeshTasksIndirectCountNV) GetProcAddress(vulkanModule, "vkCmdDrawMeshTasksIndirectCountNV");
+        (PFN_vkCmdDrawMeshTasksIndirectCountNV) DetouredExport(vulkanModule, "vkCmdDrawMeshTasksIndirectCountNV");
     o_vkCmdSetExclusiveScissorEnableNV =
-        (PFN_vkCmdSetExclusiveScissorEnableNV) GetProcAddress(vulkanModule, "vkCmdSetExclusiveScissorEnableNV");
+        (PFN_vkCmdSetExclusiveScissorEnableNV) DetouredExport(vulkanModule, "vkCmdSetExclusiveScissorEnableNV");
     o_vkCmdSetExclusiveScissorNV =
-        (PFN_vkCmdSetExclusiveScissorNV) GetProcAddress(vulkanModule, "vkCmdSetExclusiveScissorNV");
-    o_vkCmdSetCheckpointNV = (PFN_vkCmdSetCheckpointNV) GetProcAddress(vulkanModule, "vkCmdSetCheckpointNV");
+        (PFN_vkCmdSetExclusiveScissorNV) DetouredExport(vulkanModule, "vkCmdSetExclusiveScissorNV");
+    o_vkCmdSetCheckpointNV = (PFN_vkCmdSetCheckpointNV) DetouredExport(vulkanModule, "vkCmdSetCheckpointNV");
     o_vkCmdSetPerformanceMarkerINTEL =
-        (PFN_vkCmdSetPerformanceMarkerINTEL) GetProcAddress(vulkanModule, "vkCmdSetPerformanceMarkerINTEL");
+        (PFN_vkCmdSetPerformanceMarkerINTEL) DetouredExport(vulkanModule, "vkCmdSetPerformanceMarkerINTEL");
     o_vkCmdSetPerformanceStreamMarkerINTEL =
-        (PFN_vkCmdSetPerformanceStreamMarkerINTEL) GetProcAddress(vulkanModule, "vkCmdSetPerformanceStreamMarkerINTEL");
+        (PFN_vkCmdSetPerformanceStreamMarkerINTEL) DetouredExport(vulkanModule, "vkCmdSetPerformanceStreamMarkerINTEL");
     o_vkCmdSetPerformanceOverrideINTEL =
-        (PFN_vkCmdSetPerformanceOverrideINTEL) GetProcAddress(vulkanModule, "vkCmdSetPerformanceOverrideINTEL");
-    o_vkCmdSetLineStippleEXT = (PFN_vkCmdSetLineStippleEXT) GetProcAddress(vulkanModule, "vkCmdSetLineStippleEXT");
-    o_vkCmdSetCullModeEXT = (PFN_vkCmdSetCullModeEXT) GetProcAddress(vulkanModule, "vkCmdSetCullModeEXT");
-    o_vkCmdSetFrontFaceEXT = (PFN_vkCmdSetFrontFaceEXT) GetProcAddress(vulkanModule, "vkCmdSetFrontFaceEXT");
+        (PFN_vkCmdSetPerformanceOverrideINTEL) DetouredExport(vulkanModule, "vkCmdSetPerformanceOverrideINTEL");
+    o_vkCmdSetLineStippleEXT = (PFN_vkCmdSetLineStippleEXT) DetouredExport(vulkanModule, "vkCmdSetLineStippleEXT");
+    o_vkCmdSetCullModeEXT = (PFN_vkCmdSetCullModeEXT) DetouredExport(vulkanModule, "vkCmdSetCullModeEXT");
+    o_vkCmdSetFrontFaceEXT = (PFN_vkCmdSetFrontFaceEXT) DetouredExport(vulkanModule, "vkCmdSetFrontFaceEXT");
     o_vkCmdSetPrimitiveTopologyEXT =
-        (PFN_vkCmdSetPrimitiveTopologyEXT) GetProcAddress(vulkanModule, "vkCmdSetPrimitiveTopologyEXT");
+        (PFN_vkCmdSetPrimitiveTopologyEXT) DetouredExport(vulkanModule, "vkCmdSetPrimitiveTopologyEXT");
     o_vkCmdSetViewportWithCountEXT =
-        (PFN_vkCmdSetViewportWithCountEXT) GetProcAddress(vulkanModule, "vkCmdSetViewportWithCountEXT");
+        (PFN_vkCmdSetViewportWithCountEXT) DetouredExport(vulkanModule, "vkCmdSetViewportWithCountEXT");
     o_vkCmdSetScissorWithCountEXT =
-        (PFN_vkCmdSetScissorWithCountEXT) GetProcAddress(vulkanModule, "vkCmdSetScissorWithCountEXT");
+        (PFN_vkCmdSetScissorWithCountEXT) DetouredExport(vulkanModule, "vkCmdSetScissorWithCountEXT");
     o_vkCmdBindVertexBuffers2EXT =
-        (PFN_vkCmdBindVertexBuffers2EXT) GetProcAddress(vulkanModule, "vkCmdBindVertexBuffers2EXT");
+        (PFN_vkCmdBindVertexBuffers2EXT) DetouredExport(vulkanModule, "vkCmdBindVertexBuffers2EXT");
     o_vkCmdSetDepthTestEnableEXT =
-        (PFN_vkCmdSetDepthTestEnableEXT) GetProcAddress(vulkanModule, "vkCmdSetDepthTestEnableEXT");
+        (PFN_vkCmdSetDepthTestEnableEXT) DetouredExport(vulkanModule, "vkCmdSetDepthTestEnableEXT");
     o_vkCmdSetDepthWriteEnableEXT =
-        (PFN_vkCmdSetDepthWriteEnableEXT) GetProcAddress(vulkanModule, "vkCmdSetDepthWriteEnableEXT");
+        (PFN_vkCmdSetDepthWriteEnableEXT) DetouredExport(vulkanModule, "vkCmdSetDepthWriteEnableEXT");
     o_vkCmdSetDepthCompareOpEXT =
-        (PFN_vkCmdSetDepthCompareOpEXT) GetProcAddress(vulkanModule, "vkCmdSetDepthCompareOpEXT");
+        (PFN_vkCmdSetDepthCompareOpEXT) DetouredExport(vulkanModule, "vkCmdSetDepthCompareOpEXT");
     o_vkCmdSetDepthBoundsTestEnableEXT =
-        (PFN_vkCmdSetDepthBoundsTestEnableEXT) GetProcAddress(vulkanModule, "vkCmdSetDepthBoundsTestEnableEXT");
+        (PFN_vkCmdSetDepthBoundsTestEnableEXT) DetouredExport(vulkanModule, "vkCmdSetDepthBoundsTestEnableEXT");
     o_vkCmdSetStencilTestEnableEXT =
-        (PFN_vkCmdSetStencilTestEnableEXT) GetProcAddress(vulkanModule, "vkCmdSetStencilTestEnableEXT");
-    o_vkCmdSetStencilOpEXT = (PFN_vkCmdSetStencilOpEXT) GetProcAddress(vulkanModule, "vkCmdSetStencilOpEXT");
+        (PFN_vkCmdSetStencilTestEnableEXT) DetouredExport(vulkanModule, "vkCmdSetStencilTestEnableEXT");
+    o_vkCmdSetStencilOpEXT = (PFN_vkCmdSetStencilOpEXT) DetouredExport(vulkanModule, "vkCmdSetStencilOpEXT");
     o_vkCmdPreprocessGeneratedCommandsNV =
-        (PFN_vkCmdPreprocessGeneratedCommandsNV) GetProcAddress(vulkanModule, "vkCmdPreprocessGeneratedCommandsNV");
+        (PFN_vkCmdPreprocessGeneratedCommandsNV) DetouredExport(vulkanModule, "vkCmdPreprocessGeneratedCommandsNV");
     o_vkCmdExecuteGeneratedCommandsNV =
-        (PFN_vkCmdExecuteGeneratedCommandsNV) GetProcAddress(vulkanModule, "vkCmdExecuteGeneratedCommandsNV");
+        (PFN_vkCmdExecuteGeneratedCommandsNV) DetouredExport(vulkanModule, "vkCmdExecuteGeneratedCommandsNV");
     o_vkCmdBindPipelineShaderGroupNV =
-        (PFN_vkCmdBindPipelineShaderGroupNV) GetProcAddress(vulkanModule, "vkCmdBindPipelineShaderGroupNV");
-    o_vkCmdSetDepthBias2EXT = (PFN_vkCmdSetDepthBias2EXT) GetProcAddress(vulkanModule, "vkCmdSetDepthBias2EXT");
-    o_vkCmdCudaLaunchKernelNV = (PFN_vkCmdCudaLaunchKernelNV) GetProcAddress(vulkanModule, "vkCmdCudaLaunchKernelNV");
+        (PFN_vkCmdBindPipelineShaderGroupNV) DetouredExport(vulkanModule, "vkCmdBindPipelineShaderGroupNV");
+    o_vkCmdSetDepthBias2EXT = (PFN_vkCmdSetDepthBias2EXT) DetouredExport(vulkanModule, "vkCmdSetDepthBias2EXT");
+    o_vkCmdCudaLaunchKernelNV = (PFN_vkCmdCudaLaunchKernelNV) DetouredExport(vulkanModule, "vkCmdCudaLaunchKernelNV");
     o_vkCmdBindDescriptorBuffersEXT =
-        (PFN_vkCmdBindDescriptorBuffersEXT) GetProcAddress(vulkanModule, "vkCmdBindDescriptorBuffersEXT");
+        (PFN_vkCmdBindDescriptorBuffersEXT) DetouredExport(vulkanModule, "vkCmdBindDescriptorBuffersEXT");
     o_vkCmdSetDescriptorBufferOffsetsEXT =
-        (PFN_vkCmdSetDescriptorBufferOffsetsEXT) GetProcAddress(vulkanModule, "vkCmdSetDescriptorBufferOffsetsEXT");
+        (PFN_vkCmdSetDescriptorBufferOffsetsEXT) DetouredExport(vulkanModule, "vkCmdSetDescriptorBufferOffsetsEXT");
     o_vkCmdBindDescriptorBufferEmbeddedSamplersEXT = (PFN_vkCmdBindDescriptorBufferEmbeddedSamplersEXT) GetProcAddress(
         vulkanModule, "vkCmdBindDescriptorBufferEmbeddedSamplersEXT");
     o_vkCmdSetFragmentShadingRateEnumNV =
-        (PFN_vkCmdSetFragmentShadingRateEnumNV) GetProcAddress(vulkanModule, "vkCmdSetFragmentShadingRateEnumNV");
-    o_vkCmdSetVertexInputEXT = (PFN_vkCmdSetVertexInputEXT) GetProcAddress(vulkanModule, "vkCmdSetVertexInputEXT");
+        (PFN_vkCmdSetFragmentShadingRateEnumNV) DetouredExport(vulkanModule, "vkCmdSetFragmentShadingRateEnumNV");
+    o_vkCmdSetVertexInputEXT = (PFN_vkCmdSetVertexInputEXT) DetouredExport(vulkanModule, "vkCmdSetVertexInputEXT");
     o_vkCmdSubpassShadingHUAWEI =
-        (PFN_vkCmdSubpassShadingHUAWEI) GetProcAddress(vulkanModule, "vkCmdSubpassShadingHUAWEI");
+        (PFN_vkCmdSubpassShadingHUAWEI) DetouredExport(vulkanModule, "vkCmdSubpassShadingHUAWEI");
     o_vkCmdBindInvocationMaskHUAWEI =
-        (PFN_vkCmdBindInvocationMaskHUAWEI) GetProcAddress(vulkanModule, "vkCmdBindInvocationMaskHUAWEI");
+        (PFN_vkCmdBindInvocationMaskHUAWEI) DetouredExport(vulkanModule, "vkCmdBindInvocationMaskHUAWEI");
     o_vkCmdSetPatchControlPointsEXT =
-        (PFN_vkCmdSetPatchControlPointsEXT) GetProcAddress(vulkanModule, "vkCmdSetPatchControlPointsEXT");
+        (PFN_vkCmdSetPatchControlPointsEXT) DetouredExport(vulkanModule, "vkCmdSetPatchControlPointsEXT");
     o_vkCmdSetRasterizerDiscardEnableEXT =
-        (PFN_vkCmdSetRasterizerDiscardEnableEXT) GetProcAddress(vulkanModule, "vkCmdSetRasterizerDiscardEnableEXT");
+        (PFN_vkCmdSetRasterizerDiscardEnableEXT) DetouredExport(vulkanModule, "vkCmdSetRasterizerDiscardEnableEXT");
     o_vkCmdSetDepthBiasEnableEXT =
-        (PFN_vkCmdSetDepthBiasEnableEXT) GetProcAddress(vulkanModule, "vkCmdSetDepthBiasEnableEXT");
-    o_vkCmdSetLogicOpEXT = (PFN_vkCmdSetLogicOpEXT) GetProcAddress(vulkanModule, "vkCmdSetLogicOpEXT");
+        (PFN_vkCmdSetDepthBiasEnableEXT) DetouredExport(vulkanModule, "vkCmdSetDepthBiasEnableEXT");
+    o_vkCmdSetLogicOpEXT = (PFN_vkCmdSetLogicOpEXT) DetouredExport(vulkanModule, "vkCmdSetLogicOpEXT");
     o_vkCmdSetPrimitiveRestartEnableEXT =
-        (PFN_vkCmdSetPrimitiveRestartEnableEXT) GetProcAddress(vulkanModule, "vkCmdSetPrimitiveRestartEnableEXT");
+        (PFN_vkCmdSetPrimitiveRestartEnableEXT) DetouredExport(vulkanModule, "vkCmdSetPrimitiveRestartEnableEXT");
     o_vkCmdSetColorWriteEnableEXT =
-        (PFN_vkCmdSetColorWriteEnableEXT) GetProcAddress(vulkanModule, "vkCmdSetColorWriteEnableEXT");
-    o_vkCmdDrawMultiEXT = (PFN_vkCmdDrawMultiEXT) GetProcAddress(vulkanModule, "vkCmdDrawMultiEXT");
+        (PFN_vkCmdSetColorWriteEnableEXT) DetouredExport(vulkanModule, "vkCmdSetColorWriteEnableEXT");
+    o_vkCmdDrawMultiEXT = (PFN_vkCmdDrawMultiEXT) DetouredExport(vulkanModule, "vkCmdDrawMultiEXT");
     o_vkCmdDrawMultiIndexedEXT =
-        (PFN_vkCmdDrawMultiIndexedEXT) GetProcAddress(vulkanModule, "vkCmdDrawMultiIndexedEXT");
-    o_vkCmdBuildMicromapsEXT = (PFN_vkCmdBuildMicromapsEXT) GetProcAddress(vulkanModule, "vkCmdBuildMicromapsEXT");
-    o_vkCmdCopyMicromapEXT = (PFN_vkCmdCopyMicromapEXT) GetProcAddress(vulkanModule, "vkCmdCopyMicromapEXT");
+        (PFN_vkCmdDrawMultiIndexedEXT) DetouredExport(vulkanModule, "vkCmdDrawMultiIndexedEXT");
+    o_vkCmdBuildMicromapsEXT = (PFN_vkCmdBuildMicromapsEXT) DetouredExport(vulkanModule, "vkCmdBuildMicromapsEXT");
+    o_vkCmdCopyMicromapEXT = (PFN_vkCmdCopyMicromapEXT) DetouredExport(vulkanModule, "vkCmdCopyMicromapEXT");
     o_vkCmdCopyMicromapToMemoryEXT =
-        (PFN_vkCmdCopyMicromapToMemoryEXT) GetProcAddress(vulkanModule, "vkCmdCopyMicromapToMemoryEXT");
+        (PFN_vkCmdCopyMicromapToMemoryEXT) DetouredExport(vulkanModule, "vkCmdCopyMicromapToMemoryEXT");
     o_vkCmdCopyMemoryToMicromapEXT =
-        (PFN_vkCmdCopyMemoryToMicromapEXT) GetProcAddress(vulkanModule, "vkCmdCopyMemoryToMicromapEXT");
+        (PFN_vkCmdCopyMemoryToMicromapEXT) DetouredExport(vulkanModule, "vkCmdCopyMemoryToMicromapEXT");
     o_vkCmdWriteMicromapsPropertiesEXT =
-        (PFN_vkCmdWriteMicromapsPropertiesEXT) GetProcAddress(vulkanModule, "vkCmdWriteMicromapsPropertiesEXT");
-    o_vkCmdDrawClusterHUAWEI = (PFN_vkCmdDrawClusterHUAWEI) GetProcAddress(vulkanModule, "vkCmdDrawClusterHUAWEI");
+        (PFN_vkCmdWriteMicromapsPropertiesEXT) DetouredExport(vulkanModule, "vkCmdWriteMicromapsPropertiesEXT");
+    o_vkCmdDrawClusterHUAWEI = (PFN_vkCmdDrawClusterHUAWEI) DetouredExport(vulkanModule, "vkCmdDrawClusterHUAWEI");
     o_vkCmdDrawClusterIndirectHUAWEI =
-        (PFN_vkCmdDrawClusterIndirectHUAWEI) GetProcAddress(vulkanModule, "vkCmdDrawClusterIndirectHUAWEI");
+        (PFN_vkCmdDrawClusterIndirectHUAWEI) DetouredExport(vulkanModule, "vkCmdDrawClusterIndirectHUAWEI");
     o_vkCmdCopyMemoryIndirectNV =
-        (PFN_vkCmdCopyMemoryIndirectNV) GetProcAddress(vulkanModule, "vkCmdCopyMemoryIndirectNV");
+        (PFN_vkCmdCopyMemoryIndirectNV) DetouredExport(vulkanModule, "vkCmdCopyMemoryIndirectNV");
     o_vkCmdCopyMemoryToImageIndirectNV =
-        (PFN_vkCmdCopyMemoryToImageIndirectNV) GetProcAddress(vulkanModule, "vkCmdCopyMemoryToImageIndirectNV");
-    o_vkCmdDecompressMemoryNV = (PFN_vkCmdDecompressMemoryNV) GetProcAddress(vulkanModule, "vkCmdDecompressMemoryNV");
+        (PFN_vkCmdCopyMemoryToImageIndirectNV) DetouredExport(vulkanModule, "vkCmdCopyMemoryToImageIndirectNV");
+    o_vkCmdDecompressMemoryNV = (PFN_vkCmdDecompressMemoryNV) DetouredExport(vulkanModule, "vkCmdDecompressMemoryNV");
     o_vkCmdDecompressMemoryIndirectCountNV =
-        (PFN_vkCmdDecompressMemoryIndirectCountNV) GetProcAddress(vulkanModule, "vkCmdDecompressMemoryIndirectCountNV");
+        (PFN_vkCmdDecompressMemoryIndirectCountNV) DetouredExport(vulkanModule, "vkCmdDecompressMemoryIndirectCountNV");
     o_vkCmdUpdatePipelineIndirectBufferNV =
-        (PFN_vkCmdUpdatePipelineIndirectBufferNV) GetProcAddress(vulkanModule, "vkCmdUpdatePipelineIndirectBufferNV");
+        (PFN_vkCmdUpdatePipelineIndirectBufferNV) DetouredExport(vulkanModule, "vkCmdUpdatePipelineIndirectBufferNV");
     o_vkCmdSetDepthClampEnableEXT =
-        (PFN_vkCmdSetDepthClampEnableEXT) GetProcAddress(vulkanModule, "vkCmdSetDepthClampEnableEXT");
-    o_vkCmdSetPolygonModeEXT = (PFN_vkCmdSetPolygonModeEXT) GetProcAddress(vulkanModule, "vkCmdSetPolygonModeEXT");
+        (PFN_vkCmdSetDepthClampEnableEXT) DetouredExport(vulkanModule, "vkCmdSetDepthClampEnableEXT");
+    o_vkCmdSetPolygonModeEXT = (PFN_vkCmdSetPolygonModeEXT) DetouredExport(vulkanModule, "vkCmdSetPolygonModeEXT");
     o_vkCmdSetRasterizationSamplesEXT =
-        (PFN_vkCmdSetRasterizationSamplesEXT) GetProcAddress(vulkanModule, "vkCmdSetRasterizationSamplesEXT");
-    o_vkCmdSetSampleMaskEXT = (PFN_vkCmdSetSampleMaskEXT) GetProcAddress(vulkanModule, "vkCmdSetSampleMaskEXT");
+        (PFN_vkCmdSetRasterizationSamplesEXT) DetouredExport(vulkanModule, "vkCmdSetRasterizationSamplesEXT");
+    o_vkCmdSetSampleMaskEXT = (PFN_vkCmdSetSampleMaskEXT) DetouredExport(vulkanModule, "vkCmdSetSampleMaskEXT");
     o_vkCmdSetAlphaToCoverageEnableEXT =
-        (PFN_vkCmdSetAlphaToCoverageEnableEXT) GetProcAddress(vulkanModule, "vkCmdSetAlphaToCoverageEnableEXT");
+        (PFN_vkCmdSetAlphaToCoverageEnableEXT) DetouredExport(vulkanModule, "vkCmdSetAlphaToCoverageEnableEXT");
     o_vkCmdSetAlphaToOneEnableEXT =
-        (PFN_vkCmdSetAlphaToOneEnableEXT) GetProcAddress(vulkanModule, "vkCmdSetAlphaToOneEnableEXT");
+        (PFN_vkCmdSetAlphaToOneEnableEXT) DetouredExport(vulkanModule, "vkCmdSetAlphaToOneEnableEXT");
     o_vkCmdSetLogicOpEnableEXT =
-        (PFN_vkCmdSetLogicOpEnableEXT) GetProcAddress(vulkanModule, "vkCmdSetLogicOpEnableEXT");
+        (PFN_vkCmdSetLogicOpEnableEXT) DetouredExport(vulkanModule, "vkCmdSetLogicOpEnableEXT");
     o_vkCmdSetColorBlendEnableEXT =
-        (PFN_vkCmdSetColorBlendEnableEXT) GetProcAddress(vulkanModule, "vkCmdSetColorBlendEnableEXT");
+        (PFN_vkCmdSetColorBlendEnableEXT) DetouredExport(vulkanModule, "vkCmdSetColorBlendEnableEXT");
     o_vkCmdSetColorBlendEquationEXT =
-        (PFN_vkCmdSetColorBlendEquationEXT) GetProcAddress(vulkanModule, "vkCmdSetColorBlendEquationEXT");
+        (PFN_vkCmdSetColorBlendEquationEXT) DetouredExport(vulkanModule, "vkCmdSetColorBlendEquationEXT");
     o_vkCmdSetColorWriteMaskEXT =
-        (PFN_vkCmdSetColorWriteMaskEXT) GetProcAddress(vulkanModule, "vkCmdSetColorWriteMaskEXT");
+        (PFN_vkCmdSetColorWriteMaskEXT) DetouredExport(vulkanModule, "vkCmdSetColorWriteMaskEXT");
     o_vkCmdSetTessellationDomainOriginEXT =
-        (PFN_vkCmdSetTessellationDomainOriginEXT) GetProcAddress(vulkanModule, "vkCmdSetTessellationDomainOriginEXT");
+        (PFN_vkCmdSetTessellationDomainOriginEXT) DetouredExport(vulkanModule, "vkCmdSetTessellationDomainOriginEXT");
     o_vkCmdSetRasterizationStreamEXT =
-        (PFN_vkCmdSetRasterizationStreamEXT) GetProcAddress(vulkanModule, "vkCmdSetRasterizationStreamEXT");
+        (PFN_vkCmdSetRasterizationStreamEXT) DetouredExport(vulkanModule, "vkCmdSetRasterizationStreamEXT");
     o_vkCmdSetConservativeRasterizationModeEXT = (PFN_vkCmdSetConservativeRasterizationModeEXT) GetProcAddress(
         vulkanModule, "vkCmdSetConservativeRasterizationModeEXT");
     o_vkCmdSetExtraPrimitiveOverestimationSizeEXT = (PFN_vkCmdSetExtraPrimitiveOverestimationSizeEXT) GetProcAddress(
         vulkanModule, "vkCmdSetExtraPrimitiveOverestimationSizeEXT");
     o_vkCmdSetDepthClipEnableEXT =
-        (PFN_vkCmdSetDepthClipEnableEXT) GetProcAddress(vulkanModule, "vkCmdSetDepthClipEnableEXT");
+        (PFN_vkCmdSetDepthClipEnableEXT) DetouredExport(vulkanModule, "vkCmdSetDepthClipEnableEXT");
     o_vkCmdSetSampleLocationsEnableEXT =
-        (PFN_vkCmdSetSampleLocationsEnableEXT) GetProcAddress(vulkanModule, "vkCmdSetSampleLocationsEnableEXT");
+        (PFN_vkCmdSetSampleLocationsEnableEXT) DetouredExport(vulkanModule, "vkCmdSetSampleLocationsEnableEXT");
     o_vkCmdSetColorBlendAdvancedEXT =
-        (PFN_vkCmdSetColorBlendAdvancedEXT) GetProcAddress(vulkanModule, "vkCmdSetColorBlendAdvancedEXT");
+        (PFN_vkCmdSetColorBlendAdvancedEXT) DetouredExport(vulkanModule, "vkCmdSetColorBlendAdvancedEXT");
     o_vkCmdSetProvokingVertexModeEXT =
-        (PFN_vkCmdSetProvokingVertexModeEXT) GetProcAddress(vulkanModule, "vkCmdSetProvokingVertexModeEXT");
+        (PFN_vkCmdSetProvokingVertexModeEXT) DetouredExport(vulkanModule, "vkCmdSetProvokingVertexModeEXT");
     o_vkCmdSetLineRasterizationModeEXT =
-        (PFN_vkCmdSetLineRasterizationModeEXT) GetProcAddress(vulkanModule, "vkCmdSetLineRasterizationModeEXT");
+        (PFN_vkCmdSetLineRasterizationModeEXT) DetouredExport(vulkanModule, "vkCmdSetLineRasterizationModeEXT");
     o_vkCmdSetLineStippleEnableEXT =
-        (PFN_vkCmdSetLineStippleEnableEXT) GetProcAddress(vulkanModule, "vkCmdSetLineStippleEnableEXT");
+        (PFN_vkCmdSetLineStippleEnableEXT) DetouredExport(vulkanModule, "vkCmdSetLineStippleEnableEXT");
     o_vkCmdSetDepthClipNegativeOneToOneEXT =
-        (PFN_vkCmdSetDepthClipNegativeOneToOneEXT) GetProcAddress(vulkanModule, "vkCmdSetDepthClipNegativeOneToOneEXT");
+        (PFN_vkCmdSetDepthClipNegativeOneToOneEXT) DetouredExport(vulkanModule, "vkCmdSetDepthClipNegativeOneToOneEXT");
     o_vkCmdSetViewportWScalingEnableNV =
-        (PFN_vkCmdSetViewportWScalingEnableNV) GetProcAddress(vulkanModule, "vkCmdSetViewportWScalingEnableNV");
+        (PFN_vkCmdSetViewportWScalingEnableNV) DetouredExport(vulkanModule, "vkCmdSetViewportWScalingEnableNV");
     o_vkCmdSetViewportSwizzleNV =
-        (PFN_vkCmdSetViewportSwizzleNV) GetProcAddress(vulkanModule, "vkCmdSetViewportSwizzleNV");
+        (PFN_vkCmdSetViewportSwizzleNV) DetouredExport(vulkanModule, "vkCmdSetViewportSwizzleNV");
     o_vkCmdSetCoverageToColorEnableNV =
-        (PFN_vkCmdSetCoverageToColorEnableNV) GetProcAddress(vulkanModule, "vkCmdSetCoverageToColorEnableNV");
+        (PFN_vkCmdSetCoverageToColorEnableNV) DetouredExport(vulkanModule, "vkCmdSetCoverageToColorEnableNV");
     o_vkCmdSetCoverageToColorLocationNV =
-        (PFN_vkCmdSetCoverageToColorLocationNV) GetProcAddress(vulkanModule, "vkCmdSetCoverageToColorLocationNV");
+        (PFN_vkCmdSetCoverageToColorLocationNV) DetouredExport(vulkanModule, "vkCmdSetCoverageToColorLocationNV");
     o_vkCmdSetCoverageModulationModeNV =
-        (PFN_vkCmdSetCoverageModulationModeNV) GetProcAddress(vulkanModule, "vkCmdSetCoverageModulationModeNV");
+        (PFN_vkCmdSetCoverageModulationModeNV) DetouredExport(vulkanModule, "vkCmdSetCoverageModulationModeNV");
     o_vkCmdSetCoverageModulationTableEnableNV = (PFN_vkCmdSetCoverageModulationTableEnableNV) GetProcAddress(
         vulkanModule, "vkCmdSetCoverageModulationTableEnableNV");
     o_vkCmdSetCoverageModulationTableNV =
-        (PFN_vkCmdSetCoverageModulationTableNV) GetProcAddress(vulkanModule, "vkCmdSetCoverageModulationTableNV");
+        (PFN_vkCmdSetCoverageModulationTableNV) DetouredExport(vulkanModule, "vkCmdSetCoverageModulationTableNV");
     o_vkCmdSetShadingRateImageEnableNV =
-        (PFN_vkCmdSetShadingRateImageEnableNV) GetProcAddress(vulkanModule, "vkCmdSetShadingRateImageEnableNV");
+        (PFN_vkCmdSetShadingRateImageEnableNV) DetouredExport(vulkanModule, "vkCmdSetShadingRateImageEnableNV");
     o_vkCmdSetRepresentativeFragmentTestEnableNV = (PFN_vkCmdSetRepresentativeFragmentTestEnableNV) GetProcAddress(
         vulkanModule, "vkCmdSetRepresentativeFragmentTestEnableNV");
     o_vkCmdSetCoverageReductionModeNV =
-        (PFN_vkCmdSetCoverageReductionModeNV) GetProcAddress(vulkanModule, "vkCmdSetCoverageReductionModeNV");
+        (PFN_vkCmdSetCoverageReductionModeNV) DetouredExport(vulkanModule, "vkCmdSetCoverageReductionModeNV");
     o_vkCmdOpticalFlowExecuteNV =
-        (PFN_vkCmdOpticalFlowExecuteNV) GetProcAddress(vulkanModule, "vkCmdOpticalFlowExecuteNV");
-    o_vkCmdBindShadersEXT = (PFN_vkCmdBindShadersEXT) GetProcAddress(vulkanModule, "vkCmdBindShadersEXT");
+        (PFN_vkCmdOpticalFlowExecuteNV) DetouredExport(vulkanModule, "vkCmdOpticalFlowExecuteNV");
+    o_vkCmdBindShadersEXT = (PFN_vkCmdBindShadersEXT) DetouredExport(vulkanModule, "vkCmdBindShadersEXT");
     o_vkCmdSetDepthClampRangeEXT =
-        (PFN_vkCmdSetDepthClampRangeEXT) GetProcAddress(vulkanModule, "vkCmdSetDepthClampRangeEXT");
+        (PFN_vkCmdSetDepthClampRangeEXT) DetouredExport(vulkanModule, "vkCmdSetDepthClampRangeEXT");
     o_vkCmdConvertCooperativeVectorMatrixNV = (PFN_vkCmdConvertCooperativeVectorMatrixNV) GetProcAddress(
         vulkanModule, "vkCmdConvertCooperativeVectorMatrixNV");
     o_vkCmdSetAttachmentFeedbackLoopEnableEXT = (PFN_vkCmdSetAttachmentFeedbackLoopEnableEXT) GetProcAddress(
@@ -9648,15 +9668,15 @@ void Vulkan_wDx12::Hook(HMODULE vulkanModule)
         (PFN_vkCmdBuildPartitionedAccelerationStructuresNV) GetProcAddress(
             vulkanModule, "vkCmdBuildPartitionedAccelerationStructuresNV");
     o_vkCmdPreprocessGeneratedCommandsEXT =
-        (PFN_vkCmdPreprocessGeneratedCommandsEXT) GetProcAddress(vulkanModule, "vkCmdPreprocessGeneratedCommandsEXT");
+        (PFN_vkCmdPreprocessGeneratedCommandsEXT) DetouredExport(vulkanModule, "vkCmdPreprocessGeneratedCommandsEXT");
     o_vkCmdExecuteGeneratedCommandsEXT =
-        (PFN_vkCmdExecuteGeneratedCommandsEXT) GetProcAddress(vulkanModule, "vkCmdExecuteGeneratedCommandsEXT");
+        (PFN_vkCmdExecuteGeneratedCommandsEXT) DetouredExport(vulkanModule, "vkCmdExecuteGeneratedCommandsEXT");
     o_vkCmdBuildAccelerationStructuresKHR =
-        (PFN_vkCmdBuildAccelerationStructuresKHR) GetProcAddress(vulkanModule, "vkCmdBuildAccelerationStructuresKHR");
+        (PFN_vkCmdBuildAccelerationStructuresKHR) DetouredExport(vulkanModule, "vkCmdBuildAccelerationStructuresKHR");
     o_vkCmdBuildAccelerationStructuresIndirectKHR = (PFN_vkCmdBuildAccelerationStructuresIndirectKHR) GetProcAddress(
         vulkanModule, "vkCmdBuildAccelerationStructuresIndirectKHR");
     o_vkCmdCopyAccelerationStructureKHR =
-        (PFN_vkCmdCopyAccelerationStructureKHR) GetProcAddress(vulkanModule, "vkCmdCopyAccelerationStructureKHR");
+        (PFN_vkCmdCopyAccelerationStructureKHR) DetouredExport(vulkanModule, "vkCmdCopyAccelerationStructureKHR");
     o_vkCmdCopyAccelerationStructureToMemoryKHR = (PFN_vkCmdCopyAccelerationStructureToMemoryKHR) GetProcAddress(
         vulkanModule, "vkCmdCopyAccelerationStructureToMemoryKHR");
     o_vkCmdCopyMemoryToAccelerationStructureKHR = (PFN_vkCmdCopyMemoryToAccelerationStructureKHR) GetProcAddress(
@@ -9664,16 +9684,16 @@ void Vulkan_wDx12::Hook(HMODULE vulkanModule)
     o_vkCmdWriteAccelerationStructuresPropertiesKHR =
         (PFN_vkCmdWriteAccelerationStructuresPropertiesKHR) GetProcAddress(
             vulkanModule, "vkCmdWriteAccelerationStructuresPropertiesKHR");
-    o_vkCmdTraceRaysKHR = (PFN_vkCmdTraceRaysKHR) GetProcAddress(vulkanModule, "vkCmdTraceRaysKHR");
+    o_vkCmdTraceRaysKHR = (PFN_vkCmdTraceRaysKHR) DetouredExport(vulkanModule, "vkCmdTraceRaysKHR");
     o_vkCmdTraceRaysIndirectKHR =
-        (PFN_vkCmdTraceRaysIndirectKHR) GetProcAddress(vulkanModule, "vkCmdTraceRaysIndirectKHR");
+        (PFN_vkCmdTraceRaysIndirectKHR) DetouredExport(vulkanModule, "vkCmdTraceRaysIndirectKHR");
     o_vkCmdSetRayTracingPipelineStackSizeKHR = (PFN_vkCmdSetRayTracingPipelineStackSizeKHR) GetProcAddress(
         vulkanModule, "vkCmdSetRayTracingPipelineStackSizeKHR");
-    o_vkCmdDrawMeshTasksEXT = (PFN_vkCmdDrawMeshTasksEXT) GetProcAddress(vulkanModule, "vkCmdDrawMeshTasksEXT");
+    o_vkCmdDrawMeshTasksEXT = (PFN_vkCmdDrawMeshTasksEXT) DetouredExport(vulkanModule, "vkCmdDrawMeshTasksEXT");
     o_vkCmdDrawMeshTasksIndirectEXT =
-        (PFN_vkCmdDrawMeshTasksIndirectEXT) GetProcAddress(vulkanModule, "vkCmdDrawMeshTasksIndirectEXT");
+        (PFN_vkCmdDrawMeshTasksIndirectEXT) DetouredExport(vulkanModule, "vkCmdDrawMeshTasksIndirectEXT");
     o_vkCmdDrawMeshTasksIndirectCountEXT =
-        (PFN_vkCmdDrawMeshTasksIndirectCountEXT) GetProcAddress(vulkanModule, "vkCmdDrawMeshTasksIndirectCountEXT");
+        (PFN_vkCmdDrawMeshTasksIndirectCountEXT) DetouredExport(vulkanModule, "vkCmdDrawMeshTasksIndirectCountEXT");
 
 #pragma endregion
 
@@ -10538,6 +10558,8 @@ void Vulkan_wDx12::Hook(HMODULE vulkanModule)
         {
             LOG_ERROR("Failed to attach Vulkan hooks: %d", detourResult);
 
+            _detouredExports.clear();
+
             o_vkCmdBindPipeline = nullptr;
             o_vkCmdSetViewport = nullptr;
             o_vkCmdSetScissor = nullptr;
@@ -10827,6 +10849,7 @@ void Vulkan_wDx12::Unhook()
     }
     else
     {
+        _detouredExports.clear();
         o_vkQueueSubmit = nullptr;
         o_vkQueueSubmit2 = nullptr;
         o_vkQueueSubmit2KHR = nullptr;

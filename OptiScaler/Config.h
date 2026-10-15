@@ -584,6 +584,8 @@ class Config
     CustomOptional<bool> FGHUDFix { false };
     CustomOptional<int> FGHUDLimit { 1 };
     CustomOptional<bool> FGHUDFixExtended { false };
+    CustomOptional<bool> FGHUDFixUITexture { true };
+    CustomOptional<bool, NoDefault> FGHUDFixUIUnblend;
     CustomOptional<bool> FGImmediateCapture { false };
     CustomOptional<bool> FGHudfixPersistentBindings { true };
     CustomOptional<bool> FGDontUseSwapchainBuffers { false };

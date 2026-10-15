@@ -5045,6 +5045,51 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         }
     }
 
+    if (ScopedCard::Shows("fg_optifg") && state.api == API::Vulkan && state.currentVkFG != nullptr &&
+        state.activeFgInput == FGInput::Upscaler && !config->FGDisableHUDFix.value_or_default())
+    {
+        ScopedCard card { "OptiFG Settings" };
+
+        bool fgHudfix = config->FGHUDFix.value_or_default();
+        if (ImGui::Checkbox("HUDFix", &fgHudfix))
+            config->FGHUDFix = fgHudfix;
+        ShowTooltip("Enable HUD stability fix, might cause crashes!");
+
+        ImGui::BeginDisabled(!fgHudfix);
+
+        ImGui::SameLine(0.0f, 16.0f);
+        ImGui::PushItemWidth(95.0f * menuResScale);
+        int hudFixLimit = config->FGHUDLimit.value_or_default();
+        if (ImGui::InputInt("Limit", &hudFixLimit))
+            config->FGHUDLimit = std::clamp(hudFixLimit, 1, 999);
+        ShowTooltip("Delay HUDless capture, high values might cause crash!");
+        ImGui::PopItemWidth();
+
+        ImGui::SameLine(0.0f, 16.0f);
+        auto hudExtended = config->FGHUDFixExtended.value_or_default();
+        if (ImGui::Checkbox("Extended", &hudExtended))
+            config->FGHUDFixExtended = hudExtended;
+        ShowTooltip("Accept HUDless candidates of any format");
+
+        auto uiTexture = config->FGHUDFixUITexture.value_or_default();
+        if (ImGui::Checkbox("UI Texture", &uiTexture))
+            config->FGHUDFixUITexture = uiTexture;
+        ShowTooltip("Use the UI texture the game blends on the frame in its last compute pass");
+
+        ImGui::BeginDisabled(!uiTexture);
+        ImGui::SameLine(0.0f, 16.0f);
+
+        auto uiUnblend = config->FGHUDFixUIUnblend.value_or(state.activeFgOutput != FGOutput::DLSSG);
+        if (ImGui::Checkbox("Unblend UI", &uiUnblend))
+            config->FGHUDFixUIUnblend = uiUnblend;
+        ShowTooltip("Rebuild the HUDless by removing the UI texture from the frame\n"
+                    "FSR-FG gets the UI only this way, DLSSG also takes the UI texture directly");
+
+        ImGui::EndDisabled();
+
+        ImGui::EndDisabled();
+    }
+
     const FGNvngxReplacement activeNvngxFg = state.activeFgNvngx;
     if (ScopedCard::Shows("fg_nvngx") && activeNvngxFg != FGNvngxReplacement::None)
     {

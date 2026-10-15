@@ -17,6 +17,7 @@
 #include "Reflex_Hooks.h"
 
 #include <spoofing/Vulkan_Spoofing.h>
+#include <hudfix/Hudfix_Vk.h>
 
 #include <vulkan/vulkan.h>
 
@@ -477,6 +478,7 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
     {
         fg->OnDeviceCreated(*pDevice);
         HookDevice(*pDevice);
+        Hudfix_Vk::HookDevice(*pDevice);
     }
 
     if (result == VK_SUCCESS && Config::Instance()->OverlayMenu.value_or_default())
@@ -604,6 +606,10 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
                 currentFeature->TickFrozenCheck();
         }
     }
+
+    // Ends the hudless search before the menu renders to the swapchain
+    if (!dxgiBacked)
+        Hudfix_Vk::PresentStart();
 
     VkPresentInfoKHR localPresentInfo {};
     memcpy(&localPresentInfo, pPresentInfo, sizeof(VkPresentInfoKHR));
@@ -796,7 +802,12 @@ static VkResult hkvkGetSwapchainImagesKHR(VkDevice device, VkSwapchainKHR swapch
         fg != nullptr && fg->OwnsSwapchain(swapchain) && !FromFGOutput(_ReturnAddress()))
     {
         ScopedFGCall fgCall {};
-        return fg->GetSwapchainImages(device, swapchain, pSwapchainImageCount, pSwapchainImages);
+        auto result = fg->GetSwapchainImages(device, swapchain, pSwapchainImageCount, pSwapchainImages);
+
+        if (result == VK_SUCCESS && pSwapchainImages != nullptr)
+            Hudfix_Vk::AddSwapchainImages(pSwapchainImages, *pSwapchainImageCount);
+
+        return result;
     }
 
     return o_GetSwapchainImagesKHR(device, swapchain, pSwapchainImageCount, pSwapchainImages);
@@ -937,6 +948,14 @@ PFN_vkVoidFunction VulkanHooks::GetDeviceProcAddr(VkDevice device, const char* p
         return o_vkGetDeviceProcAddr(device, pName);
 
     return vkGetDeviceProcAddr(device, pName);
+}
+
+PFN_vkVoidFunction VulkanHooks::GetInstanceProcAddr(VkInstance instance, const char* pName)
+{
+    if (o_vkGetInstanceProcAddr != nullptr)
+        return o_vkGetInstanceProcAddr(instance, pName);
+
+    return vkGetInstanceProcAddr(instance, pName);
 }
 
 PFN_vkVoidFunction VulkanHooks::OriginalSwapchainFunction(const char* pName)

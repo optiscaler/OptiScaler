@@ -5,6 +5,8 @@
 #include <State.h>
 #include <Config.h>
 #include <MathUtils.h>
+#include <hudfix/Hudfix_Vk.h>
+#include <hooks/VulkanwDx12_Hooks.h>
 
 #include <nvsdk_ngx_vk.h>
 
@@ -91,4 +93,26 @@ void UpscalerInputsVk::UpscaleStart(VkCommandBuffer cmdBuffer, NVSDK_NGX_Paramet
                 mvHeight);
     SetResource(fg, parameters, NVSDK_NGX_Parameter_Depth, FG_ResourceType::Depth, cmdBuffer, feature->RenderWidth(),
                 feature->RenderHeight());
+}
+
+void UpscalerInputsVk::UpscaleEnd(VkCommandBuffer cmdBuffer, const NVSDK_NGX_Resource_VK* output)
+{
+    auto& state = State::Instance();
+
+    if (state.currentVkFG == nullptr || state.activeFgInput != FGInput::Upscaler)
+        return;
+
+    Hudfix_Vk::UpscaleEnd();
+
+    // The upscaled image is the first hudless candidate, NGX outputs are storage images
+    if (output != nullptr)
+    {
+        // Upscaling through DX12 continues the game's recording in a command buffer submitted after the upscale
+        if (auto virtualCmdBuffer = Vulkan_wDx12::GetVirtualCommandBuffer(cmdBuffer);
+            virtualCmdBuffer != VK_NULL_HANDLE)
+            cmdBuffer = virtualCmdBuffer;
+
+        auto& info = output->Resource.ImageViewInfo;
+        Hudfix_Vk::CheckImage(cmdBuffer, info.Image, info.Format, { info.Width, info.Height }, VK_IMAGE_LAYOUT_GENERAL);
+    }
 }

@@ -1063,9 +1063,14 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_EvaluateFeature(VkCommandBuffer 
 
     UpscalerInputsVk::UpscaleStart(InCmdList, InParameters, deviceContext);
 
+    NVSDK_NGX_Resource_VK* output = nullptr;
+    InParameters->Get(NVSDK_NGX_Parameter_Output, (void**) &output);
+
     auto upscaleResult = deviceContext->Evaluate(InCmdList, InParameters);
 
-    if (!upscaleResult)
+    if (upscaleResult)
+        UpscalerInputsVk::UpscaleEnd(InCmdList, output);
+    else
         ImGui::InsertNotification({ ImGuiToastType::Error, 10000, "Upscaler failed to run!" });
 
     if ((!upscaleResult || !deviceContext->IsInited()) &&
