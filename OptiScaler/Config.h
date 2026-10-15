@@ -368,9 +368,9 @@ class Config
     CustomOptional<int, NoDefault> RoundInternalResolution; // disabled by default
 
     CustomOptional<int, NoDefault> SkipFirstFrames; // disabled by default
-    CustomOptional<bool> RestoreComputeSignature { false };
-    CustomOptional<bool> RestoreGraphicSignature { false };
-    CustomOptional<bool> ExtendedStateRestore { false };
+    CustomOptional<bool, SoftDefault> RestoreComputeSignature { false };
+    CustomOptional<bool, SoftDefault> RestoreGraphicSignature { false };
+    CustomOptional<bool, SoftDefault> ExtendedStateRestore { false };
 
     CustomOptional<bool> UsePrecompiledShaders { true };
 
@@ -420,25 +420,25 @@ class Config
     CustomOptional<uint32_t, NoDefault> Fsr4Preset;
     CustomOptional<bool> Fsr4EnableDebugView { false };
     CustomOptional<bool> Fsr4EnableWatermark { false };
-    CustomOptional<bool> Fsr4DoNotLoadAmdxc64 { false };
+    CustomOptional<bool, SoftDefault> Fsr4DoNotLoadAmdxc64 { false };
 
     // FSR Common
     CustomOptional<float> FsrVerticalFov { 60.0f };
     CustomOptional<float> FsrHorizontalFov { 0.0f }; // off by default
     CustomOptional<float> FsrCameraNear { 0.1f };
     CustomOptional<float> FsrCameraFar { 100000.0f };
-    CustomOptional<bool> FsrUseFsrInputValues { true };
+    CustomOptional<bool, SoftDefault> FsrUseFsrInputValues { true };
 
     // dx11wdx12
     CustomOptional<bool> Dx11DelayedInit { false };
-    CustomOptional<bool> DontUseNTShared { true };
+    CustomOptional<bool, SoftDefault> DontUseNTShared { true };
 
     // vulkanwdx12
     CustomOptional<bool> VulkanUseCopyForInputs { false };
     CustomOptional<bool> VulkanUseCopyForOutput { false };
 
     // NVAPI Override
-    CustomOptional<bool> OverrideNvapiDll { false };
+    CustomOptional<bool, SoftDefault> OverrideNvapiDll { false };
     CustomOptional<bool> DontUseFakenvapiForXeLLOnNvidia { false };
     CustomOptional<bool> DisableFlipMetering { false };
 
@@ -475,7 +475,7 @@ class Config
     CustomOptional<FGOutput> FGOutput { FGOutput::NoFG };
     CustomOptional<bool> FGDrawUIOverFG { false };
     CustomOptional<bool> FGUIPremultipliedAlpha { true };
-    CustomOptional<bool> FGDisableHudless { false };
+    CustomOptional<bool, SoftDefault> FGDisableHudless { false };
     CustomOptional<bool> FGDisableUI { false };
     CustomOptional<bool> FGSkipReset { false };
     CustomOptional<int> FGAllowedFrameAhead { 1 };
@@ -483,8 +483,8 @@ class Config
     CustomOptional<bool> FGVelocityValidNow { false };
     CustomOptional<bool> FGHudlessValidNow { false };
     CustomOptional<bool> FGOnlyAcceptFirstHudless { false };
-    CustomOptional<bool> FGPreserveSwapChain { true };
-    CustomOptional<bool> FGSkipResizeBuffers { false };
+    CustomOptional<bool, SoftDefault> FGPreserveSwapChain { true };
+    CustomOptional<bool, SoftDefault> FGSkipResizeBuffers { false };
     CustomOptional<bool> FGModifyBufferState { false };
     CustomOptional<bool> FGModifySCIndex { false };
     CustomOptional<FrameTimeSource> FTInput { FrameTimeSource::Input };
@@ -496,7 +496,7 @@ class Config
     CustomOptional<bool> FGMakeDepthCopy { true };
     CustomOptional<bool> FGResourceFlip { false };
     CustomOptional<bool> FGResourceFlipOffset { false };
-    CustomOptional<bool> FGAlwaysCaptureFSRFGSwapchain { false };
+    CustomOptional<bool, SoftDefault> FGAlwaysCaptureFSRFGSwapchain { false };
 
     CustomOptional<int, NoDefault> FGRectLeft;
     CustomOptional<int, NoDefault> FGRectTop;
