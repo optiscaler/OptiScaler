@@ -1689,6 +1689,31 @@ void MenuCommon::Present()
         UpdateManualInput(_handle);
 }
 
+static std::atomic<bool> fgOutputPresents = false;
+static std::atomic<double> fgOutputLastPresent = 0.0;
+static std::atomic<double> fgOutputFrameTime = 0.0;
+
+// Streamline presents the real and the generated frames from different threads
+void MenuCommon::FGOutputPresent()
+{
+    auto now = Util::MillisecondsNow();
+    auto last = fgOutputLastPresent.exchange(now);
+
+    if (last > 0.0)
+        fgOutputFrameTime = now - last;
+}
+
+void MenuCommon::FGOutputPresents(bool presents)
+{
+    fgOutputPresents = presents;
+
+    if (!presents)
+    {
+        fgOutputLastPresent = 0.0;
+        fgOutputFrameTime = 0.0;
+    }
+}
+
 struct VersionCheckStatus
 {
     bool completed = false;
@@ -1755,6 +1780,12 @@ void MenuCommon::UpdateRenderTiming(RenderMenuContext& ctx)
             MenuCommon::Present();
 
         frameTime = lastFrameTime;
+        frameRate = 1000.0 / frameTime;
+    }
+
+    if (auto fgFrameTime = fgOutputFrameTime.load(); fgOutputPresents && fgFrameTime > 0.0)
+    {
+        frameTime = fgFrameTime;
         frameRate = 1000.0 / frameTime;
     }
 

@@ -36,7 +36,7 @@ class VulkanHooks
     static PFN_vkVoidFunction GetDeviceProcAddr(VkDevice device, const char* pName);
 
     // The driver's swapchain function behind OptiScaler's hook, below hooks others put on the same function.
-    // nullptr when it isn't hooked.
+    // vkQueuePresentKHR's also times the presented frames for the menu. nullptr when it isn't hooked.
     static PFN_vkVoidFunction OriginalSwapchainFunction(const char* pName);
 
     static void Hook(HMODULE vulkan1);

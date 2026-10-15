@@ -7,6 +7,7 @@
 #include <SysUtils.h>
 
 #include <menu/menu_overlay_vk.h>
+#include <menu/menu_common.h>
 #include <proxies/KernelBase_Proxy.h>
 #include <upscalers/IFeature_Vk.h>
 #include <framegen/ffx/FSRFG_Vk.h>
@@ -80,6 +81,13 @@ static bool FromFGOutput(void* returnAddress)
 
     auto& state = State::Instance();
     return state.optiSlInterposer != nullptr && state.IsOptiStreamlineModule(Util::GetCallerModule(returnAddress));
+}
+
+// FG outputs present the real and the generated frames through this
+static VkResult FGOutputQueuePresent(VkQueue queue, const VkPresentInfoKHR* pPresentInfo)
+{
+    MenuCommon::FGOutputPresent();
+    return o_QueuePresentKHR(queue, pPresentInfo);
 }
 
 // OptiScaler's Streamline calls the driver's swapchain functions directly. Overlays like RTSS hook the same ones on top
@@ -557,7 +565,7 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
 
     // FFX presents the real swapchain from its own queue
     if (FromFGOutput(_ReturnAddress()) || (fg != nullptr && fg->OwnsQueue(queue)))
-        return o_QueuePresentKHR(queue, pPresentInfo);
+        return FGOutputQueuePresent(queue, pPresentInfo);
 
     LOG_FUNC();
 
@@ -615,6 +623,8 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
 
     const bool fgPresent = !dxgiBacked && fg != nullptr && localPresentInfo.swapchainCount == 1 &&
                            fg->OwnsSwapchain(localPresentInfo.pSwapchains[0]);
+
+    MenuCommon::FGOutputPresents(fgPresent);
 
     if (fgPresent)
     {
@@ -944,7 +954,7 @@ PFN_vkVoidFunction VulkanHooks::OriginalSwapchainFunction(const char* pName)
         return (PFN_vkVoidFunction) o_AcquireNextImageKHR;
 
     if (std::strcmp(pName, "vkQueuePresentKHR") == 0)
-        return (PFN_vkVoidFunction) o_QueuePresentKHR;
+        return o_QueuePresentKHR != nullptr ? (PFN_vkVoidFunction) FGOutputQueuePresent : nullptr;
 
     return nullptr;
 }

@@ -283,4 +283,10 @@ class MenuCommon
     static void HideMenu();
     static void Present();
     static void ApplyThemeStyle();
+
+    // Vulkan FG outputs present the generated frames on their own, the game's presents only show the real ones.
+    // FGOutputPresent is called for each frame they present, FGOutputPresents says if the game's frames go through
+    // them.
+    static void FGOutputPresent();
+    static void FGOutputPresents(bool presents);
 };

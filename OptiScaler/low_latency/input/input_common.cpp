@@ -1396,7 +1396,7 @@ void InputCommon::update()
 
         // The limit is for the presented frames, the output limits the game's. XeFG paces through XeLL, which knows
         // about its generated frames. The game's own DLSSG reports its count through the NGX evaluate.
-        auto fg = state.currentFG;
+        auto fg = state.CurrentFG();
 
         if (xefg_paced())
         {
