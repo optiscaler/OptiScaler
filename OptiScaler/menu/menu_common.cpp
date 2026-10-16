@@ -268,6 +268,12 @@ inline std::string StrFmt(const char* fmt, ...)
     return out;
 }
 
+static std::string NameWithVersion(IFeature* feature)
+{
+    const auto version = feature->Version();
+    return StrFmt("%s %u.%u.%u", feature->ShortName().c_str(), version.major, version.minor, version.patch);
+}
+
 // CARDS -----------------------------
 static void DrawCardTitle(const char* label)
 {
@@ -728,8 +734,19 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
     if (targetBackend == Upscaler::Reset)
         targetBackend = currentUpscaler;
 
+    // FSR names already include the version, others only know theirs once running
+    auto upscalerName = [&](Upscaler upscaler, int index)
+    {
+        auto feature = State::Instance().currentFeature;
+
+        if (upscaler == currentUpscaler && !IsFsr(upscaler) && feature != nullptr)
+            return NameWithVersion(feature);
+
+        return ShortUpscalerName(upscaler, api, index);
+    };
+
     // Interop is only shown here, the list uses a tag for it
-    auto selectedName = ShortUpscalerName(targetBackend, api, ffxIndex);
+    auto selectedName = upscalerName(targetBackend, ffxIndex);
     if (IsOn12(targetBackend))
         selectedName += " (Dx12)";
 
@@ -804,8 +821,7 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
         if (i > 0 && group(entry.upscaler) != group(entries[i - 1].upscaler))
             ImGui::Separator();
 
-        auto label =
-            StrFmt("%s##%d", ShortUpscalerName(entry.upscaler, api, entry.ffxIndex).c_str(), (int) entry.upscaler);
+        auto label = StrFmt("%s##%d", upscalerName(entry.upscaler, entry.ffxIndex).c_str(), (int) entry.upscaler);
 
         if (ImGui::Selectable(label.c_str(), currentUpscaler == entry.upscaler))
         {
@@ -2351,10 +2367,8 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             {
                 const bool usesDx12CompatLayer = currentFeature->IsWithDx12();
 
-                featurePart = StrFmt(" | %s -> %s %u.%u.%u%s", ApiUpscalerInputName(state.currentInputApiName).c_str(),
-                                     currentFeature->ShortName().c_str(), currentFeature->Version().major,
-                                     currentFeature->Version().minor, currentFeature->Version().patch,
-                                     usesDx12CompatLayer ? " w/Dx12" : "");
+                featurePart = StrFmt(" | %s -> %s%s", ApiUpscalerInputName(state.currentInputApiName).c_str(),
+                                     NameWithVersion(currentFeature).c_str(), usesDx12CompatLayer ? " w/Dx12" : "");
             }
 
             uint32_t interpolatedFrameCount = 0;
@@ -2858,7 +2872,13 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
 
     const bool usesDlssd = currentFeature->GetUpscalerType() == Upscaler::DLSSD;
 
-    if (!usesDlssd)
+    // DLSSD can't be switched to another upscaler
+    if (usesDlssd)
+    {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(NameWithVersion(currentFeature).c_str());
+    }
+    else
     {
         switch (state.api)
         {
@@ -8042,6 +8062,7 @@ void MenuCommon::RenderDetectedInfo(RenderMenuContext& ctx)
         StatusFlag("FFX SR", FfxApiProxy::Dx12Module_SR() != nullptr);
         StatusFlag("FFX FG", FfxApiProxy::Dx12Module_FG() != nullptr);
         StatusFlag("OptiPatcher", state.isOptiPatcherSucceed);
+        StatusFlag("Linux", state.isRunningOnLinux);
         StatusFlag("DLSS capable GPU", primaryGpu.dlssCapable);
         StatusFlag("FSR4 capable GPU", primaryGpu.fsr4Support != FSR4Support::None,
                    primaryGpu.fsr4Support == FSR4Support::INT8);
@@ -8169,10 +8190,8 @@ void MenuCommon::RenderStatusInfo(RenderMenuContext& ctx)
 
             if (active)
             {
-                pair("Upscaler",
-                     StrFmt("%s %d.%d.%d%s", currentFeature->ShortName().c_str(), currentFeature->Version().major,
-                            currentFeature->Version().minor, currentFeature->Version().patch,
-                            (currentFeature->IsWithDx12() && state.api != DX12) ? " w/Dx12" : ""));
+                pair("Upscaler", NameWithVersion(currentFeature) +
+                                     ((currentFeature->IsWithDx12() && state.api != DX12) ? " w/Dx12" : ""));
                 pair("Render", StrFmt("%dx%d", currentFeature->RenderWidth(), currentFeature->RenderHeight()));
                 pair("Output", StrFmt("%dx%d (%.2fx)", currentFeature->TargetWidth(), currentFeature->TargetHeight(),
                                       (float) currentFeature->TargetWidth() / (float) currentFeature->RenderWidth()));
