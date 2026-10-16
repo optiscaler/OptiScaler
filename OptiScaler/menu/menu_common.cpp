@@ -62,6 +62,7 @@ static ImVec4 SdrColors[ImGuiCol_COUNT];
 static bool inputMenu = false;
 static bool inputFG = false;
 static bool fgHotkeyLeftDefault = false; // FG hotkey temporarily overrode Default (follow game)
+static int fgHotkeySavedOverride = -1;   // Override DLSSG Ratio with value before Off, -1 = Default
 static bool inputFps = false;
 static bool inputFpsCycle = false;
 static uint64_t lastInputTick = 0;
@@ -1855,8 +1856,38 @@ void MenuCommon::HandleMenuShortcuts(RenderMenuContext& ctx)
         {
             inputFG = false;
 
-            if (state.activeFgInput != FGInput::NoFG && state.activeFgOutput != FGOutput::NoFG &&
-                (state.FGSwapchainExists() || state.activeFgInput == FGInput::NvngxFG))
+            // DLSSG via Nvngx - activeFgOutput is NoFG, game's DLSSG is controlled by Override DLSSG Ratio
+            if (state.activeFgInput == FGInput::NvngxFG)
+            {
+                if (state.dlssgMfgMax.has_value() && state.dlssgMfgMax.value() >= 1)
+                {
+                    auto& ratio = config->FGDLSSGOverrideInterpolationCount;
+                    if (ratio.has_value() && ratio.value() == 0)
+                    {
+                        // Off by the override, go back to what it was
+                        if (fgHotkeySavedOverride > 0)
+                            ratio = fgHotkeySavedOverride;
+                        else
+                            ratio.reset();
+                        LOG_DEBUG("FG toggle key pressed, DLSSG ratio override back to {}",
+                                  ratio.has_value() ? std::to_string(ratio.value()) : std::string("Default"));
+                    }
+                    else
+                    {
+                        fgHotkeySavedOverride = ratio.has_value() ? ratio.value() : -1;
+                        ratio = 0;
+                        LOG_DEBUG("FG toggle key pressed, turning DLSSG off with the ratio override");
+                    }
+                    StreamlineHooks::updateDlssgOptions();
+                }
+                else
+                {
+                    LOG_DEBUG("FG toggle key pressed, DLSSG ratio override isn't available yet");
+                }
+            }
+
+            else if (state.activeFgInput != FGInput::NoFG && state.activeFgOutput != FGOutput::NoFG &&
+                     (state.FGSwapchainExists() || state.activeFgInput == FGInput::NvngxFG))
             {
                 if (fgHotkeyLeftDefault)
                 {
