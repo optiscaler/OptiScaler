@@ -1706,28 +1706,41 @@ void MenuCommon::Present()
 }
 
 static std::atomic<bool> fgOutputPresents = false;
-static std::atomic<double> fgOutputLastPresent = 0.0;
-static std::atomic<double> fgOutputFrameTime = 0.0;
+static std::atomic<uint32_t> fgOutputPresentCount = 0;
+static double fgOutputLastSample = 0.0;
+static double fgOutputFrameTime = 0.0;
 
-// Streamline presents the real and the generated frames from different threads
-void MenuCommon::FGOutputPresent()
+// Streamline presents the real and the generated frames from different threads.
+// With flip metering they are submitted back to back and paced by the display, so the
+// frame time is averaged over all presents between menu frames instead of the last interval.
+void MenuCommon::FGOutputPresent() { fgOutputPresentCount++; }
+
+void MenuCommon::FGOutputPresents(bool presents) { fgOutputPresents = presents; }
+
+static double FGOutputFrameTime(double now)
 {
-    auto now = Util::MillisecondsNow();
-    auto last = fgOutputLastPresent.exchange(now);
-
-    if (last > 0.0)
-        fgOutputFrameTime = now - last;
-}
-
-void MenuCommon::FGOutputPresents(bool presents)
-{
-    fgOutputPresents = presents;
-
-    if (!presents)
+    if (!fgOutputPresents)
     {
-        fgOutputLastPresent = 0.0;
+        fgOutputPresentCount = 0;
+        fgOutputLastSample = 0.0;
         fgOutputFrameTime = 0.0;
+        return 0.0;
     }
+
+    if (fgOutputLastSample <= 0.0)
+    {
+        fgOutputPresentCount = 0;
+        fgOutputLastSample = now;
+        return 0.0;
+    }
+
+    if (auto count = fgOutputPresentCount.exchange(0); count > 0)
+    {
+        fgOutputFrameTime = (now - fgOutputLastSample) / count;
+        fgOutputLastSample = now;
+    }
+
+    return fgOutputFrameTime;
 }
 
 struct VersionCheckStatus
@@ -1799,7 +1812,7 @@ void MenuCommon::UpdateRenderTiming(RenderMenuContext& ctx)
         frameRate = 1000.0 / frameTime;
     }
 
-    if (auto fgFrameTime = fgOutputFrameTime.load(); fgOutputPresents && fgFrameTime > 0.0)
+    if (auto fgFrameTime = FGOutputFrameTime(now); fgFrameTime > 0.0)
     {
         frameTime = fgFrameTime;
         frameRate = 1000.0 / frameTime;
