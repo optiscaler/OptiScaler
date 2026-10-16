@@ -204,7 +204,7 @@ const std::vector<GameConfig> gameConfigs = {
         .exes = { "endfield.exe" },
         .defaults = { UseFakenvapi = false, OnNonNvidia(VulkanSpoofing = true),
                       OnNonNvidia(VulkanExtensionSpoofing = true) },
-        .quirks = { ForceCreateD3D12Device, VulkanDLSSBarrierFixup },
+        .quirks = { ForceCreateD3D12Device, VulkanDLSSBarrierFixup, IgnoreTagsWithoutHudlessForFG },
     },
 
     // Neverness to Everness
