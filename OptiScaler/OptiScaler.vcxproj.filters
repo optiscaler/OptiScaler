@@ -455,6 +455,9 @@
     <ClInclude Include="shaders\resource_flip\RF_Dx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="shaders\resource_flip\RF_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="shaders\resource_flip\precompiled\RF_Shader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1368,6 +1371,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="shaders\resource_flip\RF_Dx12.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="shaders\resource_flip\RF_Vk.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="include\imgui\imgui_impl_dx11.cpp">

@@ -240,6 +240,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="shaders\reproject\precompile\reproject_mask_v_Shader.h" />
     <ClInclude Include="shaders\reproject\precompile\reproject_Shader.h" />
     <ClInclude Include="shaders\reproject\precompile\reproject_stats_Shader.h" />
+    <ClInclude Include="shaders\resource_flip\precompiled\RF_Shader_Vk.h" />
     <ClInclude Include="shaders\ui_unblend\precompile\UiUnblend_Shader_Vk.h" />
     <ClInclude Include="shaders\ui_unblend\UiUnblend_Vk.h" />
     <ClInclude Include="inputs\FG\Streamline_Inputs_Sl1_Dx12.h" />
@@ -424,6 +425,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="shaders\resource_flip\precompiled\RF_Shader.h" />
     <ClInclude Include="shaders\resource_flip\RF_Common.h" />
     <ClInclude Include="shaders\resource_flip\RF_Dx12.h" />
+    <ClInclude Include="shaders\resource_flip\RF_Vk.h" />
     <ClInclude Include="shaders\camera_motion\CM_Common.h" />
     <ClInclude Include="shaders\camera_motion\CM_Dx12.h" />
     <ClInclude Include="shaders\camera_motion\precompiled\CM_Shader.h" />
@@ -709,6 +711,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="resource_tracking\ResTrack_dx12.cpp" />
     <ClCompile Include="shaders\hudless_compare\HC_Dx12.cpp" />
     <ClCompile Include="shaders\resource_flip\RF_Dx12.cpp" />
+    <ClCompile Include="shaders\resource_flip\RF_Vk.cpp" />
     <ClCompile Include="shaders\camera_motion\CM_Dx12.cpp" />
     <ClCompile Include="shaders\depth_scale\DS_Dx12.cpp" />
     <ClCompile Include="shaders\depth_transfer\DT_Dx11.cpp" />

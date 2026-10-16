@@ -2,6 +2,7 @@
 #include "IFGFeature_Vk.h"
 
 #include <Config.h>
+#include <State.h>
 
 #include <magic_enum.hpp>
 #include <bit>
@@ -202,83 +203,94 @@ void IFGFeature_Vk::DestroyCopy(ImageCopy& copy)
     copy = {};
 }
 
+bool IFGFeature_Vk::CreateCopy(ImageCopy& copy, FG_ResourceType type, VkFormat format, uint32_t width, uint32_t height,
+                               VkImageUsageFlags usage)
+{
+    if (copy.format == format && copy.width == width && copy.height == height)
+        return true;
+
+    DestroyCopy(copy);
+
+    VkImageCreateInfo imageInfo { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    imageInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageInfo.format = format;
+    imageInfo.extent = { width, height, 1 };
+    imageInfo.mipLevels = 1;
+    imageInfo.arrayLayers = 1;
+    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imageInfo.usage = usage;
+    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    if (vkCreateImage(_device, &imageInfo, nullptr, &copy.image) != VK_SUCCESS)
+    {
+        LOG_ERROR("vkCreateImage failed for {}", magic_enum::enum_name(type));
+        return false;
+    }
+
+    VkMemoryRequirements requirements {};
+    vkGetImageMemoryRequirements(_device, copy.image, &requirements);
+
+    VkPhysicalDeviceMemoryProperties memoryProperties {};
+    vkGetPhysicalDeviceMemoryProperties(_physicalDevice, &memoryProperties);
+
+    VkMemoryAllocateInfo allocInfo { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+    allocInfo.allocationSize = requirements.size;
+    allocInfo.memoryTypeIndex = UINT32_MAX;
+
+    for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++)
+    {
+        if ((requirements.memoryTypeBits & (1 << i)) &&
+            (memoryProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT))
+        {
+            allocInfo.memoryTypeIndex = i;
+            break;
+        }
+    }
+
+    if (allocInfo.memoryTypeIndex == UINT32_MAX ||
+        vkAllocateMemory(_device, &allocInfo, nullptr, &copy.memory) != VK_SUCCESS ||
+        vkBindImageMemory(_device, copy.image, copy.memory, 0) != VK_SUCCESS)
+    {
+        LOG_ERROR("Can't allocate memory for {}", magic_enum::enum_name(type));
+        DestroyCopy(copy);
+        return false;
+    }
+
+    // Shaders sample only the depth of depth/stencil images
+    auto viewAspect = AspectMask(format);
+    if (viewAspect & VK_IMAGE_ASPECT_DEPTH_BIT)
+        viewAspect = VK_IMAGE_ASPECT_DEPTH_BIT;
+
+    VkImageViewCreateInfo viewInfo { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+    viewInfo.image = copy.image;
+    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.format = format;
+    viewInfo.subresourceRange = { viewAspect, 0, 1, 0, 1 };
+
+    if (vkCreateImageView(_device, &viewInfo, nullptr, &copy.view) != VK_SUCCESS)
+    {
+        LOG_ERROR("vkCreateImageView failed for {}", magic_enum::enum_name(type));
+        DestroyCopy(copy);
+        return false;
+    }
+
+    copy.format = format;
+    copy.width = width;
+    copy.height = height;
+
+    LOG_DEBUG("{} copy created, {}x{}, format: {}", magic_enum::enum_name(type), copy.width, copy.height,
+              (UINT) format);
+
+    return true;
+}
+
 bool IFGFeature_Vk::CopyImage(VkCommandBuffer cmdBuffer, VkFGResource& resource, ImageCopy& copy, VkFormat format)
 {
-    if (copy.format != format || copy.width != resource.imageWidth || copy.height != resource.imageHeight)
+    if (!CreateCopy(copy, resource.type, format, resource.imageWidth, resource.imageHeight,
+                    VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT))
     {
-        DestroyCopy(copy);
-
-        VkImageCreateInfo imageInfo { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
-        imageInfo.imageType = VK_IMAGE_TYPE_2D;
-        imageInfo.format = format;
-        imageInfo.extent = { resource.imageWidth, resource.imageHeight, 1 };
-        imageInfo.mipLevels = 1;
-        imageInfo.arrayLayers = 1;
-        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-        imageInfo.usage =
-            VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-
-        if (vkCreateImage(_device, &imageInfo, nullptr, &copy.image) != VK_SUCCESS)
-        {
-            LOG_ERROR("vkCreateImage failed for {}", magic_enum::enum_name(resource.type));
-            return false;
-        }
-
-        VkMemoryRequirements requirements {};
-        vkGetImageMemoryRequirements(_device, copy.image, &requirements);
-
-        VkPhysicalDeviceMemoryProperties memoryProperties {};
-        vkGetPhysicalDeviceMemoryProperties(_physicalDevice, &memoryProperties);
-
-        VkMemoryAllocateInfo allocInfo { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-        allocInfo.allocationSize = requirements.size;
-        allocInfo.memoryTypeIndex = UINT32_MAX;
-
-        for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++)
-        {
-            if ((requirements.memoryTypeBits & (1 << i)) &&
-                (memoryProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT))
-            {
-                allocInfo.memoryTypeIndex = i;
-                break;
-            }
-        }
-
-        if (allocInfo.memoryTypeIndex == UINT32_MAX ||
-            vkAllocateMemory(_device, &allocInfo, nullptr, &copy.memory) != VK_SUCCESS ||
-            vkBindImageMemory(_device, copy.image, copy.memory, 0) != VK_SUCCESS)
-        {
-            LOG_ERROR("Can't allocate memory for {}", magic_enum::enum_name(resource.type));
-            DestroyCopy(copy);
-            return false;
-        }
-
-        // Shaders sample only the depth of depth/stencil images
-        auto viewAspect = AspectMask(format);
-        if (viewAspect & VK_IMAGE_ASPECT_DEPTH_BIT)
-            viewAspect = VK_IMAGE_ASPECT_DEPTH_BIT;
-
-        VkImageViewCreateInfo viewInfo { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
-        viewInfo.image = copy.image;
-        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        viewInfo.format = format;
-        viewInfo.subresourceRange = { viewAspect, 0, 1, 0, 1 };
-
-        if (vkCreateImageView(_device, &viewInfo, nullptr, &copy.view) != VK_SUCCESS)
-        {
-            LOG_ERROR("vkCreateImageView failed for {}", magic_enum::enum_name(resource.type));
-            DestroyCopy(copy);
-            return false;
-        }
-
-        copy.format = format;
-        copy.width = resource.imageWidth;
-        copy.height = resource.imageHeight;
-
-        LOG_DEBUG("{} copy created, {}x{}, format: {} -> {}", magic_enum::enum_name(resource.type), copy.width,
-                  copy.height, (UINT) resource.format, (UINT) format);
+        return false;
     }
 
     auto aspect = AspectMask(resource.format);
@@ -318,6 +330,64 @@ bool IFGFeature_Vk::CopyImage(VkCommandBuffer cmdBuffer, VkFGResource& resource,
     return true;
 }
 
+bool IFGFeature_Vk::FlipResource(VkCommandBuffer cmdBuffer, VkFGResource& resource, int fIndex)
+{
+    auto type = resource.type;
+    auto velocity = type == FG_ResourceType::Velocity;
+
+    // Depth formats can't be storage images
+    auto format = VK_FORMAT_R32_SFLOAT;
+
+    if (velocity)
+    {
+        VkFormatProperties properties {};
+        vkGetPhysicalDeviceFormatProperties(_physicalDevice, resource.format, &properties);
+
+        format = (properties.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT)
+                     ? resource.format
+                     : VK_FORMAT_R16G16B16A16_SFLOAT;
+    }
+
+    auto& flipped = _flipped[fIndex][type];
+
+    if (!CreateCopy(flipped, type, format, resource.imageWidth, resource.imageHeight,
+                    VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT))
+    {
+        return false;
+    }
+
+    auto& flip = velocity ? _mvFlip : _depthFlip;
+
+    if (flip == nullptr)
+        flip = std::make_unique<RF_Vk>(velocity ? "VelocityFlip" : "DepthFlip", _device, _physicalDevice);
+
+    if (!flip->IsInit())
+        return false;
+
+    ImageBarrier(cmdBuffer, resource.image, resource.format, resource.layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    resource.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    ImageBarrier(cmdBuffer, flipped.image, flipped.format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
+    if (!flip->Dispatch(cmdBuffer, resource.view, flipped.view, { resource.imageWidth, resource.imageHeight },
+                        resource.width, resource.height, velocity))
+    {
+        LOG_ERROR("Can't flip {}", magic_enum::enum_name(type));
+        return false;
+    }
+
+    ImageBarrier(cmdBuffer, flipped.image, flipped.format, VK_IMAGE_LAYOUT_GENERAL,
+                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+    LOG_TRACE("Setting {} from flip, index: {}", magic_enum::enum_name(type), fIndex);
+    resource.image = flipped.image;
+    resource.view = flipped.view;
+    resource.format = flipped.format;
+    resource.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    return true;
+}
+
 bool IFGFeature_Vk::SetResource(VkFGResource* inputResource)
 {
     if (inputResource == nullptr || inputResource->image == VK_NULL_HANDLE || !IsActive() || IsPaused())
@@ -348,16 +418,23 @@ bool IFGFeature_Vk::SetResource(VkFGResource* inputResource)
 
     auto resource = *inputResource;
 
-    if (resource.validity == FG_ResourceValidity::ValidNow)
+    auto willFlip = State::Instance().activeFgInput == FGInput::Upscaler && config->FGResourceFlip.value_or_default() &&
+                    (type == FG_ResourceType::Depth || type == FG_ResourceType::Velocity);
+
+    // Flipping reads from our copy
+    if (resource.validity == FG_ResourceValidity::ValidNow || willFlip)
     {
         if (resource.cmdBuffer == VK_NULL_HANDLE)
         {
-            LOG_ERROR("{}, validity == ValidNow but cmdBuffer is null!", magic_enum::enum_name(type));
+            LOG_ERROR("{}, no cmdBuffer to copy with!", magic_enum::enum_name(type));
             return false;
         }
 
         if (!CopyImage(resource.cmdBuffer, resource, _copies[fIndex][type], resource.format))
             return false;
+
+        if (willFlip)
+            FlipResource(resource.cmdBuffer, resource, fIndex);
     }
 
     _frameResources[fIndex][type] = resource;
@@ -443,6 +520,12 @@ IFGFeature_Vk::~IFGFeature_Vk()
         return;
 
     for (auto& frameCopies : _copies)
+    {
+        for (auto& copy : frameCopies)
+            DestroyCopy(copy);
+    }
+
+    for (auto& frameCopies : _flipped)
     {
         for (auto& copy : frameCopies)
             DestroyCopy(copy);

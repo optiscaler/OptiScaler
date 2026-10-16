@@ -3,6 +3,7 @@
 #include "IFGFeature.h"
 
 #include <shaders/ui_unblend/UiUnblend_Vk.h>
+#include <shaders/resource_flip/RF_Vk.h>
 
 #include <vulkan/vulkan.h>
 
@@ -37,11 +38,21 @@ class IFGFeature_Vk : public virtual IFGFeature
 
   private:
     ImageCopy _copies[BUFFER_COUNT][ResourceTypeCOUNT] {};
+    ImageCopy _flipped[BUFFER_COUNT][ResourceTypeCOUNT] {};
 
     std::unique_ptr<UiUnblend_Vk> _uiUnblend;
+    std::unique_ptr<RF_Vk> _depthFlip;
+    std::unique_ptr<RF_Vk> _mvFlip;
 
     std::vector<VkDeviceQueueCreateInfo> _queueCreateInfos;
     std::vector<std::vector<float>> _queuePriorities;
+
+    // (Re)creates the image when the format or size changed
+    bool CreateCopy(ImageCopy& copy, FG_ResourceType type, VkFormat format, uint32_t width, uint32_t height,
+                    VkImageUsageFlags usage);
+
+    // Flips the copied depth or velocity of Unity games into a storage image, points the resource to it
+    bool FlipResource(VkCommandBuffer cmdBuffer, VkFGResource& resource, int fIndex);
 
   protected:
     // Queues the output needs next to the game's, filled in by the output's constructor
