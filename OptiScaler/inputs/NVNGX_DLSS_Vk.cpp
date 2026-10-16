@@ -1005,6 +1005,30 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_EvaluateFeature(VkCommandBuffer 
     }
 
     auto handleId = InFeatureHandle->Id;
+
+    // Same as D3D12, the DLSSG state shown in the menu comes from the game's own FG evaluations.
+    // Replacements are handled below, so this has to be done before that
+    static size_t evalWithoutFG = 0;
+    static bool fgEvalSeen = false;
+    if (handleId >= NVNGX_PROVIDER_ID_OFFSET)
+    {
+        // Older DLSSG doesn't set the count at all, eval means at least 2x
+        int frameCount = 1;
+        if (InParameters == nullptr ||
+            InParameters->Get("DLSSG.MultiFrameCount", &frameCount) != NVSDK_NGX_Result_Success)
+        {
+            frameCount = 1;
+        }
+        state.dlssgDetectedInterpolationCount = frameCount;
+        evalWithoutFG = 0;
+        fgEvalSeen = true;
+    }
+    else if (fgEvalSeen && ++evalWithoutFG == 6)
+    {
+        // Game stopped evaluating FG, report it as disabled
+        state.dlssgDetectedInterpolationCount = 0;
+    }
+
     if (VkContexts[handleId].feature == nullptr) // prevent source api name flicker when dlssg is active
         state.setInputApiName = state.currentInputApiName;
 
