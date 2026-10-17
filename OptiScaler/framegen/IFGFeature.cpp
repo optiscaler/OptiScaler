@@ -323,7 +323,14 @@ void IFGFeature::SetResourceReady(FG_ResourceType type, int index)
     _resourceFrame[type] = _frameCount;
 }
 
-UINT IFGFeature::GetInterpolatedFrameCount() const { return _framesToInterpolate < 0 ? 1 : _framesToInterpolate; }
+UINT IFGFeature::GetInterpolatedFrameCount() const
+{
+    // Dynamic MFG's 1X: no frames generated while the output keeps its count
+    if (_generationOff)
+        return 0;
+
+    return _framesToInterpolate < 0 ? 1 : _framesToInterpolate;
+}
 
 int IFGFeature::GetMaxInterpolationCount() const { return _maxInterpolationCount; }
 

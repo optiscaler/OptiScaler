@@ -82,6 +82,8 @@ class InputCommon
     // it last marked
     inline static std::atomic<ID3D12CommandQueue*> xefg_present_queue = nullptr;
     inline static std::atomic_uint64_t xefg_frame_id = 0;
+    // Time the output's last sleep took, for XeFG's Dynamic MFG (the frame time it doesn't need)
+    inline static std::atomic<double> last_sleep_ms = 0.0;
 
     static void mark_frame_generation(LowLatencyInput input)
     {
@@ -124,6 +126,9 @@ class InputCommon
 
   public:
     static InputResult set_low_latency_tech(IUnknown* pDevice, LowLatencyMode mode);
+
+    // The time the output slept since the last call, 0 if it didn't
+    static double take_sleep_ms() { return last_sleep_ms.exchange(0.0); }
 
     static InputResult sleep(const InputContext& inputContext, IUnknown* pDevice,
                              std::optional<uint32_t> frame_id = std::nullopt);

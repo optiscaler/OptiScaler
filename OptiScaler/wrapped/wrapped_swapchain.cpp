@@ -475,7 +475,7 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         if (auto currentFeature = State::Instance().currentFeature; currentFeature != nullptr)
         {
             if (auto currentFg = State::Instance().currentFG; currentFg != nullptr)
-                currentFeature->TickFrozenCheck(currentFg->GetInterpolatedFrameCount());
+                currentFeature->TickFrozenCheck(std::max(currentFg->GetInterpolatedFrameCount(), 1u));
             else
                 currentFeature->TickFrozenCheck();
         }
