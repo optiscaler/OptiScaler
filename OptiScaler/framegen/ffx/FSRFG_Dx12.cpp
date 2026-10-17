@@ -8,6 +8,7 @@
 #include <hudfix/Hudfix_Dx11.h>
 #include <hudfix/Hudfix_Dx12.h>
 #include <menu/menu_overlay_dx.h>
+#include <misc/DeferredRelease.h>
 
 #include <magic_enum.hpp>
 #include <DirectXMath.h>
@@ -700,6 +701,8 @@ ffxReturnCode_t FSRFG_Dx12::PresentCallback(ffxCallbackDescFrameGenerationPresen
     auto fIndex = params->frameID % BUFFER_COUNT;
     auto cmdList = (ID3D12GraphicsCommandList*) params->commandList;
 
+    std::lock_guard<std::mutex> callbackLock(_callbackResourceMutex);
+
     auto mouseDeltaSimToSim = InputCollection::getInstance().readSimsDelta(_frameCount);
     auto mouseDeltaSinceSim = InputCollection::getInstance().readDeltaSinceSim(_frameCount);
     LOG_DEBUG("pre mouseDeltaSinceSim: x:{}, y:{}", mouseDeltaSinceSim.x, mouseDeltaSinceSim.y);
@@ -832,7 +835,10 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
 
     auto& state = State::Instance();
 
-    if (cmdList && _reprojectionActive)
+    std::unique_lock<std::mutex> callbackLock(_callbackResourceMutex);
+
+    // Skipped while FG is off, the copy would be recreated right after ReleaseResourceCopies frees it
+    if (cmdList && _reprojectionActive && Config::Instance()->IsFGEnabled())
     {
         // Save the original game image with UI for later so that we can compose back the UI
         ID3D12Resource* copyOutput = nullptr;
@@ -983,12 +989,12 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
 
             if (applyHudCutoff)
             {
-                if (_hudCopy[fIndex].get() == nullptr && callbackDevice != nullptr)
+                if (_hudCopy.get() == nullptr && callbackDevice != nullptr)
                 {
-                    _hudCopy[fIndex] = std::make_unique<HudCopy_Dx12>("HudCopy", callbackDevice);
+                    _hudCopy = std::make_unique<HudCopy_Dx12>("HudCopy", callbackDevice);
                 }
 
-                if (auto hudCopy = _hudCopy[fIndex].get(); hudCopy && hudCopy->IsInit())
+                if (auto hudCopy = _hudCopy.get(); hudCopy && hudCopy->IsInit())
                 {
                     // In Cyberprank - DLSSG has noise issues, FSR FG has noise + vignetting
                     // In Death Stranding 2 - DLSSG has wrong colormapping it seems, FSR FG is fine
@@ -1011,15 +1017,14 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
             {
                 if (hudlessResource != nullptr)
                 {
-                    if (_hudlessCompareCompute[fIndex].get() == nullptr && callbackDevice != nullptr)
+                    if (_hudlessCompareCompute.get() == nullptr && callbackDevice != nullptr)
                     {
                         LOG_DEBUG("Creating HudlessCompareCompute on callback device {:X} (cached {:X})",
                                   (size_t) callbackDevice, (size_t) _device);
-                        _hudlessCompareCompute[fIndex] =
-                            std::make_unique<HCC_Dx12>("HudlessCompareCompute", callbackDevice);
+                        _hudlessCompareCompute = std::make_unique<HCC_Dx12>("HudlessCompareCompute", callbackDevice);
                     }
 
-                    if (auto hudlessCompareCompute = _hudlessCompareCompute[fIndex].get();
+                    if (auto hudlessCompareCompute = _hudlessCompareCompute.get();
                         hudlessCompareCompute && hudlessCompareCompute->IsInit())
                     {
                         hudlessCompareCompute->Dispatch(
@@ -1032,6 +1037,8 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
             SAFE_RELEASE(callbackDevice);
         }
     }
+
+    callbackLock.unlock();
 
     auto dispatchResult = FfxApiProxy::D3D12_Dispatch(&_fgContext, &params->header);
     LOG_DEBUG("D3D12_Dispatch result: {}, fIndex: {}", (UINT) dispatchResult, fIndex);
@@ -1534,13 +1541,18 @@ void FSRFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
         if (_fgContext != nullptr && State::Instance().activeFgInput == FGInput::Upscaler && !IsPaused() && !IsActive())
             Activate();
     }
-    else if (IsActive())
+    else
     {
-        Deactivate();
+        if (IsActive())
+        {
+            Deactivate();
 
-        State::Instance().clearCapturedHudlesses = true;
-        Hudfix_Dx12::ResetCounters();
-        Hudfix_Dx11::ResetCounters();
+            State::Instance().clearCapturedHudlesses = true;
+            Hudfix_Dx12::ResetCounters();
+            Hudfix_Dx11::ResetCounters();
+        }
+
+        ReleaseResourceCopies();
     }
 
     if (State::Instance().fgChanged)
@@ -1567,9 +1579,6 @@ void FSRFG_Dx12::ReleaseObjects()
 {
     for (size_t i = 0; i < BUFFER_COUNT; i++)
     {
-        _hudCopy[i].reset();
-        _hudlessCompareCompute[i].reset();
-
         SAFE_RELEASE(_fgCommandAllocator[i]);
         SAFE_RELEASE(_fgCommandList[i]);
         SAFE_RELEASE(_uiCommandAllocator[i]);
@@ -1589,6 +1598,29 @@ void FSRFG_Dx12::ReleaseObjects()
     _hudlessCompare.reset();
     _mvFlip.reset();
     _depthFlip.reset();
+
+    ReleaseResourceCopies();
+}
+
+void FSRFG_Dx12::ReleaseResourceCopies()
+{
+    std::lock_guard<std::mutex> callbackLock(_callbackResourceMutex);
+
+    for (size_t i = 0; i < BUFFER_COUNT; i++)
+    {
+        // Destructors defer the release of their buffers
+        _hudlessTransfer[i].reset();
+        _uiTransfer[i].reset();
+        DeferredRelease::Release(_hudlessCopyResource[i]);
+    }
+
+    _hudCopy.reset();
+    _hudlessCompareCompute.reset();
+
+    // Disables raw input hooks on destroy
+    _reproject.reset();
+
+    IFGFeature_Dx12::ReleaseResourceCopies();
 }
 
 bool FSRFG_Dx12::ExecuteCommandList(int index)

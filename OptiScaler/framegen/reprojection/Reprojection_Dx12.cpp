@@ -28,6 +28,8 @@ void Reprojection_Dx12::ReleaseObjects()
     _hudlessCompare.reset();
     _mvFlip.reset();
     _depthFlip.reset();
+
+    ReleaseResourceCopies();
 }
 
 void Reprojection_Dx12::CreateObjects(ID3D12Device* InDevice)
@@ -192,6 +194,8 @@ void Reprojection_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgCons
     else
     {
         Deactivate();
+        ReleaseResourceCopies();
+        _reproject.reset();
     }
 
     if (State::Instance().fgChanged)

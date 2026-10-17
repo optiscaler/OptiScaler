@@ -102,7 +102,12 @@ class IFGFeature_Vk : public virtual IFGFeature
     // Copies the resource into target in the given format, then points the resource to the copy.
     // Formats only differing in sRGB keep the stored values, others get blitted.
     bool CopyImage(VkCommandBuffer cmdBuffer, VkFGResource& resource, ImageCopy& target, VkFormat format);
+
+    // Destroyed once in flight frames are done with it
     void DestroyCopy(ImageCopy& copy);
+
+    // The copy SetResource made of the resource, nullptr if it points to something else
+    const ImageCopy* OwnCopy(const VkFGResource& resource, int fIndex) const;
 
   public:
     static VkFormat WithoutSrgb(VkFormat format);

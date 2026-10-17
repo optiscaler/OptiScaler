@@ -5,7 +5,7 @@
 class Nvngx_DllProxy : public IFGNvngx
 {
   private:
-    ID3D12Resource* depthCopy[2];
+    ID3D12Resource* depthCopy[2] {};
 
   protected:
     HMODULE dll = nullptr;

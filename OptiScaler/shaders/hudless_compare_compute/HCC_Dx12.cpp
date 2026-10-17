@@ -33,21 +33,15 @@ bool HCC_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* hudl
     _counter = _counter % HCC_NUM_OF_HEAPS;
     FrameDescriptorHeap& currentHeap = _frameHeaps[_counter];
 
-    if (_buffer == nullptr)
-    {
-        LOG_DEBUG("[{0}] Start!", _name);
+    // Follows the present size and format, kept in COPY_DEST between dispatches
+    auto previousBuffer = _buffer;
+    auto resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS;
 
-        auto resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS |
-                             D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS;
+    if (!Shader_Dx12::CreateBufferResource(_device, present, D3D12_RESOURCE_STATE_COPY_DEST, &_buffer, resourceFlags))
+        return false;
 
-        auto result = Shader_Dx12::CreateBufferResource(_device, present, D3D12_RESOURCE_STATE_COPY_DEST, &_buffer,
-                                                        resourceFlags);
-
-        if (result)
-            _buffer->SetName(L"HCC_Buffer");
-
-        return result;
-    }
+    if (_buffer != previousBuffer)
+        _buffer->SetName(L"HCC_Buffer");
 
     ResourceBarrier(cmdList, present, presentState, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
@@ -143,7 +137,7 @@ HCC_Dx12::HCC_Dx12(std::string InName, ID3D12Device* InDevice) : Shader_Dx12(InN
 
 HCC_Dx12::~HCC_Dx12()
 {
-    if (!_init || State::Instance().isShuttingDown)
+    if (State::Instance().isShuttingDown)
         return;
 
     for (int i = 0; i < HCC_NUM_OF_HEAPS; i++)
@@ -151,5 +145,5 @@ HCC_Dx12::~HCC_Dx12()
         _frameHeaps[i].ReleaseHeaps();
     }
 
-    SAFE_RELEASE(_buffer);
+    DeferredRelease::Release(_buffer);
 }

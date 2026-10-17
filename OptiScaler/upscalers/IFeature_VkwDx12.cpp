@@ -12,6 +12,7 @@
 #include <with_dx12/with_dx12.h>
 
 #include <misc/IdentifyGpu.h>
+#include <misc/DeferredRelease.h>
 
 #include <magic_enum.hpp>
 #include <detours/detours.h>
@@ -628,28 +629,29 @@ bool IFeature_VkwDx12::CopyTextureFromVkToDx12(VkCommandBuffer InCmdBuffer, NVSD
         OutResource->Height != InParam->Resource.ImageViewInfo.Height ||
         OutResource->Format != InParam->Resource.ImageViewInfo.Format || OutResource->VkSharedImage == VK_NULL_HANDLE)
     {
-        // Cleanup existing resources
-        if (OutResource->VkSharedImage != VK_NULL_HANDLE)
-        {
-            vkDestroyImage(VulkanDevice, OutResource->VkSharedImage, nullptr);
-            OutResource->VkSharedImage = VK_NULL_HANDLE;
-        }
+        // Cleanup existing resources, previous frames on both APIs can still be using them
+        DeferredRelease::Enqueue(
+            [device = VulkanDevice, image = OutResource->VkSharedImage, view = OutResource->VkSharedImageView,
+             memory = OutResource->VkSharedMemory]()
+            {
+                if (view != VK_NULL_HANDLE)
+                    vkDestroyImageView(device, view, nullptr);
 
-        if (OutResource->VkSharedImageView != VK_NULL_HANDLE)
-        {
-            vkDestroyImageView(VulkanDevice, OutResource->VkSharedImageView, nullptr);
-            OutResource->VkSharedImageView = VK_NULL_HANDLE;
-        }
+                if (image != VK_NULL_HANDLE)
+                    vkDestroyImage(device, image, nullptr);
 
-        if (OutResource->VkSharedMemory != VK_NULL_HANDLE)
-        {
-            vkFreeMemory(VulkanDevice, OutResource->VkSharedMemory, nullptr);
-            OutResource->VkSharedMemory = VK_NULL_HANDLE;
-        }
+                if (memory != VK_NULL_HANDLE)
+                    vkFreeMemory(device, memory, nullptr);
+            },
+            (uint64_t) VulkanDevice);
+
+        OutResource->VkSharedImage = VK_NULL_HANDLE;
+        OutResource->VkSharedImageView = VK_NULL_HANDLE;
+        OutResource->VkSharedMemory = VK_NULL_HANDLE;
 
         SAFE_CLOSE_HANDLE(OutResource->SharedHandle);
 
-        SAFE_RELEASE(OutResource->Dx12Resource);
+        DeferredRelease::Release(OutResource->Dx12Resource);
 
         ASSIGN_VK_DESC((*OutResource), (*OutResource), InParam->Resource.ImageViewInfo.Width,
                        InParam->Resource.ImageViewInfo.Height, InParam->Resource.ImageViewInfo.Format);
@@ -2056,6 +2058,9 @@ bool IFeature_VkwDx12::Init(VkInstance InInstance, VkPhysicalDevice InPD, VkDevi
 
 bool IFeature_VkwDx12::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters)
 {
+    // Frees deferred objects even when presents aren't hooked
+    DeferredRelease::Collect();
+
     LOG_FUNC();
     std::scoped_lock evaluateLock(EvaluateMutex);
 

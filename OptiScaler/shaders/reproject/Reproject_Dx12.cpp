@@ -195,8 +195,8 @@ void Reproject_Dx12::ReleaseCacheResources()
 {
     for (int i = 0; i < 2; i++)
     {
-        SAFE_RELEASE(_cacheColor[i]);
-        SAFE_RELEASE(_cacheGeo[i]);
+        DeferredRelease::Release(_cacheColor[i]);
+        DeferredRelease::Release(_cacheGeo[i]);
     }
 
     _cacheValid = false;
@@ -227,8 +227,7 @@ bool Reproject_Dx12::CreateMaskResource(ID3D12Resource** resource, uint32_t widt
             return true;
 
         LOG_WARN("[{0}] Release {1}x{2}, new one: {3}x{4}", _name, desc.Width, desc.Height, width, height);
-        (*resource)->Release();
-        (*resource) = nullptr;
+        DeferredRelease::Release(*resource);
     }
 
     auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
@@ -404,21 +403,18 @@ bool Reproject_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ReprojectionPa
     FrameDescriptorHeap& currentHeap = _frameHeaps[_counter];
     auto& currentBuffer = _buffer[_counter];
 
-    if (!currentBuffer)
+    // Recreated when the present size or format changes, kept in COPY_SOURCE between dispatches
+    auto previousBuffer = currentBuffer;
+    auto resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS;
+
+    if (!Shader_Dx12::CreateBufferResource(_device, realPresent, D3D12_RESOURCE_STATE_COPY_SOURCE, &currentBuffer,
+                                           resourceFlags))
     {
-        LOG_DEBUG("[{0}] Start!", _name);
-
-        auto resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS |
-                             D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS;
-
-        auto result = Shader_Dx12::CreateBufferResource(_device, realPresent, D3D12_RESOURCE_STATE_COPY_DEST,
-                                                        &currentBuffer, resourceFlags);
-
-        if (result)
-            currentBuffer->SetName(L"Reproject_Buffer");
-
-        return result;
+        return false;
     }
+
+    if (currentBuffer != previousBuffer)
+        currentBuffer->SetName(L"Reproject_Buffer");
 
     // Not every caller provides depth size
     if (params.DepthWidth == 0 || params.DepthHeight == 0)
@@ -452,6 +448,10 @@ bool Reproject_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ReprojectionPa
     constexpr auto cacheColorFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 
     bool cacheReady = params.CacheEnabled && CreateCacheResources(params.CacheSize, cacheColorFormat);
+
+    // Keyed on the option, the third person bypass toggles too often to free on it
+    if (!Config::Instance()->ReprojectionDirectionCache.value_or_default() && _cacheColor[0] != nullptr)
+        ReleaseCacheResources();
     auto plan = PlanDispatch(params, cacheReady, velocity != nullptr);
 
     ResourceBarrier(cmdList, currentBuffer, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
@@ -698,36 +698,37 @@ Reproject_Dx12::~Reproject_Dx12()
     // Always stop the input thread from writing into the mapped memory
     InputCollection::getInstance().unregisterLiveSink(_liveInputMapped);
 
-    if (!_init || State::Instance().isShuttingDown)
+    if (State::Instance().isShuttingDown)
         return;
 
-    SAFE_RELEASE(_rootSignature);
-    SAFE_RELEASE(_constantBuffer);
-    SAFE_RELEASE(_maskPipelineH);
-    SAFE_RELEASE(_maskPipelineV);
-    SAFE_RELEASE(_latchPipeline);
-    SAFE_RELEASE(_cachePipeline);
-    SAFE_RELEASE(_statsPipeline);
-    SAFE_RELEASE(_statsOutput);
+    DeferredRelease::Release(_rootSignature);
+    DeferredRelease::Release(_constantBuffer);
+    DeferredRelease::Release(_maskPipelineH);
+    DeferredRelease::Release(_maskPipelineV);
+    DeferredRelease::Release(_latchPipeline);
+    DeferredRelease::Release(_cachePipeline);
+    DeferredRelease::Release(_statsPipeline);
+    DeferredRelease::Release(_statsOutput);
 
     for (uint32_t i = 0; i < StatsLatency; i++)
     {
         if (_statsMapped[i])
             _statsReadback[i]->Unmap(0, nullptr);
 
-        SAFE_RELEASE(_statsReadback[i]);
+        DeferredRelease::Release(_statsReadback[i]);
     }
 
     ReleaseCacheResources();
-    SAFE_RELEASE(_liveInput);
-    SAFE_RELEASE(_latchedOutput);
-    SAFE_RELEASE(_depthMaskTemp);
-    SAFE_RELEASE(_depthMask);
+    DeferredRelease::Release(_liveInput);
+    DeferredRelease::Release(_latchedOutput);
+    DeferredRelease::Release(_depthMaskTemp);
+    DeferredRelease::Release(_depthMask);
 
     for (int i = 0; i < Reproject_NUM_OF_HEAPS; i++)
     {
         _frameHeaps[i].ReleaseHeaps();
-        SAFE_RELEASE(_constantBuffers[i]);
+        DeferredRelease::Release(_buffer[i]);
+        DeferredRelease::Release(_constantBuffers[i]);
     }
 
     RawInputHook::getInstance().stop();

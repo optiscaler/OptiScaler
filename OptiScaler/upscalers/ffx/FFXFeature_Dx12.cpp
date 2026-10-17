@@ -3,6 +3,7 @@
 #include <Util.h>
 #include <proxies/FfxApi_Proxy.h>
 #include "FFXFeature_Dx12.h"
+#include <misc/DeferredRelease.h>
 #include "MathUtils.h"
 
 using namespace OptiMath;
@@ -52,8 +53,8 @@ bool CreateBufferResourceWithSize(ID3D12Device* device, ID3D12Resource* source, 
         if (bufDesc.Width != width || bufDesc.Height != height || bufDesc.Format != inDesc.Format ||
             bufDesc.Flags != inDesc.Flags)
         {
-            (*target)->Release();
-            (*target) = nullptr;
+            // Previous frames can still be using it
+            DeferredRelease::Release(*target);
         }
         else
         {

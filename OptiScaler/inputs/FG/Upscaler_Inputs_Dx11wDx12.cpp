@@ -128,6 +128,14 @@ void UpscalerInputsDx11wDx12::UpscaleStart(NVSDK_NGX_Parameter* InParameters, IF
 
     fg->EvaluateState(_dx12Device, fgConstants);
 
+    // Not needed while FG or the option is off, its destructor defers the buffer release
+    if (DepthScaleDx11wDx12 != nullptr &&
+        (!Config::Instance()->IsFGEnabled() || !Config::Instance()->FGEnableDepthScale.value_or_default()))
+    {
+        delete DepthScaleDx11wDx12;
+        DepthScaleDx11wDx12 = nullptr;
+    }
+
     int reset = 0;
     InParameters->Get(NVSDK_NGX_Parameter_Reset, &reset);
 
@@ -203,8 +211,7 @@ void UpscalerInputsDx11wDx12::UpscaleStart(NVSDK_NGX_Parameter* InParameters, IF
             if (DepthScaleDx11wDx12 == nullptr)
                 DepthScaleDx11wDx12 = new DS_Dx12("Depth Scale Dx11wDx12", _dx12Device);
 
-            if (DepthScaleDx11wDx12->CreateBufferResource(_dx12Device, paramDepth, feature->DisplayWidth(),
-                                                          feature->DisplayHeight(),
+            if (DepthScaleDx11wDx12->CreateBufferResource(_dx12Device, paramDepth, 0, 0,
                                                           D3D12_RESOURCE_STATE_UNORDERED_ACCESS) &&
                 DepthScaleDx11wDx12->Buffer() != nullptr)
             {

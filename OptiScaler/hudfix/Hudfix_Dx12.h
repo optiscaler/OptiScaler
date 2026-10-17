@@ -80,18 +80,6 @@ class Hudfix_Dx12
     // Buffer for Format Transfer
     inline static ID3D12Resource* _captureBuffer[BUFFER_COUNT] = { nullptr, nullptr, nullptr, nullptr };
 
-    struct CaptureRemoveInfo
-    {
-        ID3D12Fence* fence = nullptr;
-        UINT64 fenceValue = 0;
-        std::vector<ID3D12Resource*> resources;
-    };
-
-    inline static std::atomic<bool> _captureRemovalActive { false };
-    inline static std::mutex _captureRemoveMutex;
-    inline static std::vector<ID3D12Resource*> _pendingCaptureRemovals;
-    inline static std::vector<CaptureRemoveInfo> _captureRemoveInfos;
-
     // used hudless list
     inline static ankerl::unordered_dense::map<ID3D12Resource*, HudlessInfo> _hudlessList;
 
@@ -108,7 +96,6 @@ class Hudfix_Dx12
     inline static std::atomic<bool> _skipHudlessChecks { false };
 
     static void RemoveCaptureBuffer(ID3D12Resource** resource);
-    static void ProcessPendingCaptureRemovals();
 
     static bool CreateBufferResource(ID3D12Device* InDevice, ResourceInfo* InSource, D3D12_RESOURCE_STATES InState,
                                      ID3D12Resource** OutResource);
@@ -155,6 +142,9 @@ class Hudfix_Dx12
 
     // Reset frame counters
     static void ResetCounters();
+
+    // Frees the capture and format transfer buffers, recreated on the next capture
+    static void ReleaseBuffers();
 
     static bool GetSkipStatus() { return _skipTracking.load(std::memory_order_acquire); }
     static void SetSkipStatus(bool status) { _skipTracking.store(status, std::memory_order_release); }

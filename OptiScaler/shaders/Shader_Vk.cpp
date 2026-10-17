@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "Shader_Vk.h"
 #include "Util.h"
+#include <misc/DeferredRelease.h>
 
 Shader_Vk::Shader_Vk(std::string InName, VkDevice InDevice, VkPhysicalDevice InPhysicalDevice)
     : _name(InName), _device(InDevice), _physicalDevice(InPhysicalDevice)
@@ -10,49 +11,44 @@ Shader_Vk::Shader_Vk(std::string InName, VkDevice InDevice, VkPhysicalDevice InP
 
 Shader_Vk::~Shader_Vk()
 {
-    if (_pipeline != VK_NULL_HANDLE)
-    {
-        vkDestroyPipeline(_device, _pipeline, nullptr);
-        _pipeline = VK_NULL_HANDLE;
-    }
-
-    if (_descriptorPool != VK_NULL_HANDLE)
-    {
-        vkDestroyDescriptorPool(_device, _descriptorPool, nullptr);
-        _descriptorPool = VK_NULL_HANDLE;
-    }
-
-    if (_descriptorSetLayout != VK_NULL_HANDLE)
-    {
-        vkDestroyDescriptorSetLayout(_device, _descriptorSetLayout, nullptr);
-        _descriptorSetLayout = VK_NULL_HANDLE;
-    }
-
-    if (_pipelineLayout != VK_NULL_HANDLE)
-    {
-        vkDestroyPipelineLayout(_device, _pipelineLayout, nullptr);
-        _pipelineLayout = VK_NULL_HANDLE;
-    }
-
-    if (_constantBuffer != VK_NULL_HANDLE)
-    {
-        vkDestroyBuffer(_device, _constantBuffer, nullptr);
-        _constantBuffer = VK_NULL_HANDLE;
-    }
-
-    if (_constantBufferMemory != VK_NULL_HANDLE)
-    {
-        vkFreeMemory(_device, _constantBufferMemory, nullptr);
-        _constantBufferMemory = VK_NULL_HANDLE;
-    }
-
-    if (_textureSampler != VK_NULL_HANDLE)
-    {
-        vkDestroySampler(_device, _textureSampler, nullptr);
-        _textureSampler = VK_NULL_HANDLE;
-    }
-
     ReleaseImageResource();
+
+    // Command buffers in flight can still reference these
+    DeferredRelease::Enqueue(
+        [device = _device, pipeline = _pipeline, descriptorPool = _descriptorPool,
+         descriptorSetLayout = _descriptorSetLayout, pipelineLayout = _pipelineLayout, constantBuffer = _constantBuffer,
+         constantBufferMemory = _constantBufferMemory, textureSampler = _textureSampler]()
+        {
+            if (pipeline != VK_NULL_HANDLE)
+                vkDestroyPipeline(device, pipeline, nullptr);
+
+            if (descriptorPool != VK_NULL_HANDLE)
+                vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+
+            if (descriptorSetLayout != VK_NULL_HANDLE)
+                vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+
+            if (pipelineLayout != VK_NULL_HANDLE)
+                vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+
+            if (constantBuffer != VK_NULL_HANDLE)
+                vkDestroyBuffer(device, constantBuffer, nullptr);
+
+            if (constantBufferMemory != VK_NULL_HANDLE)
+                vkFreeMemory(device, constantBufferMemory, nullptr);
+
+            if (textureSampler != VK_NULL_HANDLE)
+                vkDestroySampler(device, textureSampler, nullptr);
+        },
+        (uint64_t) _device);
+
+    _pipeline = VK_NULL_HANDLE;
+    _descriptorPool = VK_NULL_HANDLE;
+    _descriptorSetLayout = VK_NULL_HANDLE;
+    _pipelineLayout = VK_NULL_HANDLE;
+    _constantBuffer = VK_NULL_HANDLE;
+    _constantBufferMemory = VK_NULL_HANDLE;
+    _textureSampler = VK_NULL_HANDLE;
 }
 
 void Shader_Vk::CreateDescriptorPool(const std::vector<VkDescriptorPoolSize>& poolSizes, uint32_t maxSets)
@@ -270,10 +266,6 @@ bool Shader_Vk::CreateImageResource(uint32_t width, uint32_t height, VkFormat fo
     if (_intermediateImage != VK_NULL_HANDLE && _width == width && _height == height && _format == format)
         return true;
 
-    _width = width;
-    _height = height;
-    _format = format;
-
     ReleaseImageResource();
 
     VkImageCreateInfo imageInfo {};
@@ -310,10 +302,16 @@ bool Shader_Vk::CreateImageResource(uint32_t width, uint32_t height, VkFormat fo
     if (vkAllocateMemory(_device, &allocInfo, nullptr, &_intermediateMemory) != VK_SUCCESS)
     {
         LOG_ERROR("failed to allocate image memory!");
+        ReleaseImageResource();
         return false;
     }
 
-    vkBindImageMemory(_device, _intermediateImage, _intermediateMemory, 0);
+    if (vkBindImageMemory(_device, _intermediateImage, _intermediateMemory, 0) != VK_SUCCESS)
+    {
+        LOG_ERROR("failed to bind image memory!");
+        ReleaseImageResource();
+        return false;
+    }
 
     VkImageViewCreateInfo viewInfo {};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -329,31 +327,46 @@ bool Shader_Vk::CreateImageResource(uint32_t width, uint32_t height, VkFormat fo
     if (vkCreateImageView(_device, &viewInfo, nullptr, &_intermediateImageView) != VK_SUCCESS)
     {
         LOG_ERROR("failed to create image view!");
+        ReleaseImageResource();
         return false;
     }
+
+    // Only after everything exists, a failed attempt must not look like a matching image next time
+    _width = width;
+    _height = height;
+    _format = format;
 
     return true;
 }
 
 void Shader_Vk::ReleaseImageResource()
 {
-    if (_intermediateImageView != VK_NULL_HANDLE)
+    if (_intermediateImageView != VK_NULL_HANDLE || _intermediateImage != VK_NULL_HANDLE ||
+        _intermediateMemory != VK_NULL_HANDLE)
     {
-        vkDestroyImageView(_device, _intermediateImageView, nullptr);
-        _intermediateImageView = VK_NULL_HANDLE;
+        // Command buffers in flight can still reference it
+        DeferredRelease::Enqueue(
+            [device = _device, view = _intermediateImageView, image = _intermediateImage,
+             memory = _intermediateMemory]()
+            {
+                if (view != VK_NULL_HANDLE)
+                    vkDestroyImageView(device, view, nullptr);
+
+                if (image != VK_NULL_HANDLE)
+                    vkDestroyImage(device, image, nullptr);
+
+                if (memory != VK_NULL_HANDLE)
+                    vkFreeMemory(device, memory, nullptr);
+            },
+            (uint64_t) _device);
     }
 
-    if (_intermediateImage != VK_NULL_HANDLE)
-    {
-        vkDestroyImage(_device, _intermediateImage, nullptr);
-        _intermediateImage = VK_NULL_HANDLE;
-    }
-
-    if (_intermediateMemory != VK_NULL_HANDLE)
-    {
-        vkFreeMemory(_device, _intermediateMemory, nullptr);
-        _intermediateMemory = VK_NULL_HANDLE;
-    }
+    _intermediateImageView = VK_NULL_HANDLE;
+    _intermediateImage = VK_NULL_HANDLE;
+    _intermediateMemory = VK_NULL_HANDLE;
+    _width = 0;
+    _height = 0;
+    _format = VK_FORMAT_UNDEFINED;
 }
 
 void Shader_Vk::SetImageLayout(VkCommandBuffer cmdBuffer, VkImage image, VkImageLayout oldLayout,

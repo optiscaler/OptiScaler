@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "Shader_Dx12.h"
 #include <d3dx/d3dx12.h>
+#include <misc/DeferredRelease.h>
 
 using Microsoft::WRL::ComPtr;
 
@@ -11,12 +12,13 @@ Shader_Dx12::Shader_Dx12(std::string InName, ID3D12Device* InDevice) : _name(InN
 
 Shader_Dx12::~Shader_Dx12()
 {
-    if (!_init || State::Instance().isShuttingDown)
+    if (State::Instance().isShuttingDown)
         return;
 
-    SAFE_RELEASE(_pipelineState);
-    SAFE_RELEASE(_rootSignature);
-    SAFE_RELEASE(_constantBuffer);
+    // Command lists in flight can still reference these
+    DeferredRelease::Release(_pipelineState);
+    DeferredRelease::Release(_rootSignature);
+    DeferredRelease::Release(_constantBuffer);
 }
 
 DXGI_FORMAT Shader_Dx12::TranslateTypelessFormats(DXGI_FORMAT format)
@@ -130,8 +132,8 @@ bool Shader_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* I
 
         if (bufDesc.Width != inDesc.Width || bufDesc.Height != inDesc.Height || bufDesc.Format != inDesc.Format)
         {
-            (*OutResource)->Release();
-            (*OutResource) = nullptr;
+            // Previous frames can still be using it
+            DeferredRelease::Release(*OutResource);
             LOG_WARN("Release {}x{}, new one: {}x{}", bufDesc.Width, bufDesc.Height, inDesc.Width, inDesc.Height);
         }
         else
@@ -144,13 +146,16 @@ bool Shader_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* I
     D3D12_HEAP_FLAGS heapFlags;
     HRESULT hr = InResource->GetHeapProperties(&heapProperties, &heapFlags);
 
+    // Reserved resources have no heap
     if (hr != S_OK)
-    {
-        LOG_ERROR("GetHeapProperties result: {:X}", (UINT64) hr);
-        return false;
-    }
+        heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 
-    inDesc.Flags |= ResourceFlags;
+    // Only what the shader needs, source flags like ALLOW_DEPTH_STENCIL or DENY_SHADER_RESOURCE
+    // are invalid together with UAV and inherited mips would only waste memory
+    inDesc.Flags = ResourceFlags;
+    inDesc.MipLevels = 1;
+    inDesc.Alignment = 0;
+    inDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
 
     hr = InDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &inDesc, InState, nullptr,
                                            IID_PPV_ARGS(OutResource));

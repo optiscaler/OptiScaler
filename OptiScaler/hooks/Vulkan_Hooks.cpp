@@ -15,6 +15,7 @@
 #include <framegen/reprojection/Reprojection_Vk.h>
 
 #include <misc/FrameLimit.h>
+#include <misc/DeferredRelease.h>
 #include "Reflex_Hooks.h"
 
 #include <spoofing/Vulkan_Spoofing.h>
@@ -479,6 +480,9 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
 
     auto result = o_vkCreateDevice(physicalDevice, &localCreteInfo, pAllocator, pDevice);
 
+    if (result == VK_SUCCESS)
+        DeferredRelease::DropOwnersExcept((uint64_t) *pDevice);
+
     if (result == VK_SUCCESS && fg != nullptr)
     {
         fg->OnDeviceCreated(*pDevice);
@@ -664,6 +668,10 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
     {
         result = o_QueuePresentKHR(queue, &localPresentInfo);
     }
+
+    // dxvk/vkd3d-proton's are counted by the DXGI swapchain
+    if (!dxgiBacked)
+        DeferredRelease::Process();
 
     // Unsure about Vulkan Reflex fps limit and if that could be causing an issue here
     if (!State::Instance().reflexLimitsFps && !InputCommon::can_limit_fps())

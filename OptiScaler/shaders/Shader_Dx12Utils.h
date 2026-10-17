@@ -2,6 +2,7 @@
 #include <d3dx/d3dx12.h>
 #include <vector>
 #include <stdexcept>
+#include <misc/DeferredRelease.h>
 
 class FrameDescriptorHeap
 {
@@ -116,14 +117,9 @@ class FrameDescriptorHeap
 
     void ReleaseHeaps()
     {
-        // Randomly crashing on release
-        // For now rely on OS to clean up on exit
-        // Need to check if it's about they are being use
-        // Also need to create shaders when they are used to prevent creating heaps when not used
-        // return;
-
-        SAFE_RELEASE(heapCSU);
-        SAFE_RELEASE(heapRtv);
+        // Command lists in flight can still reference these
+        DeferredRelease::Release(heapCSU);
+        DeferredRelease::Release(heapRtv);
     }
 
     ~FrameDescriptorHeap() { ReleaseHeaps(); }

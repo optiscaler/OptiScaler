@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "Nvngx_DllProxy.h"
 
+#include <misc/DeferredRelease.h>
+
 NVSDK_NGX_Result Nvngx_DllProxy::D3D12_Init(unsigned long long InApplicationId, const wchar_t* InApplicationDataPath,
                                             ID3D12Device* InDevice, const NVSDK_NGX_FeatureCommonInfo* InFeatureInfo,
                                             NVSDK_NGX_Version InSDKVersion)
@@ -58,6 +60,9 @@ NVSDK_NGX_Result Nvngx_DllProxy::D3D12_ReleaseFeature(NVSDK_NGX_Handle* InHandle
 {
     if (isDx12Available())
     {
+        DeferredRelease::Release(depthCopy[0]);
+        DeferredRelease::Release(depthCopy[1]);
+
         return _DLSSG_D3D12_ReleaseFeature(InHandle);
     }
     return NVSDK_NGX_Result_Fail;
@@ -88,8 +93,8 @@ static bool CreateBufferResource(ID3D12Device* device, ID3D12Resource* source, D
         if (bufDesc.Width != inDesc.Width || bufDesc.Height != inDesc.Height || bufDesc.Format != inDesc.Format ||
             bufDesc.Flags != inDesc.Flags)
         {
-            (*target)->Release();
-            (*target) = nullptr;
+            // DLSSG can still be reading it
+            DeferredRelease::Release(*target);
         }
         else
         {
@@ -144,6 +149,9 @@ NVSDK_NGX_Result Nvngx_DllProxy::D3D12_EvaluateFeature(ID3D12GraphicsCommandList
 {
     if (isDx12Available())
     {
+        // Frees deferred objects even when presents aren't hooked
+        DeferredRelease::Collect();
+
         // Make a copy of the depth going to the frame generator
         // Fixes an issue with the depth being corrupted on AMD under Windows
         ID3D12Resource* dlssgDepth = nullptr;
@@ -175,6 +183,11 @@ NVSDK_NGX_Result Nvngx_DllProxy::D3D12_EvaluateFeature(ID3D12GraphicsCommandList
             }
 
             count++;
+        }
+        else if (!Config::Instance()->NvngxFGMakeDepthCopy.value_or_default())
+        {
+            DeferredRelease::Release(depthCopy[0]);
+            DeferredRelease::Release(depthCopy[1]);
         }
 
         bool showDebug = Config::Instance()->NvngxFGShowDebug.value_or_default();

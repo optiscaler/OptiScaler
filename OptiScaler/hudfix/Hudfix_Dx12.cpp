@@ -7,6 +7,7 @@
 
 #include <framegen/IFGFeature_Dx12.h>
 #include <resource_tracking/ResTrack_dx12.h>
+#include <misc/DeferredRelease.h>
 
 namespace
 {
@@ -98,132 +99,25 @@ void Hudfix_Dx12::RemoveCaptureBuffer(ID3D12Resource** resource)
     if (resource == nullptr || *resource == nullptr)
         return;
 
-    auto* removedResource = *resource;
-    *resource = nullptr;
+    LOG_DEBUG("Capture buffer removed: {:X}", (size_t) *resource);
 
-    {
-        std::lock_guard<std::mutex> lock(_captureRemoveMutex);
-        _pendingCaptureRemovals.push_back(removedResource);
-        _captureRemovalActive.store(true, std::memory_order_release);
-    }
-
-    LOG_DEBUG("Capture buffer removed: {:X}", (size_t) removedResource);
+    // FG can still be reading it
+    DeferredRelease::Release(*resource);
 }
 
-void Hudfix_Dx12::ProcessPendingCaptureRemovals()
+void Hudfix_Dx12::ReleaseBuffers()
 {
-    if (!_captureRemovalActive.load(std::memory_order_acquire))
-        return;
+    std::unique_lock<std::mutex> checkLock(_checkMutex, std::defer_lock);
+    if (!_checkMutexOwned)
+        checkLock.lock();
 
-    std::vector<ID3D12Resource*> completedResources;
-    std::vector<ID3D12Fence*> completedFences;
-
+    for (int i = 0; i < BUFFER_COUNT; i++)
     {
-        std::lock_guard<std::mutex> lock(_captureRemoveMutex);
+        RemoveCaptureBuffer(&_captureBuffer[i]);
 
-        for (auto it = _captureRemoveInfos.begin(); it != _captureRemoveInfos.end();)
-        {
-            if (it->fence != nullptr && it->fence->GetCompletedValue() >= it->fenceValue)
-            {
-                completedResources.insert(completedResources.end(), it->resources.begin(), it->resources.end());
-                completedFences.push_back(it->fence);
-                it = _captureRemoveInfos.erase(it);
-            }
-            else
-            {
-                ++it;
-            }
-        }
-
-        if (_captureRemoveInfos.empty() && _pendingCaptureRemovals.empty())
-            _captureRemovalActive.store(false, std::memory_order_release);
-    }
-
-    // Release outside _captureRemoveMutex
-    for (auto* resource : completedResources)
-    {
-        if (resource != nullptr)
-            resource->Release();
-    }
-
-    for (auto* fence : completedFences)
-    {
-        if (fence != nullptr)
-            fence->Release();
-    }
-
-    if (!_captureRemovalActive.load(std::memory_order_acquire))
-        return;
-
-    if (State::Instance().isShuttingDown)
-        return;
-
-    std::vector<ID3D12Resource*> pendingResources;
-    {
-        std::lock_guard<std::mutex> lock(_captureRemoveMutex);
-        if (_pendingCaptureRemovals.empty())
-            return;
-
-        pendingResources.swap(_pendingCaptureRemovals);
-    }
-
-    auto* fg = State::Instance().currentFG;
-    ID3D12CommandQueue* queue = fg != nullptr ? fg->GetCommandQueue() : nullptr;
-    if (queue == nullptr)
-        queue = State::Instance().currentCommandQueue;
-
-    auto requeuePending = [&pendingResources]()
-    {
-        std::lock_guard<std::mutex> lock(_captureRemoveMutex);
-        _pendingCaptureRemovals.insert(_pendingCaptureRemovals.end(), pendingResources.begin(), pendingResources.end());
-        _captureRemovalActive.store(true, std::memory_order_release);
-    };
-
-    if (queue == nullptr)
-    {
-        requeuePending();
-        return;
-    }
-
-    ID3D12Device* device = nullptr;
-    auto result = queue->GetDevice(IID_PPV_ARGS(&device));
-    if (FAILED(result) || device == nullptr)
-    {
-        LOG_WARN("Can't get capture remove queue device: {:X}", (UINT) result);
-        requeuePending();
-        return;
-    }
-
-    ID3D12Fence* fence = nullptr;
-    result = device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
-    device->Release();
-
-    if (FAILED(result) || fence == nullptr)
-    {
-        LOG_WARN("Can't create capture remove fence: {:X}", (UINT) result);
-        requeuePending();
-        return;
-    }
-
-    constexpr UINT64 fenceValue = 1;
-    result = queue->Signal(fence, fenceValue);
-    if (FAILED(result))
-    {
-        LOG_WARN("Can't signal capture remove fence: {:X}", (UINT) result);
-        fence->Release();
-        requeuePending();
-        return;
-    }
-
-    CaptureRemoveInfo batch {};
-    batch.fence = fence;
-    batch.fenceValue = fenceValue;
-    batch.resources = std::move(pendingResources);
-
-    {
-        std::lock_guard<std::mutex> lock(_captureRemoveMutex);
-        _captureRemoveInfos.push_back(std::move(batch));
-        _captureRemovalActive.store(true, std::memory_order_release);
+        // Its destructor defers the release of its buffer
+        delete _formatTransfer[i];
+        _formatTransfer[i] = nullptr;
     }
 }
 
@@ -574,11 +468,7 @@ void Hudfix_Dx12::PresentStart()
     _fgCounter.store(_upscaleCounter.load(std::memory_order_acquire), std::memory_order_release);
 }
 
-void Hudfix_Dx12::PresentEnd()
-{
-    ProcessPendingCaptureRemovals();
-    LOG_DEBUG("");
-}
+void Hudfix_Dx12::PresentEnd() { LOG_DEBUG(""); }
 
 UINT64 Hudfix_Dx12::ActiveUpscaleFrame() { return _upscaleCounter.load(std::memory_order_acquire); }
 

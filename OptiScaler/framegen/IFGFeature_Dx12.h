@@ -101,6 +101,9 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     void NewFrame() override final;
     void FlipResource(Dx12Resource* resource);
 
+    // Frees per frame copies and helper buffers, they get recreated on demand
+    virtual void ReleaseResourceCopies();
+
     virtual bool CreateSwapchainInternal(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue,
                                          DXGI_SWAP_CHAIN_DESC* desc, IDXGISwapChain** swapChain) = 0;
     virtual bool CreateSwapchain1Internal(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue, HWND hwnd,

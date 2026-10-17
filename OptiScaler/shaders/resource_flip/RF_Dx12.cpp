@@ -110,7 +110,7 @@ RF_Dx12::RF_Dx12(std::string InName, ID3D12Device* InDevice) : Shader_Dx12(InNam
 
 RF_Dx12::~RF_Dx12()
 {
-    if (!_init || State::Instance().isShuttingDown)
+    if (State::Instance().isShuttingDown)
         return;
 
     for (int i = 0; i < RF_NUM_OF_HEAPS; i++)

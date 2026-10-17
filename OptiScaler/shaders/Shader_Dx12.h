@@ -2,6 +2,7 @@
 #include <d3d12.h>
 #include "Shader_Common.h"
 #include <gpu_time/GpuTime_Dx12.h>
+#include <misc/DeferredRelease.h>
 
 class Shader_Dx12
 {

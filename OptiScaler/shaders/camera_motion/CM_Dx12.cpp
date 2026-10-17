@@ -126,13 +126,13 @@ CM_Dx12::CM_Dx12(std::string InName, ID3D12Device* InDevice) : Shader_Dx12(InNam
 
 CM_Dx12::~CM_Dx12()
 {
-    if (!_init || State::Instance().isShuttingDown)
+    if (State::Instance().isShuttingDown)
         return;
 
     for (int i = 0; i < BUFFER_COUNT; i++)
     {
         _frameHeaps[i].ReleaseHeaps();
-        SAFE_RELEASE(_constantBuffers[i]);
-        SAFE_RELEASE(_buffers[i]);
+        DeferredRelease::Release(_constantBuffers[i]);
+        DeferredRelease::Release(_buffers[i]);
     }
 }
