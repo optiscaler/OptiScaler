@@ -1159,7 +1159,7 @@ static void CheckWorkingMode()
     }
 
     auto gameAgilityVersion = CheckAgilitySDK(exeModule);
-    if (State::Instance().isWindows10 && !State::Instance().isRunningOnLinux && 
+    if (State::Instance().isWindows10 && !State::Instance().isRunningOnLinux &&
         !Config::Instance()->FsrAgilitySDKUpgrade.has_value())
     {
         if (gameAgilityVersion < customD3D12SDKVersion)
