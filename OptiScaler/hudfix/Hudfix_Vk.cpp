@@ -201,8 +201,15 @@ static bool IsSearching()
     return IsFGRunning();
 }
 
-void Hudfix_Vk::UpscaleEnd()
+static ComputeBindings* FindComputeBindings(VkCommandBuffer cmdBuffer, bool create);
+
+void Hudfix_Vk::UpscaleEnd(VkCommandBuffer cmdBuffer)
 {
+    // Sets bound by the upscaler's dispatches would make its internal images candidates of the game's next dispatch.
+    // Games rebind their sets after the upscale.
+    if (auto bindings = FindComputeBindings(cmdBuffer, false))
+        *bindings = {};
+
     std::scoped_lock lock(_captureMutex);
     _candidateCount = 0;
     _upscaleFrame.fetch_add(1, std::memory_order_release);

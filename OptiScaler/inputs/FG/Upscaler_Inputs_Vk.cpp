@@ -102,7 +102,7 @@ void UpscalerInputsVk::UpscaleEnd(VkCommandBuffer cmdBuffer, const NVSDK_NGX_Res
     if (state.currentVkFG == nullptr || state.activeFgInput != FGInput::Upscaler)
         return;
 
-    Hudfix_Vk::UpscaleEnd();
+    Hudfix_Vk::UpscaleEnd(cmdBuffer);
 
     // The upscaled image is the first hudless candidate, NGX outputs are storage images
     if (output != nullptr)

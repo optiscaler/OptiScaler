@@ -12,7 +12,7 @@ class Hudfix_Vk
   public:
     static void HookDevice(VkDevice device);
 
-    static void UpscaleEnd();
+    static void UpscaleEnd(VkCommandBuffer cmdBuffer);
     static void PresentStart();
 
     static void CheckImage(VkCommandBuffer cmdBuffer, VkImage image, VkFormat format, VkExtent2D extent,
