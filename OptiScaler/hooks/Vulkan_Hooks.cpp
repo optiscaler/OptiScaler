@@ -639,7 +639,7 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
     const bool fgPresent = !dxgiBacked && fg != nullptr && localPresentInfo.swapchainCount == 1 &&
                            fg->OwnsSwapchain(localPresentInfo.pSwapchains[0]);
 
-    MenuCommon::FGOutputPresents(fgPresent);
+    MenuCommon::FGOutputPresents(fgPresent && fg->IsActive() && !fg->IsPaused());
 
     if (fgPresent)
     {
