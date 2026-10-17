@@ -128,6 +128,25 @@ static bool IsRunningOnWine()
     return false;
 }
 
+uint32_t CheckAgilitySDK(HMODULE exe)
+{
+    auto version = reinterpret_cast<const uint32_t*>(GetProcAddress(exe, "D3D12SDKVersion"));
+    auto path = reinterpret_cast<const char* const*>(GetProcAddress(exe, "D3D12SDKPath"));
+
+    LOG_INFO();
+
+    if (version && path)
+    {
+        LOG_INFO("Agility SDK Version: {}", *version);
+        LOG_INFO("Agility SDK Path: {}", *path);
+
+        return *version;
+    }
+
+    LOG_INFO("Agility SDK exports missing");
+    return 0;
+}
+
 UINT customD3D12SDKVersion = 615;
 
 static void RunAgilityUpgrade(HMODULE dx12Module)
@@ -1139,6 +1158,17 @@ static void CheckWorkingMode()
         KernelHooks::Hook();
     }
 
+    auto gameAgilityVersion = CheckAgilitySDK(exeModule);
+    if (State::Instance().isWindows10 && !State::Instance().isRunningOnLinux && 
+        !Config::Instance()->FsrAgilitySDKUpgrade.has_value())
+    {
+        if (gameAgilityVersion < customD3D12SDKVersion)
+        {
+            LOG_INFO("Enabling AgilitySDKUpgrade");
+            Config::Instance()->FsrAgilitySDKUpgrade.set_volatile_value(true);
+        }
+    }
+
     // For Agility SDK Upgrade
     if (Config::Instance()->FsrAgilitySDKUpgrade.value_or_default())
     {
@@ -1574,6 +1604,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                          winVer.dwMinorVersion, winVer.dwBuildNumber, winVer.dwPlatformId);
         else
             spdlog::warn("Can't read windows version");
+
+        State::Instance().isWindows10 = winVer.dwMajorVersion == 10 && winVer.dwBuildNumber < 22000;
 
         spdlog::info("");
 
