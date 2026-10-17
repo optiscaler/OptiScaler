@@ -441,6 +441,9 @@ static const QuirkEntry quirkTable[] = {
     // Clive Barker's Hellraiser: Revival
     QUIRK_ENTRY_UE(hellraiser, GameQuirk::AlwaysCaptureFSRFGSwapchain),
 
+    // Valor Mortis
+    QUIRK_ENTRY_UE(valormortis, GameQuirk::UseManualInputs),
+
     // SL spoof enough to unlock everything DLSS/No spoof needed for DLSS inputs
     //
     // The Witcher 3, Alan Wake 2, Crysis 3 Remastered, Marvel's Guardians of the Galaxy, UNCHARTED: Legacy of Thieves
@@ -534,7 +537,7 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("minecraft.windows.exe", GameQuirk::KernelBaseHooks),
     QUIRK_ENTRY("gwt.exe", GameQuirk::ForceUnrealEngine),
     QUIRK_ENTRY("roadcraft - retail.exe", GameQuirk::FixSlSimulationMarkers),
-    QUIRK_ENTRY("jedisurvivor.exe", GameQuirk::ForceAutoExposure),
+    QUIRK_ENTRY("jedisurvivor.exe", GameQuirk::ForceAutoExposure, GameQuirk::UseManualInputs),
     QUIRK_ENTRY("ff7rebirth_.exe", GameQuirk::ForceUnrealEngine),
     QUIRK_ENTRY_UE(witchfire, GameQuirk::DisableUseFsrInputValues),
     QUIRK_ENTRY_UE(mechwarrior, GameQuirk::ForceUnrealEngine),
