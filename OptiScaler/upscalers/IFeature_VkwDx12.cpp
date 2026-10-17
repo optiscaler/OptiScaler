@@ -1627,7 +1627,7 @@ bool IFeature_VkwDx12::CopyBackOutput(VkCommandBuffer InCmdBuffer)
         vkOut.VkSourceImageAccess = copyBarriers[1].dstAccessMask;
     }
 
-    UpscalerTime->End(b.VulkanCopyCommandBuffer[frame]);
+    UpscalerTime->EndInterop(b.VulkanCopyCommandBuffer[frame]);
 
     vkResult = vkEndCommandBuffer(b.VulkanCopyCommandBuffer[frame]);
     if (vkResult != VK_SUCCESS)
@@ -1706,6 +1706,9 @@ bool IFeature_VkwDx12::CopyBackOutput(VkCommandBuffer InCmdBuffer)
         return false;
     }
 
+    // Publish the query completion marker only after the whole transaction was prepared successfully.
+    UpscalerTime->SubmitInterop(vkSemaphoreCopyBack[frame], copyBackValue);
+
     LOG_DEBUG("Prepared Vulkan w/Dx12 transaction: resource={}, d3d12={}, copyBack={}", pendingResourceCopyValue,
               d3d12CompleteValue, copyBackValue);
     pendingResourceCopyValue = 0;
@@ -1714,6 +1717,8 @@ bool IFeature_VkwDx12::CopyBackOutput(VkCommandBuffer InCmdBuffer)
 
 void IFeature_VkwDx12::AbortPendingInterop(VkCommandBuffer InCmdBuffer, uint32_t InFrame)
 {
+    if (UpscalerTime)
+        UpscalerTime->AbortInterop();
     Vulkan_wDx12::CancelPendingSubmission(InCmdBuffer);
 
     // ProcessVulkanTextures resets the command list before validation/copy setup. Close it on every aborted Evaluate so
@@ -2074,7 +2079,9 @@ bool IFeature_VkwDx12::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter
     auto cmdList = Dx12CommandList[frame];
 
     // Ends in the copy back command buffer, covers the whole interop with D3D12 upscaling in between
-    UpscalerTime->Start(InCmdBuffer);
+    // The start is recorded in the original CB, the end in the Vulkan copy-back CB.
+    // Query slots are guarded by copy-back timeline completion, not frame count.
+    UpscalerTime->StartInterop(InCmdBuffer);
 
     void* originalColor = nullptr;
     void* originalMotionVectors = nullptr;

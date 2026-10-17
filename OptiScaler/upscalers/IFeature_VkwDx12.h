@@ -166,7 +166,7 @@ class IFeature_VkwDx12 : public virtual IFeature_Vk
                     deductedUpscalerTime += time.time;
             }
 
-            auto upscalerWithInterop = UpscalerTime->ReadGpuTime();
+            auto upscalerWithInterop = UpscalerTime->ReadInteropGpuTime();
 
             if (dx12UpscalerTime)
             {
