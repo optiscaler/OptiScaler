@@ -133,7 +133,7 @@ uint32_t CheckAgilitySDK(HMODULE exe)
     auto version = reinterpret_cast<const uint32_t*>(GetProcAddress(exe, "D3D12SDKVersion"));
     auto path = reinterpret_cast<const char* const*>(GetProcAddress(exe, "D3D12SDKPath"));
 
-    LOG_INFO();
+    LOG_INFO(" ");
 
     if (version && path)
     {
