@@ -21,7 +21,15 @@ class GpuTime_Vk
 
     // The Vulkan w/Dx12 path records the start in the game's CB and the end in a copy-back CB.
     // A slot cannot be reused until that copy-back submit signals its timeline semaphore.
-    enum class InteropSlotState : uint8_t { Free, Recording, Ended, Submitted, Quarantined };
+    enum class InteropSlotState : uint8_t
+    {
+        Free,
+        Recording,
+        Ended,
+        Submitted,
+        Quarantined
+    };
+
     struct InteropSlot
     {
         InteropSlotState state = InteropSlotState::Free;
@@ -29,6 +37,7 @@ class GpuTime_Vk
         uint64_t value = 0;
         uint64_t serial = 0;
     };
+
     std::array<InteropSlot, QUERY_BUFFER_COUNT> _interopSlots {};
     std::mutex _interopMutex;
     PFN_vkGetSemaphoreCounterValue _getSemaphoreCounterValue = nullptr;
