@@ -4588,12 +4588,12 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 config->FGXeFGDynamicMFG = dynamicMFG;
             }
 
-            ShowTooltip("Picks the multiplier every frame, up to the Frame Gen setting,\n"
-                        "the lowest that reaches the target. It can go above the target,\n"
-                        "only the FPS limit or V-Sync caps the presented frame rate.\n"
-                        "When the target can't be reached, a higher multiplier is kept\n"
-                        "only if it raises the frame rate enough: each generated frame\n"
-                        "costs GPU time.");
+            ShowTooltip("Picks the multiplier every frame, up to the Frame Gen setting, so the\n"
+                        "presented frame rate follows the target (see DMFG Rounding).\n"
+                        "Only the FPS limit, V-Sync or Use target as cap caps the presented\n"
+                        "frame rate; without one it can land above the target.\n"
+                        "A higher multiplier is used only if it raises the frame rate\n"
+                        "enough: each generated frame costs GPU time.");
 
             ImGui::BeginDisabled(!config->FGXeFGDynamicMFG.value_or_default());
             static float xefgFpsTarget = config->FGXeFGFramerateTargetDMFG.value_or_default();
@@ -4614,6 +4614,22 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 config->FGXeFGFramerateTargetDMFG.reset();
             }
 
+            ImGui::SameLine(0.0f, 16.0f);
+
+            if (bool targetAsCap = config->FGXeFGTargetAsCapDMFG.value_or_default();
+                ImGui::Checkbox("Use target as cap##xefg", &targetAsCap))
+            {
+                config->FGXeFGTargetAsCapDMFG = targetAsCap;
+            }
+
+            ShowTooltip("While Dynamic MFG runs, the target is also the FPS limit:\n"
+                        "the presented frame rate doesn't go above it, and the multiplier\n"
+                        "steps up whenever the frame rate falls under it (no Rounding, no 1X).\n"
+                        "A lower FPS limit stays in place.");
+
+            // The cap holds the target with its own count logic
+            ImGui::BeginDisabled(config->FGXeFGTargetAsCapDMFG.value_or_default());
+
             const char* roundings[] = { "Down", "Nearest", "Up" };
             int rounding = std::clamp(config->FGXeFGRoundingDMFG.value_or_default(), 0, 2);
 
@@ -4621,11 +4637,14 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             if (ImGui::Combo("DMFG Rounding##xefg", &rounding, roundings, IM_ARRAYSIZE(roundings)))
                 config->FGXeFGRoundingDMFG = rounding;
 
-            ShowTooltip("How the multiplier the target asks for (target / real frame rate) is rounded.\n"
-                        "It changes only when clearly off, so the frame rate can sit under the target.\n"
-                        "Down: stays under the target (2X from 61% of it).\n"
-                        "Nearest: around the target (2X from 71%, 6X from 88%).\n"
-                        "Up: reaches the target (2X from 87%, 6X from 95%).");
+            ShowTooltip("Which multiplier the target asks for.\n"
+                        "Nearest: the presented frame rate nearest the target.\n"
+                        "Up: the lowest multiplier at or above the target.\n"
+                        "Down: the highest multiplier at or below the target.\n"
+                        "2X and 3X are a whole real frame apart, so the nearest can still\n"
+                        "be about 20% off the target there.\n"
+                        "Under the FPS limit or V-Sync it changes only when clearly off\n"
+                        "(Nearest: 2X from 71% of the target, 6X from 88%).");
 
             ImGui::SameLine(0.0f, 16.0f);
 
@@ -4636,9 +4655,11 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             }
 
             ShowTooltip("Lets Dynamic MFG turn frame generation off (1X) when the game alone\n"
-                        "is close enough to the target (to nearest: from 56% of it).\n"
+                        "is close enough to the target (Nearest: nearer than 2X; under the\n"
+                        "FPS limit or V-Sync from 56% of it).\n"
                         "Turning it back on shows one real frame without generated frames.");
 
+            ImGui::EndDisabled();
             ImGui::EndDisabled();
         }
 

@@ -7,6 +7,7 @@
 
 #include "shaders/depth_invert/DI_Dx12.h"
 #include "XeFG_DynamicCount.h"
+#include "XeFG_DynamicCap.h"
 
 #include <xell.h>
 #include <xell_d3d12.h>
@@ -28,7 +29,9 @@ class XeFG_Dx12 : public virtual IFGFeature_Dx12
 
     // Dynamic MFG
     XeFG_DynamicCount _dynamicCount;
+    XeFG_DynamicCap _dynamicCap; // with "Use target as cap": holds the target, no rounding band, no 1X
     bool _dynamicActive = false;
+    bool _dynamicCapActive = false;
     double _dynamicLogMs = 0.0;
     int _refreshRate = 0;
     double _refreshCheckedMs = 0.0;

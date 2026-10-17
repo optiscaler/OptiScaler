@@ -12,6 +12,7 @@
 #include <low_latency/low_latency_tech/ll_antilag_vk.h>
 #include <low_latency/low_latency_tech/ll_fps_limiter.h>
 #include <hooks/Vulkan_Hooks.h>
+#include <misc/FrameLimit.h>
 #include <inputs/FG/XeFG_Inputs_Dx12.h>
 #include <framegen/IFGFeature_Dx12.h>
 #include <nvapi/fakenvapi.h>
@@ -1317,7 +1318,8 @@ void InputCommon::update()
     bool active = false;
     ++present_count;
 
-    auto fpsLimit = Config::Instance()->FramerateLimit.value_or_default();
+    // The FPS limit, or XeFG's Dynamic MFG target while it runs as a cap
+    auto fpsLimit = FrameLimit::targetFps();
 
     // The game's XeFG with its own XeLL, only OptiScaler's FPS limit goes to it. XeLL knows the generated frames.
     if (InputXeLL::IsNative())
