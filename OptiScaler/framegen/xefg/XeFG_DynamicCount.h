@@ -5,16 +5,34 @@
 
 // Dynamic MFG for the XeFG output: picks the interpolated frame count every real frame so the presented frame rate
 // follows a target, up to the count set in the Frame Gen slider. The target is not a limit; only the FPS limit or
-// V-Sync caps the presented rate.
+// V-Sync caps the presented rate ("Use target as cap" uses XeFG_DynamicCap instead).
 //
+// XeFG 3.x changes its count at the next frame, without re-initialization for counts 2 and up (moving to or from 1
+// re-initializes inside XeFG), so a change needs no FG toggle.
+//
+// When nothing caps the presented rate (no FPS limit at or near the target, not held at the refresh rate or by a
+// limiter elsewhere at the target in the last 2 s), the presented rate itself shows how far each count is from the
+// target, and the count is the one expected to land nearest what the rounding asks for:
+//  - nearest (default): the presented rate nearest the target; 2X and 3X are a whole real frame apart, so at worst
+//    about 20% off it there;
+//  - up: the lowest count at or above the target (from 97% of it); the most frames when none reaches it;
+//  - down: the highest count at or below the target (up to 103% of it).
+// One step more or less is expected from the real frame time and the learned cost of a generated frame, and it is
+// taken when it lands nearer by 3% of the target (for up / down, also when it lands 1% worse on the side the rounding
+// avoids), held 0.3 s up / 1 s down. Each change is judged as below, on the frames after the 3 still in flight: one
+// that doesn't land nearer is undone and waits, as a failed step down or an up step that didn't earn its frame does.
+// Where it settles doesn't depend on the count it came from. Each generated frame still has to earn 30% of the rate a
+// free one adds (the cost of a frame is GPU time): an up step that doesn't isn't taken, and while the target can't be
+// reached, a step down that keeps all but that much is. At the most frames short of the target, before any cost is
+// learned, a step less is tried now and then: when the rate holds, a limiter elsewhere holds it, and the rules for a
+// cap take over.
+//
+// Under a cap the presented rate can't show the headroom, and these rules decide instead:
 // The count wanted is target / real frame rate - 1, rounded down, to nearest (default) or up. The count changes only
 // when that is 0.8 or more away from the current one's centre (n + 0.5, n, n - 0.5 for down / nearest / up). So the
 // presented rate at n + 1 times the real rate is kept between
 // target * (n + 1) / (n + 1.8 + o) and target * n / (n + 0.2 + o) at one step less, o = 0.5 / 0 / -0.5:
 // to nearest, 2X holds from 71% of the target, 6X from 88%.
-//
-// XeFG 3.x changes its count at the next frame, without re-initialization for counts 2 and up (moving to or from 1
-// re-initializes inside XeFG), so a change needs no FG toggle.
 //  - Up one step when the presented rate stays under its band for 0.3 s.
 //  - Down one step when one step less is expected inside its band for 1 s (after the last change's check; lapses
 //    under 0.3 s are forgiven): the real frame rate the game could reach without the time it waited in OptiScaler
@@ -149,6 +167,21 @@ class XeFG_DynamicCount
         _target = target;
         _waitShare = waitShare;
 
+        // Nothing caps the presented rate: the count expected nearest the target is picked. A cap seen in the last
+        // 2 s still counts (a dip under V-Sync or a limiter isn't the cap gone). What was held for the other rules
+        // starts over.
+        if (Capped(presented, waitShare, s) || hidden)
+            _cappedUntilMs = nowMs + kCapMemoryMs;
+
+        if (const bool free = nowMs >= _cappedUntilMs; free != _free)
+        {
+            _free = free;
+            _lowSinceMs = -1.0;
+            _downHold = Hold {};
+            _tryHold = Hold {};
+            _upHold = Hold {};
+        }
+
         // A change is judged on the frames after the ones still in flight for the old count; nothing else is decided
         // meanwhile.
         if (_check != Check::None)
@@ -164,7 +197,71 @@ class XeFG_DynamicCount
             const bool end = enough && nowMs >= _checkUntilMs;
             const double mean = enough ? 1000.0 * (count + 1) * _checkCount / _checkSumMs : 0.0;
 
-            if (_check == Check::Down)
+            if (_checkFree)
+            {
+                // Made without a cap: it has to land nearer what the rounding asks for than the count it came from,
+                // and an up step's frame has to earn 30% of the rate a free frame adds. While the target couldn't be
+                // reached, a step down that keeps all but 30% of the share its frame added stands. Clearly worse ends
+                // the check early.
+                const double before = Miss(_checkBefore, s.targetFps, rounding);
+                const double after = enough ? Miss(mean, s.targetFps, rounding) : 0.0;
+                const bool unreached = _checkBefore < s.targetFps * kReached;
+                const bool capped = enough && Capped(mean, 1.0 - _checkWorkSumMs / _checkSumMs, s);
+                bool good = false;
+                bool bad = false;
+
+                // The rate held with one frame less where it was expected to drop: a limiter elsewhere holds it (a
+                // costly frame's saving gives back most of the rate, not all of it)
+                const bool held =
+                    _check == Check::Down && mean >= _checkBefore * 0.99 && _checkExpected < _checkBefore * 0.9;
+
+                if (_check == Check::Down)
+                {
+                    const double share = 1.0 / (count + 2);
+                    const bool keeps = unreached && mean >= _checkBefore * (1.0 - kWorth * share);
+                    good = held || keeps || after < before;
+                    bad = !held && after > before + kNearMargin &&
+                          !(unreached && mean >= _checkBefore * (1.0 - 0.7 * share));
+                }
+                else
+                {
+                    good = after < before && mean >= _checkBefore * (1.0 + kWorth / count);
+                    bad = after > before + kNearMargin;
+                }
+
+                if (enough && (bad || (end && !good)))
+                {
+                    LearnFree(count, capped);
+
+                    if (_check == Check::Down && count < maxCount)
+                    {
+                        FailedDown(count + 1, nowMs, !end, _checkBefore);
+                        return Change(count + 1, nowMs, Reason::Undo, Check::None, presented);
+                    }
+
+                    if (_check == Check::Up && count > minCount)
+                    {
+                        BlockUp(nowMs);
+                        return Change(count - 1, nowMs, Reason::Undo, Check::None, presented);
+                    }
+                }
+
+                if (!end)
+                    return count;
+
+                // Held by a limiter elsewhere: its rate counts as the target for a while, and the rules for a cap
+                // decide
+                if (held)
+                    LearnCap(mean, nowMs);
+                else
+                    LearnFree(count, capped);
+
+                if (_check == Check::Down)
+                    DownHeld(count);
+                else
+                    UpHeld(count, mean, nowMs);
+            }
+            else if (_check == Check::Down)
             {
                 // It has to give what a step down is taken on (the rounding's bar for one step less, at most the
                 // target: a limiter at it holds the rate there), or when the target wasn't reached before, keep most
@@ -187,10 +284,7 @@ class XeFG_DynamicCount
                     return count;
 
                 Learn(count, mean);
-
-                // It holds where it failed before: that failure is history. One that holds at a lighter load leaves it.
-                if (Step& held = StepFrom(count + 1); held.failFps <= 0.0 || _checkBefore <= held.failFps * kLighter)
-                    held = Step {};
+                DownHeld(count);
 
                 if (unreached)
                     LearnCap(mean, nowMs);
@@ -209,25 +303,20 @@ class XeFG_DynamicCount
                     if (mean < _checkBefore * (1.0 + share * kWorth))
                     {
                         LearnCap(_checkBefore, nowMs);
-                        _upBackoffMs = std::min(_upBackoffMs * 2.0, kMaxBackoffMs);
-                        _upBlockedUntilMs = nowMs + _upBackoffMs;
-                        _upBlockedFps = _checkBefore;
+                        BlockUp(nowMs);
                         return Change(count - 1, nowMs, Reason::Capped, Check::None, presented);
                     }
                 }
 
                 Learn(count, mean);
-                _upBackoffMs = kMinBackoffMs;
-
-                // An up step that helped shows one step less doesn't hold at this load: no step back down while the
-                // game is no lighter, for 20 s at least
-                Step& back = StepFrom(count);
-                back.failFps = mean;
-                back.blockedUntilMs = std::max(back.blockedUntilMs, nowMs + std::max(back.backoffMs, kUpHoldsMs));
+                UpHeld(count, mean, nowMs);
             }
 
             _check = Check::None;
         }
+
+        if (_free)
+            return Free(s, count, minCount, maxCount, rounding, presented, nowMs, sinceChange);
 
         // The game got lighter since a step down failed: the count it went back to now presents 15% more for 1 s.
         // (The waits can't tell: a GPU bound game's swing widely.)
@@ -308,6 +397,7 @@ class XeFG_DynamicCount
         _lowSinceMs = -1.0;
         _downHold = Hold {};
         _tryHold = Hold {};
+        _upHold = Hold {};
         _lastDownMs = -1.0;
         _check = Check::None;
         _fresh = true;
@@ -320,7 +410,10 @@ class XeFG_DynamicCount
     double LowerFps() const { return _lower; } // expected presented rate at one step less
     double TargetFps() const { return _target; }
     double WaitShare() const { return _waitShare; }
-    double FrameCostMs() const { return _genMs; }        // learned cost of one interpolated frame
+    bool Uncapped() const { return _free; } // nothing caps the presented rate: the count nearest the target
+
+    // Learned cost of one interpolated frame
+    double FrameCostMs() const { return _free && _freeGenSamples > 0 ? _freeGenMs : _genMs; }
     double BackoffMs() const { return _shownBackoffMs; } // of the step down from the current count
 
   private:
@@ -360,6 +453,141 @@ class XeFG_DynamicCount
     static constexpr double kCapRetestMs = 20000.0;
     static constexpr double kMinBackoffMs = 3000.0;
     static constexpr double kMaxBackoffMs = 60000.0;
+    static constexpr double kNearMargin = 0.03;    // share of the target a step has to land nearer by, without a cap
+    static constexpr double kSideMargin = 0.01;    // up / down without a cap: kept from the side they avoid
+    static constexpr double kAtMost = 1.03;        // down rounding without a cap: at or below the target up to here
+    static constexpr double kLimitNear = 1.1;      // an FPS limit up to this far above the target caps the rate near it
+    static constexpr double kCapMemoryMs = 2000.0; // a cap seen this recently still holds the rate
+
+    // A cap holds the presented rate: an FPS limit at or near the target (also while the rate dips under it), the
+    // rate held at the FPS limit or the refresh rate (V-Sync), or at the target while the game didn't wait in
+    // OptiScaler (a limiter elsewhere)
+    static bool Capped(double fps, double waitShare, const Sample& s)
+    {
+        const auto at = [fps](double cap) { return cap > 0.0 && fps >= cap * 0.97 && fps <= cap * 1.03; };
+        return (s.limitFps > 0.0 && s.limitFps <= s.targetFps * kLimitNear) || at(s.limitFps) || at(s.refreshFps) ||
+               (waitShare < kHiddenWaitShare && at(s.targetFps));
+    }
+
+    // Without a cap, how far a presented rate is from what the rounding asks for, 0 at best. Nearest: its distance
+    // to the target. Up: the lowest count at or above the target (from 97% of it). Down: the highest at or below it
+    // (up to 103%). A rate on the side the rounding avoids misses by more than any on the other side.
+    static double Miss(double fps, double targetFps, int rounding)
+    {
+        const double r = fps / targetFps;
+
+        if (rounding == (int) Rounding::Up)
+            return r >= kReached ? r - kReached : 1.0 + kReached - r;
+
+        if (rounding == (int) Rounding::Down)
+            return r <= kAtMost ? kAtMost - r : 1.0 + r - kAtMost;
+
+        return std::abs(r - 1.0);
+    }
+
+    // A count expected to present fps, judged as if it landed 1% worse on the side the rounding avoids (its check
+    // undoes one that lands there)
+    static double Expected(double fps, int rounding)
+    {
+        if (rounding == (int) Rounding::Up)
+            return fps * (1.0 - kSideMargin);
+
+        if (rounding == (int) Rounding::Down)
+            return fps * (1.0 + kSideMargin);
+
+        return fps;
+    }
+
+    // Without a cap: one step more or less when it is expected to land nearer what the rounding asks for. Nothing
+    // holds the frame, so all of the real frame time is the game's (or the GPU's) work, waits included: a GPU bound
+    // game's waits don't promise anything.
+    int Free(const Sample& s, int count, int minCount, int maxCount, int rounding, double presented, double nowMs,
+             double sinceChange)
+    {
+        const double genMs = _freeGenSamples > 0 ? _freeGenMs : _genMs;
+        const double offMs = _freeOffSamples > 0 ? _freeOffMs : _offSamples > 0 ? _offMs : genMs;
+        const auto limited = [&s](double fps) { return s.limitFps > 0.0 ? std::min(fps, s.limitFps) : fps; };
+
+        // From and to 1X, frame generation itself turns on or off, which costs more than a frame
+        const double higher =
+            count < maxCount ? limited((count + 2) * 1000.0 / (_frameMs + (count == 0 ? offMs : genMs))) : 0.0;
+        const double lower =
+            count > minCount ? limited(count * 1000.0 / std::max(_frameMs - (count == 1 ? offMs : genMs), 0.5)) : 0.0;
+        const double miss = Miss(presented, s.targetFps, rounding);
+        const bool unreached = presented < s.targetFps * kReached;
+
+        _lower = lower;
+        _target = s.targetFps;
+
+        // Up when nearer and its frame earns 30% of the rate a free one adds (each generated frame costs GPU time),
+        // unless an up step just didn't and the rate hasn't dropped since
+        const bool upBlocked = nowMs < _upBlockedUntilMs && presented >= _upBlockedFps * 0.9;
+        const bool up = higher >= presented * (1.0 + kWorth / (count + 1)) && !upBlocked &&
+                        Miss(Expected(higher, rounding), s.targetFps, rounding) + kNearMargin < miss;
+
+        if (Held(_upHold, up, nowMs) >= kHoldUpMs && sinceChange >= kMinUpGapMs)
+        {
+            // So soon after a step down, that step down didn't hold after all.
+            if (_lastDownMs >= 0.0 && nowMs - _lastDownMs < kDownHoldsMs && _lastDownFrom == count + 1)
+                FailedDown(count + 1, nowMs, false, _lastDownBefore);
+
+            return Change(count + 1, nowMs, Reason::Up, Check::Up, presented);
+        }
+
+        // Down when nearer, or while the target can't be reached when the last frame doesn't earn its share (one step
+        // less keeps all but 30% of what it adds); not while it failed from here at this load
+        const Step& step = StepFrom(count);
+        const bool knownBad = nowMs < step.blockedUntilMs && presented <= step.failFps * kLighter;
+        const bool keeps = unreached && lower >= presented * (1.0 - kWorth / (count + 1));
+        const bool canDown = lower > 0.0 && sinceChange >= kMinDownGapMs && !knownBad;
+        _shownBackoffMs = step.backoffMs;
+
+        if (Held(_downHold,
+                 canDown && (keeps || Miss(Expected(lower, rounding), s.targetFps, rounding) + kNearMargin < miss),
+                 nowMs) >= kHoldDownMs)
+        {
+            _checkExpected = lower;
+            return Change(count - 1, nowMs, Reason::Down, Check::Down, presented);
+        }
+
+        // At the most frames, short of the target and not waiting in OptiScaler before any cost is learned: a limiter
+        // elsewhere may hold the rate under the target, which hides what one step less gives. Try it now and then.
+        const bool probe =
+            canDown && count == maxCount && unreached && _waitShare < kHiddenWaitShare && _freeGenSamples == 0;
+
+        if (Held(_tryHold, probe, nowMs) >= step.backoffMs)
+        {
+            _checkExpected = lower;
+            return Change(count - 1, nowMs, Reason::Probe, Check::Down, presented);
+        }
+
+        return count;
+    }
+
+    // An up step that didn't earn its frame: no up step for the back-off while the rate doesn't drop
+    void BlockUp(double nowMs)
+    {
+        _upBackoffMs = std::min(_upBackoffMs * 2.0, kMaxBackoffMs);
+        _upBlockedUntilMs = nowMs + _upBackoffMs;
+        _upBlockedFps = _checkBefore;
+    }
+
+    // An up step that helped shows one step less doesn't hold at this load: no step back down while the game is no
+    // lighter, for 20 s at least
+    void UpHeld(int count, double mean, double nowMs)
+    {
+        _upBackoffMs = kMinBackoffMs;
+        Step& back = StepFrom(count);
+        back.failFps = mean;
+        back.blockedUntilMs = std::max(back.blockedUntilMs, nowMs + std::max(back.backoffMs, kUpHoldsMs));
+    }
+
+    // A step down holds where it failed before: that failure is history. One that holds at a lighter load leaves it.
+    void DownHeld(int count)
+    {
+        if (Step& held = StepFrom(count + 1); held.failFps <= 0.0 || _checkBefore <= held.failFps * kLighter)
+            held = Step {};
+    }
 
     // Lowest presented rate, as a share of the target, the band of count n holds: (n + 1) / (n + 1.8 + o)
     double HoldShare(int n) const { return (n + 1.0) / (n + 1.0 + kHysteresis + _offset); }
@@ -451,6 +679,33 @@ class XeFG_DynamicCount
         ++_genSamples;
     }
 
+    // Without a cap, the cost of one interpolated frame from how the whole real frame time moved with the count (not
+    // when the change landed at a cap: then the frame time follows the cap)
+    void LearnFree(int count, bool capped)
+    {
+        if (capped || _checkCount < kCheckMinFrames || count == _checkBeforeCount || _checkBeforeFrameMs <= 0.0)
+            return;
+
+        const double after = _checkSumMs / _checkCount;
+        const double perFrame = (after - _checkBeforeFrameMs) / (count - _checkBeforeCount);
+        const bool onOff = std::min(count, _checkBeforeCount) == 0;
+
+        if (perFrame < -0.1 * after || perFrame > (onOff ? 1.0 : 0.4) * after)
+            return;
+
+        const double cost = std::max(perFrame, 0.0);
+
+        if (onOff)
+        {
+            _freeOffMs = _freeOffSamples == 0 ? cost : _freeOffMs + 0.5 * (cost - _freeOffMs);
+            ++_freeOffSamples;
+            return;
+        }
+
+        _freeGenMs = _freeGenSamples == 0 ? cost : _freeGenMs + 0.5 * (cost - _freeGenMs);
+        ++_freeGenSamples;
+    }
+
     int Change(int count, double nowMs, Reason reason, Check check, double presented)
     {
         _reason = reason;
@@ -458,6 +713,7 @@ class XeFG_DynamicCount
         _lowSinceMs = -1.0;
         _downHold = Hold {};
         _tryHold = Hold {};
+        _upHold = Hold {};
 
         if (reason == Reason::Down || reason == Reason::Probe)
         {
@@ -468,7 +724,9 @@ class XeFG_DynamicCount
 
         _check = check;
         _checkUntilMs = nowMs + kCheckMs;
+        _checkFree = _free;
         _checkBefore = presented;
+        _checkBeforeFrameMs = _frameMs;
         _checkBeforeWorkMs = _workMs;
         _checkBeforeWaitShare = _frameMs > 0.0 ? 1.0 - _workMs / _frameMs : 0.0;
         _checkBeforeCount = check == Check::Up ? count - 1 : count + 1;
@@ -488,15 +746,21 @@ class XeFG_DynamicCount
     double _workMs = 0.0;
     double _lastChangeMs = 0.0;
     double _lowSinceMs = -1.0;
-    Hold _downHold; // one step less expected to reach the target
-    Hold _tryHold;  // a step down worth trying
+    Hold _downHold;     // one step less expected to reach the target
+    Hold _tryHold;      // a step down worth trying
+    Hold _upHold;       // without a cap: one step more expected nearer the target
+    bool _free = false; // nothing caps the presented rate
+    double _cappedUntilMs = 0.0;
     double _lastDownMs = -1.0;
     int _lastDownFrom = -1;       // count the last step down was from
     double _lastDownBefore = 0.0; // and what it presented there
 
     Check _check = Check::None;
     double _checkUntilMs = 0.0;
-    double _checkBefore = 0.0; // presented rate before the change
+    bool _checkFree = false;     // the change was made without a cap
+    double _checkExpected = 0.0; // and the presented rate it was expected to give, for a step down
+    double _checkBefore = 0.0;   // presented rate before the change
+    double _checkBeforeFrameMs = 0.0;
     double _checkBeforeWorkMs = 0.0;
     double _checkBeforeWaitShare = 0.0;
     int _checkBeforeCount = 0;
@@ -512,6 +776,10 @@ class XeFG_DynamicCount
     int _genSamples = 0;
     double _offMs = 0.0; // learned cost of frame generation itself, 1X to 2X
     int _offSamples = 0;
+    double _freeGenMs = 0.0; // the same without a cap, from the whole real frame time
+    int _freeGenSamples = 0;
+    double _freeOffMs = 0.0;
+    int _freeOffSamples = 0;
     double _capFps = 0.0; // a rate kept under the target, 0 if none
     double _capUntilMs = 0.0;
     double _upBlockedUntilMs = 0.0;

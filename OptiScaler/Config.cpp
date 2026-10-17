@@ -194,6 +194,7 @@ bool Config::Reload(std::filesystem::path iniPath)
                 FGXeFGRoundingDMFG.reset();
 
             FGXeFGDynamicAllow1X.set_from_config(readBool("XeFG", "DynamicAllow1X"));
+            FGXeFGTargetAsCapDMFG.set_from_config(readBool("XeFG", "TargetAsCapDMFG"));
 
             FGXeFGOverrideInterpolationCount.set_from_config(readInt("XeFG", "OverrideInterpolationCount"));
             if (FGXeFGOverrideInterpolationCount.has_value() &&
@@ -995,6 +996,8 @@ bool Config::SaveIni()
         ini.SetValue("XeFG", "RoundingDMFG", GetIntValue(Instance()->FGXeFGRoundingDMFG.value_for_config()).c_str());
         ini.SetValue("XeFG", "DynamicAllow1X",
                      GetBoolValue(Instance()->FGXeFGDynamicAllow1X.value_for_config()).c_str());
+        ini.SetValue("XeFG", "TargetAsCapDMFG",
+                     GetBoolValue(Instance()->FGXeFGTargetAsCapDMFG.value_for_config()).c_str());
         ini.SetValue("XeFG", "OverrideInterpolationCount",
                      GetIntValue(Instance()->FGXeFGOverrideInterpolationCount.value_for_config()).c_str());
         ini.SetValue("XeFG", "IgnoreInitChecks",

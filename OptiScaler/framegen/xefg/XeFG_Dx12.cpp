@@ -617,6 +617,7 @@ void XeFG_Dx12::Activate()
 
             // FG back on: Dynamic MFG starts its averages over but keeps what it learned
             _dynamicCount.Restart();
+            _dynamicCap.Reset();
         }
 
         LOG_INFO("SetEnabled: true, result: {} ({})", magic_enum::enum_name(result), (UINT) result);
@@ -768,14 +769,59 @@ bool XeFG_Dx12::Dispatch()
 
             // What the game waited in OptiScaler: the low latency / FPS limiter sleep and its last present (V-Sync,
             // a full queue)
-            const double waitMs = InputCommon::take_sleep_ms() + state.lastFGPresentMs;
+            const double sleepMs = InputCommon::take_sleep_ms();
+            const double waitMs = sleepMs + state.lastFGPresentMs;
             const int rounding = std::clamp(Config::Instance()->FGXeFGRoundingDMFG.value_or_default(), 0, 2);
             const int minCount = Config::Instance()->FGXeFGDynamicAllow1X.value_or_default() ? 0 : 1;
-            const int count = _dynamicCount.Update({ now, state.lastFGFrameTime, waitMs, target, refresh,
-                                                     Config::Instance()->FramerateLimit.value_or_default(), targetCount,
-                                                     current, rounding, minCount });
 
-            if (count != current || now - _dynamicLogMs >= 5000.0)
+            // Use target as cap: every OptiScaler limiter holds the presented frame rate at the target
+            // (FrameLimit::targetFps), the target is at most the FPS limit
+            const bool cap = Config::Instance()->FGXeFGTargetAsCapDMFG.value_or_default() && target > 0.0f;
+            state.xefgDynamicCapFps = cap ? target : 0.0f;
+
+            int count = current;
+
+            if (cap)
+            {
+                // The lowest count that holds the cap: any shortfall steps up, no rounding band and no 1X
+                if (!_dynamicCapActive)
+                    _dynamicCap.Reset();
+
+                count = _dynamicCap.Update({ now, state.lastFGFrameTime, sleepMs, target, targetCount, count1 });
+
+                if (count != current || now - _dynamicLogMs >= 5000.0)
+                {
+                    static constexpr const char* reasons[] = { "", "up", "down", "try down", "undo" };
+                    const auto reason = _dynamicCap.LastReason();
+                    const auto change = count != current ? std::format(" -> {}X", count + 1) : std::string();
+                    const auto why = reason != XeFG_DynamicCap::Reason::None
+                                         ? std::format(" ({})", reasons[(int) reason])
+                                         : std::string();
+
+                    // Changes at info level, the state every 5 s at debug level
+                    spdlog::log(count != current ? spdlog::level::info : spdlog::level::debug,
+                                __FUNCTION__ " Dynamic MFG {}X{}{}: presented {:.1f} fps, target {:.1f} as cap, "
+                                             "reachable {:.1f} fps, back-off {:.0f} s",
+                                current + 1, change, why, _dynamicCap.PresentedFps(), target,
+                                _dynamicCap.ReachableFps(), _dynamicCap.BackoffMs() / 1000.0);
+
+                    _dynamicLogMs = now;
+                }
+            }
+            else
+            {
+                // Coming back from the cap: start the averages over, keep what was learned
+                if (_dynamicCapActive)
+                    _dynamicCount.Restart();
+
+                count = _dynamicCount.Update({ now, state.lastFGFrameTime, waitMs, target, refresh,
+                                               Config::Instance()->FramerateLimit.value_or_default(), targetCount,
+                                               current, rounding, minCount });
+            }
+
+            _dynamicCapActive = cap;
+
+            if (!cap && (count != current || now - _dynamicLogMs >= 5000.0))
             {
                 static constexpr const char* reasons[] = { "", "up", "down", "try down", "undo", "no gain, back" };
                 static constexpr const char* roundings[] = { "down", "nearest", "up" };
@@ -787,11 +833,12 @@ bool XeFG_Dx12::Dispatch()
                 // Changes at info level, the state every 5 s at debug level
                 spdlog::log(count != current ? spdlog::level::info : spdlog::level::debug,
                             __FUNCTION__ " Dynamic MFG {}X{}{}: presented {:.1f} fps, target {:.1f} (set {:.1f}, "
-                                         "rounding {}, refresh {:.0f}), one step less {:.1f}, waits {:.0f}%, "
+                                         "rounding {}, {}, refresh {:.0f}), one step less {:.1f}, waits {:.0f}%, "
                                          "frame cost {:.2f} ms, back-off {:.0f} s",
                             current + 1, change, why, _dynamicCount.PresentedFps(), _dynamicCount.TargetFps(), target,
-                            roundings[rounding], refresh, _dynamicCount.LowerFps(), _dynamicCount.WaitShare() * 100.0,
-                            _dynamicCount.FrameCostMs(), _dynamicCount.BackoffMs() / 1000.0);
+                            roundings[rounding], _dynamicCount.Uncapped() ? "no cap" : "capped", refresh,
+                            _dynamicCount.LowerFps(), _dynamicCount.WaitShare() * 100.0, _dynamicCount.FrameCostMs(),
+                            _dynamicCount.BackoffMs() / 1000.0);
 
                 _dynamicLogMs = now;
             }
@@ -806,10 +853,16 @@ bool XeFG_Dx12::Dispatch()
         else if (_dynamicActive)
         {
             _dynamicCount.Reset();
+            _dynamicCap.Reset();
+            _dynamicCapActive = false;
 
             if (_generationOff)
                 SetGenerationOff(false);
         }
+
+        // The cap is set every frame Dynamic runs, also a new FG context mustn't inherit it
+        if (!dynamic)
+            state.xefgDynamicCapFps = 0.0f;
 
         _dynamicActive = dynamic;
 

@@ -292,6 +292,9 @@ class State
 
     bool WAR_xefgRequestFGToggle = false;
 
+    // XeFG Dynamic MFG with "Use target as cap": its target while it runs (0 = no cap), the FPS limit when lower
+    float xefgDynamicCapFps = 0.0f;
+
     bool dlssgGameDMFGSupported = false;
     sl::DLSSGMode dlssgLastSetMode = sl::DLSSGMode::eOff;
     int dlssgDetectedInterpolationCount = 0;
