@@ -12,6 +12,8 @@
 #include <detours/detours.h>
 
 #include <vulkan/vulkan_core.h>
+#include <atomic>
+#include <cstring>
 #include <misc/IdentifyGpu.h>
 
 static PFN_vkQueueSubmit o_vkQueueSubmit = nullptr;
@@ -6155,7 +6157,15 @@ bool Vulkan_wDx12::TakePendingSubmission(VkCommandBuffer commandBuffer, PendingS
 
 static void AbortPendingD3D12Wait(const Vulkan_wDx12::PendingSubmission& pending, const char* reason)
 {
-    LOG_WARN("Aborting Vulkan w/Dx12 submit transaction: {}", reason ? reason : "unknown reason");
+    bool logAbort = true;
+    if (reason != nullptr && std::strcmp(reason, "unsupported legacy VkSubmitInfo pNext chain") == 0)
+    {
+        static std::atomic<uint32_t> unsupportedCount { 0 };
+        const uint32_t count = unsupportedCount.fetch_add(1, std::memory_order_relaxed) + 1;
+        logAbort = count <= 4 || (count % 512) == 0;
+    }
+    if (logAbort)
+        LOG_WARN("Aborting Vulkan w/Dx12 submit transaction: {}", reason ? reason : "unknown reason");
 
     if (pending.resourceCopyFence == nullptr)
         return;
@@ -6167,27 +6177,103 @@ static void AbortPendingD3D12Wait(const Vulkan_wDx12::PendingSubmission& pending
         LOG_ERROR("Failed to release aborted Vulkan w/Dx12 D3D12 wait: {0:x}", result);
 }
 
-static bool LegacySubmitPNextSupported(const void* pNext)
+// The legacy submit can contain several valid, independently-owned pNext nodes. Never mutate the application's
+// chain. The split submits below rebuild their own timeline metadata and can omit extensions ONLY if the omission
+// is semantically equivalent. Unknown or nontrivial extensions must remain fail-closed.
+struct LegacyPNextInspection
 {
-    if (pNext == nullptr)
-        return true;
+    const VkTimelineSemaphoreSubmitInfo* timeline = nullptr;
+    VkStructureType rejectedType = VK_STRUCTURE_TYPE_MAX_ENUM;
+    const char* reason = nullptr;
 
-    const auto* first = reinterpret_cast<const VkBaseInStructure*>(pNext);
-    return first->sType == VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO && first->pNext == nullptr;
+    explicit operator bool() const { return reason == nullptr; }
+};
+
+static LegacyPNextInspection InspectLegacySubmitPNext(const VkSubmitInfo& submit)
+{
+    LegacyPNextInspection result {};
+    uint32_t chainLength = 0;
+    for (auto* node = reinterpret_cast<const VkBaseInStructure*>(submit.pNext); node != nullptr; node = node->pNext)
+    {
+        auto Reject = [&](const char* reason)
+        {
+            result.reason = reason;
+            result.rejectedType = node->sType;
+            return result;
+        };
+
+        if (++chainLength > 16)
+            return Reject("pNext chain exceeds the inspection limit");
+
+        switch (node->sType)
+        {
+        case VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO:
+            if (result.timeline != nullptr)
+                return Reject("duplicate VkTimelineSemaphoreSubmitInfo");
+            result.timeline = reinterpret_cast<const VkTimelineSemaphoreSubmitInfo*>(node);
+            break;
+
+        case VK_STRUCTURE_TYPE_DEVICE_GROUP_SUBMIT_INFO:
+        {
+            // Vulkan defaults to device 0 when this extension is omitted. Accept only that exact equivalent.
+            // In particular, multi-device masks cannot be silently collapsed to one device.
+            const auto* group = reinterpret_cast<const VkDeviceGroupSubmitInfo*>(node);
+            if (group->waitSemaphoreCount != submit.waitSemaphoreCount ||
+                group->commandBufferCount != submit.commandBufferCount ||
+                group->signalSemaphoreCount != submit.signalSemaphoreCount)
+                return Reject("device-group count mismatch");
+
+            if ((group->waitSemaphoreCount && !group->pWaitSemaphoreDeviceIndices) ||
+                (group->commandBufferCount && !group->pCommandBufferDeviceMasks) ||
+                (group->signalSemaphoreCount && !group->pSignalSemaphoreDeviceIndices))
+                return Reject("device-group index arrays are missing");
+
+            for (uint32_t i = 0; i < group->waitSemaphoreCount; ++i)
+                if (group->pWaitSemaphoreDeviceIndices[i] != 0)
+                    return Reject("nonzero device-group wait index");
+            for (uint32_t i = 0; i < group->commandBufferCount; ++i)
+                if (group->pCommandBufferDeviceMasks[i] != 1u)
+                    return Reject("non-default device-group command mask");
+            for (uint32_t i = 0; i < group->signalSemaphoreCount; ++i)
+                if (group->pSignalSemaphoreDeviceIndices[i] != 0)
+                    return Reject("nonzero device-group signal index");
+            break;
+        }
+
+        case VK_STRUCTURE_TYPE_PROTECTED_SUBMIT_INFO:
+        {
+            const auto* protection = reinterpret_cast<const VkProtectedSubmitInfo*>(node);
+            if (protection->protectedSubmit != VK_FALSE)
+                return Reject("protected Vulkan submits require protected interop command buffers");
+            // A false protected-submit flag is the same as omitting the node.
+            break;
+        }
+
+        default:
+            return Reject("unsupported VkSubmitInfo extension");
+        }
+    }
+    return result;
 }
 
-static const VkTimelineSemaphoreSubmitInfo* FindTimelineSubmitInfo(const void* pNext)
+static void ReportRejectedLegacyPNext(const VkSubmitInfo& submit, const LegacyPNextInspection& inspection)
 {
-    auto next = reinterpret_cast<const VkBaseInStructure*>(pNext);
-    while (next != nullptr)
+    // Vulkan submit is a hot path. Log the original chain for diagnosis but not on every frame.
+    static std::atomic<uint32_t> reports { 0 };
+    const uint32_t report = reports.fetch_add(1, std::memory_order_relaxed);
+    if (report >= 4 && (report % 512) != 0)
+        return;
+
+    LOG_WARN("Cannot split legacy VkSubmitInfo: {} (sType={}, rejects so far={}), waits={}, cmds={}, signals={}",
+             inspection.reason, (int32_t) inspection.rejectedType, report + 1, submit.waitSemaphoreCount,
+             submit.commandBufferCount, submit.signalSemaphoreCount);
+
+    uint32_t index = 0;
+    for (auto* node = reinterpret_cast<const VkBaseInStructure*>(submit.pNext); node != nullptr && index < 16;
+         node = node->pNext, ++index)
     {
-        if (next->sType == VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO)
-            return reinterpret_cast<const VkTimelineSemaphoreSubmitInfo*>(next);
-
-        next = next->pNext;
+        LOG_WARN("  legacy submit pNext[{}] sType={}", index, (int32_t) node->sType);
     }
-
-    return nullptr;
 }
 
 VkResult Vulkan_wDx12::hk_vkQueueSubmit(VkQueue queue, uint32_t submitCount, const VkSubmitInfo* pSubmits,
@@ -6225,16 +6311,17 @@ VkResult Vulkan_wDx12::hk_vkQueueSubmit(VkQueue queue, uint32_t submitCount, con
 
     const auto& original = pSubmits[submitIndex];
 
-    // Splitting a legacy VkSubmitInfo changes command/signal counts. Submit-level extensions such as device-group or
-    // protected-submit structures can carry count-coupled semantics, so only the plain submit and the single
-    // VkTimelineSemaphoreSubmitInfo case are rewritten. Everything else is passed through unchanged.
-    if (!LegacySubmitPNextSupported(original.pNext))
+    // Inspect every node before splitting. Timeline values are cloned; single-device (device 0) group metadata
+    // and an explicitly unprotected submit have exactly the same meaning when omitted from our split submits.
+    const auto extensionInfo = InspectLegacySubmitPNext(original);
+    if (!extensionInfo)
     {
+        ReportRejectedLegacyPNext(original, extensionInfo);
         AbortPendingD3D12Wait(pending, "unsupported legacy VkSubmitInfo pNext chain");
         return o_vkQueueSubmit(queue, submitCount, pSubmits, fence);
     }
 
-    const auto* originalTimeline = FindTimelineSubmitInfo(original.pNext);
+    const auto* originalTimeline = extensionInfo.timeline;
 
     // Copy timeline values instead of modifying the application's pNext chain. Binary semaphore slots use value 0.
     std::vector<uint64_t> originalWaitValues(original.waitSemaphoreCount, 0);
@@ -6267,7 +6354,8 @@ VkResult Vulkan_wDx12::hk_vkQueueSubmit(VkQueue queue, uint32_t submitCount, con
     originalTimelineCopy.signalSemaphoreValueCount = 1;
     originalTimelineCopy.pSignalSemaphoreValues = &resourceCopyValue;
 
-    // LegacySubmitPNextSupported guarantees either no extension or one standalone timeline node.
+    // The application-owned extension chain is untouched; only the explicitly verified-equivalent single-device
+    // group/unprotected flags are omitted from the temporary split submits.
     originalTimelineCopy.pNext = nullptr;
 
     VkSubmitInfo modifiedOriginal = original;

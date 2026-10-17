@@ -1468,11 +1468,11 @@ bool IFeature_VkwDx12::CopyBackOutput(VkCommandBuffer InCmdBuffer)
 
     auto AddVkBarrier = [&](VK_TEXTURE2D_RESOURCE_C* resource)
     {
-        if (resource->VkSourceImage != VK_NULL_HANDLE)
+        if (resource->VkSourceImage != VK_NULL_HANDLE && resource->VkSharedImage != VK_NULL_HANDLE)
         {
             VkImageMemoryBarrier imageBarrier {};
             imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            imageBarrier.oldLayout = resource->VkSourceImageLayout;
+            imageBarrier.oldLayout = resource->VkSharedImageLayout;
             imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -1482,9 +1482,12 @@ bool IFeature_VkwDx12::CopyBackOutput(VkCommandBuffer InCmdBuffer)
             imageBarrier.subresourceRange.levelCount = 1;
             imageBarrier.subresourceRange.baseArrayLayer = 0;
             imageBarrier.subresourceRange.layerCount = 1;
-            imageBarrier.srcAccessMask = resource->VkSourceImageAccess;
-            imageBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            imageBarrier.srcAccessMask = resource->VkSharedImageAccess;
+            imageBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
             imageBarriers.push_back(imageBarrier);
+
+            resource->VkSharedImageLayout = imageBarrier.newLayout;
+            resource->VkSharedImageAccess = imageBarrier.dstAccessMask;
         }
     };
 
