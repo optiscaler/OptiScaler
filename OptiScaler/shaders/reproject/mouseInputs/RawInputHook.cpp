@@ -51,13 +51,7 @@ void RawInputHook::PollingThreadLoop()
     hiddenWindow =
         CreateWindowEx(0, wc.lpszClassName, L"RawInputPoller", 0, 0, 0, 0, 0, HWND_MESSAGE, NULL, wc.hInstance, NULL);
 
-    RAWINPUTDEVICE rid[1];
-    rid[0].usUsagePage = 0x01;
-    rid[0].usUsage = 0x02;
-    rid[0].dwFlags = RIDEV_INPUTSINK;
-    rid[0].hwndTarget = hiddenWindow;
-
-    o_RegisterRawInputDevices(rid, 1, sizeof(rid[0]));
+    RegisterHiddenWindow();
 
     MSG msg;
 
@@ -71,8 +65,86 @@ void RawInputHook::PollingThreadLoop()
     UnregisterClass(wc.lpszClassName, wc.hInstance);
 }
 
+void RawInputHook::ReadGameRegistration()
+{
+    UINT count = 0;
+    GetRegisteredRawInputDevices(nullptr, &count, sizeof(RAWINPUTDEVICE));
+
+    std::vector<RAWINPUTDEVICE> devices(count);
+    if (count == 0 || GetRegisteredRawInputDevices(devices.data(), &count, sizeof(RAWINPUTDEVICE)) == (UINT) -1)
+        return;
+
+    for (const auto& device : devices)
+    {
+        if (device.usUsagePage == 0x01 && device.usUsage == 0x02)
+        {
+            gameMouseRegistered = true;
+            gameMouseFlags = device.dwFlags;
+
+            if (device.hwndTarget)
+                gameWindow = device.hwndTarget;
+        }
+    }
+}
+
+// Must run on the hidden window's thread
+void RawInputHook::RegisterHiddenWindow()
+{
+    DWORD flags = RIDEV_INPUTSINK;
+    if (gameMouseRegistered)
+        flags |= gameMouseFlags & (RIDEV_NOLEGACY | RIDEV_CAPTUREMOUSE);
+
+    RAWINPUTDEVICE rid[1];
+    rid[0].usUsagePage = 0x01;
+    rid[0].usUsage = 0x02;
+    rid[0].dwFlags = flags;
+    rid[0].hwndTarget = hiddenWindow;
+
+    if (!o_RegisterRawInputDevices(rid, 1, sizeof(rid[0])))
+        LOG_WARN("RegisterRawInputDevices failed flags: {:#x} error: {}", flags, GetLastError());
+}
+
+void RawInputHook::RestoreGameRegistration()
+{
+    RAWINPUTDEVICE rid[1];
+    rid[0].usUsagePage = 0x01;
+    rid[0].usUsage = 0x02;
+
+    if (gameMouseRegistered)
+    {
+        rid[0].dwFlags = gameMouseFlags;
+        rid[0].hwndTarget = gameWindow;
+    }
+    else
+    {
+        rid[0].dwFlags = RIDEV_REMOVE;
+        rid[0].hwndTarget = nullptr;
+    }
+
+    o_RegisterRawInputDevices(rid, 1, sizeof(rid[0]));
+}
+
+// The game only gets WM_INPUT the way its own registration would have given it
+bool RawInputHook::ShouldDeliverToGame(bool& foreground)
+{
+    DWORD foregroundPid = 0;
+    GetWindowThreadProcessId(GetForegroundWindow(), &foregroundPid);
+    foreground = foregroundPid == GetCurrentProcessId();
+
+    if (!gameMouseRegistered || gameWindow == NULL)
+        return false;
+
+    return foreground || (gameMouseFlags & (RIDEV_INPUTSINK | RIDEV_EXINPUTSINK)) != 0;
+}
+
 LRESULT RawInputHook::HiddenWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
+    if (msg == WM_UPDATE_REGISTRATION && instance)
+    {
+        instance->RegisterHiddenWindow();
+        return 0;
+    }
+
     if (msg == WM_INPUT && instance)
     {
         // Resolve the game window if it hasn't been set yet
@@ -92,24 +164,49 @@ LRESULT RawInputHook::HiddenWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 RAWINPUT* raw = (RAWINPUT*) lpb;
                 if (raw->header.dwType == RIM_TYPEMOUSE)
                 {
-                    HRAWINPUT fakeHandle = (HRAWINPUT) instance->nextFakeHandle.fetch_add(1);
+                    const RAWMOUSE& mouse = raw->data.mouse;
+                    HRAWINPUT fakeHandle = nullptr;
+                    bool foreground = false;
+                    const bool deliver = instance->ShouldDeliverToGame(foreground);
 
                     {
                         std::lock_guard<std::mutex> lock(instance->dataMutex);
-                        instance->fakeMouseDataMap[fakeHandle] = raw->data.mouse;
+                        auto& events = instance->fakeMouseDataMap;
 
-                        while (instance->fakeMouseDataMap.size() > 64)
+                        // Only plain relative movement can be added up, buttons and the wheel keep their own event
+                        auto unread = events.find(instance->unreadHandle);
+                        const bool merge = unread != events.end() && unread->second.usFlags == mouse.usFlags &&
+                                           unread->second.usButtonFlags == 0 && mouse.usButtonFlags == 0 &&
+                                           mouse.usFlags == MOUSE_MOVE_RELATIVE &&
+                                           GetTickCount64() - instance->unreadPostedMs < 100;
+
+                        if (!deliver)
                         {
-                            instance->fakeMouseDataMap.erase(instance->fakeMouseDataMap.begin());
+                            instance->unreadHandle = nullptr;
+                        }
+                        else if (merge)
+                        {
+                            unread->second.lLastX += mouse.lLastX;
+                            unread->second.lLastY += mouse.lLastY;
+                        }
+                        else
+                        {
+                            fakeHandle = (HRAWINPUT) instance->nextFakeHandle.fetch_add(1);
+                            events[fakeHandle] = mouse;
+                            instance->unreadHandle = fakeHandle;
+                            instance->unreadPostedMs = GetTickCount64();
+
+                            while (events.size() > 64)
+                                events.erase(events.begin());
                         }
 
-                        InputCollection::getInstance().addNewDelta({ raw->data.mouse.lLastX, raw->data.mouse.lLastY });
+                        InputCollection::getInstance().addNewDelta({ mouse.lLastX, mouse.lLastY });
                     }
 
-                    // Only post if we have a valid target window
-                    if (instance->gameWindow != NULL)
+                    if (fakeHandle != nullptr)
                     {
-                        PostMessage(instance->gameWindow, WM_INPUT, RIM_INPUT, (LPARAM) fakeHandle);
+                        PostMessage(instance->gameWindow, WM_INPUT, foreground ? RIM_INPUT : RIM_INPUTSINK,
+                                    (LPARAM) fakeHandle);
                     }
                 }
             }
@@ -129,15 +226,24 @@ BOOL RawInputHook::hkRegisterRawInputDevices(PCRAWINPUTDEVICE pRawInputDevices, 
     UINT nonMouseCount = 0;
     for (UINT i = 0; i < uiNumDevices; ++i)
     {
-        if (!(pRawInputDevices[i].usUsagePage == 0x01 && pRawInputDevices[i].usUsage == 0x02))
+        const RAWINPUTDEVICE& device = pRawInputDevices[i];
+
+        if (!(device.usUsagePage == 0x01 && device.usUsage == 0x02))
         {
             nonMouseCount++;
+            continue;
         }
-        else if (pRawInputDevices[i].usUsage == 0x02 && pRawInputDevices[i].hwndTarget)
-        {
-            instance->gameWindow = pRawInputDevices[i].hwndTarget;
-        }
+
+        // Games commonly drop the mouse when losing focus and take it back with NOLEGACY when regaining it
+        instance->gameMouseRegistered = (device.dwFlags & RIDEV_REMOVE) == 0;
+        instance->gameMouseFlags = (device.dwFlags & RIDEV_REMOVE) ? 0 : device.dwFlags;
+
+        if (device.hwndTarget)
+            instance->gameWindow = device.hwndTarget;
     }
+
+    if (nonMouseCount != uiNumDevices && instance->hiddenWindow)
+        PostMessage(instance->hiddenWindow, WM_UPDATE_REGISTRATION, 0, 0);
 
     if (nonMouseCount == 0)
     {
@@ -175,6 +281,7 @@ UINT RawInputHook::hkGetRawInputData(HRAWINPUT hRawInput, UINT uiCommand, LPVOID
 
     bool isSpoofed = false;
     RAWMOUSE mouseData;
+    const UINT requiredSize = sizeof(RAWINPUTHEADER) + sizeof(RAWMOUSE);
 
     {
         std::lock_guard<std::mutex> lock(instance->dataMutex);
@@ -183,13 +290,19 @@ UINT RawInputHook::hkGetRawInputData(HRAWINPUT hRawInput, UINT uiCommand, LPVOID
         {
             isSpoofed = true;
             mouseData = it->second;
-            // Notice: We NO LONGER erase the data here. The game can read it as many times as it needs.
+
+            // Kept, the game can read it as many times as it needs, but once it got the data nothing more can be
+            // added to it
+            if (uiCommand == RID_INPUT && pData != nullptr && pcbSize != nullptr && *pcbSize >= requiredSize &&
+                hRawInput == instance->unreadHandle)
+            {
+                instance->unreadHandle = nullptr;
+            }
         }
     }
 
     if (isSpoofed)
     {
-        UINT requiredSize = sizeof(RAWINPUTHEADER) + sizeof(RAWMOUSE);
 
         // Handle header-only requests explicitly
         if (uiCommand == RID_HEADER)

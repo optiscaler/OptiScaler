@@ -71,6 +71,9 @@ class InputCollection
     uint32_t cumulativeY = 0;
     DirectX::XMINT2 simStartCumulative[8] {};
 
+    // The same sim start can be reported by Streamline and by the Reflex marker it sends
+    uint64_t lastSimFrameId = UINT64_MAX;
+
     // GPU visible memory that gets the running total written on every mouse event (late latching)
     std::vector<volatile uint64_t*> liveSinks;
 
@@ -85,6 +88,7 @@ class InputCollection
 
     void addNewDelta(InputDelta delta);
 
+    // Called on the simulation start marker, repeated calls for the same frame are ignored
     void startCollectingForFrame(uint64_t frameId);
 
     // Returns the mouse delta between sim starts of frameId-1 and frameId

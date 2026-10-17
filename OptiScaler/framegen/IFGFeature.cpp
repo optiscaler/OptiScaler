@@ -2,6 +2,7 @@
 #include "IFGFeature.h"
 #include <Config.h>
 #include <low_latency/input/input_common.h>
+#include <shaders/reproject/Reproject.h>
 
 int IFGFeature::GetIndex() { return (_frameCount % BUFFER_COUNT); }
 
@@ -327,3 +328,39 @@ UINT IFGFeature::GetInterpolatedFrameCount() const { return _framesToInterpolate
 int IFGFeature::GetMaxInterpolationCount() const { return _maxInterpolationCount; }
 
 bool IFGFeature::GetDMFGSupport() const { return _supportsDMFG; }
+
+void IFGFeature::FilloutReprojectionData(FilloutData& data, int fIndex)
+{
+    auto& input = InputCollection::getInstance();
+    auto previousIndex = (fIndex + BUFFER_COUNT - 1) % BUFFER_COUNT;
+
+    data.diffThreshold = 0.01f;
+    data.mouseDeltaSinceSim = input.readDeltaSinceSim(_frameCount);
+    data.mouseDeltaSimToSim = input.readSimsDelta(_frameCount);
+    data.lateLatch = Config::Instance()->ReprojectionLateLatch.value_or_default();
+    data.simStartMouse = input.readCumulativeAtSim(_frameCount);
+    data.screenWidth = (uint32_t) _interpolationWidth[fIndex];
+    data.screenHeight = (uint32_t) _interpolationHeight[fIndex];
+    data.invertedDepth = _constants.flags[FG_Flags::InvertedDepth];
+
+    data.cameraVFov = _cameraVFov[fIndex];
+    data.cameraAspectRatio = _cameraAspectRatio[fIndex];
+    std::memcpy(data.cameraUp, _cameraUp[fIndex], 3 * sizeof(float));
+    std::memcpy(data.cameraRight, _cameraRight[fIndex], 3 * sizeof(float));
+    std::memcpy(data.cameraForward, _cameraForward[fIndex], 3 * sizeof(float));
+    std::memcpy(data.cameraPrevForward, _cameraForward[previousIndex], 3 * sizeof(float));
+    std::memcpy(data.cameraPosition, _cameraPosition[fIndex], 3 * sizeof(float));
+    data.cameraNear = _cameraNear[fIndex];
+    data.cameraFar = _cameraFar[fIndex];
+
+    data.hasPrevCamera = _frameCount > 1;
+    std::memcpy(data.cameraPrevUp, _cameraUp[previousIndex], 3 * sizeof(float));
+    std::memcpy(data.cameraPrevRight, _cameraRight[previousIndex], 3 * sizeof(float));
+    std::memcpy(data.cameraPrevPosition, _cameraPosition[previousIndex], 3 * sizeof(float));
+
+    data.frameId = _frameCount;
+    data.reset = _reset[fIndex] != 0;
+
+    data.mvScaleX = _mvScaleX[fIndex];
+    data.mvScaleY = _mvScaleY[fIndex];
+}

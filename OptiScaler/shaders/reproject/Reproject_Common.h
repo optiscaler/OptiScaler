@@ -79,6 +79,9 @@ Texture2D<float> DepthMask : register(t4);
 TextureCube<float3> CacheColor : register(t8);
 TextureCube<float2> CacheGeo : register(t9);
 
+#ifdef VK_MODE
+[[vk::image_format("rgba16f")]]
+#endif
 RWTexture2D<float3> Present : register(u0);
 
 // Rows of the reprojection rotation, written once per dispatch by the latch pass
@@ -450,7 +453,13 @@ cbuffer Params : register(b0)
 
 Texture2D<float> Depth : register(t2);
 
+#ifdef VK_MODE
+[[vk::image_format("r8")]]
+#endif
 RWTexture2D<float> DepthMaskTempOut : register(u1);
+#ifdef VK_MODE
+[[vk::image_format("r8")]]
+#endif
 RWTexture2D<float> DepthMaskOut : register(u2);
 
 // Depth mask prepass, horizontal part
@@ -523,6 +532,9 @@ cbuffer Params : register(b0)
 
 Texture2D<float> DepthMaskTemp : register(t5);
 
+#ifdef VK_MODE
+[[vk::image_format("r8")]]
+#endif
 RWTexture2D<float> DepthMaskOut : register(u2);
 
 // Depth mask prepass, vertical part
@@ -715,7 +727,13 @@ TextureCube<float2> PrevCacheGeo : register(t7);
 // Direction cache, a world space cubemap centered on the camera of the newest rendered frame
 // Color and distance are premultiplied by the confidence stored in Geo.y,
 // so bilinear filtering ignores texels that were never written
+#ifdef VK_MODE
+[[vk::image_format("rgba16f")]]
+#endif
 RWTexture2DArray<float3> CacheColorOut : register(u4);
+#ifdef VK_MODE
+[[vk::image_format("rg16f")]]
+#endif
 RWTexture2DArray<float2> CacheGeoOut : register(u5);
 
 SamplerState BilinearClampSampler : register(s1);
@@ -947,7 +965,7 @@ Texture2D<float2> Velocity : register(t10);
 RWStructuredBuffer<uint> StatsOut : register(u6);
 
 #define STATS_BINS 128
-#define STATS_COUNTERS 6
+#define STATS_COUNTERS 12
 #define LOG_SCALE_MIN -3.0f
 #define LOG_SCALE_MAX 6.0f
 
@@ -965,6 +983,12 @@ RWStructuredBuffer<uint> StatsOut : register(u6);
 #define OUTER_VALID 3    // outside the middle, the ones the camera moves by at least MIN_EXPECTED_PX
 #define OUTER_MATCH 4    // of those, the ones whose motion vectors roughly match the camera motion
 #define CENTER_AT_PIVOT 5 // middle of the screen, around the distance of the pivot of an orbiting camera
+#define OUTER_X_VALID 6  // outside the middle, the ones the camera moves sideways by at least MIN_EXPECTED_PX
+#define OUTER_X_OPPOSITE 7 // of those, the ones moving sideways the other way, the camera's right points left
+#define OUTER_Y_VALID 8  // same vertically
+#define OUTER_Y_OPPOSITE 9 // the camera's up points down
+#define MOVE_ALONG 10    // samples whose parallax follows the camera movement
+#define MOVE_AGAINST 11  // samples whose parallax goes the other way, the camera position is turned around
 
 groupshared uint Histogram[STATS_BINS];
 groupshared uint Counters[STATS_COUNTERS];
@@ -994,6 +1018,16 @@ bool ProjectRay(float3 ray, out float2 uv)
     return true;
 }
 
+// Loose, the motion vectors roughly go where expected
+bool Matches(float2 measuredPx, float2 expectedPx)
+{
+    float measuredLen = length(measuredPx);
+    float expectedLen = length(expectedPx);
+
+    return dot(measuredPx, expectedPx) > 0.7f * measuredLen * expectedLen && measuredLen > 0.5f * expectedLen &&
+           measuredLen < 2.0f * expectedLen;
+}
+
 // Same as reproject_cache.hlsl, in units of the near plane distance
 float LinearViewZ(float d)
 {
@@ -1018,7 +1052,8 @@ float LinearViewZ(float d)
 // the camera circles around it, like an object the player keeps aiming at while strafing, isn't counted.
 // When the camera orbits around a pivot instead, the character doesn't move against the scene around it, so the CPU
 // finds the orbit from the camera motion alone and this only checks there is something at the pivot.
-// The outer part of the screen tells whether the motion vectors match the camera at all.
+// The outer part of the screen tells whether the motion vectors match the camera at all. That can't depend on the
+// parallax scale, it's estimated from these same motion vectors only while they match.
 //
 // Parallax scale: depth is linearized in units of the near plane which don't always match the units of the camera
 // position. The part of the motion that the rotation doesn't explain comes from the camera movement, and its size
@@ -1074,6 +1109,7 @@ void CSMain(uint groupIndex : SV_GroupIndex)
             continue;
 
         float2 expectedPx = (expectedUV - uv) * screenPx;
+        float2 rotationPx = (rotatedUV - uv) * screenPx;
         float2 measuredPx = (measured - uv) * screenPx;
         float expectedLen = length(expectedPx);
         float measuredLen = length(measuredPx);
@@ -1099,22 +1135,39 @@ void CSMain(uint groupIndex : SV_GroupIndex)
                 }
             }
         }
-        else if (expectedLen >= MIN_EXPECTED_PX)
+        else if (max(expectedLen, length(rotationPx)) >= MIN_EXPECTED_PX)
         {
             InterlockedAdd(Counters[OUTER_VALID], 1);
 
-            // Loose, without a known scale the camera movement adds to the rotation for anything close
-            bool match = dot(measuredPx, expectedPx) > 0.7f * measuredLen * expectedLen &&
-                         measuredLen > 0.5f * expectedLen && measuredLen < 2.0f * expectedLen;
-
-            if (match)
+            // The rotation alone explains the far away samples and those of a camera that only turns, with a wrong
+            // parallax scale the movement would explain neither
+            if (Matches(measuredPx, expectedPx) || Matches(measuredPx, rotationPx))
                 InterlockedAdd(Counters[OUTER_MATCH], 1);
+
+            // Right and up only affect the rotation, each axis on its own and only by direction,
+            // the motion vectors' scale can differ between them
+            // The camera movement adds parallax that can go either way, walking down stairs moves the scene up while
+            // the view barely pitches. Once its scale is known it's taken out, and samples where it would still
+            // decide the direction are left out, a slightly wrong scale shouldn't turn an axis around
+            float2 movePx = knownScale ? expectedPx - rotationPx : 0.0f;
+            float2 rotationOnlyPx = measuredPx - movePx;
+
+            [unroll]
+            for (int a = 0; a < 2; ++a)
+            {
+                if (abs(rotationPx[a]) >= MIN_EXPECTED_PX && abs(movePx[a]) < 0.5f * abs(rotationPx[a]) &&
+                    abs(rotationOnlyPx[a]) >= 1.0f)
+                {
+                    InterlockedAdd(Counters[OUTER_X_VALID + 2 * a], 1);
+
+                    if (rotationOnlyPx[a] * rotationPx[a] < 0.0f)
+                        InterlockedAdd(Counters[OUTER_X_OPPOSITE + 2 * a], 1);
+                }
+            }
         }
 
         // Parallax scale estimate, always against the rotation only
-        expectedPx = (rotatedUV - uv) * screenPx;
-
-        if (!parallax || length(measuredPx - expectedPx) < 1.5f)
+        if (!parallax || length(measuredPx - rotationPx) < 1.5f)
             continue;
 
         // Previous view position of the sample in depth units is a + b * k, k being world units -> depth units
@@ -1131,12 +1184,20 @@ void CSMain(uint groupIndex : SV_GroupIndex)
             continue;
 
         float k = dot(c, e) / cc;
-        if (!(k > 0.0f))
+        if (!(abs(k) > 0.0f))
             continue;
 
         // Moving on its own instead of with the camera movement
         if (length(e - k * c) > 0.35f * length(e))
             continue;
+
+        if (k < 0.0f)
+        {
+            InterlockedAdd(Counters[MOVE_AGAINST], 1);
+            continue;
+        }
+
+        InterlockedAdd(Counters[MOVE_ALONG], 1);
 
         int bin = int(floor((-log10(k) - LOG_SCALE_MIN) * binsPerDecade));
         if (bin >= 0 && bin < STATS_BINS)

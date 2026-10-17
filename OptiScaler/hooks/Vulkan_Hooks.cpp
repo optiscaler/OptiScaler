@@ -12,6 +12,7 @@
 #include <upscalers/IFeature_Vk.h>
 #include <framegen/ffx/FSRFG_Vk.h>
 #include <framegen/dlssg/DLSSG_Vk.h>
+#include <framegen/reprojection/Reprojection_Vk.h>
 
 #include <misc/FrameLimit.h>
 #include "Reflex_Hooks.h"
@@ -321,6 +322,10 @@ static IFGFeature_Vk* CreateFGFeature()
             state.currentVkFG = new DLSSG_Vk();
         else
             LOG_ERROR("Can't init Streamline, DLSSG won't be available");
+    }
+    else if (state.activeFgOutput == FGOutput::Reprojection)
+    {
+        state.currentVkFG = new Reprojection_Vk();
     }
 
     return state.currentVkFG;
@@ -974,6 +979,9 @@ PFN_vkVoidFunction VulkanHooks::OriginalSwapchainFunction(const char* pName)
 
     if (std::strcmp(pName, "vkQueuePresentKHR") == 0)
         return o_QueuePresentKHR != nullptr ? (PFN_vkVoidFunction) FGOutputQueuePresent : nullptr;
+
+    if (std::strcmp(pName, "vkSetHdrMetadataEXT") == 0)
+        return (PFN_vkVoidFunction) o_SetHdrMetadataEXT;
 
     return nullptr;
 }

@@ -172,10 +172,14 @@ template <typename T> static const T* FindInChain(const void* next, VkStructureT
     return nullptr;
 }
 
+static bool HudfixEnabled()
+{
+    return State::Instance().activeFgInput == FGInput::Upscaler && Config::Instance()->FGHUDFix.value_or_default();
+}
+
 static bool IsFGRunning()
 {
-    auto config = Config::Instance();
-    if (!config->FGHUDFix.value_or_default() || !config->IsFGEnabled())
+    if (!HudfixEnabled() || !Config::Instance()->IsFGEnabled())
         return false;
 
     auto fg = State::Instance().currentVkFG;
@@ -533,7 +537,7 @@ static ComputeBindings* FindComputeBindings(VkCommandBuffer cmdBuffer, bool crea
 // Binding state is only needed while HUDFix can search
 static bool TracksBindings(VkPipelineBindPoint bindPoint)
 {
-    return bindPoint == VK_PIPELINE_BIND_POINT_COMPUTE && Config::Instance()->FGHUDFix.value_or_default();
+    return bindPoint == VK_PIPELINE_BIND_POINT_COMPUTE && HudfixEnabled();
 }
 
 static void PushImages(VkCommandBuffer cmdBuffer, uint32_t set, const std::vector<SetUpdate>& updates)

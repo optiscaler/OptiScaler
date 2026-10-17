@@ -83,9 +83,6 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     std::unordered_map<FG_ResourceType, ID3D12Resource*> _resourceCopy[BUFFER_COUNT] {};
     std::shared_mutex _resourceMutex[BUFFER_COUNT];
 
-    uint64_t _timeSinceSimStart = 0;
-    bool _reprojectionActive = false;
-
     std::unique_ptr<RF_Dx12> _mvFlip;
     std::unique_ptr<RF_Dx12> _depthFlip;
     std::unique_ptr<HC_Dx12> _hudlessCompare;
@@ -140,10 +137,7 @@ class IFGFeature_Dx12 : public virtual IFGFeature
 
     bool HasResource(FG_ResourceType type, int index = -1) override final;
 
-    virtual bool HasReprojection() { return false; };
-    bool IsReprojectionActive() const { return _reprojectionActive; };
-    const Reproject_Dx12* GetReproject() const { return _reproject.get(); };
-    uint64_t GetLastTimeSinceSimStartNs() const { return _timeSinceSimStart; };
+    const Reproject* GetReproject() const override { return _reproject.get(); };
 
     IFGFeature_Dx12() = default;
     virtual ~IFGFeature_Dx12() { DestroyCopyCmdList(); }

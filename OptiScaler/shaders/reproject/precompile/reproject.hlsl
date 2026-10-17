@@ -74,6 +74,9 @@ Texture2D<float> DepthMask : register(t4);
 TextureCube<float3> CacheColor : register(t8);
 TextureCube<float2> CacheGeo : register(t9);
 
+#ifdef VK_MODE
+[[vk::image_format("rgba16f")]]
+#endif
 RWTexture2D<float3> Present : register(u0);
 
 // Rows of the reprojection rotation, written once per dispatch by the latch pass

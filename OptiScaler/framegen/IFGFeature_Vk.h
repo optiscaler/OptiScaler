@@ -80,6 +80,16 @@ class IFGFeature_Vk : public virtual IFGFeature
     UINT64 _fgFramePresentId = 0;
     UINT64 _lastFGFramePresentId = 0;
 
+    // Command buffers of the output for the game queue, _fence is signaled by their submit
+    VkCommandPool _commandPool[BUFFER_COUNT] {};
+    VkCommandBuffer _commandBuffer[BUFFER_COUNT] {};
+    VkFence _fence[BUFFER_COUNT] {};
+
+    // Waits until the GPU is done with the previous use of the index, then begins it
+    VkCommandBuffer BeginCommandBuffer(int index);
+    void WaitForCommandBuffers();
+    void DestroyCommandBuffers();
+
     std::unordered_map<FG_ResourceType, VkFGResource> _frameResources[BUFFER_COUNT] {};
     std::shared_mutex _resourceMutex[BUFFER_COUNT];
 

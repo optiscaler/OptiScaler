@@ -73,7 +73,13 @@ TextureCube<float2> PrevCacheGeo : register(t7);
 // Direction cache, a world space cubemap centered on the camera of the newest rendered frame
 // Color and distance are premultiplied by the confidence stored in Geo.y,
 // so bilinear filtering ignores texels that were never written
+#ifdef VK_MODE
+[[vk::image_format("rgba16f")]]
+#endif
 RWTexture2DArray<float3> CacheColorOut : register(u4);
+#ifdef VK_MODE
+[[vk::image_format("rg16f")]]
+#endif
 RWTexture2DArray<float2> CacheGeoOut : register(u5);
 
 SamplerState BilinearClampSampler : register(s1);

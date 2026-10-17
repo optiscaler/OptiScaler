@@ -16,6 +16,7 @@
 #include <sl1_reflex.h>
 #include <magic_enum.hpp>
 #include "detours/detours.h"
+#include <shaders/reproject/mouseInputs/InputCollection.h>
 
 #include <intrin.h>
 #pragma intrinsic(_ReturnAddress)
@@ -1758,11 +1759,15 @@ sl::Result StreamlineHooks::hkslPCLSetMarker(sl::PCLMarker marker, const sl::Fra
             auto result = o_slGetNewFrameToken(newFramePointer, &newFrameId);
 
             LOG_WARN("Simulation start marker sent after end marker, offset: {}", correction_offset);
+            InputCollection::getInstance().startCollectingForFrame(newFrameId);
 
             result = o_slPCLSetMarker(marker, *newFramePointer);
             return result;
         }
     }
+
+    if (marker == sl::PCLMarker::eSimulationStart)
+        InputCollection::getInstance().startCollectingForFrame(frame);
 
     if (State::Instance().activeFgInput == FGInput::DLSSG)
     {

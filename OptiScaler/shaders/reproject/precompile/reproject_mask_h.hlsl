@@ -31,7 +31,13 @@ cbuffer Params : register(b0)
 
 Texture2D<float> Depth : register(t2);
 
+#ifdef VK_MODE
+[[vk::image_format("r8")]]
+#endif
 RWTexture2D<float> DepthMaskTempOut : register(u1);
+#ifdef VK_MODE
+[[vk::image_format("r8")]]
+#endif
 RWTexture2D<float> DepthMaskOut : register(u2);
 
 // Depth mask prepass, horizontal part

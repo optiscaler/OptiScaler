@@ -1040,6 +1040,33 @@
     <ClInclude Include="shaders\reproject\Reproject_Common.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="shaders\reproject\Reproject.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\reproject\Reproject_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="framegen\reprojection\Reprojection_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\reproject\precompile\reproject_Shader_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\reproject\precompile\reproject_mask_h_Shader_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\reproject\precompile\reproject_mask_v_Shader_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\reproject\precompile\reproject_latch_Shader_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\reproject\precompile\reproject_cache_Shader_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\reproject\precompile\reproject_stats_Shader_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="shaders\reproject\Reproject_Dx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1752,6 +1779,15 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="framegen\reprojection\Reprojection_Dx12.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="shaders\reproject\Reproject.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="shaders\reproject\Reproject_Vk.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="framegen\reprojection\Reprojection_Vk.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="shaders\reproject\Reproject_Dx12.cpp">

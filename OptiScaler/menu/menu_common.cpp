@@ -4705,16 +4705,18 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         ImGui::EndDisabled();
     }
 
-    if (ScopedCard::Shows("fg_reprojection") && fgOutput && fgOutput->HasReprojection())
+    if (auto reprojectionOutput = state.CurrentFG();
+        ScopedCard::Shows("fg_reprojection") && reprojectionOutput && reprojectionOutput->HasReprojection())
     {
         ScopedCard card { "Reprojection Settings" };
 
-        if (fgOutput->IsActive() && fgOutput->IsReprojectionActive())
+        if (reprojectionOutput->IsActive() && reprojectionOutput->IsReprojectionActive())
         {
             ImGui::Text("Updated camera rotation by: %.1fms",
-                        (float) fgOutput->GetLastTimeSinceSimStartNs() / 1'000'000.f);
+                        (float) reprojectionOutput->GetLastTimeSinceSimStartNs() / 1'000'000.f);
         }
-        else if (fgOutput->IsActive() && fgOutput->GetReproject() && fgOutput->GetReproject()->IsBypassed())
+        else if (reprojectionOutput->IsActive() && reprojectionOutput->GetReproject() &&
+                 reprojectionOutput->GetReproject()->IsBypassed())
         {
             ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)), "Paused, 3rd person detected");
         }
@@ -4802,7 +4804,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                     "Edge fill mode is only used where the cache has nothing.\n"
                     "Shown with a blue tint in debug mode");
 
-        const auto reproject = fgOutput->GetReproject();
+        const auto reproject = reprojectionOutput->GetReproject();
         const bool hasMotionStats = reproject && reproject->HasMotionStats();
 
         bool parallaxAuto = config->ReprojectionParallaxAuto.value_or_default();
@@ -4825,7 +4827,8 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             ImGui::BeginDisabled();
             ImGui::SetNextItemWidth(parallaxSliderWidth);
             ImGui::SliderFloat("Cache parallax scale", &estimate, 0.0f, 10000.0f,
-                               estimate > 0.0f ? "%.1f" : (hasMotionStats ? "Estimating..." : "No motion vectors"),
+                               estimate > 0.0f ? "%.1f"
+                                               : (hasMotionStats ? "Estimating..." : "No usable motion vectors"),
                                ImGuiSliderFlags_Logarithmic);
             ImGui::EndDisabled();
         }

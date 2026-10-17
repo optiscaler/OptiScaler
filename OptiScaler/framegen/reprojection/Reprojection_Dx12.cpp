@@ -277,41 +277,13 @@ bool Reprojection_Dx12::Present()
             else if (_reproject->IsInit())
             {
                 auto commandList = GetSCCommandList(fIndex);
-                auto previousIndex = (fIndex + BUFFER_COUNT - 1) % BUFFER_COUNT;
-
-                auto mouseDeltaSimToSim = InputCollection::getInstance().readSimsDelta(_frameCount);
 
                 ReprojectionParams params {};
 
                 FilloutData data {};
-                data.diffThreshold = 0.01f;
-                data.mouseDeltaSinceSim = mouseDeltaSinceSim;
-                data.mouseDeltaSimToSim = mouseDeltaSimToSim;
-                data.lateLatch = Config::Instance()->ReprojectionLateLatch.value_or_default();
-                data.simStartMouse = InputCollection::getInstance().readCumulativeAtSim(_frameCount);
-                data.screenWidth = (uint32_t) _interpolationWidth[fIndex];
-                data.screenHeight = (uint32_t) _interpolationHeight[fIndex];
+                FilloutReprojectionData(data, fIndex);
                 data.depthWidth = (uint32_t) depth->width;
                 data.depthHeight = (uint32_t) depth->height;
-                data.invertedDepth = _constants.flags[FG_Flags::InvertedDepth];
-
-                data.cameraVFov = _cameraVFov[fIndex];
-                data.cameraAspectRatio = _cameraAspectRatio[fIndex];
-                std::memcpy(data.cameraUp, _cameraUp[fIndex], 3 * sizeof(float));
-                std::memcpy(data.cameraRight, _cameraRight[fIndex], 3 * sizeof(float));
-                std::memcpy(data.cameraForward, _cameraForward[fIndex], 3 * sizeof(float));
-                std::memcpy(data.cameraPrevForward, _cameraForward[previousIndex], 3 * sizeof(float));
-                std::memcpy(data.cameraPosition, _cameraPosition[fIndex], 3 * sizeof(float));
-                data.cameraNear = _cameraNear[fIndex];
-                data.cameraFar = _cameraFar[fIndex];
-
-                data.hasPrevCamera = _frameCount > 1;
-                std::memcpy(data.cameraPrevUp, _cameraUp[previousIndex], 3 * sizeof(float));
-                std::memcpy(data.cameraPrevRight, _cameraRight[previousIndex], 3 * sizeof(float));
-                std::memcpy(data.cameraPrevPosition, _cameraPosition[previousIndex], 3 * sizeof(float));
-
-                data.frameId = _frameCount;
-                data.reset = _reset[fIndex] != 0;
 
                 ID3D12Resource* velocityResource = nullptr;
                 D3D12_RESOURCE_STATES velocityState = D3D12_RESOURCE_STATE_COMMON;
@@ -322,8 +294,6 @@ bool Reprojection_Dx12::Present()
                     velocityState = velocity->state;
 
                     data.hasMotionVectors = velocityResource != nullptr;
-                    data.mvScaleX = _mvScaleX[fIndex];
-                    data.mvScaleY = _mvScaleY[fIndex];
                     data.mvWidth = (uint32_t) velocity->width;
                     data.mvHeight = velocity->height;
 

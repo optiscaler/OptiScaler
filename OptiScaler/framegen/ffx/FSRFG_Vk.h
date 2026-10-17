@@ -39,17 +39,9 @@ class FSRFG_Vk : public virtual IFGFeature_Vk
 
     uint64_t _lastDispatchedFrameId = 0;
 
-    VkCommandPool _commandPool[BUFFER_COUNT] {};
-    VkCommandBuffer _commandBuffer[BUFFER_COUNT] {};
-    VkFence _fence[BUFFER_COUNT] {};
-
     void CreateContext();
     void ReleaseSwapchainContext();
     ffxReturnCode_t ConfigureEnabled(bool enabled);
-
-    VkCommandBuffer BeginCommandBuffer(int index);
-    void WaitForCommandBuffers();
-    void DestroyCommandBuffers();
 
     bool Dispatch();
     ffxReturnCode_t DispatchCallback(ffxDispatchDescFrameGeneration* params);

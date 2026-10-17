@@ -50,6 +50,11 @@ void InputCollection::startCollectingForFrame(uint64_t frameId)
     {
         std::unique_lock<std::shared_mutex> lock(mutex);
 
+        if (frameId == lastSimFrameId)
+            return;
+
+        lastSimFrameId = frameId;
+
         auto index = frameId % 8;
         simToPresentDeltas[index] = { 0, 0, Util::GetTimestamp() };
         simStartCumulative[index] = { (int32_t) cumulativeX, (int32_t) cumulativeY };
