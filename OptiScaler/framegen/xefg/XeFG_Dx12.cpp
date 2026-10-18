@@ -1565,13 +1565,12 @@ bool XeFG_Dx12::ReleaseSwapchain(HWND hwnd)
 
     if (!State::Instance().isShuttingDown)
     {
+        State::Instance().currentFGSwapchain = nullptr;
+
         if (_swapChainContext != nullptr)
             DestroySwapchainContext();
 
         _swapChainContext = nullptr;
-
-        if (!Config::Instance()->FGPreserveSwapChain.value_or_default())
-            State::Instance().currentFGSwapchain = nullptr;
     }
 
     ReleaseObjects();
