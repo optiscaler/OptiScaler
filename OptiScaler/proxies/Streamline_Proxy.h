@@ -458,7 +458,10 @@ class StreamlineProxy
 
         // A Vulkan game's D3D12 devices, like the ones for interop, don't get it back
         if (_isVulkanRequested)
+        {
+            LOG_ERROR("Streamline is already initialized for Vulkan");
             return false;
+        }
 
         _isD3D12Requested = true;
 
