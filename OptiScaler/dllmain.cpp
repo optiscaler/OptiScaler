@@ -140,7 +140,7 @@ uint32_t CheckAgilitySDK(HMODULE exe)
     }
 
     LOG_INFO("Agility SDK exports missing");
-    return 0;
+    return 65000;
 }
 
 UINT customD3D12SDKVersion = 615;
@@ -1153,7 +1153,8 @@ static void CheckWorkingMode()
             if (State::Instance().WindowsVer == WindowsVersion::Windows10 && !State::Instance().isRunningOnLinux &&
                 !Config::Instance()->FsrAgilitySDKUpgrade.has_value())
             {
-                if (gameAgilityVersion < customD3D12SDKVersion)
+                if (gameAgilityVersion == 65000 ||
+                    (gameAgilityVersion != 0 && gameAgilityVersion < customD3D12SDKVersion))
                 {
                     LOG_INFO("Enabling AgilitySDKUpgrade");
                     Config::Instance()->FsrAgilitySDKUpgrade.set_volatile_value(true);
