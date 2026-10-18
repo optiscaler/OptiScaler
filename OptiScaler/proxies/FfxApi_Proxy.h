@@ -1488,9 +1488,13 @@ class FfxApiProxy
 
         spdlog::info("");
 
-        if (module != nullptr)
-            main_vk.dll = module;
+        // This is module loaded by game, need to hook it to use inputs
+        if (module != nullptr && main_vk.dll == nullptr)
+        {
+            main_vk_hooked.dll = module;
+        }
 
+        // Try loading Opti's dlls first
         if (main_vk.dll == nullptr)
         {
             // Try new api first
@@ -1519,6 +1523,12 @@ class FfxApiProxy
                     break;
                 }
             }
+        }
+
+        // Can't find Opti dlls, use just loaded module
+        if (main_vk.dll == nullptr && main_vk_hooked.dll != nullptr)
+        {
+            main_vk = main_vk_hooked;
         }
 
         if (main_vk.dll != nullptr)
