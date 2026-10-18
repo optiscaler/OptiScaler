@@ -44,54 +44,99 @@ const GUID IID_IUnwrappedDXGISwapChain = {
 };
 
 static ID3D12Fence* resizeFence = nullptr;
+static ID3D12Device* resizeFenceDevice = nullptr;
 static UINT64 resizeFenceValue = 0;
 static HANDLE resizeFenceEvent = nullptr;
 
 static void WaitForGPUIdle(IUnknown* object)
 {
-    if (State::Instance().currentD3D12Device == nullptr || object == nullptr)
+    if (object == nullptr)
         return;
 
     ID3D12CommandQueue* queue = nullptr;
 
-    if (object->QueryInterface(IID_PPV_ARGS(&queue)) == S_OK)
+    if (object->QueryInterface(IID_PPV_ARGS(&queue)) != S_OK || queue == nullptr)
+        return;
+
+    ID3D12Device* device = nullptr;
+
+    if (queue->GetDevice(IID_PPV_ARGS(&device)) != S_OK || device == nullptr)
     {
-        LOG_DEBUG("Command queue obtained for GPU idle wait");
+        LOG_ERROR("Can't get device of the command queue");
         queue->Release();
+        return;
     }
 
-    if (queue != nullptr && resizeFence != nullptr && resizeFenceEvent != nullptr)
+    if (resizeFence == nullptr || resizeFenceDevice != device)
     {
-        if (State::Instance().currentD3D12Device != nullptr)
+        if (resizeFence != nullptr)
         {
-            if (resizeFence != nullptr)
-            {
-                resizeFence->Release();
-                resizeFence = nullptr;
-            }
-
-            if (resizeFenceEvent != nullptr)
-            {
-                CloseHandle(resizeFenceEvent);
-                resizeFenceEvent = nullptr;
-            }
-
-            State::Instance().currentD3D12Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&resizeFence));
-            resizeFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+            resizeFence->Release();
+            resizeFence = nullptr;
         }
 
-        LOG_DEBUG("Waiting for GPU to finish before resizing buffers");
+        resizeFenceValue = 0;
+        resizeFenceDevice = nullptr;
 
-        resizeFenceValue++;
-        queue->Signal(resizeFence, resizeFenceValue);
+        auto result = device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&resizeFence));
 
-        if (resizeFence->GetCompletedValue() < resizeFenceValue)
+        if (result != S_OK)
         {
-            resizeFence->SetEventOnCompletion(resizeFenceValue, resizeFenceEvent);
-            // Max 5 sec
-            auto waitResult = WaitForSingleObject(resizeFenceEvent, 5000);
-            LOG_DEBUG("WaitForSingleObject result: {:X}", waitResult);
+            LOG_ERROR("CreateFence error: {:X}", (UINT) result);
+            resizeFence = nullptr;
         }
+        else
+        {
+            resizeFenceDevice = device;
+        }
+    }
+
+    device->Release();
+
+    if (resizeFenceEvent == nullptr)
+        resizeFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+
+    if (resizeFence == nullptr || resizeFenceEvent == nullptr)
+    {
+        queue->Release();
+        return;
+    }
+
+    LOG_DEBUG("Waiting for GPU to finish before resizing buffers");
+
+    resizeFenceValue++;
+    auto signalResult = queue->Signal(resizeFence, resizeFenceValue);
+    queue->Release();
+
+    if (signalResult != S_OK)
+    {
+        LOG_ERROR("Signal error: {:X}", (UINT) signalResult);
+        return;
+    }
+
+    const auto deadline = GetTickCount64() + 5000; // Max 5 sec
+
+    while (resizeFence->GetCompletedValue() < resizeFenceValue)
+    {
+        auto now = GetTickCount64();
+
+        if (now >= deadline)
+        {
+            LOG_WARN("GPU idle wait timed out, fence value: {}, completed: {}", resizeFenceValue,
+                     resizeFence->GetCompletedValue());
+            break;
+        }
+
+        auto eventResult = resizeFence->SetEventOnCompletion(resizeFenceValue, resizeFenceEvent);
+
+        if (eventResult != S_OK)
+        {
+            LOG_ERROR("SetEventOnCompletion error: {:X}", (UINT) eventResult);
+            break;
+        }
+
+        auto waitResult = WaitForSingleObject(resizeFenceEvent, static_cast<DWORD>(deadline - now));
+        LOG_DEBUG("WaitForSingleObject result: {:X}", waitResult);
     }
 }
 
