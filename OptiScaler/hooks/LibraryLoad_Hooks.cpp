@@ -479,6 +479,60 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
         return module;
     }
 
+    if (CheckDllNameW(&libName, &xellNamesW))
+    {
+        // If XeLL was already in memory when first loaded
+        if (XeLLProxy::WasLoaded() && XeLLProxy::MemModule())
+        {
+            auto module = XeLLProxy::MemModule();
+            return module;
+        }
+        // if XeLL was already loaded by OptiScaler
+        else if (XeLLProxy::Module() != nullptr)
+        {
+            auto module = XeLLProxy::Module();
+            return module;
+        }
+
+        // If XeLL was not loaded yet, try to load it
+        if (XeLLProxy::InitXeLL())
+        {
+            auto module = XeLLProxy::Module();
+            return module;
+        }
+
+        // If still not loaded try normal path
+        auto module = NtdllProxy::LoadLibraryExW_Ldr(libName.c_str(), NULL, NULL);
+        return module;
+    }
+
+    if (CheckDllNameW(&libName, &xefgNamesW))
+    {
+        // If XeFG was already in memory when first loaded
+        if (XeFGProxy::WasLoaded() && XeFGProxy::MemModule())
+        {
+            auto module = XeFGProxy::MemModule();
+            return module;
+        }
+        // if XeFG was already loaded by OptiScaler
+        else if (XeFGProxy::Module() != nullptr)
+        {
+            auto module = XeFGProxy::Module();
+            return module;
+        }
+
+        // If XeFG was not loaded yet, try to load it
+        if (XeFGProxy::InitXeFG())
+        {
+            auto module = XeFGProxy::Module();
+            return module;
+        }
+
+        // If still not loaded try normal path
+        auto module = NtdllProxy::LoadLibraryExW_Ldr(libName.c_str(), NULL, NULL);
+        return module;
+    }
+
     if (CheckDllNameW(&libName, &amdxc64NamesW))
     {
         auto module = NtdllProxy::LoadLibraryExW_Ldr(libName.c_str(), NULL, 0);

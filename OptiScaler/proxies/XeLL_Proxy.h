@@ -68,6 +68,7 @@ class XeLLProxy
 {
   private:
     inline static HMODULE _dll = nullptr;
+    inline static HMODULE _memModule = nullptr;
     inline static std::wstring _dllPath;
 
     inline static xell_version_t _xellVersion {};
@@ -174,6 +175,8 @@ class XeLLProxy
 
   public:
     static HMODULE Module() { return _dll; }
+    static HMODULE MemModule() { return _memModule; }
+    static bool WasLoaded() { return _memModule != nullptr && _memModule != _dll; }
     static std::wstring Module_Path() { return _dllPath; }
 
     static bool InitXeLL()
@@ -198,6 +201,8 @@ class XeLLProxy
 
             if (mainModule != nullptr)
             {
+                _memModule = memModule;
+
                 // We don't control which XeLL dll XeFG will pick
                 // Detouring GetModuleHandleExA seemingly isn't enough
                 if (memModule && mainModule != memModule)
