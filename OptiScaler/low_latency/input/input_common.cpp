@@ -716,8 +716,10 @@ InputResult InputCommon::set_async_marker(const InputContext& inputContext, ID3D
     if (inputContext.caller != activeInput && !inputContext.localContext)
         return InputResult::UsingDifferentInput;
 
-    if (!currently_active_tech.load()) // can't init using ID3D12CommandQueue, can only check if available
-        return InputResult::LowLatencyUpdateFail;
+    // Can't init using ID3D12CommandQueue, can only check if available. Opti's own contexts mark frames whether or not
+    // the game runs a low latency tech, without an output their markers have nowhere to go.
+    if (!currently_active_tech.load())
+        return inputContext.localContext ? InputResult::Ok : InputResult::LowLatencyUpdateFail;
 
     if (!marker_supported(inputContext.markerMode, marker_params.marker_type))
         return InputResult::InputNotSupported;
