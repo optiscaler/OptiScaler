@@ -51,19 +51,19 @@ DXGI_FORMAT Shader_Dx12::TranslateTypelessFormats(DXGI_FORMAT format)
 
     // Some shaders didn't have those conversions and I'm not 100% sure if it's fine to do for them
     case DXGI_FORMAT_R24G8_TYPELESS:
+    case DXGI_FORMAT_D24_UNORM_S8_UINT:
         return DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
 
     case DXGI_FORMAT_R32G8X24_TYPELESS:
+    case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
         return DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
 
     case DXGI_FORMAT_R32_TYPELESS:
+    case DXGI_FORMAT_D32_FLOAT:
         return DXGI_FORMAT_R32_FLOAT;
 
-    case DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS:
-        return DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
-
-    case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
-        return DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
+    case DXGI_FORMAT_D16_UNORM:
+        return DXGI_FORMAT_R16_UNORM;
 
     default:
         return format;
