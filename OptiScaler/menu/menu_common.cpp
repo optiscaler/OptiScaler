@@ -4171,7 +4171,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 // Replaces the Active checkbox + MFG combo of FG outputs with a single slider
 // maxInterpolationCount of 0 means the output doesn't generate frames, "On" is shown instead of "2X"
 void MenuCommon::RenderFGModeSlider(RenderMenuContext& ctx, const char* label, int maxInterpolationCount,
-                                    CustomOptional<int>* countConfig)
+                                    CustomOptional<int>* countConfig, const char* tooltip)
 {
     auto& state = ctx.state;
     auto config = ctx.config;
@@ -4249,7 +4249,9 @@ void MenuCommon::RenderFGModeSlider(RenderMenuContext& ctx, const char* label, i
 
     ImGui::PopItemWidth();
 
-    if (Config::FGCanFollowGame())
+    if (tooltip != nullptr)
+        ShowTooltip(tooltip);
+    else if (Config::FGCanFollowGame())
         ShowTooltip("Frame Generation mode\nDefault follows the game's DLSS FG setting");
     else
         ShowTooltip("Frame Generation mode");
@@ -4572,94 +4574,118 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                         "It might cause crashes and bad IQ!");
         }
 
+        const int maxCount = fgOutput->GetMaxInterpolationCount();
+        const bool dynamicMFG = maxCount >= 1 && config->FGXeFGDynamicMFG.value_or_default();
+
+        // Frame Gen at 2X: Dynamic MFG only switches between off and 2X
+        const bool dynamicOnOff =
+            std::clamp(config->FGXeFGInterpolationCount.value_or_default(), 1, std::max(maxCount, 1)) == 1;
+
+        ImGui::Text("Current XeFG state:");
+        ImGui::SameLine();
+        if (!fgOutput->IsActive())
+        {
+            ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)), "OFF");
+        }
+        else
+        {
+            // Dynamic MFG's 1X keeps FG running with no generated frames
+            const auto count = fgOutput->GetInterpolatedFrameCount();
+            const auto color = count > 0 ? ImVec4(0.f, 1.f, 0.25f, 1.f) : ImVec4(1.0f, 0.647f, 0.0f, 1.f);
+            ImGui::TextColored(toneMapColor(color), std::format("ON {}x", count + 1).c_str());
+
+            if (dynamicMFG)
+            {
+                ImGui::SameLine();
+                ImGui::TextDisabled("(Dynamic)");
+            }
+        }
+
         ImGui::BeginDisabled(!correctMVs || cantActivate);
 
-        RenderFGModeSlider(ctx, "Frame Gen##xefg", fgOutput->GetMaxInterpolationCount(),
-                           &config->FGXeFGInterpolationCount);
-
         // Dynamic MFG: the Frame Gen setting is the most, the multiplier follows the game's frame rate
-        if (fgOutput->GetMaxInterpolationCount() > 1)
+        if (dynamicMFG)
+            RenderFGModeSlider(ctx, "Max Frame Gen###xefgMode", maxCount, &config->FGXeFGInterpolationCount,
+                               "The highest multiplier Dynamic MFG may use");
+        else
+            RenderFGModeSlider(ctx, "Frame Gen###xefgMode", maxCount, &config->FGXeFGInterpolationCount);
+
+        if (maxCount >= 1)
         {
             ImGui::SameLine(0.0f, 16.0f);
 
-            if (bool dynamicMFG = config->FGXeFGDynamicMFG.value_or_default();
-                ImGui::Checkbox("Dynamic MFG##xefg", &dynamicMFG))
-            {
-                config->FGXeFGDynamicMFG = dynamicMFG;
-            }
+            if (bool dynamic = dynamicMFG; ImGui::Checkbox("Dynamic MFG##xefg", &dynamic))
+                config->FGXeFGDynamicMFG = dynamic;
 
-            ShowTooltip("Picks the multiplier every frame, up to the Frame Gen setting, so the\n"
-                        "presented frame rate follows the target (see DMFG Rounding).\n"
-                        "Only the FPS limit, V-Sync or Use target as cap caps the presented\n"
-                        "frame rate; without one it can land above the target.\n"
-                        "A higher multiplier is used only if it raises the frame rate\n"
-                        "enough: each generated frame costs GPU time.");
+            ShowTooltip("Changes the multiplier on the fly to hit the target FPS,\n"
+                        "up to the Frame Gen setting (at 2X: FG on or off).");
+        }
 
-            ImGui::BeginDisabled(!config->FGXeFGDynamicMFG.value_or_default());
-            static float xefgFpsTarget = config->FGXeFGFramerateTargetDMFG.value_or_default();
+        if (dynamicMFG)
+        {
+            // Applied on release, dragging doesn't restart Dynamic MFG every frame.
+            // The slider's lowest step (9) is Auto, the lowest target is 10.
+            constexpr float autoStep = 9.0f;
+            static float xefgFpsTarget = std::max(config->FGXeFGFramerateTargetDMFG.value_or_default(), autoStep);
             const float fpsSliderMax = (float) std::max(200, refreshRate);
-            ImGui::SliderFloat("DMFG FPS Target##xefg", &xefgFpsTarget, 0, fpsSliderMax, "%.0f");
 
-            ShowTooltip("0 means OptiScaler's FPS limit, or without one just under the display\n"
-                        "refresh rate (116 at 120 Hz). A target above the FPS limit uses the limit.");
+            ImGui::SetNextItemWidth(150.0f * menuResScale);
+            ImGui::SliderFloat("Target FPS##xefg", &xefgFpsTarget, autoStep, fpsSliderMax,
+                               xefgFpsTarget < autoStep + 0.5f ? "Auto" : "%.0f", ImGuiSliderFlags_AlwaysClamp);
 
-            if (ImGui::Button("Apply Target##xefg"))
-                config->FGXeFGFramerateTargetDMFG = xefgFpsTarget;
-
-            ImGui::SameLine(0.0f, 16.0f);
-
-            if (ImGui::Button("Reset Target##xefg"))
+            if (ImGui::IsItemDeactivatedAfterEdit())
             {
-                xefgFpsTarget = 0.0f;
-                config->FGXeFGFramerateTargetDMFG.reset();
+                if (xefgFpsTarget < autoStep + 0.5f)
+                    config->FGXeFGFramerateTargetDMFG.reset();
+                else
+                    config->FGXeFGFramerateTargetDMFG = xefgFpsTarget;
             }
 
-            ImGui::SameLine(0.0f, 16.0f);
+            ShowTooltip("Presented FPS to aim for, never above the FPS limit.\n"
+                        "Auto: the FPS limit, or just under the refresh rate.");
 
-            if (bool targetAsCap = config->FGXeFGTargetAsCapDMFG.value_or_default();
-                ImGui::Checkbox("Use target as cap##xefg", &targetAsCap))
+            // The cap picks from 2X up, it needs a higher Frame Gen setting
+            const bool targetAsCap = config->FGXeFGTargetAsCapDMFG.value_or_default() && !dynamicOnOff;
+
+            if (!dynamicOnOff)
             {
-                config->FGXeFGTargetAsCapDMFG = targetAsCap;
-            }
+                ImGui::SameLine(0.0f, 16.0f);
 
-            ShowTooltip("While Dynamic MFG runs, the target is also the FPS limit:\n"
-                        "the presented frame rate doesn't go above it, and the multiplier\n"
-                        "steps up whenever the frame rate falls under it (no Rounding, no 1X).\n"
-                        "A lower FPS limit stays in place.");
+                if (bool cap = targetAsCap; ImGui::Checkbox("Use as FPS limit##xefg", &cap))
+                    config->FGXeFGTargetAsCapDMFG = cap;
+
+                ShowTooltip("Also limits FPS to the target and uses the lowest\n"
+                            "multiplier that reaches it.");
+            }
 
             // The cap holds the target with its own count logic
-            ImGui::BeginDisabled(config->FGXeFGTargetAsCapDMFG.value_or_default());
+            ImGui::BeginDisabled(targetAsCap);
 
-            const char* roundings[] = { "Down", "Nearest", "Up" };
+            const char* roundings[] = { "At most target", "Around target", "At least target" };
             int rounding = std::clamp(config->FGXeFGRoundingDMFG.value_or_default(), 0, 2);
 
             ImGui::SetNextItemWidth(150.0f * menuResScale);
-            if (ImGui::Combo("DMFG Rounding##xefg", &rounding, roundings, IM_ARRAYSIZE(roundings)))
+            if (ImGui::Combo("##xefgRounding", &rounding, roundings, IM_ARRAYSIZE(roundings)))
                 config->FGXeFGRoundingDMFG = rounding;
 
-            ShowTooltip("Which multiplier the target asks for.\n"
-                        "Nearest: the presented frame rate nearest the target.\n"
-                        "Up: the lowest multiplier at or above the target.\n"
-                        "Down: the highest multiplier at or below the target.\n"
-                        "2X and 3X are a whole real frame apart, so the nearest can still\n"
-                        "be about 20% off the target there.\n"
-                        "Under the FPS limit or V-Sync it changes only when clearly off\n"
-                        "(Nearest: 2X from 71% of the target, 6X from 88%).");
+            ShowTooltip("Where FPS may land, as multipliers only come in steps:\n"
+                        "at most, around or at least the target FPS.");
 
-            ImGui::SameLine(0.0f, 16.0f);
-
-            if (bool allow1X = config->FGXeFGDynamicAllow1X.value_or_default();
-                ImGui::Checkbox("Allow 1X##xefg", &allow1X))
+            // At 2X, 1X is the only other step
+            if (!dynamicOnOff)
             {
-                config->FGXeFGDynamicAllow1X = allow1X;
+                ImGui::SameLine(0.0f, 16.0f);
+
+                if (bool allow1X = config->FGXeFGDynamicAllow1X.value_or_default();
+                    ImGui::Checkbox("Allow 1X##xefg", &allow1X))
+                {
+                    config->FGXeFGDynamicAllow1X = allow1X;
+                }
+
+                ShowTooltip("Turns frame generation off when the game\n"
+                            "alone gets close enough to the target.");
             }
 
-            ShowTooltip("Lets Dynamic MFG turn frame generation off (1X) when the game alone\n"
-                        "is close enough to the target (Nearest: nearer than 2X; under the\n"
-                        "FPS limit or V-Sync from 56% of it).\n"
-                        "Turning it back on shows one real frame without generated frames.");
-
-            ImGui::EndDisabled();
             ImGui::EndDisabled();
         }
 

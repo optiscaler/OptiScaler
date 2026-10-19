@@ -188,7 +188,7 @@ bool Config::Reload(std::filesystem::path iniPath)
 
             FGXeFGDynamicMFG.set_from_config(readBool("XeFG", "DynamicMFG"));
             FGXeFGFramerateTargetDMFG.set_from_config(readFloat("XeFG", "FramerateTargetDMFG"));
-            if (FGXeFGFramerateTargetDMFG.has_value() && FGXeFGFramerateTargetDMFG.value() < 0.0f)
+            if (FGXeFGFramerateTargetDMFG.has_value() && FGXeFGFramerateTargetDMFG.value() < 10.0f)
                 FGXeFGFramerateTargetDMFG.reset();
 
             FGXeFGRoundingDMFG.set_from_config(readInt("XeFG", "RoundingDMFG"));

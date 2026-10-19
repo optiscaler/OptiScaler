@@ -754,9 +754,10 @@ bool XeFG_Dx12::Dispatch()
             Config::Instance()->FGInterpolationCount(Config::Instance()->FGXeFGInterpolationCount.value_or_default()),
             1, std::max(_maxInterpolationCount, 1));
 
-        // Dynamic MFG: the Frame Gen setting is the most interpolated frames, the count follows the real frame rate
-        const bool dynamic = Config::Instance()->FGXeFGDynamicMFG.value_or_default() &&
-                             !Config::Instance()->FGFollowsGame() && targetCount > 1;
+        // Dynamic MFG: the Frame Gen setting is the most interpolated frames, the count follows the real frame rate.
+        // At 2X it switches between off and 2X.
+        const bool dynamic =
+            Config::Instance()->FGXeFGDynamicMFG.value_or_default() && !Config::Instance()->FGFollowsGame();
         const bool dynamicChange = dynamic && _dynamicActive;
 
         if (dynamic)
@@ -772,11 +773,13 @@ bool XeFG_Dx12::Dispatch()
             const double sleepMs = InputCommon::take_sleep_ms();
             const double waitMs = sleepMs + state.lastFGPresentMs;
             const int rounding = std::clamp(Config::Instance()->FGXeFGRoundingDMFG.value_or_default(), 0, 2);
-            const int minCount = Config::Instance()->FGXeFGDynamicAllow1X.value_or_default() ? 0 : 1;
+            const int minCount =
+                Config::Instance()->FGXeFGDynamicAllow1X.value_or_default() || targetCount == 1 ? 0 : 1;
 
             // Use target as cap: every OptiScaler limiter holds the presented frame rate at the target
-            // (FrameLimit::targetFps), the target is at most the FPS limit
-            const bool cap = Config::Instance()->FGXeFGTargetAsCapDMFG.value_or_default() && target > 0.0f;
+            // (FrameLimit::targetFps), the target is at most the FPS limit. Without 1X the cap needs 3X to choose from.
+            const bool cap =
+                Config::Instance()->FGXeFGTargetAsCapDMFG.value_or_default() && target > 0.0f && targetCount > 1;
             state.xefgDynamicCapFps = cap ? target : 0.0f;
 
             int count = current;
@@ -824,7 +827,7 @@ bool XeFG_Dx12::Dispatch()
             if (!cap && (count != current || now - _dynamicLogMs >= 5000.0))
             {
                 static constexpr const char* reasons[] = { "", "up", "down", "try down", "undo", "no gain, back" };
-                static constexpr const char* roundings[] = { "down", "nearest", "up" };
+                static constexpr const char* roundings[] = { "at most", "around", "at least" };
                 const auto reason = _dynamicCount.LastReason();
                 const auto change = count != current ? std::format(" -> {}X", count + 1) : std::string();
                 const auto why = reason != XeFG_DynamicCount::Reason::None ? std::format(" ({})", reasons[(int) reason])
