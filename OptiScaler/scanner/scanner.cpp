@@ -177,6 +177,55 @@ uintptr_t scanner::GetAddress(HMODULE module, const std::string_view pattern, pt
     }
 }
 
+// Unwind info of a chunk that continues another one ends with the RUNTIME_FUNCTION of the previous chunk
+static DWORD GetFirstChunkRva(const BYTE* base, const RUNTIME_FUNCTION* chunk)
+{
+    struct UnwindInfo
+    {
+        BYTE versionAndFlags;
+        BYTE sizeOfProlog;
+        BYTE countOfCodes;
+        BYTE frameRegisterAndOffset;
+        USHORT codes[1];
+    };
+
+    while (true)
+    {
+        auto unwind = reinterpret_cast<const UnwindInfo*>(base + chunk->UnwindData);
+
+        if (((unwind->versionAndFlags >> 3) & UNW_FLAG_CHAININFO) == 0)
+            return chunk->BeginAddress;
+
+        // Unwind codes are padded to an even count
+        chunk = reinterpret_cast<const RUNTIME_FUNCTION*>(&unwind->codes[(unwind->countOfCodes + 1) & ~1]);
+    }
+}
+
+std::vector<std::span<const uint8_t>> scanner::GetFunctionChunks(HMODULE module, const void* function)
+{
+    std::vector<std::span<const uint8_t>> chunks;
+
+    if (module == nullptr || function == nullptr)
+        return chunks;
+
+    auto base = reinterpret_cast<const BYTE*>(module);
+    auto dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+    auto nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(base + dos->e_lfanew);
+    auto& directory = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION];
+
+    auto functions = reinterpret_cast<const RUNTIME_FUNCTION*>(base + directory.VirtualAddress);
+    auto count = directory.Size / sizeof(RUNTIME_FUNCTION);
+    auto functionRva = static_cast<DWORD>(reinterpret_cast<const BYTE*>(function) - base);
+
+    for (size_t i = 0; i < count; i++)
+    {
+        if (GetFirstChunkRva(base, &functions[i]) == functionRva)
+            chunks.emplace_back(base + functions[i].BeginAddress, functions[i].EndAddress - functions[i].BeginAddress);
+    }
+
+    return chunks;
+}
+
 uintptr_t scanner::GetOffsetFromInstruction(const std::wstring_view moduleName, const std::string_view pattern,
                                             ptrdiff_t offset)
 {

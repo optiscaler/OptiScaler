@@ -113,6 +113,14 @@ enum class FSR4Support : uint8_t
     Count
 };
 
+// FSR 4 network variants, FFX uses the first one in this order that the GPU supports
+enum class FSR4Model : uint8_t
+{
+    FP8 = 0,
+    INT8 = 1,
+    Count
+};
+
 typedef struct _version_t
 {
     uint16_t major;

@@ -11,7 +11,9 @@
 #include <inputs/FfxApi_Dx12.h>
 #include <inputs/FfxApi_Vk.h>
 
-#include <fsr4/FSR4ModelSelection.h>
+#include <fsr4/FSR4DriverProvider.h>
+#include <fsr4/FSR4Models.h>
+#include <fsr4/FSR4Presets.h>
 
 #include "ffx_api.h"
 #include <detours/detours.h>
@@ -106,6 +108,21 @@ class FfxApiProxy
     static HMODULE Dx12Module_FG() { return fg_dx12.dll; }
     static HMODULE Dx12Module_Denoiser() { return denoiser_dx12.dll; }
     static HMODULE Dx12Module_Radiance() { return radiance_dx12.dll; }
+
+    // FFX modules that Opti creates its upscalers with
+    static bool IsUpscalerModule(HMODULE module)
+    {
+        return module != nullptr && (module == main_dx12.dll || module == upscaling_dx12.dll);
+    }
+
+    // Module that runs the DX12 upscaler with this version id
+    static HMODULE UpscalerModule(uint64_t versionId)
+    {
+        if (versionId != 0 && versionId == FSR4DriverProvider::VersionId())
+            return FSR4DriverProvider::LoadedModule();
+
+        return upscaling_dx12.dll != nullptr ? upscaling_dx12.dll : main_dx12.dll;
+    }
 
     static std::wstring Dx12Module_Path() { return main_dx12.filePath; }
     static std::wstring Dx12Module_SR_Path() { return upscaling_dx12.filePath; }
@@ -265,7 +282,8 @@ class FfxApiProxy
 
             if (!main_dx12.isLoader)
             {
-                FSR4ModelSelection::Hook(main_dx12.dll, FSR4Source::SDK);
+                FSR4Presets::Hook(main_dx12.dll);
+                FSR4Models::Hook(main_dx12.dll);
             }
         }
 
@@ -412,7 +430,8 @@ class FfxApiProxy
 
         if (upscaling_dx12.dll != nullptr)
         {
-            FSR4ModelSelection::Hook(upscaling_dx12.dll, FSR4Source::SDK);
+            FSR4Presets::Hook(upscaling_dx12.dll);
+            FSR4Models::Hook(upscaling_dx12.dll);
 
             wchar_t modulePath[MAX_PATH];
             DWORD len = GetModuleFileNameW(upscaling_dx12.dll, modulePath, MAX_PATH);
@@ -1183,6 +1202,13 @@ class FfxApiProxy
                                                const ffxAllocationCallbacks* memCb)
     {
         auto type = GetType(desc->type);
+
+        if (auto overrideVersion = FindOverrideVersion(desc);
+            type == FFXStructType::Upscaling && overrideVersion && *overrideVersion == FSR4DriverProvider::VersionId())
+        {
+            return FSR4DriverProvider::CreateContext(context, desc, memCb);
+        }
+
         auto isFg = type == FFXStructType::FG || type == FFXStructType::SwapchainDX12;
 
         ffxReturnCode_t result = FFX_API_RETURN_ERROR;
@@ -1247,6 +1273,9 @@ class FfxApiProxy
 
     static ffxReturnCode_t D3D12_DestroyContext(ffxContext* context, const ffxAllocationCallbacks* memCb)
     {
+        if (FSR4DriverProvider::OwnsContext(context))
+            return FSR4DriverProvider::DestroyContext(context, memCb);
+
         ffxReturnCode_t result = FFX_API_RETURN_ERROR;
         auto type = FFXStructType::Unknown;
 
@@ -1348,6 +1377,9 @@ class FfxApiProxy
 
     static ffxReturnCode_t D3D12_Configure(ffxContext* context, const ffxConfigureDescHeader* desc)
     {
+        if (FSR4DriverProvider::OwnsContext(context))
+            return FSR4DriverProvider::Configure(context, desc);
+
         auto type = GetType(desc->type);
 
         if (type == FFXStructType::General && contextToType.contains(*context))
@@ -1389,6 +1421,76 @@ class FfxApiProxy
 
     static ffxReturnCode_t D3D12_Query(ffxContext* context, ffxQueryDescHeader* desc)
     {
+        if (FSR4DriverProvider::OwnsContext(context))
+            return FSR4DriverProvider::Query(context, desc);
+
+        if (desc->type == FFX_API_QUERY_DESC_TYPE_GET_VERSIONS && GetIndirectType(desc) == FFXStructType::Upscaling)
+        {
+            return D3D12_QueryUpscalerVersions(reinterpret_cast<ffxQueryDescGetVersions*>(desc),
+                                               FSR4DriverProvider::Listing::WhenNewestUpscaler);
+        }
+
+        return D3D12_QuerySdk(context, desc);
+    }
+
+    // Versions of the FFX SDK upscalers and the upscaler of the driver
+    static ffxReturnCode_t D3D12_QueryUpscalerVersions(ffxQueryDescGetVersions* desc,
+                                                       FSR4DriverProvider::Listing driverListing)
+    {
+        ffxQueryDescGetVersions sdkQuery = *desc;
+        uint64_t sdkCount = 0;
+        sdkQuery.outputCount = &sdkCount;
+        sdkQuery.versionIds = nullptr;
+        sdkQuery.versionNames = nullptr;
+
+        if (auto result = D3D12_QuerySdk(nullptr, &sdkQuery.header); result != FFX_API_RETURN_OK)
+            return result;
+
+        std::vector<uint64_t> ids(sdkCount);
+        std::vector<const char*> names(sdkCount);
+        sdkQuery.versionIds = ids.data();
+        sdkQuery.versionNames = names.data();
+
+        if (auto result = D3D12_QuerySdk(nullptr, &sdkQuery.header); result != FFX_API_RETURN_OK)
+            return result;
+
+        ids.resize(sdkCount);
+        names.resize(sdkCount);
+
+        FSR4DriverProvider::AddToVersionList(ids, names, driverListing);
+
+        // Same contract as FFX, a non-zero count is the capacity of the arrays
+        auto count = ids.size();
+        if (*desc->outputCount != 0 && (desc->versionIds != nullptr || desc->versionNames != nullptr))
+            count = std::min<size_t>(count, *desc->outputCount);
+
+        for (size_t i = 0; i < count; i++)
+        {
+            if (desc->versionIds != nullptr)
+                desc->versionIds[i] = ids[i];
+
+            if (desc->versionNames != nullptr)
+                desc->versionNames[i] = names[i];
+        }
+
+        *desc->outputCount = count;
+        return FFX_API_RETURN_OK;
+    }
+
+  private:
+    static std::optional<uint64_t> FindOverrideVersion(const ffxApiHeader* desc)
+    {
+        for (auto header = desc; header != nullptr; header = header->pNext)
+        {
+            if (header->type == FFX_API_DESC_TYPE_OVERRIDE_VERSION)
+                return reinterpret_cast<const ffxOverrideVersion*>(header)->versionId;
+        }
+
+        return std::nullopt;
+    }
+
+    static ffxReturnCode_t D3D12_QuerySdk(ffxContext* context, ffxQueryDescHeader* desc)
+    {
         auto type = GetIndirectType(desc);
         auto isFg = type == FFXStructType::FG || type == FFXStructType::SwapchainDX12;
 
@@ -1424,8 +1526,12 @@ class FfxApiProxy
         return FFX_API_RETURN_NO_PROVIDER;
     }
 
+  public:
     static ffxReturnCode_t D3D12_Dispatch(ffxContext* context, const ffxDispatchDescHeader* desc)
     {
+        if (FSR4DriverProvider::OwnsContext(context))
+            return FSR4DriverProvider::Dispatch(context, desc);
+
         auto type = GetType(desc->type);
         auto isFg = type == FFXStructType::FG || type == FFXStructType::SwapchainDX12;
 

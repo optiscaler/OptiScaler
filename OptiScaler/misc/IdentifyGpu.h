@@ -101,5 +101,5 @@ class IdentifyGpu
     static bool gameUsesVkd3dProton();
 
     static void updateD3d12Capabilities(D3d12Proxy::PFN_D3D12CreateDevice o_D3D12CreateDevice = nullptr);
-    static void updateInt8Support(std::optional<bool>& sdkSupportsInt8, std::optional<bool>& amdxcffx64SupportsInt8);
+    static void updateInt8Support(bool sdkSupportsInt8, bool driverSupportsInt8);
 };

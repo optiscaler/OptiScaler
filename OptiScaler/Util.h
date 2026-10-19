@@ -48,6 +48,7 @@ std::optional<std::filesystem::path> FindFilePath(const std::filesystem::path& s
                                                   const std::filesystem::path& fileName);
 std::string WhoIsTheCaller(void* returnAddress);
 HMODULE GetCallerModule(void* returnAddress);
+std::filesystem::path ModulePath(HMODULE module);
 MonitorInfo GetMonitorInfoForWindow(HWND hwnd);
 MonitorInfo GetMonitorInfoForOutput(IDXGIOutput* pOutput);
 int GetActiveRefreshRate(HWND hwnd);

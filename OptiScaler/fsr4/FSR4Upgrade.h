@@ -59,10 +59,3 @@ struct AmdExtD3DDevice8 : public IAmdExtD3DDevice8
     ULONG STDMETHODCALLTYPE AddRef(void) override { return 0; }
     ULONG STDMETHODCALLTYPE Release(void) override { return 0; }
 };
-
-class FSR4Upgrade
-{
-  public:
-    inline static HMODULE moduleAmdxcffx64 = nullptr;
-    static HMODULE GetFSR4Module() { return moduleAmdxcffx64; }
-};

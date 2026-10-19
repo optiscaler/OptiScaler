@@ -45,6 +45,13 @@ std::string Util::WhoIsTheCaller(void* returnAddress)
     return "";
 }
 
+std::filesystem::path Util::ModulePath(HMODULE module)
+{
+    wchar_t path[MAX_PATH] = { 0 };
+    GetModuleFileNameW(module, path, MAX_PATH);
+    return std::filesystem::path(path);
+}
+
 HMODULE Util::GetCallerModule(void* returnAddress)
 {
     HMODULE hModule = NULL;

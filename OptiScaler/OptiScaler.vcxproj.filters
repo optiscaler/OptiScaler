@@ -179,6 +179,9 @@
     <ClInclude Include="inputs\FSR3_Dx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="scanner\rtti.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="scanner\scanner.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -551,7 +554,13 @@
     <ClInclude Include="inputs\FG\XeFG_Inputs_Dx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="fsr4\FSR4ModelSelection.h">
+    <ClInclude Include="fsr4\FSR4DriverProvider.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="fsr4\FSR4Models.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="fsr4\FSR4Presets.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="inputs\FG\FSR3_Dx12_FG.h">
@@ -1262,6 +1271,9 @@
     <ClCompile Include="inputs\FSR3_Dx12.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="scanner\rtti.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="scanner\scanner.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -1445,7 +1457,13 @@
     <ClCompile Include="inputs\FG\XeFG_Inputs_Dx12.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="fsr4\FSR4ModelSelection.cpp">
+    <ClCompile Include="fsr4\FSR4DriverProvider.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="fsr4\FSR4Models.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="fsr4\FSR4Presets.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="inputs\FG\FSR3_Dx12_FG.cpp">
