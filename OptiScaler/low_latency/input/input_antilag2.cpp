@@ -136,6 +136,11 @@ HRESULT STDMETHODCALLTYPE AmdExtAntiLagApi::UpdateAntiLagState(VOID* pData)
 
             if (result == InputResult::Ok || result == InputResult::UsingDifferentInput)
                 return S_OK;
+
+            // Opti's own context for FSR-FG (injectAl2Context) has nothing to send the frame types to when there's no
+            // low latency output, like in DX11 games without Reflex
+            if (inputContext.localContext && result == InputResult::LowLatencyUpdateFail)
+                return S_OK;
             else
                 LOG_ERROR("set_async_marker result: {}", magic_enum::enum_name(result));
 
