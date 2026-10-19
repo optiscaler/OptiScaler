@@ -16,6 +16,8 @@ class VulkanDeviceFeatureState
     VulkanDeviceFeatureState(VkDeviceCreateInfo* pCreateInfo, PFN_vkGetPhysicalDeviceFeatures2 getFeatures2);
     ~VulkanDeviceFeatureState();
 
+    bool EnableTimelineSemaphores(VkPhysicalDevice physicalDevice);
+
     VulkanDeviceFeatureState(const VulkanDeviceFeatureState&) = delete;
     VulkanDeviceFeatureState& operator=(const VulkanDeviceFeatureState&) = delete;
 

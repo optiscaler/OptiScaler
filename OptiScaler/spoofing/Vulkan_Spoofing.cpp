@@ -532,6 +532,9 @@ struct VulkanDeviceFeatureState::Impl
     VkPhysicalDeviceSubgroupSizeControlFeatures subgroupSizeControl {
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES
     };
+    VkPhysicalDeviceTimelineSemaphoreFeatures timelineSemaphore {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES
+    };
     VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptorBuffer {
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT
     };
@@ -562,10 +565,11 @@ struct VulkanDeviceFeatureState::Impl
 
     void CopyOwnedFeatureChain()
     {
-        pCreateInfo->pNext = CopyFeatureChain(
-            pCreateInfo->pNext, features2, vulkan12Features, vulkan13Features, shaderFloat16Int8, storage8Bit,
-            descriptorIndexing, bufferDeviceAddress, vulkanMemoryModel, synchronization2, subgroupSizeControl,
-            descriptorBuffer, shaderFloat8, cooperativeMatrix, cooperativeMatrix2, computeShaderDerivatives);
+        pCreateInfo->pNext =
+            CopyFeatureChain(pCreateInfo->pNext, features2, vulkan12Features, vulkan13Features, shaderFloat16Int8,
+                             storage8Bit, descriptorIndexing, bufferDeviceAddress, vulkanMemoryModel, synchronization2,
+                             subgroupSizeControl, timelineSemaphore, descriptorBuffer, shaderFloat8, cooperativeMatrix,
+                             cooperativeMatrix2, computeShaderDerivatives);
     }
 
     bool CanUpgradeExtBufferDeviceAddress(VkPhysicalDevice physicalDevice)
@@ -791,6 +795,29 @@ struct VulkanDeviceFeatureState::Impl
                               &VkPhysicalDeviceVulkan14Features::pushDescriptor, supported.pushDescriptor);
     }
 
+    // FG and Reflex use timeline semaphores; enable them when supported.
+    bool EnableTimelineSemaphores(VkPhysicalDevice physicalDevice)
+    {
+        if (getFeatures2 == nullptr)
+            return false;
+
+        const auto supported = GetSupportedFeatureStruct(getFeatures2, physicalDevice, timelineSemaphore);
+        if (supported.timelineSemaphore != VK_TRUE)
+            return false;
+
+        auto* features =
+            const_cast<VkPhysicalDeviceVulkan12Features*>(FindFeatureStruct<VkPhysicalDeviceVulkan12Features>(
+                pCreateInfo->pNext, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES));
+        if (features != nullptr)
+            EnableExistingFeature(modifiedFeatures, features, vulkan12Features,
+                                  &VkPhysicalDeviceVulkan12Features::timelineSemaphore, supported.timelineSemaphore);
+        else
+            EnableSupportedFeature(pCreateInfo, modifiedFeatures, timelineSemaphore,
+                                   &VkPhysicalDeviceTimelineSemaphoreFeatures::timelineSemaphore,
+                                   supported.timelineSemaphore);
+        return true;
+    }
+
     void EnableExtensionFeatures(VkPhysicalDevice physicalDevice)
     {
         const auto* vulkan12Features = FindFeatureStruct<VkPhysicalDeviceVulkan12Features>(
@@ -824,6 +851,11 @@ struct VulkanDeviceFeatureState::Impl
             EnableFeatureStruct(pCreateInfo, getFeatures2, physicalDevice, modifiedFeatures, computeShaderDerivatives,
                                 &VkPhysicalDeviceComputeShaderDerivativesFeaturesKHR::computeDerivativeGroupQuads,
                                 &VkPhysicalDeviceComputeShaderDerivativesFeaturesKHR::computeDerivativeGroupLinear);
+
+#ifdef LOW_LATENCY_INPUTS
+        if (HasExtension(pCreateInfo, VK_NV_LOW_LATENCY_2_EXTENSION_NAME))
+            EnableTimelineSemaphores(physicalDevice);
+#endif
     }
 
     void EnableFeatures(VkPhysicalDevice physicalDevice)
@@ -847,6 +879,11 @@ VulkanDeviceFeatureState::VulkanDeviceFeatureState(VkDeviceCreateInfo* pCreateIn
 }
 
 VulkanDeviceFeatureState::~VulkanDeviceFeatureState() = default;
+
+bool VulkanDeviceFeatureState::EnableTimelineSemaphores(VkPhysicalDevice physicalDevice)
+{
+    return impl->EnableTimelineSemaphores(physicalDevice);
+}
 
 VkResult VulkanSpoofing::hkvkCreateDevice(VkPhysicalDevice physicalDevice, VkDeviceCreateInfo* pCreateInfo,
                                           const VkAllocationCallbacks* pAllocator, VkDevice* pDevice,
@@ -1060,24 +1097,22 @@ VkResult VulkanSpoofing::hkvkCreateDevice(VkPhysicalDevice physicalDevice, VkDev
         addExtension(VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
 
 #ifdef LOW_LATENCY_INPUTS
-        // For the Reflex output, games with Vulkan Reflex already have it
-        auto hasExtension = [&](const char* name)
-        { return std::ranges::any_of(newExtensionList, [&](auto ext) { return std::strcmp(ext, name) == 0; }); };
-
-        if (vkDeviceExtensions.contains(std::string(VK_NV_LOW_LATENCY_2_EXTENSION_NAME)) &&
-            vkDeviceExtensions.contains(std::string(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME)) &&
-            !hasExtension(VK_NV_LOW_LATENCY_2_EXTENSION_NAME))
-        {
-            LOG_DEBUG("  Adding {}", VK_NV_LOW_LATENCY_2_EXTENSION_NAME);
-            newExtensionList.push_back(VK_NV_LOW_LATENCY_2_EXTENSION_NAME);
-
-            if (vkDeviceExtensions.contains(std::string(VK_KHR_PRESENT_ID_EXTENSION_NAME)) &&
-                !hasExtension(VK_KHR_PRESENT_ID_EXTENSION_NAME))
-            {
-                LOG_DEBUG("  Adding {}", VK_KHR_PRESENT_ID_EXTENSION_NAME);
-                newExtensionList.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
-            }
-        }
+    // For the Reflex output, games with Vulkan Reflex already have it
+    if (featureState != nullptr && supportedDeviceExtensionsValid &&
+        !HasExtension(newExtensionList, VK_NV_LOW_LATENCY_2_EXTENSION_NAME) &&
+        HasExtension(newExtensionList, VK_KHR_SWAPCHAIN_EXTENSION_NAME) &&
+        SupportsExtension(supportedDeviceExtensions, VK_NV_LOW_LATENCY_2_EXTENSION_NAME) &&
+        SupportsExtension(supportedDeviceExtensions, VK_KHR_PRESENT_ID_EXTENSION_NAME) &&
+        (effectiveApiVersion >= VK_API_VERSION_1_2 ||
+         SupportsExtension(supportedDeviceExtensions, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME)) &&
+        IsFeatureSupported(featureState->impl->getFeatures2, physicalDevice, featureState->impl->timelineSemaphore,
+                           &VkPhysicalDeviceTimelineSemaphoreFeatures::timelineSemaphore))
+    {
+        if (effectiveApiVersion < VK_API_VERSION_1_2)
+            addExtension(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
+        addExtension(VK_KHR_PRESENT_ID_EXTENSION_NAME);
+        addExtension(VK_NV_LOW_LATENCY_2_EXTENSION_NAME);
+    }
 #endif
 
     addExtension(VK_NVX_BINARY_IMPORT_EXTENSION_NAME);

@@ -136,44 +136,6 @@ static bool TimelineSemaphoresEnabled(const VkDeviceCreateInfo* pCreateInfo)
     return false;
 }
 
-// The FG outputs sync with timeline semaphores, turns them on when the game didn't. Spoofing adds their extension.
-// `added` gets chained into createInfo when the game has no feature struct for them, it has to outlive vkCreateDevice.
-static bool EnableTimelineSemaphores(VkPhysicalDevice physicalDevice, VkDeviceCreateInfo& createInfo,
-                                     VkPhysicalDeviceTimelineSemaphoreFeatures& added)
-{
-    if (TimelineSemaphoresEnabled(&createInfo))
-        return true;
-
-    VkPhysicalDeviceTimelineSemaphoreFeatures supported {
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES
-    };
-    VkPhysicalDeviceFeatures2 features { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &supported };
-    vkGetPhysicalDeviceFeatures2(physicalDevice, &features);
-
-    if (!supported.timelineSemaphore)
-        return false;
-
-    // A feature struct of the game already listing it as off, otherwise a new one
-    for (auto next = (VkBaseOutStructure*) createInfo.pNext; next != nullptr; next = next->pNext)
-    {
-        if (next->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES)
-        {
-            ((VkPhysicalDeviceVulkan12Features*) next)->timelineSemaphore = VK_TRUE;
-            return true;
-        }
-
-        if (next->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES)
-        {
-            ((VkPhysicalDeviceTimelineSemaphoreFeatures*) next)->timelineSemaphore = VK_TRUE;
-            return true;
-        }
-    }
-
-    added = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES, (void*) createInfo.pNext, VK_TRUE };
-    createInfo.pNext = &added;
-    return true;
-}
-
 // Forward declaration
 static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo);
 static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateInfoKHR* pCreateInfo,
@@ -596,8 +558,8 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
 {
     LOG_FUNC();
 
-    VkDeviceCreateInfo localCreteInfo {};
-    memcpy(&localCreteInfo, pCreateInfo, sizeof(VkDeviceCreateInfo));
+    VkDeviceCreateInfo localCreateInfo {};
+    memcpy(&localCreateInfo, pCreateInfo, sizeof(VkDeviceCreateInfo));
 
     VkInstance physicalDeviceInstance = VK_NULL_HANDLE;
     const uint32_t requestedApiVersion = GetPhysicalDeviceApiVersion(physicalDevice, &physicalDeviceInstance);
@@ -631,15 +593,16 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
     }
 
     IFGFeature_Vk* fg = nullptr;
-    VkPhysicalDeviceTimelineSemaphoreFeatures timelineSemaphoreFeatures {};
+    VulkanDeviceFeatureState fgFeatures(&localCreateInfo, getPhysicalDeviceFeatures2);
 
     // Before spoofing, which drops the extensions it only pretends to have
     if (!State::Instance().vulkanSkipHooks && !State::Instance().creatingD3DDevice &&
-        !IsDxgiBackedCaller(_ReturnAddress()) && (fg = CreateFGFeature()) != nullptr)
+        getPhysicalDeviceFeatures2 != nullptr && !IsDxgiBackedCaller(_ReturnAddress()) &&
+        (fg = CreateFGFeature()) != nullptr)
     {
-        if (EnableTimelineSemaphores(physicalDevice, localCreteInfo, timelineSemaphoreFeatures))
+        if (fgFeatures.EnableTimelineSemaphores(physicalDevice))
         {
-            fg->PrepareDevice(physicalDevice, localCreteInfo);
+            fg->PrepareDevice(physicalDevice, localCreateInfo);
         }
         else
         {
@@ -649,16 +612,20 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
     }
 
     VkResult result;
+    bool timelineSemaphoresEnabled = false;
     {
-        VulkanDeviceFeatureState deviceFeatures(&localCreteInfo, getPhysicalDeviceFeatures2);
-        auto* featureState = !State::Instance().vulkanSkipHooks && !State::Instance().creatingD3DDevice &&
-                                     getPhysicalDeviceFeatures2 != nullptr
-                                 ? &deviceFeatures
-                                 : nullptr;
+        VulkanDeviceFeatureState deviceFeatures(&localCreateInfo, getPhysicalDeviceFeatures2);
+        VulkanDeviceFeatureState* featureState = nullptr;
+        if (!State::Instance().vulkanSkipHooks && !State::Instance().creatingD3DDevice &&
+            getPhysicalDeviceFeatures2 != nullptr)
+            featureState = &deviceFeatures;
 
-        VulkanSpoofing::hkvkCreateDevice(physicalDevice, &localCreteInfo, pAllocator, pDevice, featureState);
+        VulkanSpoofing::hkvkCreateDevice(physicalDevice, &localCreateInfo, pAllocator, pDevice, featureState,
+                                         requestedApiVersion);
 
-        result = o_vkCreateDevice(physicalDevice, &localCreteInfo, pAllocator, pDevice);
+        timelineSemaphoresEnabled = TimelineSemaphoresEnabled(&localCreateInfo);
+
+        result = o_vkCreateDevice(physicalDevice, &localCreateInfo, pAllocator, pDevice);
     }
 
     if (result == VK_SUCCESS)
@@ -683,7 +650,7 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
             _device = *pDevice;
             LOG_DEBUG("_device captured: {0:X}", (UINT64) _device);
             HookDevice(_device);
-            MenuOverlayVk::DeviceCreated(_device, &localCreteInfo);
+            MenuOverlayVk::DeviceCreated(_device, &localCreateInfo);
         }
 
         ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
@@ -722,7 +689,7 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
 
     // The driver's VK_NV_low_latency2, only there when the device has it enabled
     if (result == VK_SUCCESS && o_vkGetDeviceProcAddr && !State::Instance().vulkanSkipHooks &&
-        !State::Instance().creatingD3DDevice && TimelineSemaphoresEnabled(&localCreteInfo))
+        !State::Instance().creatingD3DDevice && timelineSemaphoresEnabled)
     {
         auto getProc = [&](const char* name) { return o_vkGetDeviceProcAddr(*pDevice, name); };
 
