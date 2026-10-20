@@ -9,6 +9,11 @@ class FFXFeatureDx12 : public FFXFeature, public IFeature_Dx12
 {
   private:
     ID3D12Resource* smallerColor[2] {};
+    UINT64 _lastColorWidth = 0;
+    UINT _lastColorHeight = 0;
+    UINT _lastRenderWidth = 0;
+    UINT _lastRenderHeight = 0;
+    double _lastEvaluationTimeMs = 0.0;
 
     NVSDK_NGX_Parameter* SetParameters(NVSDK_NGX_Parameter* InParameters);
 

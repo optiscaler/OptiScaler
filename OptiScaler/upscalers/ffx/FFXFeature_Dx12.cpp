@@ -5,6 +5,7 @@
 #include "FFXFeature_Dx12.h"
 #include <misc/DeferredRelease.h>
 #include "MathUtils.h"
+#include <cmath>
 
 using namespace OptiMath;
 
@@ -128,7 +129,7 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
 
     LOG_DEBUG("Jitter Offset: {0}x{1}", params.jitterOffset.x, params.jitterOffset.y);
 
-    unsigned int reset;
+    unsigned int reset = 0;
     InParameters->Get(NVSDK_NGX_Parameter_Reset, &reset);
     params.reset = (reset == 1);
 
@@ -138,7 +139,7 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
 
     params.commandList = InCommandList;
 
-    ID3D12Resource* paramColor;
+    ID3D12Resource* paramColor = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_Color, &paramColor) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_Color, (void**) &paramColor);
 
@@ -161,6 +162,10 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
                             D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
 
+        // Keep the game resource separate from the cropped SR input: its barriers
+        // must be restored on the original resource, never on smallerColor.
+        ID3D12Resource* upscaleColor = paramColor;
+
         // WAR for FSR 4's autoexposure shader reading entire underlying resource
         // instead of what's specified by renderSize or color's FfxApiResourceDescription.
         // Only linear has this issue
@@ -173,21 +178,33 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
             const auto diffW = static_cast<int>(desc.Width) - static_cast<int>(params.renderSize.width);
             const auto diffH = static_cast<int>(desc.Height) - static_cast<int>(params.renderSize.height);
 
-            // Seemingly it may only be happening when both axes are 1 pixel too big
-            // But let's be conservative here and also trigger when just one axis is too big
-            const bool validW = (diffW >= 0 && diffW <= 2);
-            const bool validH = (diffH >= 0 && diffH <= 2);
+            const bool validRect =
+                params.renderSize.width > 0 && params.renderSize.height > 0 && diffW >= 0 && diffH >= 0;
             const bool isPadded = (diffW > 0 || diffH > 0);
 
-            if (validW && validH && isPadded)
+            if (_lastColorWidth != desc.Width || _lastColorHeight != desc.Height ||
+                _lastRenderWidth != params.renderSize.width || _lastRenderHeight != params.renderSize.height)
             {
-                static size_t count = 0;
-                const size_t index = count % 2;
+                LOG_INFO("DRS_COLOR_FIX_v1 FSR={}.{}.{} color={}x{} render={}x{} crop={} reset={}", Version().major,
+                         Version().minor, Version().patch, desc.Width, desc.Height, params.renderSize.width,
+                         params.renderSize.height, validRect && isPadded, params.reset);
+                _lastColorWidth = desc.Width;
+                _lastColorHeight = desc.Height;
+                _lastRenderWidth = params.renderSize.width;
+                _lastRenderHeight = params.renderSize.height;
+            }
 
-                CreateBufferResourceWithSize(Device, paramColor, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-                                             &smallerColor[index], params.renderSize.width, params.renderSize.height);
+            // DRS may keep a full-resolution allocation with a much smaller valid
+            // render rectangle. Autoexposure must not read the inactive texels.
+            if (validRect && isPadded)
+            {
+                const size_t index = _frameCount % 2;
 
-                if (smallerColor[index])
+                const bool created = CreateBufferResourceWithSize(
+                    Device, paramColor, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, &smallerColor[index],
+                    params.renderSize.width, params.renderSize.height);
+
+                if (created && smallerColor[index])
                 {
                     ResourceBarrier(InCommandList, paramColor, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
                                     D3D12_RESOURCE_STATE_COPY_SOURCE);
@@ -218,14 +235,22 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
                     ResourceBarrier(InCommandList, smallerColor[index], D3D12_RESOURCE_STATE_COPY_DEST,
                                     D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
-                    paramColor = smallerColor[index];
+                    ResourceBarrier(InCommandList, paramColor, D3D12_RESOURCE_STATE_COPY_SOURCE,
+                                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                    upscaleColor = smallerColor[index];
                 }
-
-                count++;
+                else
+                {
+                    LOG_ERROR("DRS_COLOR_FIX_v1 crop allocation failed; refusing invalid autoexposure input");
+                    if (Config::Instance()->ColorResourceBarrier.has_value())
+                        ResourceBarrier(InCommandList, paramColor, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                                        (D3D12_RESOURCE_STATES) Config::Instance()->ColorResourceBarrier.value());
+                    return false;
+                }
             }
         }
 
-        params.color = ffxApiGetResourceDX12(paramColor, FFX_API_RESOURCE_STATE_COMPUTE_READ);
+        params.color = ffxApiGetResourceDX12(upscaleColor, FFX_API_RESOURCE_STATE_COMPUTE_READ);
     }
     else
     {
@@ -469,13 +494,32 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
             params.cameraFovAngleVertical = GetRadiansFromDeg(60);
     }
 
-    if (!Config::Instance()->FsrUseFsrInputValues.value_or_default() ||
-        InParameters->Get("FSR.frameTimeDelta", &params.frameTimeDelta) != NVSDK_NGX_Result_Success)
+    // Tick on EVERY evaluation. GetDeltaTime() only ticked on fallback frames,
+    // accumulating seconds of successful NGX timings before the next fallback.
+    const double evaluationTimeMs = Util::MillisecondsNow();
+    double measuredDeltaMs = _lastEvaluationTimeMs > 0.0 ? evaluationTimeMs - _lastEvaluationTimeMs : 1000.0 / 60.0;
+    _lastEvaluationTimeMs = evaluationTimeMs;
+    if (!std::isfinite(measuredDeltaMs) || measuredDeltaMs <= 0.0)
+        measuredDeltaMs = 1000.0 / 60.0;
+
+    bool hasFrameTime = Config::Instance()->FsrUseFsrInputValues.value_or_default() &&
+                        InParameters->Get("FSR.frameTimeDelta", &params.frameTimeDelta) == NVSDK_NGX_Result_Success;
+    if (!hasFrameTime)
+        hasFrameTime = InParameters->Get(NVSDK_NGX_Parameter_FrameTimeDeltaInMsec, &params.frameTimeDelta) ==
+                       NVSDK_NGX_Result_Success;
+    const bool fallbackTime = !hasFrameTime || !std::isfinite(params.frameTimeDelta) || params.frameTimeDelta < 1.0f;
+    if (fallbackTime)
     {
-        if (InParameters->Get(NVSDK_NGX_Parameter_FrameTimeDeltaInMsec, &params.frameTimeDelta) !=
-                NVSDK_NGX_Result_Success ||
-            params.frameTimeDelta < 1.0f)
-            params.frameTimeDelta = (float) GetDeltaTime();
+        // An actual long evaluation gap is a temporal discontinuity, not one
+        // enormous integration step for autoexposure/history.
+        if (measuredDeltaMs > 1000.0)
+        {
+            params.reset = true;
+            measuredDeltaMs = 1000.0 / 60.0;
+        }
+        params.frameTimeDelta = static_cast<float>(measuredDeltaMs);
+        LOG_DEBUG("DRS_FRAME_TIME_FIX_v1 measured_ms={} selected_ms={} reset={}", measuredDeltaMs,
+                  params.frameTimeDelta, params.reset);
     }
 
     LOG_DEBUG("FrameTimeDeltaInMsec: {0}", params.frameTimeDelta);
