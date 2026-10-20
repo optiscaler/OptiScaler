@@ -94,6 +94,7 @@ GAME_SETTING(UseNtdllHooks);
 GAME_SETTING(VulkanExtensionSpoofing);
 GAME_SETTING(VulkanSpoofing);
 GAME_SETTING(ReprojectionDepthCutoff);
+GAME_SETTING(SimulateWaitableObject);
 
 #undef GAME_SETTING
 
@@ -650,10 +651,10 @@ const std::vector<GameConfig> gameConfigs = {
     },
 
     // CONTROL Resonant
-    // SL spoof enough to unlock everything DLSS, Preserve FG Swapchain just crashes the DLSSG inputs
+    // SL spoof enough to unlock everything DLSS, SimulateWaitableObject required to avoid freeze with DLSSG inputs
     {
         .exes = { "controlresonant.exe" },
-        .defaults = { DxgiSpoofing = false, FGPreserveSwapChain = false },
+        .defaults = { DxgiSpoofing = false, FGPreserveSwapChain = false, SimulateWaitableObject = true },
     },
 
     // SL spoof enough to unlock everything DLSS/No spoof needed for DLSS inputs
