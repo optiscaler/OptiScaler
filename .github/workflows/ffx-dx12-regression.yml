@@ -1,4 +1,4 @@
-name: FFX DX12 timer regression
+name: FFX DX12 build and timer regression
 on:
   workflow_dispatch:
   push:
@@ -18,6 +18,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Compile and run production timer regression
         shell: cmd
         run: |
@@ -30,3 +32,12 @@ jobs:
           if errorlevel 1 exit /b 1
           tests\drs_timer.exe
           if errorlevel 1 exit /b 1
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build Release x64
+        run: msbuild OptiScaler.sln /m /p:Configuration=Release /p:Platform=x64 /verbosity:minimal
+      - name: Upload Release DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: FFX-DX12-Release
+          path: x64/Release/a/OptiScaler.dll
+          if-no-files-found: error
