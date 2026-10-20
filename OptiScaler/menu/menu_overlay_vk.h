@@ -11,4 +11,7 @@ void CreateSwapchain(VkDevice device, VkPhysicalDevice pd, VkInstance instance, 
 void DeviceCreated(VkDevice device, const VkDeviceCreateInfo* pCreateInfo);
 bool QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo);
 void DestroyVulkanObjects(bool shutdown);
+
+// The menu stays on its window while that exists, games can have more than one
+bool OnOtherWindow(HWND hwnd);
 } // namespace MenuOverlayVk

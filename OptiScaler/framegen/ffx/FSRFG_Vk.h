@@ -21,6 +21,9 @@ class FSRFG_Vk : public virtual IFGFeature_Vk
     ffxQueryDescSwapchainReplacementFunctionsVK _functions {};
     feature_version _version { 0, 0, 0 };
 
+    // Surface of the FG swapchain, swapchains of the game's other windows are left alone
+    VkSurfaceKHR _surface = VK_NULL_HANDLE;
+
     // Game destroys its old swapchain after creating the new one, the context took it with it already
     VkSwapchainKHR _retiredSwapchain = VK_NULL_HANDLE;
 
@@ -45,6 +48,7 @@ class FSRFG_Vk : public virtual IFGFeature_Vk
     void CreateContext();
     void ReleaseSwapchainContext();
     ffxReturnCode_t ConfigureEnabled(bool enabled);
+    void ConfigureFramePaceTuning();
 
     bool Dispatch();
     ffxReturnCode_t DispatchCallback(ffxDispatchDescFrameGeneration* params);

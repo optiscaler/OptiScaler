@@ -4439,9 +4439,11 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                     ImGui::TreePop();
                 }
 
-                auto fg = state.currentFG;
-                if (fg != nullptr && strcmp(fg->Name(), "FSR-FG") == 0 &&
-                    FfxApiProxy::VersionDx12_FG() >= feature_version { 3, 1, 3 })
+                // Vulkan FSR-FG reports FFX SDK versions, SDK 1.1.3 is FSR 3.1.3
+                auto fg = state.CurrentFG();
+                auto fptMinVersion =
+                    state.currentVkFG != nullptr ? feature_version { 1, 1, 3 } : feature_version { 3, 1, 3 };
+                if (fg != nullptr && strcmp(fg->Name(), "FSR-FG") == 0 && fg->Version() >= fptMinVersion)
                 {
                     ImGui::Spacing();
 
@@ -4472,6 +4474,9 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                                     "Opti default value: 0.3");
                         ImGui::PopItemWidth();
 
+                        // FFX's Vulkan swapchain only reads the safety margin and variance factor
+                        ImGui::BeginDisabled(state.currentVkFG != nullptr);
+
                         auto fpHybridSpin = config->FGFPTAllowHybridSpin.value_or_default();
                         if (ImGui::Checkbox("Enable Hybrid Spin", &fpHybridSpin))
                             config->FGFPTAllowHybridSpin = fpHybridSpin;
@@ -4494,6 +4499,8 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                             config->FGFPTAllowWaitForSingleObjectOnFence = fpWaitForSingleObjectOnFence;
                         }
                         ShowTooltip("Allows WaitForSingleObject instead of spinning for fence value");
+
+                        ImGui::EndDisabled();
 
                         if (ImGui::Button("Apply Timing Changes"))
                             state.fsrfgFramePaceTuningChanged = true;

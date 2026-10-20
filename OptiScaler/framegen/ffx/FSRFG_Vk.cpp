@@ -185,6 +185,13 @@ bool FSRFG_Vk::CreateSwapchain(VkDevice device, const VkSwapchainCreateInfoKHR* 
         return false;
     }
 
+    // FFX handles a single swapchain, taking another window's would destroy the one the game still renders to
+    if (_swapchain != VK_NULL_HANDLE && pCreateInfo->surface != _surface)
+    {
+        LOG_INFO("Swapchain is for another surface, leaving it to the game");
+        return false;
+    }
+
     // Only one swapchain can exist for a window
     if (_swapchain != VK_NULL_HANDLE)
     {
@@ -257,6 +264,7 @@ bool FSRFG_Vk::CreateSwapchain(VkDevice device, const VkSwapchainCreateInfoKHR* 
     _functions.header.type = FFX_API_QUERY_DESC_TYPE_FGSWAPCHAIN_FUNCTIONS_VK;
     FfxApiProxy::VULKAN_Query()(&_swapChainContext, &_functions.header);
 
+    _surface = pCreateInfo->surface;
     _swapchainFormat = pCreateInfo->imageFormat;
     _swapchainExtent = pCreateInfo->imageExtent;
     *pSwapchain = _swapchain;
@@ -331,6 +339,7 @@ void FSRFG_Vk::ReleaseSwapchainContext()
 
     _presentViews.clear();
     _swapchain = VK_NULL_HANDLE;
+    _surface = VK_NULL_HANDLE;
     _functions = {};
 }
 
@@ -451,6 +460,33 @@ void FSRFG_Vk::CreateContext()
     fgLogging.fpMessage = &fgLogCallback;
     fgLogging.debugLevel = FFX_API_CONFIGURE_GLOBALDEBUG_LEVEL_VERBOSE;
     FfxApiProxy::VULKAN_Configure()(&_fgContext, &fgLogging.header);
+
+    ConfigureFramePaceTuning();
+}
+
+void FSRFG_Vk::ConfigureFramePaceTuning()
+{
+    State::Instance().fsrfgFramePaceTuningChanged = false;
+
+    auto config = Config::Instance();
+
+    // Versions are FFX SDK ones here, 1.1.3 shipped FSR 3.1.3 which added the tuning
+    if (_swapChainContext == nullptr || _version < feature_version { 1, 1, 3 } ||
+        !config->FGFramePacingTuning.value_or_default())
+        return;
+
+    // The Vulkan swapchain only reads safetyMarginInMs and varianceFactor
+    FfxApiSwapchainFramePacingTuning fpt {};
+    fpt.safetyMarginInMs = config->FGFPTSafetyMarginInMs.value_or_default();
+    fpt.varianceFactor = config->FGFPTVarianceFactor.value_or_default();
+
+    ffxConfigureDescFrameGenerationSwapChainKeyValueVK cfgDesc {};
+    cfgDesc.header.type = FFX_API_CONFIGURE_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_KEYVALUE_VK;
+    cfgDesc.key = FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_FRAMEPACINGTUNING_VK;
+    cfgDesc.ptr = &fpt;
+
+    auto result = FfxApiProxy::VULKAN_Configure()(&_swapChainContext, &cfgDesc.header);
+    LOG_DEBUG("Frame pacing tuning configure result: {}", FfxApiProxy::ReturnCodeToString(result));
 }
 
 void FSRFG_Vk::DestroyFGContext()
@@ -590,6 +626,9 @@ bool FSRFG_Vk::Dispatch()
 
     if (fIndex < 0 || !IsActive() || IsPaused())
         return false;
+
+    if (State::Instance().fsrfgFramePaceTuningChanged)
+        ConfigureFramePaceTuning();
 
     auto depth = GetResource(FG_ResourceType::Depth, fIndex);
     auto velocity = GetResource(FG_ResourceType::Velocity, fIndex);

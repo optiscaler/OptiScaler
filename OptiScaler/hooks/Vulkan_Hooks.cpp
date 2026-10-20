@@ -346,13 +346,17 @@ static VkResult hkvkCreateWin32SurfaceKHR(VkInstance instance, const VkWin32Surf
 
     if (result == VK_SUCCESS && !State::Instance().vulkanSkipHooks)
     {
-        MenuOverlayVk::DestroyVulkanObjects(false);
-
         _instance = instance;
         State::Instance().VulkanInstance = instance;
         LOG_DEBUG("_instance captured: {0:X}", (UINT64) _instance);
-        _hwnd = pCreateInfo->hwnd;
-        LOG_DEBUG("_hwnd captured: {0:X}", (UINT64) _hwnd);
+
+        if (!MenuOverlayVk::OnOtherWindow(pCreateInfo->hwnd))
+        {
+            MenuOverlayVk::DestroyVulkanObjects(false);
+
+            _hwnd = pCreateInfo->hwnd;
+            LOG_DEBUG("_hwnd captured: {0:X}", (UINT64) _hwnd);
+        }
     }
 
     LOG_FUNC_RESULT(result);
@@ -925,7 +929,9 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
         _device = device;
         LOG_DEBUG("_device captured: {0:X}", (UINT64) _device);
 
-        MenuOverlayVk::CreateSwapchain(device, _PD, _instance, _hwnd, pCreateInfo, pAllocator, pSwapchain);
+        auto hwnd = VulkanHooks::SurfaceWindow(pCreateInfo->surface);
+        MenuOverlayVk::CreateSwapchain(device, _PD, _instance, hwnd != nullptr ? hwnd : _hwnd, pCreateInfo, pAllocator,
+                                       pSwapchain);
     }
 
     LOG_FUNC_RESULT(result);
