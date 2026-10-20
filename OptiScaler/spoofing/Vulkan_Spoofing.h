@@ -4,9 +4,29 @@
 
 #include <vulkan/vulkan.h>
 
+#include <memory>
+
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 #include <vulkan/vulkan_win32.h>
 #endif
+
+class VulkanDeviceFeatureState
+{
+  public:
+    VulkanDeviceFeatureState(VkDeviceCreateInfo* pCreateInfo, PFN_vkGetPhysicalDeviceFeatures2 getFeatures2);
+    ~VulkanDeviceFeatureState();
+
+    bool EnableTimelineSemaphores(VkPhysicalDevice physicalDevice);
+
+    VulkanDeviceFeatureState(const VulkanDeviceFeatureState&) = delete;
+    VulkanDeviceFeatureState& operator=(const VulkanDeviceFeatureState&) = delete;
+
+  private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+
+    friend class VulkanSpoofing;
+};
 
 class VulkanSpoofing
 {
@@ -15,7 +35,8 @@ class VulkanSpoofing
     inline static VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = {};
 
     static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, VkDeviceCreateInfo* pCreateInfo,
-                                     const VkAllocationCallbacks* pAllocator, VkDevice* pDevice);
+                                     const VkAllocationCallbacks* pAllocator, VkDevice* pDevice,
+                                     VulkanDeviceFeatureState* featureState, uint32_t requestedApiVersion);
     static VkResult hkvkCreateInstance(VkInstanceCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator,
                                        VkInstance* pInstance);
 
