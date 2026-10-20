@@ -2444,10 +2444,25 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                 }
             }
 
+            // Upscale ratio, read every frame so dynamic resolution changes show up immediately
+            std::string ratioPart;
+            if (hasFeature && config->FpsOverlayShowRatio.value_or_default() && currentFeature->RenderWidth() > 0)
+            {
+                const float ratio = (float) currentFeature->TargetWidth() / (float) currentFeature->RenderWidth();
+
+                if (overlayType == FpsOverlay_JustFPS)
+                    ratioPart = StrFmt("| %.2fx", ratio);
+                else
+                    ratioPart = StrFmt(" | %ux%u -> %ux%u (%.2fx)", currentFeature->RenderWidth(),
+                                       currentFeature->RenderHeight(), currentFeature->TargetWidth(),
+                                       currentFeature->TargetHeight(), ratio);
+            }
+
             if (overlayType == FpsOverlay_JustFPS)
-                firstLine = StrFmt("%s", fpsPart.c_str());
+                firstLine = StrFmt("%s%s", fpsPart.c_str(), ratioPart.c_str());
             else
-                firstLine = StrFmt("%s | %s%s%s", api.c_str(), fpsPart.c_str(), fgText.c_str(), featurePart.c_str());
+                firstLine = StrFmt("%s | %s%s%s%s", api.c_str(), fpsPart.c_str(), fgText.c_str(), featurePart.c_str(),
+                                   ratioPart.c_str());
 
             // Prepare Line 2
             if (config->FpsOverlayType.value_or_default() >= FpsOverlay_Detailed)
@@ -7793,6 +7808,13 @@ void MenuCommon::RenderFpsOverlaySettings(RenderMenuContext& ctx)
         bool fpsHorizontal = config->FpsOverlayHorizontal.value_or_default();
         if (ImGui::Checkbox("Horizontal", &fpsHorizontal))
             config->FpsOverlayHorizontal = fpsHorizontal;
+
+        ImGui::SameLine(0.0f, 6.0f);
+
+        bool fpsShowRatio = config->FpsOverlayShowRatio.value_or_default();
+        if (ImGui::Checkbox("Upscale Ratio", &fpsShowRatio))
+            config->FpsOverlayShowRatio = fpsShowRatio;
+        ShowTooltip("Shows the current render -> output resolution and upscale ratio in the overlay");
 
         const char* fpsPosition[] = { "Top Left", "Top Right", "Bottom Left", "Bottom Right" };
         const char* selectedPosition = fpsPosition[config->FpsOverlayPosition.value_or_default()];
