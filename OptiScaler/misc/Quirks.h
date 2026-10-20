@@ -446,6 +446,11 @@ static const QuirkEntry quirkTable[] = {
     // Valor Mortis
     QUIRK_ENTRY_UE(valormortis, GameQuirk::UseManualInputs),
 
+    // Gears of War: E-Day
+    // Fixes FSR-FG output freeze on boot
+    QUIRK_ENTRY("goweday-steam.exe", GameQuirk::AlwaysCaptureFSRFGSwapchain),
+    QUIRK_ENTRY("goweday.exe", GameQuirk::AlwaysCaptureFSRFGSwapchain),
+
     // SL spoof enough to unlock everything DLSS/No spoof needed for DLSS inputs
     //
     // The Witcher 3, Alan Wake 2, Crysis 3 Remastered, Marvel's Guardians of the Galaxy, UNCHARTED: Legacy of Thieves
