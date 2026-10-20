@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "FSR4DriverProviderVk.h"
 
+#include <misc/IdentifyGpu.h>
+
 #include <mutex>
 #include <optional>
 #include <unordered_map>
@@ -375,6 +377,12 @@ bool FSR4DriverProviderVk::InitFg()
         return IsFgAvailable();
 
     initTried = true;
+
+    if (IdentifyGpu::getPrimaryGpu().realFsr4Support != FSR4Support::FP8)
+    {
+        LOG_INFO("GPU doesn't support FP8, not using the driver FG");
+        return false;
+    }
 
     auto fg = GetProvider(FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION);
     if (!fg.has_value())
