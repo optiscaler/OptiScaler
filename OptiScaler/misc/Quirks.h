@@ -43,6 +43,7 @@ enum class GameQuirk : uint64_t
     DoNotLoadAmdxc64,
     DontUseUnrealMVBarriers,
     DontUseUnrealColorBarriers,
+    SimulateWaitableObject,
 
     // Quirks that are applied deeper in code
     CyberpunkHudlessState,
@@ -435,8 +436,9 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("fbcfirebreak.exe", GameQuirk::DisableDxgiSpoofing),
 
     // CONTROL Resonant
-    // SL spoof enough to unlock everything DLSS, Preserve FG Swapchain just crashes the DLSSG inputs
-    QUIRK_ENTRY("controlresonant.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::DoNotPreserveFGSwapChain),
+    // SL spoof enough to unlock everything DLSS, SimulateWaitableObject required to avoid freeze with DLSSG inputs
+    QUIRK_ENTRY("controlresonant.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::DoNotPreserveFGSwapChain,
+                GameQuirk::SimulateWaitableObject),
 
     // Clive Barker's Hellraiser: Revival
     QUIRK_ENTRY_UE(hellraiser, GameQuirk::AlwaysCaptureFSRFGSwapchain),

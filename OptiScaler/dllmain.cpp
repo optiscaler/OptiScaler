@@ -1374,6 +1374,9 @@ static void printQuirks(flag_set<GameQuirk>& quirks)
     if (quirks & GameQuirk::ForceFGRenderSizeMVs)
         stringQuirks.push_back("Force FG render size motion vectors");
 
+    if (quirks & GameQuirk::SimulateWaitableObject)
+        stringQuirks.push_back("Simulating waitable object event signals for FG swapchain");
+
     state->detectedQuirks.append_range(stringQuirks);
     for (auto& stringQuirk : stringQuirks)
         spdlog::info("Quirk: {}", stringQuirk);
@@ -1620,6 +1623,13 @@ static void CheckQuirks()
     }
     else
         quirks.reset(GameQuirk::DoNotLoadAmdxc64);
+
+    if (quirks & GameQuirk::SimulateWaitableObject && !Config::Instance()->SimulateWaitableObject.has_value())
+    {
+        Config::Instance()->SimulateWaitableObject.set_volatile_value(true);
+    }
+    else
+        quirks.reset(GameQuirk::SimulateWaitableObject);
 
     // For Luma, we assume if Luma addon in game folder it's used
     const auto dir = Util::ExePath().parent_path();
