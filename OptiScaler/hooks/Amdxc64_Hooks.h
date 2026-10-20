@@ -7,16 +7,7 @@ struct AmdExtD3DFactory;
 struct AmdExtD3DShaderIntrinsics;
 struct AmdExtD3DDevice8;
 
-struct magicData
-{
-    uint32_t values[4];
-    magicData* nextMagicData;
-};
-
 typedef HRESULT(__cdecl* PFN_AmdExtD3DCreateInterface)(IUnknown* pOuter, REFIID riid, void** ppvObject);
-typedef HRESULT(STDMETHODCALLTYPE* PFN_UpdateFfxApiProvider)(void* pData, uint32_t dataSizeInBytes);
-typedef HRESULT(STDMETHODCALLTYPE* PFN_UpdateFfxApiProviderEx)(void* pData, uint32_t dataSizeInBytes,
-                                                               magicData* magicData);
 
 // Based on the PDBs provided with FFX 2.1.0
 enum AmdExtWaveMatrixPropertiesType : int32_t

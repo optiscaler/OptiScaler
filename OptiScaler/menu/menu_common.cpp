@@ -13,6 +13,7 @@
 #include <upscalers/ffx/FFXFeature.h>
 #include <fsr4/FSR4Models.h>
 #include <fsr4/FSR4Presets.h>
+#include <fsr4/FSR4DriverProviderVk.h>
 #include <proxies/Streamline_Proxy.h>
 
 #include <framegen/nvngx/Nvngx_FG.h>
@@ -3174,11 +3175,16 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
             // FSR 4 Models of the module running the selected upscaler, only listed when the GPU can run more than one
             HMODULE upscalerModule = nullptr;
             if (auto versions = GetFfxVersionList(currentBackend, state.api);
-                versions == &state.ffxUpscalerVersionsDx12 && config->FfxUpscalerIndex.value_or_default() >= 0 &&
+                versions != nullptr && config->FfxUpscalerIndex.value_or_default() >= 0 &&
                 config->FfxUpscalerIndex.value_or_default() < versions->ids.size())
             {
-                upscalerModule =
-                    FfxApiProxy::UpscalerModule(versions->ids[config->FfxUpscalerIndex.value_or_default()]);
+                auto versionId = versions->ids[config->FfxUpscalerIndex.value_or_default()];
+
+                if (versions == &state.ffxUpscalerVersionsDx12)
+                    upscalerModule = FfxApiProxy::UpscalerModule(versionId);
+                else if (versions == &state.ffxUpscalerVersionsVk && FSR4DriverProviderVk::IsAvailable() &&
+                         versionId == FSR4DriverProviderVk::VersionId())
+                    upscalerModule = FSR4DriverProviderVk::Module()->dll;
             }
 
             if (auto models = FSR4Models::SelectableModels(upscalerModule); !models.empty())
@@ -8379,8 +8385,7 @@ void MenuCommon::RenderDetectedInfo(RenderMenuContext& ctx)
         StatusFlag("OptiPatcher", state.isOptiPatcherSucceed);
         StatusFlag("Linux", state.isRunningOnLinux);
         StatusFlag("DLSS capable GPU", primaryGpu.dlssCapable);
-        StatusFlag("FSR4 capable GPU", primaryGpu.fsr4Support != FSR4Support::None,
-                   primaryGpu.fsr4Support == FSR4Support::INT8);
+        StatusFlag("FSR4 capable GPU", primaryGpu.fsr4Support != FSR4Support::None, IsFsr4Int8(primaryGpu.fsr4Support));
 
         ImGui::EndTable();
     }

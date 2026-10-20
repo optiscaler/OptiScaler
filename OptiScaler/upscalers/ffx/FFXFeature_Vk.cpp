@@ -5,6 +5,7 @@
 #include "FFXFeature_Vk.h"
 #include "nvsdk_ngx_vk.h"
 #include "MathUtils.h"
+#include <fsr4/FSR4DriverProviderVk.h>
 
 using namespace OptiMath;
 
@@ -129,6 +130,10 @@ FFXFeatureVk::FFXFeatureVk(unsigned int InHandleId, NVSDK_NGX_Parameter* InParam
         LOG_INFO("amd_fidelityfx_vk.dll methods loaded!");
     else
         LOG_ERROR("Can't load amd_fidelityfx_vk.dll methods!");
+
+    // Driver provided FSR 4 works without amd_fidelityfx_vk.dll
+    if (FSR4DriverProviderVk::Init())
+        _moduleLoaded = true;
 }
 
 bool FFXFeatureVk::InitFFX(const NVSDK_NGX_Parameter* InParameters)
@@ -179,10 +184,40 @@ bool FFXFeatureVk::InitFFX(const NVSDK_NGX_Parameter* InParameters)
         ov.header.type = FFX_API_DESC_TYPE_OVERRIDE_VERSION;
         ov.versionId =
             State::Instance().ffxUpscalerVersionsVk.ids[Config::Instance()->FfxUpscalerIndex.value_or_default()];
-        backendDesc.header.pNext = &ov.header;
+
+        ffxCreateContextDescUpscaleVersionV2 upscaleVersion {};
+        upscaleVersion.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE_VERSION_V2;
+        upscaleVersion.version = FFX_UPSCALER_VERSION_V2;
+
+        if (FSR4DriverProviderVk::IsAvailable() && ov.versionId == FSR4DriverProviderVk::VersionId())
+        {
+            if (!FSR4DriverProviderVk::IsSupported(Device, PhysicalDevice, backendDesc.vkDeviceProcAddr))
+            {
+                LOG_ERROR("Driver provided FSR is not supported on this device!");
+                return false;
+            }
+
+            LOG_INFO("Using driver provided FSR {}", FSR4DriverProviderVk::VersionName());
+
+            // Driver only recognizes the SDK 2.x backend type, version override is not needed
+            backendDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK_V2;
+            backendDesc.header.pNext = &upscaleVersion.header;
+            _ffx = FSR4DriverProviderVk::Module();
+        }
+        else
+        {
+            backendDesc.header.pNext = &ov.header;
+            _ffx = FfxApiProxy::VkFfxModule();
+        }
+
+        if (_ffx->CreateContext == nullptr)
+        {
+            LOG_ERROR("amd_fidelityfx_vk.dll is not loaded!");
+            return false;
+        }
 
         LOG_DEBUG("_createContext!");
-        auto ret = FfxApiProxy::VULKAN_CreateContext()(&_context, &_contextDesc.header, NULL);
+        auto ret = _ffx->CreateContext(&_context, &_contextDesc.header, NULL);
 
         if (ret != FFX_API_RETURN_OK)
         {
@@ -456,7 +491,7 @@ bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Param
         m_upscalerKeyValueConfig.header.type = FFX_API_CONFIGURE_DESC_TYPE_UPSCALE_KEYVALUE;
         m_upscalerKeyValueConfig.key = FFX_API_CONFIGURE_UPSCALE_KEY_FVELOCITYFACTOR;
         m_upscalerKeyValueConfig.ptr = &_velocity;
-        auto result = FfxApiProxy::VULKAN_Configure()(&_context, &m_upscalerKeyValueConfig.header);
+        auto result = _ffx->Configure(&_context, &m_upscalerKeyValueConfig.header);
 
         if (result != FFX_API_RETURN_OK)
             LOG_WARN("Velocity configure result: {}", (UINT) result);
@@ -471,7 +506,7 @@ bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Param
             m_upscalerKeyValueConfig.header.type = FFX_API_CONFIGURE_DESC_TYPE_UPSCALE_KEYVALUE;
             m_upscalerKeyValueConfig.key = FFX_API_CONFIGURE_UPSCALE_KEY_FREACTIVENESSSCALE;
             m_upscalerKeyValueConfig.ptr = &_reactiveScale;
-            auto result = FfxApiProxy::VULKAN_Configure()(&_context, &m_upscalerKeyValueConfig.header);
+            auto result = _ffx->Configure(&_context, &m_upscalerKeyValueConfig.header);
 
             if (result != FFX_API_RETURN_OK)
                 LOG_WARN("Reactive Scale configure result: {}", (UINT) result);
@@ -484,7 +519,7 @@ bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Param
             m_upscalerKeyValueConfig.header.type = FFX_API_CONFIGURE_DESC_TYPE_UPSCALE_KEYVALUE;
             m_upscalerKeyValueConfig.key = FFX_API_CONFIGURE_UPSCALE_KEY_FSHADINGCHANGESCALE;
             m_upscalerKeyValueConfig.ptr = &_shadingScale;
-            auto result = FfxApiProxy::VULKAN_Configure()(&_context, &m_upscalerKeyValueConfig.header);
+            auto result = _ffx->Configure(&_context, &m_upscalerKeyValueConfig.header);
 
             if (result != FFX_API_RETURN_OK)
                 LOG_WARN("Shading Scale configure result: {}", (UINT) result);
@@ -497,7 +532,7 @@ bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Param
             m_upscalerKeyValueConfig.header.type = FFX_API_CONFIGURE_DESC_TYPE_UPSCALE_KEYVALUE;
             m_upscalerKeyValueConfig.key = FFX_API_CONFIGURE_UPSCALE_KEY_FACCUMULATIONADDEDPERFRAME;
             m_upscalerKeyValueConfig.ptr = &_accAddPerFrame;
-            auto result = FfxApiProxy::VULKAN_Configure()(&_context, &m_upscalerKeyValueConfig.header);
+            auto result = _ffx->Configure(&_context, &m_upscalerKeyValueConfig.header);
 
             if (result != FFX_API_RETURN_OK)
                 LOG_WARN("Acc. Add Per Frame configure result: {}", (UINT) result);
@@ -510,7 +545,7 @@ bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Param
             m_upscalerKeyValueConfig.header.type = FFX_API_CONFIGURE_DESC_TYPE_UPSCALE_KEYVALUE;
             m_upscalerKeyValueConfig.key = FFX_API_CONFIGURE_UPSCALE_KEY_FMINDISOCCLUSIONACCUMULATION;
             m_upscalerKeyValueConfig.ptr = &_minDisOccAcc;
-            auto result = FfxApiProxy::VULKAN_Configure()(&_context, &m_upscalerKeyValueConfig.header);
+            auto result = _ffx->Configure(&_context, &m_upscalerKeyValueConfig.header);
 
             if (result != FFX_API_RETURN_OK)
                 LOG_WARN("Minimum Disocclusion Acc. configure result: {}", (UINT) result);
@@ -541,8 +576,38 @@ bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Param
         params.upscaleSize.height = TargetHeight();
     }
 
+    // Log what the driver provided FSR 4 gets, only when it changes
+    if (_ffx == FSR4DriverProviderVk::Module())
+    {
+        auto describe = [](const char* name, NVSDK_NGX_Resource_VK* vkRes, const FfxApiResource& res)
+        {
+            if (res.resource == nullptr || vkRes == nullptr)
+                return std::format("{}: none", name);
+
+            return std::format("{}: {}x{} vk: {} ffx: {} usage: {:X}", name, res.description.width,
+                               res.description.height, (int) vkRes->Resource.ImageViewInfo.Format,
+                               res.description.format, res.description.usage);
+        };
+
+        auto activeModel = FSR4Models::ActiveModel(FSR4DriverProviderVk::Module()->dll);
+
+        // preExposure is left out of the comparison as it can change every frame
+        auto inputs = std::format(
+            "model: {}, flags: {:X}, dispatch flags: {:X}\n  {}\n  {}\n  {}\n  {}\n  {}",
+            activeModel ? FSR4Models::Name(*activeModel) : "None", _contextDesc.flags, params.flags,
+            describe("color", paramColor, params.color), describe("depth", paramDepth, params.depth),
+            describe("mv", paramVelocity, params.motionVectors), describe("exposure", paramExp, params.exposure),
+            describe("output", paramOutput, params.output));
+
+        if (inputs != _lastFsr4Inputs)
+        {
+            _lastFsr4Inputs = inputs;
+            LOG_INFO("FSR 4 inputs, preExposure: {}, {}", params.preExposure, inputs);
+        }
+    }
+
     LOG_DEBUG("Dispatch!!");
-    auto result = FfxApiProxy::VULKAN_Dispatch()(&_context, &params.header);
+    auto result = _ffx->Dispatch(&_context, &params.header);
 
     if (result != FFX_API_RETURN_OK)
     {

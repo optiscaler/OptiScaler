@@ -892,6 +892,37 @@ VkResult VulkanSpoofing::hkvkCreateDevice(VkPhysicalDevice physicalDevice, VkDev
     if (State::Instance().creatingD3DDevice)
     {
         LOG_INFO("Skipping because DXVK/VKD3D is creating a D3D device");
+
+        // DXVK/VKD3D also see the spoofed extensions, enabling them fails with VK_ERROR_EXTENSION_NOT_PRESENT
+        if (Config::Instance()->VulkanExtensionSpoofing.value_or_default() &&
+            o_vkEnumerateDeviceExtensionProperties != nullptr)
+        {
+            uint32_t count = 0;
+            o_vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &count, nullptr);
+            std::vector<VkExtensionProperties> supported(count);
+            o_vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &count, supported.data());
+
+            static std::vector<const char*> filteredExtensions;
+            filteredExtensions.clear();
+
+            for (uint32_t i = 0; i < pCreateInfo->enabledExtensionCount; i++)
+            {
+                auto extName = pCreateInfo->ppEnabledExtensionNames[i];
+
+                if (std::ranges::none_of(supported, [&](const VkExtensionProperties& ext)
+                                         { return std::strcmp(ext.extensionName, extName) == 0; }))
+                {
+                    LOG_DEBUG("Removing spoofed {}", extName);
+                    continue;
+                }
+
+                filteredExtensions.push_back(extName);
+            }
+
+            pCreateInfo->enabledExtensionCount = static_cast<uint32_t>(filteredExtensions.size());
+            pCreateInfo->ppEnabledExtensionNames = filteredExtensions.data();
+        }
+
         return VK_SUCCESS;
     }
 

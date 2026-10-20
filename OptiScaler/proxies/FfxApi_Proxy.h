@@ -11,7 +11,7 @@
 #include <inputs/FfxApi_Dx12.h>
 #include <inputs/FfxApi_Vk.h>
 
-#include <fsr4/FSR4DriverProvider.h>
+#include <fsr4/FSR4DriverProviderDx12.h>
 #include <fsr4/FSR4Models.h>
 #include <fsr4/FSR4Presets.h>
 
@@ -118,8 +118,8 @@ class FfxApiProxy
     // Module that runs the DX12 upscaler with this version id
     static HMODULE UpscalerModule(uint64_t versionId)
     {
-        if (versionId != 0 && versionId == FSR4DriverProvider::VersionId())
-            return FSR4DriverProvider::LoadedModule();
+        if (versionId != 0 && versionId == FSR4DriverProviderDx12::VersionId())
+            return FSR4DriverProviderDx12::LoadedModule();
 
         return upscaling_dx12.dll != nullptr ? upscaling_dx12.dll : main_dx12.dll;
     }
@@ -1203,10 +1203,10 @@ class FfxApiProxy
     {
         auto type = GetType(desc->type);
 
-        if (auto overrideVersion = FindOverrideVersion(desc);
-            type == FFXStructType::Upscaling && overrideVersion && *overrideVersion == FSR4DriverProvider::VersionId())
+        if (auto overrideVersion = FindOverrideVersion(desc); type == FFXStructType::Upscaling && overrideVersion &&
+                                                              *overrideVersion == FSR4DriverProviderDx12::VersionId())
         {
-            return FSR4DriverProvider::CreateContext(context, desc, memCb);
+            return FSR4DriverProviderDx12::CreateContext(context, desc, memCb);
         }
 
         auto isFg = type == FFXStructType::FG || type == FFXStructType::SwapchainDX12;
@@ -1273,8 +1273,8 @@ class FfxApiProxy
 
     static ffxReturnCode_t D3D12_DestroyContext(ffxContext* context, const ffxAllocationCallbacks* memCb)
     {
-        if (FSR4DriverProvider::OwnsContext(context))
-            return FSR4DriverProvider::DestroyContext(context, memCb);
+        if (FSR4DriverProviderDx12::OwnsContext(context))
+            return FSR4DriverProviderDx12::DestroyContext(context, memCb);
 
         ffxReturnCode_t result = FFX_API_RETURN_ERROR;
         auto type = FFXStructType::Unknown;
@@ -1377,8 +1377,8 @@ class FfxApiProxy
 
     static ffxReturnCode_t D3D12_Configure(ffxContext* context, const ffxConfigureDescHeader* desc)
     {
-        if (FSR4DriverProvider::OwnsContext(context))
-            return FSR4DriverProvider::Configure(context, desc);
+        if (FSR4DriverProviderDx12::OwnsContext(context))
+            return FSR4DriverProviderDx12::Configure(context, desc);
 
         auto type = GetType(desc->type);
 
@@ -1421,13 +1421,13 @@ class FfxApiProxy
 
     static ffxReturnCode_t D3D12_Query(ffxContext* context, ffxQueryDescHeader* desc)
     {
-        if (FSR4DriverProvider::OwnsContext(context))
-            return FSR4DriverProvider::Query(context, desc);
+        if (FSR4DriverProviderDx12::OwnsContext(context))
+            return FSR4DriverProviderDx12::Query(context, desc);
 
         if (desc->type == FFX_API_QUERY_DESC_TYPE_GET_VERSIONS && GetIndirectType(desc) == FFXStructType::Upscaling)
         {
             return D3D12_QueryUpscalerVersions(reinterpret_cast<ffxQueryDescGetVersions*>(desc),
-                                               FSR4DriverProvider::Listing::WhenNewestUpscaler);
+                                               FSR4DriverProviderDx12::Listing::WhenNewestUpscaler);
         }
 
         return D3D12_QuerySdk(context, desc);
@@ -1435,7 +1435,7 @@ class FfxApiProxy
 
     // Versions of the FFX SDK upscalers and the upscaler of the driver
     static ffxReturnCode_t D3D12_QueryUpscalerVersions(ffxQueryDescGetVersions* desc,
-                                                       FSR4DriverProvider::Listing driverListing)
+                                                       FSR4DriverProviderDx12::Listing driverListing)
     {
         ffxQueryDescGetVersions sdkQuery = *desc;
         uint64_t sdkCount = 0;
@@ -1457,7 +1457,7 @@ class FfxApiProxy
         ids.resize(sdkCount);
         names.resize(sdkCount);
 
-        FSR4DriverProvider::AddToVersionList(ids, names, driverListing);
+        FSR4DriverProviderDx12::AddToVersionList(ids, names, driverListing);
 
         // Same contract as FFX, a non-zero count is the capacity of the arrays
         auto count = ids.size();
@@ -1529,8 +1529,8 @@ class FfxApiProxy
   public:
     static ffxReturnCode_t D3D12_Dispatch(ffxContext* context, const ffxDispatchDescHeader* desc)
     {
-        if (FSR4DriverProvider::OwnsContext(context))
-            return FSR4DriverProvider::Dispatch(context, desc);
+        if (FSR4DriverProviderDx12::OwnsContext(context))
+            return FSR4DriverProviderDx12::Dispatch(context, desc);
 
         auto type = GetType(desc->type);
         auto isFg = type == FFXStructType::FG || type == FFXStructType::SwapchainDX12;
@@ -1569,6 +1569,7 @@ class FfxApiProxy
 
     static HMODULE VkModule() { return main_vk.dll; }
     static std::wstring VkModule_Path() { return main_vk.filePath; }
+    static FfxModule* VkFfxModule() { return &main_vk; }
 
     static bool InitFfxVk(HMODULE module = nullptr)
     {

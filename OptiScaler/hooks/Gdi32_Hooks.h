@@ -71,6 +71,20 @@ static NTSTATUS hkD3DKMTQueryAdapterInfo(const D3DKMT_QUERYADAPTERINFO* data)
 
                 return 1;
             }
+            else if (primaryGpu.fsr4Support == FSR4Support::INT8_2)
+            {
+                amd_gpu_info[12] = 143; // gfx10
+                amd_gpu_info[13] = 40;
+
+                return 1;
+            }
+            else if (primaryGpu.fsr4Support == FSR4Support::INT8Lite)
+            {
+                amd_gpu_info[12] = 150; // gfx11.5
+                amd_gpu_info[13] = 1;
+
+                return 1;
+            }
             else if (primaryGpu.fsr4Support == FSR4Support::FP8)
             {
                 // Based on 9070xt

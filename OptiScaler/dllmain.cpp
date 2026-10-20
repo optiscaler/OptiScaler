@@ -1497,7 +1497,7 @@ DWORD WINAPI getGpuInfo(LPVOID hModuleVoid)
     if (primaryGpu.vendorId == VendorId::AMD)
         Amdxc64Hooks::Init();
 
-    else if (Config::Instance()->Fsr4GpuSupport.value_or_default() == FSR4Support::INT8)
+    else if (IsFsr4Int8(Config::Instance()->Fsr4GpuSupport.value_or_default()))
     {
         // We need spoofing hooks for FFX but want to avoid spoofing for the rest of the game
         if (!Config::Instance()->DxgiSpoofing.value_or_default())

@@ -192,7 +192,8 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
   <ItemGroup>
     <ClInclude Include="framegen\nvngx\Nvngx_Combo.h" />
     <ClInclude Include="framegen\reprojection\swapchain\reprojectionSwapchain.h" />
-    <ClInclude Include="fsr4\FSR4Upgrade.h" />
+    <ClInclude Include="fsr4\FSR4DriverProvider.h" />
+    <ClInclude Include="fsr4\FSR4DriverProviderVk.h" />
     <ClInclude Include="gpu_time\GpuTime_Dx11.h" />
     <ClInclude Include="gpu_time\GpuTime_Dx12.h" />
     <ClInclude Include="gpu_time\GpuTime_Vk.h" />
@@ -217,7 +218,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="framegen\IFGFeature_Dx12.h" />
     <ClInclude Include="framegen\IFGFeature_Vk.h" />
     <ClInclude Include="framegen\nvngx\Nvngx_FG.h" />
-    <ClInclude Include="fsr4\FSR4DriverProvider.h" />
+    <ClInclude Include="fsr4\FSR4DriverProviderDx12.h" />
     <ClInclude Include="fsr4\FSR4Models.h" />
     <ClInclude Include="fsr4\FSR4Presets.h" />
     <ClInclude Include="hooks\D3D12_Hooks.h" />
@@ -556,7 +557,8 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
   <ItemGroup>
     <ClCompile Include="framegen\nvngx\Nvngx_Combo.cpp" />
     <ClCompile Include="framegen\reprojection\swapchain\reprojectionSwapchain.cpp" />
-    <ClCompile Include="fsr4\FSR4Upgrade.cpp" />
+    <ClCompile Include="fsr4\FSR4DriverProvider.cpp" />
+    <ClCompile Include="fsr4\FSR4DriverProviderVk.cpp" />
     <ClCompile Include="gpu_time\GpuTime_Dx11.cpp" />
     <ClCompile Include="gpu_time\GpuTime_Dx12.cpp" />
     <ClCompile Include="gpu_time\GpuTime_Vk.cpp" />
@@ -570,7 +572,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="framegen\IFGFeature_Dx12.cpp" />
     <ClCompile Include="framegen\IFGFeature_Vk.cpp" />
     <ClCompile Include="framegen\nvngx\Nvngx_FG.cpp" />
-    <ClCompile Include="fsr4\FSR4DriverProvider.cpp" />
+    <ClCompile Include="fsr4\FSR4DriverProviderDx12.cpp" />
     <ClCompile Include="fsr4\FSR4Models.cpp" />
     <ClCompile Include="fsr4\FSR4Presets.cpp" />
     <ClCompile Include="hooks\D3D12_Hooks.cpp" />

@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "Amdxc64_Hooks.h"
 
-#include <fsr4/FSR4Upgrade.h>
+#include <fsr4/FSR4DriverProviderDx12.h>
 #include <ffx_antilag2_dx12.h>
 #include <proxies/KernelBase_Proxy.h>
 #include <proxies/Ntdll_Proxy.h>

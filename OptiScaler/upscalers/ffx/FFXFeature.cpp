@@ -5,6 +5,7 @@
 #include <proxies/Dxgi_Proxy.h>
 #include <proxies/D3d12_Proxy.h>
 #include <misc/IdentifyGpu.h>
+#include <fsr4/FSR4DriverProviderVk.h>
 
 static void FfxLogCallback(uint32_t type, const wchar_t* message)
 {
@@ -33,7 +34,7 @@ bool FFXFeature::QueryVersionsDx12(ID3D12Device* device)
     versionQuery.outputCount = &versionCount;
 
     // The driver upscaler is always offered in the menu, even when the FFX SDK has a newer one
-    constexpr auto driverListing = FSR4DriverProvider::Listing::Always;
+    constexpr auto driverListing = FSR4DriverProviderDx12::Listing::Always;
 
     if (FfxApiProxy::D3D12_QueryUpscalerVersions(&versionQuery, driverListing) != FFX_API_RETURN_OK)
         return false;
@@ -50,25 +51,48 @@ bool FFXFeature::QueryVersionsDx12(ID3D12Device* device)
 bool FFXFeature::QueryVersionsVulkan()
 {
     auto& versions = State::Instance().ffxUpscalerVersionsVk;
+    versions.ids.clear();
+    versions.names.clear();
 
-    // Get number of versions for allocation
-    ffxQueryDescGetVersions versionQuery {};
-    versionQuery.header.type = FFX_API_QUERY_DESC_TYPE_GET_VERSIONS;
-    versionQuery.createDescType = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE;
-    // versionQuery.device = Device; // only for DirectX 12 applications
-    uint64_t versionCount = 0;
-    versionQuery.outputCount = &versionCount;
+    bool result = false;
 
-    if (FfxApiProxy::VULKAN_Query()(nullptr, &versionQuery.header) != FFX_API_RETURN_OK)
-        return false;
+    if (FfxApiProxy::VULKAN_Query() != nullptr)
+    {
+        // Get number of versions for allocation
+        ffxQueryDescGetVersions versionQuery {};
+        versionQuery.header.type = FFX_API_QUERY_DESC_TYPE_GET_VERSIONS;
+        versionQuery.createDescType = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE;
+        // versionQuery.device = Device; // only for DirectX 12 applications
+        uint64_t versionCount = 0;
+        versionQuery.outputCount = &versionCount;
 
-    // Fill version ids and names arrays
-    versions.ids.resize(versionCount);
-    versions.names.resize(versionCount);
-    versionQuery.versionIds = versions.ids.data();
-    versionQuery.versionNames = versions.names.data();
+        if (FfxApiProxy::VULKAN_Query()(nullptr, &versionQuery.header) == FFX_API_RETURN_OK)
+        {
+            // Fill version ids and names arrays
+            versions.ids.resize(versionCount);
+            versions.names.resize(versionCount);
+            versionQuery.versionIds = versions.ids.data();
+            versionQuery.versionNames = versions.names.data();
 
-    return FfxApiProxy::VULKAN_Query()(nullptr, &versionQuery.header) == FFX_API_RETURN_OK;
+            result = FfxApiProxy::VULKAN_Query()(nullptr, &versionQuery.header) == FFX_API_RETURN_OK;
+
+            if (!result)
+            {
+                versions.ids.clear();
+                versions.names.clear();
+            }
+        }
+    }
+
+    // FSR 4 provided by the Vulkan driver
+    if (FSR4DriverProviderVk::Init())
+    {
+        versions.ids.push_back(FSR4DriverProviderVk::VersionId());
+        versions.names.push_back(FSR4DriverProviderVk::VersionName());
+        result = true;
+    }
+
+    return result;
 }
 
 void FFXFeature::EnsureVersionsDx12()
@@ -149,7 +173,8 @@ void FFXFeature::EnsureVersionsVulkan()
 
     queryTried = true;
 
-    if (!FfxApiProxy::InitFfxVk())
+    // Driver provided FSR 4 doesn't need amd_fidelityfx_vk.dll
+    if (!FfxApiProxy::InitFfxVk() && !FSR4DriverProviderVk::Init())
         return;
 
     ScopedSkipSpoofingGlobal skipSpoofingGlobal {};

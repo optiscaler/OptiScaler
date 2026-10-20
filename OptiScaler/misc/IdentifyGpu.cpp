@@ -157,6 +157,11 @@ std::vector<GpuInformation> IdentifyGpu::checkGpuInfo()
 
                 if (cardInfo.has_value())
                     gpuInfo.amdHwGeneration = cardInfo.value().generation;
+
+                auto asicInfoValid = queryAmdAsicInfo(gpuInfo.luid, gpuInfo.vendorId, gpuInfo.deviceId,
+                                                      gpuInfo.amdAsicFamily, gpuInfo.amdAsicRevision);
+                gpuInfo.fsr4DriverModel = getFsr4ModelForAsic(gpuInfo.amdAsicFamily, gpuInfo.amdAsicRevision,
+                                                              gpuInfo.deviceId, asicInfoValid);
             }
 
             Util::Luid luid(gpuInfo.luid.LowPart, gpuInfo.luid.HighPart);
@@ -549,9 +554,13 @@ void IdentifyGpu::updateD3d12Capabilities(D3d12Proxy::PFN_D3D12CreateDevice o_D3
                         }
                     }
 
-                    // Check for native INT8 support
+                    // Check for native INT8 support, the same way the driver picks the model
                     // Don't treat this as real because RDNA3 on Linux may be able to support FP8, useful for FG
-                    if (res.fsr4Support == FSR4Support::None)
+                    if (res.fsr4Support == FSR4Support::None && IsFsr4Int8(gpuInfo.fsr4DriverModel))
+                        res.fsr4Support = gpuInfo.fsr4DriverModel;
+
+                    // Asic info not available (e.g. Linux), fall back to device_info
+                    if (res.fsr4Support == FSR4Support::None && gpuInfo.amdAsicFamily == 0)
                     {
                         device_info::AdapterId adapterId(gpuInfo.vendorId, gpuInfo.deviceId, gpuInfo.revisionId);
                         auto cardInfo = device_info::GetCardInfo(adapterId);
@@ -629,9 +638,17 @@ void IdentifyGpu::updateD3d12Capabilities(D3d12Proxy::PFN_D3D12CreateDevice o_D3
             fsr4Support = "fp8";
         else if (gpu.fsr4Support == FSR4Support::INT8)
             fsr4Support = "int8";
+        else if (gpu.fsr4Support == FSR4Support::INT8_2)
+            fsr4Support = "int8-2";
+        else if (gpu.fsr4Support == FSR4Support::INT8Lite)
+            fsr4Support = "int8 lite";
 
         if (gpu.fsr4ForcedSupport)
             fsr4Support += " (forced)";
+
+        if (gpu.amdAsicFamily != 0)
+            fsr4Support += std::format(", asic family: {}, revision: {}, driver model: {}", gpu.amdAsicFamily,
+                                       gpu.amdAsicRevision, magic_enum::enum_name(gpu.fsr4DriverModel));
 
         gpus += std::format("{}{}\n", indent, gpu.name);
         gpus += std::format("{}    vendorId: {:X}, deviceId: {:X}, VRAM: {}MB\n", indent, (uint32_t) gpu.vendorId,
@@ -682,11 +699,143 @@ void IdentifyGpu::updateInt8Support(bool sdkSupportsInt8, bool driverSupportsInt
     std::scoped_lock lock(mutex);
     for (auto& gpuInfo : cache)
     {
-        if (gpuInfo.fsr4Support != FSR4Support::INT8)
+        if (!IsFsr4Int8(gpuInfo.fsr4Support))
             continue;
 
         LOG_DEBUG("Neither driver nor the sdk supports FSR 4 Int 8, disabling FSR 4 for {}", gpuInfo.name);
         gpuInfo.fsr4Support = FSR4Support::None;
         gpuInfo.fsr4ForcedSupport = false;
     }
+}
+
+bool IdentifyGpu::queryAmdAsicInfo(LUID luid, uint32_t vendorId, uint32_t deviceId, uint32_t& family,
+                                   uint32_t& revision)
+{
+    family = 0;
+    revision = 0;
+
+    auto gdi32 = KernelBaseProxy::GetModuleHandleW_()(L"gdi32.dll");
+
+    if (gdi32 == nullptr)
+        gdi32 = NtdllProxy::LoadLibraryExW_Ldr(L"gdi32.dll", NULL, 0);
+
+    if (gdi32 == nullptr)
+        return false;
+
+    auto openAdapter = reinterpret_cast<decltype(&D3DKMTOpenAdapterFromLuid)>(
+        KernelBaseProxy::GetProcAddress_()(gdi32, "D3DKMTOpenAdapterFromLuid"));
+    auto queryAdapterInfo = reinterpret_cast<decltype(&D3DKMTQueryAdapterInfo)>(
+        KernelBaseProxy::GetProcAddress_()(gdi32, "D3DKMTQueryAdapterInfo"));
+    auto closeAdapter = reinterpret_cast<decltype(&D3DKMTCloseAdapter)>(
+        KernelBaseProxy::GetProcAddress_()(gdi32, "D3DKMTCloseAdapter"));
+
+    if (openAdapter == nullptr || queryAdapterInfo == nullptr || closeAdapter == nullptr)
+        return false;
+
+    D3DKMT_OPENADAPTERFROMLUID openData {};
+    openData.AdapterLuid = luid;
+
+    if (openAdapter(&openData) != 0)
+        return false;
+
+    // AMD private driver data, the driver dlls query it the same way
+    constexpr NTSTATUS statusBufferTooSmall = 0xC0000023;
+    constexpr UINT singleSize = 608;
+    constexpr size_t familyIndex = 12;
+    constexpr size_t revisionIndex = 13;
+
+    // Newer format with multiple entries, used when the single one doesn't fit
+    constexpr size_t multiCountOffset = 0x8;
+    constexpr size_t multiVendorIdsOffset = 0xC;  // uint16_t[4]
+    constexpr size_t multiDeviceIdsOffset = 0x14; // uint16_t[4]
+    constexpr size_t multiEntrySize = 0x3A00;
+    constexpr size_t multiFamilyOffset = 0x1364;
+    constexpr size_t multiRevisionOffset = 0x1368;
+    constexpr UINT multiHeaderSize = 0x960;
+    constexpr uint32_t multiMaxEntries = 4;
+
+    std::vector<uint8_t> buffer(singleSize);
+
+    D3DKMT_QUERYADAPTERINFO query {};
+    query.hAdapter = openData.hAdapter;
+    query.Type = KMTQAITYPE_UMDRIVERPRIVATE;
+    query.pPrivateDriverData = buffer.data();
+    query.PrivateDriverDataSize = singleSize;
+
+    auto read32 = [&](size_t offset) { return *reinterpret_cast<uint32_t*>(buffer.data() + offset); };
+    auto read16 = [&](size_t offset) { return *reinterpret_cast<uint16_t*>(buffer.data() + offset); };
+
+    auto status = queryAdapterInfo(&query);
+
+    if (status == statusBufferTooSmall)
+    {
+        // First query gets the entry count
+        buffer.assign(multiHeaderSize + multiEntrySize, 0);
+        query.pPrivateDriverData = buffer.data();
+        query.PrivateDriverDataSize = static_cast<UINT>(buffer.size());
+        status = queryAdapterInfo(&query);
+
+        auto count = std::min(read32(multiCountOffset), multiMaxEntries);
+
+        if (count > 1)
+        {
+            buffer.assign(multiHeaderSize + multiEntrySize * count, 0);
+            query.pPrivateDriverData = buffer.data();
+            query.PrivateDriverDataSize = static_cast<UINT>(buffer.size());
+            status = queryAdapterInfo(&query);
+        }
+
+        if (status >= 0)
+        {
+            for (uint32_t i = 0; i < count; i++)
+            {
+                if (read16(multiVendorIdsOffset + i * 2) == static_cast<uint16_t>(vendorId) &&
+                    read16(multiDeviceIdsOffset + i * 2) == static_cast<uint16_t>(deviceId))
+                {
+                    family = read32(i * multiEntrySize + multiFamilyOffset);
+                    revision = read32(i * multiEntrySize + multiRevisionOffset);
+                    break;
+                }
+            }
+        }
+    }
+    else if (status >= 0)
+    {
+        family = read32(familyIndex * sizeof(uint32_t));
+        revision = read32(revisionIndex * sizeof(uint32_t));
+    }
+
+    D3DKMT_CLOSEADAPTER closeData {};
+    closeData.hAdapter = openData.hAdapter;
+    closeAdapter(&closeData);
+
+    return family != 0;
+}
+
+FSR4Support IdentifyGpu::getFsr4ModelForAsic(uint32_t family, uint32_t revision, uint32_t deviceId, bool asicInfoValid)
+{
+    auto inRange = [](uint32_t value, uint32_t min, uint32_t max) { return value >= min && value <= max; };
+
+    // Checked in the same order as the driver
+    // GFX12 (RDNA4)
+    if (family == 152)
+        return FSR4Support::FP8;
+
+    // GFX11 (RDNA3) or Strix Halo
+    // Driver also falls back to it for device 0x7481 when it can't get the asic info
+    if ((family == 145 && inRange(revision, 1, 254)) || (family == 150 && inRange(revision, 192, 207)) ||
+        (!asicInfoValid && deviceId == 0x7481))
+    {
+        return FSR4Support::INT8;
+    }
+
+    // Navi 2x (RDNA2)
+    if (family == 143 && inRange(revision, 40, 79))
+        return FSR4Support::INT8_2;
+
+    // Strix Point / Krackan (GFX11.5) and Van Gogh
+    if ((family == 150 && inRange(revision, 1, 63)) || (family == 144 && inRange(revision, 1, 127)))
+        return FSR4Support::INT8Lite;
+
+    return FSR4Support::None;
 }

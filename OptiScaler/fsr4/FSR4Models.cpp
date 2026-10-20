@@ -20,6 +20,8 @@ struct ModelProvider
 constexpr ModelProvider modelProviders[] = {
     { FSR4Model::FP8, "FP8", "ffxProvider_FSR4", false },
     { FSR4Model::INT8, "INT8", "ffxProvider_FSR4_Int8", true }, // FFX allows it only on RDNA 3
+    { FSR4Model::INT8_2, "INT8 RDNA2", "ffxProvider_FSR4_Int8_Navi2", true },
+    { FSR4Model::INT8Lite, "INT8 Lite", "ffxProvider_FSR4Lite_Int8", true },
 };
 
 // ffxProvider::IsSupported(void* device), the vtable layout of FFX SDK 2.0+ providers
@@ -184,7 +186,11 @@ bool FSR4Models::CanGpuRun(FSR4Model model)
         return gpu.realFsr4Support == FSR4Support::FP8;
 
     case FSR4Model::INT8:
+    case FSR4Model::INT8_2:
         return gpu.fsr4Support != FSR4Support::None;
+
+    case FSR4Model::INT8Lite:
+        return true;
 
     default:
         return false;
