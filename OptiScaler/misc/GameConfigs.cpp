@@ -135,6 +135,13 @@ using enum GameQuirk;
 
 const std::vector<GameConfig> gameConfigs = {
 
+    // BeamNG
+    // Spoofing not required for DLSS inputs for both Dx12 and Vk
+    {
+        .exes = { "beamng.drive.x64.exe" },
+        .defaults = { DxgiSpoofing = false },
+    },
+
     // Red Dead Redemption 2
     // Spoofing causes FSR2 inputs crash, DLSS inputs need OptiPatcher to avoid artifacts/crashes anyway
     {

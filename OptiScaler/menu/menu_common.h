@@ -229,7 +229,7 @@ class MenuCommon
     static void RenderFrameGenerationSelection(RenderMenuContext& ctx);
     static void RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx);
     static void RenderFGModeSlider(RenderMenuContext& ctx, const char* label, int maxInterpolationCount,
-                                   CustomOptional<int>* countConfig);
+                                   CustomOptional<int>* countConfig, const char* tooltip = nullptr);
     static void RenderFsrCommonSettings(RenderMenuContext& ctx);
     static void RenderFramerateSettings(RenderMenuContext& ctx);
     static void RenderVsyncSettings(RenderMenuContext& ctx);

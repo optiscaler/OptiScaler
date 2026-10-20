@@ -1,32 +1,12 @@
 #include "pch.h"
 #include "FSR4Upgrade.h"
+#include "FSR4DriverProvider.h"
 
 #include <proxies/FfxApi_Proxy.h>
-#include <misc/IdentifyGpu.h>
-
-struct ffxProviderInterface
-{
-    uint64_t versionId;
-    const char* versionName;
-    PVOID canProvide;
-    PVOID createContext;
-    PVOID destroyContext;
-    PVOID configure;
-    PVOID query;
-    PVOID dispatch;
-};
-
-struct ExternalProviderData
-{
-    uint32_t structVersion = 2;
-    uint64_t descType;
-    ffxProviderInterface provider;
-};
 
 HRESULT STDMETHODCALLTYPE AmdExtFfxApi::UpdateFfxApiProvider(void* pData, uint32_t dataSizeInBytes)
 {
-    auto returnAddress = _ReturnAddress();
-    auto callerModule = Util::GetCallerModule(returnAddress);
+    auto callerModule = Util::GetCallerModule(_ReturnAddress());
 
     if (callerModule == exeModule)
     {
@@ -40,99 +20,27 @@ HRESULT STDMETHODCALLTYPE AmdExtFfxApi::UpdateFfxApiProvider(void* pData, uint32
     if (effectType >= FFXStructType::Unknown)
         effect = "???";
 
-    static std::optional<bool> sdkSupportsInt8;
-    static std::optional<bool> amdxcffx64SupportsInt8;
-
-    if (effectType == FFXStructType::Upscaling && !sdkSupportsInt8.has_value())
+    // Opti calls the driver upscaler itself and lists it next to the upscalers of its FFX modules
+    if (effectType == FFXStructType::Upscaling && FfxApiProxy::IsUpscalerModule(callerModule))
     {
-        wchar_t sdkDllPath[MAX_PATH] = { 0 };
-        GetModuleFileNameW(callerModule, sdkDllPath, MAX_PATH);
-
-        version_t sdkVersion;
-        Util::GetFileVersion(sdkDllPath, &sdkVersion, nullptr);
-
-        LOG_TRACE("sdkVersion: {}.{}.{}.{}", sdkVersion.major, sdkVersion.minor, sdkVersion.patch, sdkVersion.reserved);
-
-        sdkSupportsInt8 = sdkVersion >= version_t(4, 1, 1, 0);
-        IdentifyGpu::updateInt8Support(sdkSupportsInt8, amdxcffx64SupportsInt8);
+        LOG_DEBUG("Not giving the driver upscaler to Opti's FFX module");
+        return E_NOINTERFACE;
     }
+
+    auto driverModule = FSR4DriverProvider::Module();
+
+    if (effectType == FFXStructType::Upscaling)
+        FSR4DriverProvider::UpdateInt8Support(callerModule);
+
+    if (driverModule == nullptr)
+        return E_NOINTERFACE;
 
     if (o_UpdateFfxApiProvider == nullptr)
     {
-        FSR4Upgrade::moduleAmdxcffx64 = nullptr;
-        HMODULE memModule = nullptr;
-        auto optiPath = Config::Instance()->MainDllPath.value();
-        Util::LoadProxyLibrary(L"amdxcffx64.dll", L"", optiPath, &memModule, &FSR4Upgrade::moduleAmdxcffx64);
-
-        if (FSR4Upgrade::moduleAmdxcffx64 == nullptr && memModule != nullptr)
-            FSR4Upgrade::moduleAmdxcffx64 = memModule;
-
-        if (FSR4Upgrade::moduleAmdxcffx64 == nullptr)
-        {
-            auto storePaths = Util::GetDriverStore();
-
-            for (const auto& [luid, path] : storePaths)
-            {
-                if (FSR4Upgrade::moduleAmdxcffx64 == nullptr)
-                {
-                    auto dllPath = path / L"amdxcffx64.dll";
-                    LOG_DEBUG("Trying to load: {}", wstring_to_string(dllPath.c_str()));
-                    FSR4Upgrade::moduleAmdxcffx64 = NtdllProxy::LoadLibraryExW_Ldr(dllPath.c_str(), NULL, 0);
-
-                    if (FSR4Upgrade::moduleAmdxcffx64 != nullptr)
-                    {
-                        LOG_INFO(L"amdxcffx64 loaded from {}", dllPath.wstring());
-                        break;
-                    }
-                }
-            }
-        }
-        else
-        {
-            LOG_INFO("amdxcffx64 loaded from game folder");
-        }
-
-        if (FSR4Upgrade::moduleAmdxcffx64)
-        {
-            bool wasInt8ModelSelectionHooked = FSR4ModelSelection::IsCreateModelDriver2Hooked();
-
-            FSR4ModelSelection::Hook(FSR4Upgrade::moduleAmdxcffx64, FSR4Source::DriverDll);
-
-            wchar_t driverDllPath[MAX_PATH] = { 0 };
-            GetModuleFileNameW(FSR4Upgrade::moduleAmdxcffx64, driverDllPath, MAX_PATH);
-
-            version_t amdxcffx64Version;
-            Util::GetFileVersion(driverDllPath, &amdxcffx64Version);
-
-            LOG_TRACE("amdxcffx64Version: {}.{}.{}.{}", amdxcffx64Version.major, amdxcffx64Version.minor,
-                      amdxcffx64Version.patch, amdxcffx64Version.reserved);
-
-            amdxcffx64SupportsInt8 = amdxcffx64Version >= version_t(2, 3, 0, 0);
-
-            // Seems to happen with older Proton builds
-            if (!amdxcffx64SupportsInt8.value() && !wasInt8ModelSelectionHooked &&
-                FSR4ModelSelection::IsCreateModelDriver2Hooked())
-            {
-                LOG_TRACE("WAR: Override a likely wrong version read");
-                amdxcffx64SupportsInt8 = true;
-            }
-
-            IdentifyGpu::updateInt8Support(sdkSupportsInt8, amdxcffx64SupportsInt8);
-        }
-        else
-        {
-            LOG_WARN("Failed to load amdxcffx64.dll");
-
-            amdxcffx64SupportsInt8 = false;
-            IdentifyGpu::updateInt8Support(sdkSupportsInt8, amdxcffx64SupportsInt8);
-
-            return E_NOINTERFACE;
-        }
-
-        o_UpdateFfxApiProvider = (PFN_UpdateFfxApiProvider) KernelBaseProxy::GetProcAddress_()(
-            FSR4Upgrade::moduleAmdxcffx64, "UpdateFfxApiProvider");
-        o_UpdateFfxApiProviderEx = (PFN_UpdateFfxApiProviderEx) KernelBaseProxy::GetProcAddress_()(
-            FSR4Upgrade::moduleAmdxcffx64, "UpdateFfxApiProviderEx");
+        o_UpdateFfxApiProvider =
+            (PFN_UpdateFfxApiProvider) KernelBaseProxy::GetProcAddress_()(driverModule, "UpdateFfxApiProvider");
+        o_UpdateFfxApiProviderEx =
+            (PFN_UpdateFfxApiProviderEx) KernelBaseProxy::GetProcAddress_()(driverModule, "UpdateFfxApiProviderEx");
 
         if (o_UpdateFfxApiProvider == nullptr)
         {

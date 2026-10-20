@@ -1,5 +1,6 @@
 #include <pch.h>
 
+#include <deque>
 #include <unordered_set>
 
 #include "VulkanwDx12_Hooks.h"
@@ -6276,10 +6277,86 @@ static void ReportRejectedLegacyPNext(const VkSubmitInfo& submit, const LegacyPN
     }
 }
 
+static void AbortPendingD3D12Waits(const PendingInterop* interops, size_t count, const char* reason)
+{
+    for (size_t i = 0; i < count; i++)
+        AbortPendingD3D12Wait(interops[i].pending, reason);
+}
+
+// Splits one application VkSubmitInfo at every pending Evaluate command buffer:
+//   [app waits] cmds..Evaluate0 -> resourceCopy0 | copyBack0 | barrier0 cmds..Evaluate1 -> resourceCopy1 | copyBack1 |
+//   ... | barrierN rest -> [app signals]
+// Timeline values are copied, the application's pNext chain is never modified.
+static void AppendLegacyInteropSubmits(const VkSubmitInfo& original,
+                                       const VkTimelineSemaphoreSubmitInfo* originalTimeline,
+                                       const PendingInterop* interops, size_t interopCount,
+                                       std::deque<LegacySplitSubmit>& storage, std::vector<VkSubmitInfo>& out)
+{
+    constexpr VkPipelineStageFlags allCommands = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    uint32_t nextCommandBuffer = 0;
+
+    for (size_t k = 0; k < interopCount; k++)
+    {
+        const auto& pending = interops[k].pending;
+
+        auto& segment = storage.emplace_back();
+        if (k == 0)
+        {
+            for (uint32_t i = 0; i < original.waitSemaphoreCount; i++)
+            {
+                uint64_t value = 0;
+                if (originalTimeline != nullptr && originalTimeline->pWaitSemaphoreValues != nullptr &&
+                    i < originalTimeline->waitSemaphoreValueCount)
+                    value = originalTimeline->pWaitSemaphoreValues[i];
+
+                segment.AddWait(original.pWaitSemaphores[i], original.pWaitDstStageMask[i], value);
+            }
+        }
+        else
+        {
+            const auto& previous = interops[k - 1].pending;
+            segment.AddWait(previous.copyBackSemaphore, allCommands, previous.copyBackValue);
+            segment.commandBuffers.push_back(previous.barrierCommandBuffer);
+        }
+
+        for (; nextCommandBuffer <= interops[k].commandBufferIndex; nextCommandBuffer++)
+            segment.commandBuffers.push_back(original.pCommandBuffers[nextCommandBuffer]);
+
+        segment.AddSignal(pending.resourceCopySemaphore, pending.resourceCopyValue);
+        out.push_back(segment.Finalize());
+
+        auto& copyBack = storage.emplace_back();
+        copyBack.AddWait(pending.resourceCopySemaphore, allCommands, pending.d3d12CompleteValue);
+        copyBack.commandBuffers.push_back(pending.copyBackCommandBuffer);
+        copyBack.AddSignal(pending.copyBackSemaphore, pending.copyBackValue);
+        out.push_back(copyBack.Finalize());
+    }
+
+    const auto& last = interops[interopCount - 1].pending;
+
+    auto& tail = storage.emplace_back();
+    tail.AddWait(last.copyBackSemaphore, allCommands, last.copyBackValue);
+    tail.commandBuffers.push_back(last.barrierCommandBuffer);
+    for (; nextCommandBuffer < original.commandBufferCount; nextCommandBuffer++)
+        tail.commandBuffers.push_back(original.pCommandBuffers[nextCommandBuffer]);
+
+    for (uint32_t i = 0; i < original.signalSemaphoreCount; i++)
+    {
+        uint64_t value = 0;
+        if (originalTimeline != nullptr && originalTimeline->pSignalSemaphoreValues != nullptr &&
+            i < originalTimeline->signalSemaphoreValueCount)
+            value = originalTimeline->pSignalSemaphoreValues[i];
+
+        tail.AddSignal(original.pSignalSemaphores[i], value);
+    }
+
+    out.push_back(tail.Finalize());
+}
+
 VkResult Vulkan_wDx12::hk_vkQueueSubmit(VkQueue queue, uint32_t submitCount, const VkSubmitInfo* pSubmits,
                                         VkFence fence)
 {
-    if (pSubmits == nullptr || o_vkQueueSubmit == nullptr)
+    if (o_vkQueueSubmit == nullptr)
     {
         LOG_ERROR("Invalid parameters to hk_vkQueueSubmit");
         return VK_ERROR_INITIALIZATION_FAILED;
@@ -6289,349 +6366,235 @@ VkResult Vulkan_wDx12::hk_vkQueueSubmit(VkQueue queue, uint32_t submitCount, con
     LOG_DEBUG("queue: {:X}, submitCount: {}, fence: {:X}", (size_t) queue, submitCount, (size_t) fence);
 #endif
 
-    PendingSubmission pending {};
-    uint32_t submitIndex = UINT32_MAX;
-    uint32_t commandBufferIndex = UINT32_MAX;
+    // A submit without batches is valid and only signals the fence.
+    if (submitCount == 0 || pSubmits == nullptr)
+        return o_vkQueueSubmit(queue, submitCount, pSubmits, fence);
 
-    for (uint32_t i = 0; i < submitCount && submitIndex == UINT32_MAX; i++)
+    std::vector<PendingInterop> interops;
+    for (uint32_t i = 0; i < submitCount; i++)
     {
         for (uint32_t j = 0; j < pSubmits[i].commandBufferCount; j++)
         {
-            if (TakePendingSubmission(pSubmits[i].pCommandBuffers[j], pending))
-            {
-                submitIndex = i;
-                commandBufferIndex = j;
-                break;
-            }
+            PendingInterop interop { i, j };
+            if (TakePendingSubmission(pSubmits[i].pCommandBuffers[j], interop.pending))
+                interops.push_back(interop);
         }
     }
 
-    if (submitIndex == UINT32_MAX)
+    if (interops.empty())
         return o_vkQueueSubmit(queue, submitCount, pSubmits, fence);
 
-    const auto& original = pSubmits[submitIndex];
-
-    // Inspect every node before splitting. Timeline values are cloned; single-device (device 0) group metadata
-    // and an explicitly unprotected submit have exactly the same meaning when omitted from our split submits.
-    const auto extensionInfo = InspectLegacySubmitPNext(original);
-    if (!extensionInfo)
-    {
-        ReportRejectedLegacyPNext(original, extensionInfo);
-        AbortPendingD3D12Wait(pending, "unsupported legacy VkSubmitInfo pNext chain");
-        return o_vkQueueSubmit(queue, submitCount, pSubmits, fence);
-    }
-
-    const auto* originalTimeline = extensionInfo.timeline;
-
-    // Copy timeline values instead of modifying the application's pNext chain. Binary semaphore slots use value 0.
-    std::vector<uint64_t> originalWaitValues(original.waitSemaphoreCount, 0);
-    std::vector<uint64_t> originalSignalValues(original.signalSemaphoreCount, 0);
-    if (originalTimeline != nullptr)
-    {
-        if (originalTimeline->pWaitSemaphoreValues != nullptr)
-        {
-            auto count = std::min(original.waitSemaphoreCount, originalTimeline->waitSemaphoreValueCount);
-            std::copy_n(originalTimeline->pWaitSemaphoreValues, count, originalWaitValues.data());
-        }
-
-        if (originalTimeline->pSignalSemaphoreValues != nullptr)
-        {
-            auto count = std::min(original.signalSemaphoreCount, originalTimeline->signalSemaphoreValueCount);
-            std::copy_n(originalTimeline->pSignalSemaphoreValues, count, originalSignalValues.data());
-        }
-    }
-
-    std::vector<VkCommandBuffer> originalCommandBuffers(original.pCommandBuffers,
-                                                        original.pCommandBuffers + commandBufferIndex + 1);
-
-    VkSemaphore resourceCopySemaphore = pending.resourceCopySemaphore;
-    uint64_t resourceCopyValue = pending.resourceCopyValue;
-
-    VkTimelineSemaphoreSubmitInfo originalTimelineCopy {};
-    originalTimelineCopy.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
-    originalTimelineCopy.waitSemaphoreValueCount = original.waitSemaphoreCount;
-    originalTimelineCopy.pWaitSemaphoreValues = originalWaitValues.empty() ? nullptr : originalWaitValues.data();
-    originalTimelineCopy.signalSemaphoreValueCount = 1;
-    originalTimelineCopy.pSignalSemaphoreValues = &resourceCopyValue;
-
-    // The application-owned extension chain is untouched; only the explicitly verified-equivalent single-device
-    // group/unprotected flags are omitted from the temporary split submits.
-    originalTimelineCopy.pNext = nullptr;
-
-    VkSubmitInfo modifiedOriginal = original;
-    modifiedOriginal.pNext = &originalTimelineCopy;
-    modifiedOriginal.commandBufferCount = static_cast<uint32_t>(originalCommandBuffers.size());
-    modifiedOriginal.pCommandBuffers = originalCommandBuffers.data();
-    modifiedOriginal.signalSemaphoreCount = 1;
-    modifiedOriginal.pSignalSemaphores = &resourceCopySemaphore;
-
-    VkSemaphore copyBackWaitSemaphore = pending.resourceCopySemaphore;
-    VkSemaphore copyBackSignalSemaphore = pending.copyBackSemaphore;
-    VkPipelineStageFlags copyBackWaitStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    uint64_t d3d12CompleteValue = pending.d3d12CompleteValue;
-    uint64_t copyBackValue = pending.copyBackValue;
-
-    VkTimelineSemaphoreSubmitInfo copyBackTimeline {};
-    copyBackTimeline.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
-    copyBackTimeline.waitSemaphoreValueCount = 1;
-    copyBackTimeline.pWaitSemaphoreValues = &d3d12CompleteValue;
-    copyBackTimeline.signalSemaphoreValueCount = 1;
-    copyBackTimeline.pSignalSemaphoreValues = &copyBackValue;
-
-    VkSubmitInfo copyBackSubmit {};
-    copyBackSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    copyBackSubmit.pNext = &copyBackTimeline;
-    copyBackSubmit.waitSemaphoreCount = 1;
-    copyBackSubmit.pWaitSemaphores = &copyBackWaitSemaphore;
-    copyBackSubmit.pWaitDstStageMask = &copyBackWaitStage;
-    copyBackSubmit.commandBufferCount = 1;
-    copyBackSubmit.pCommandBuffers = &pending.copyBackCommandBuffer;
-    copyBackSubmit.signalSemaphoreCount = 1;
-    copyBackSubmit.pSignalSemaphores = &copyBackSignalSemaphore;
-
-    std::vector<VkCommandBuffer> syncCommandBuffers;
-    syncCommandBuffers.reserve(1 + original.commandBufferCount - commandBufferIndex - 1);
-    syncCommandBuffers.push_back(pending.barrierCommandBuffer);
-    for (uint32_t i = commandBufferIndex + 1; i < original.commandBufferCount; i++)
-        syncCommandBuffers.push_back(original.pCommandBuffers[i]);
-
-    VkSemaphore syncWaitSemaphore = pending.copyBackSemaphore;
-    VkPipelineStageFlags syncWaitStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-
-    VkTimelineSemaphoreSubmitInfo syncTimeline {};
-    syncTimeline.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
-    syncTimeline.waitSemaphoreValueCount = 1;
-    syncTimeline.pWaitSemaphoreValues = &copyBackValue;
-    syncTimeline.signalSemaphoreValueCount = original.signalSemaphoreCount;
-    syncTimeline.pSignalSemaphoreValues = originalSignalValues.empty() ? nullptr : originalSignalValues.data();
-
-    VkSubmitInfo syncSubmit {};
-    syncSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    syncSubmit.pNext = &syncTimeline;
-    syncSubmit.waitSemaphoreCount = 1;
-    syncSubmit.pWaitSemaphores = &syncWaitSemaphore;
-    syncSubmit.pWaitDstStageMask = &syncWaitStage;
-    syncSubmit.commandBufferCount = static_cast<uint32_t>(syncCommandBuffers.size());
-    syncSubmit.pCommandBuffers = syncCommandBuffers.data();
-    syncSubmit.signalSemaphoreCount = original.signalSemaphoreCount;
-    syncSubmit.pSignalSemaphores = original.pSignalSemaphores;
-
+    std::deque<LegacySplitSubmit> storage;
     std::vector<VkSubmitInfo> finalSubmits;
-    finalSubmits.reserve(submitCount + 2);
+    finalSubmits.reserve(submitCount + interops.size() * 2);
+    std::vector<PendingInterop> injected;
+
+    size_t next = 0;
     for (uint32_t i = 0; i < submitCount; i++)
     {
-        if (i == submitIndex)
-        {
-            finalSubmits.push_back(modifiedOriginal);
-            finalSubmits.push_back(copyBackSubmit);
-            finalSubmits.push_back(syncSubmit);
-        }
-        else
+        const size_t first = next;
+        while (next < interops.size() && interops[next].submitIndex == i)
+            next++;
+
+        if (first == next)
         {
             finalSubmits.push_back(pSubmits[i]);
+            continue;
+        }
+
+        // Inspect every node before splitting. Timeline values are cloned; single-device (device 0) group metadata
+        // and an explicitly unprotected submit have exactly the same meaning when omitted from our split submits.
+        const auto extensionInfo = InspectLegacySubmitPNext(pSubmits[i]);
+        if (!extensionInfo)
+        {
+            ReportRejectedLegacyPNext(pSubmits[i], extensionInfo);
+            AbortPendingD3D12Waits(interops.data() + first, next - first,
+                                   "unsupported legacy VkSubmitInfo pNext chain");
+            finalSubmits.push_back(pSubmits[i]);
+            continue;
+        }
+
+        AppendLegacyInteropSubmits(pSubmits[i], extensionInfo.timeline, interops.data() + first, next - first, storage,
+                                   finalSubmits);
+
+        for (size_t k = first; k < next; k++)
+        {
+            LOG_DEBUG("Injected Vulkan w/Dx12 legacy submit for command buffer {:X}",
+                      (size_t) interops[k].pending.submitCommandBuffer);
+            injected.push_back(interops[k]);
         }
     }
 
-    LOG_DEBUG("Injected Vulkan w/Dx12 legacy submit for command buffer {:X}", (size_t) pending.submitCommandBuffer);
     auto result = o_vkQueueSubmit(queue, static_cast<uint32_t>(finalSubmits.size()), finalSubmits.data(), fence);
-    if (result != VK_SUCCESS)
+    if (result != VK_SUCCESS && !injected.empty())
     {
         LOG_ERROR("vkQueueSubmit failed after Vulkan w/Dx12 injection: {}", magic_enum::enum_name(result));
-        AbortPendingD3D12Wait(pending, "vkQueueSubmit failed");
+        AbortPendingD3D12Waits(injected.data(), injected.size(), "vkQueueSubmit failed");
     }
 
     return result;
 }
 
-template <typename SubmitFn>
-static VkResult Submit2WithDx12Interop(SubmitFn originalSubmit, VkQueue queue, uint32_t submitCount,
-                                       const VkSubmitInfo2* pSubmits, VkFence fence,
-                                       const Vulkan_wDx12::PendingSubmission& pending, uint32_t submitIndex,
-                                       uint32_t commandBufferIndex)
+// Same split layout as AppendLegacyInteropSubmits.
+static void AppendSubmit2InteropSubmits(const VkSubmitInfo2& original, const PendingInterop* interops,
+                                        size_t interopCount, std::deque<Submit2SplitSubmit>& storage,
+                                        std::vector<VkSubmitInfo2>& out)
 {
-    const auto& original = pSubmits[submitIndex];
+    uint32_t nextCommandBuffer = 0;
 
-    if (original.pNext != nullptr || original.flags != 0)
+    for (size_t k = 0; k < interopCount; k++)
     {
-        AbortPendingD3D12Wait(pending, original.pNext != nullptr ? "unsupported VkSubmitInfo2 pNext chain"
-                                                                 : "non-zero VkSubmitInfo2 flags are unsupported");
-        return originalSubmit(queue, submitCount, pSubmits, fence);
-    }
+        const auto& pending = interops[k].pending;
 
-    std::vector<VkCommandBufferSubmitInfo> originalCommandBuffers;
-    originalCommandBuffers.reserve(commandBufferIndex + 1);
-    for (uint32_t i = 0; i <= commandBufferIndex; i++)
-        originalCommandBuffers.push_back(original.pCommandBufferInfos[i]);
-
-    VkSemaphoreSubmitInfo resourceCopySignal {};
-    resourceCopySignal.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-    resourceCopySignal.semaphore = pending.resourceCopySemaphore;
-    resourceCopySignal.value = pending.resourceCopyValue;
-    resourceCopySignal.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-
-    VkSubmitInfo2 modifiedOriginal = original;
-    modifiedOriginal.commandBufferInfoCount = static_cast<uint32_t>(originalCommandBuffers.size());
-    modifiedOriginal.pCommandBufferInfos = originalCommandBuffers.data();
-    modifiedOriginal.signalSemaphoreInfoCount = 1;
-    modifiedOriginal.pSignalSemaphoreInfos = &resourceCopySignal;
-
-    VkSemaphoreSubmitInfo copyBackWait {};
-    copyBackWait.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-    copyBackWait.semaphore = pending.resourceCopySemaphore;
-    copyBackWait.value = pending.d3d12CompleteValue;
-    copyBackWait.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-
-    VkCommandBufferSubmitInfo copyBackCommand {};
-    copyBackCommand.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-    copyBackCommand.commandBuffer = pending.copyBackCommandBuffer;
-
-    VkSemaphoreSubmitInfo copyBackSignal {};
-    copyBackSignal.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-    copyBackSignal.semaphore = pending.copyBackSemaphore;
-    copyBackSignal.value = pending.copyBackValue;
-    copyBackSignal.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-
-    VkSubmitInfo2 copyBackSubmit {};
-    copyBackSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-    copyBackSubmit.flags = original.flags;
-    copyBackSubmit.waitSemaphoreInfoCount = 1;
-    copyBackSubmit.pWaitSemaphoreInfos = &copyBackWait;
-    copyBackSubmit.commandBufferInfoCount = 1;
-    copyBackSubmit.pCommandBufferInfos = &copyBackCommand;
-    copyBackSubmit.signalSemaphoreInfoCount = 1;
-    copyBackSubmit.pSignalSemaphoreInfos = &copyBackSignal;
-
-    std::vector<VkCommandBufferSubmitInfo> syncCommandBuffers;
-    syncCommandBuffers.reserve(1 + original.commandBufferInfoCount - commandBufferIndex - 1);
-
-    VkCommandBufferSubmitInfo barrierCommand {};
-    barrierCommand.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-    barrierCommand.commandBuffer = pending.barrierCommandBuffer;
-    syncCommandBuffers.push_back(barrierCommand);
-
-    for (uint32_t i = commandBufferIndex + 1; i < original.commandBufferInfoCount; i++)
-        syncCommandBuffers.push_back(original.pCommandBufferInfos[i]);
-
-    VkSemaphoreSubmitInfo syncWait {};
-    syncWait.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-    syncWait.semaphore = pending.copyBackSemaphore;
-    syncWait.value = pending.copyBackValue;
-    syncWait.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-
-    std::vector<VkSemaphoreSubmitInfo> originalSignals;
-    originalSignals.reserve(original.signalSemaphoreInfoCount);
-    for (uint32_t i = 0; i < original.signalSemaphoreInfoCount; i++)
-        originalSignals.push_back(original.pSignalSemaphoreInfos[i]);
-
-    VkSubmitInfo2 syncSubmit {};
-    syncSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-    syncSubmit.flags = original.flags;
-    syncSubmit.waitSemaphoreInfoCount = 1;
-    syncSubmit.pWaitSemaphoreInfos = &syncWait;
-    syncSubmit.commandBufferInfoCount = static_cast<uint32_t>(syncCommandBuffers.size());
-    syncSubmit.pCommandBufferInfos = syncCommandBuffers.data();
-    syncSubmit.signalSemaphoreInfoCount = static_cast<uint32_t>(originalSignals.size());
-    syncSubmit.pSignalSemaphoreInfos = originalSignals.empty() ? nullptr : originalSignals.data();
-
-    std::vector<VkSubmitInfo2> finalSubmits;
-    finalSubmits.reserve(submitCount + 2);
-    for (uint32_t i = 0; i < submitCount; i++)
-    {
-        if (i == submitIndex)
+        auto& segment = storage.emplace_back();
+        if (k == 0)
         {
-            finalSubmits.push_back(modifiedOriginal);
-            finalSubmits.push_back(copyBackSubmit);
-            finalSubmits.push_back(syncSubmit);
+            segment.waits.assign(original.pWaitSemaphoreInfos,
+                                 original.pWaitSemaphoreInfos + original.waitSemaphoreInfoCount);
         }
         else
         {
+            const auto& previous = interops[k - 1].pending;
+            segment.AddWait(previous.copyBackSemaphore, previous.copyBackValue);
+            segment.AddCommandBuffer(previous.barrierCommandBuffer);
+        }
+
+        for (; nextCommandBuffer <= interops[k].commandBufferIndex; nextCommandBuffer++)
+            segment.commandBuffers.push_back(original.pCommandBufferInfos[nextCommandBuffer]);
+
+        segment.AddSignal(pending.resourceCopySemaphore, pending.resourceCopyValue);
+        out.push_back(segment.Finalize());
+
+        auto& copyBack = storage.emplace_back();
+        copyBack.AddWait(pending.resourceCopySemaphore, pending.d3d12CompleteValue);
+        copyBack.AddCommandBuffer(pending.copyBackCommandBuffer);
+        copyBack.AddSignal(pending.copyBackSemaphore, pending.copyBackValue);
+        out.push_back(copyBack.Finalize());
+    }
+
+    const auto& last = interops[interopCount - 1].pending;
+
+    auto& tail = storage.emplace_back();
+    tail.AddWait(last.copyBackSemaphore, last.copyBackValue);
+    tail.AddCommandBuffer(last.barrierCommandBuffer);
+    for (; nextCommandBuffer < original.commandBufferInfoCount; nextCommandBuffer++)
+        tail.commandBuffers.push_back(original.pCommandBufferInfos[nextCommandBuffer]);
+
+    tail.signals.assign(original.pSignalSemaphoreInfos,
+                        original.pSignalSemaphoreInfos + original.signalSemaphoreInfoCount);
+    out.push_back(tail.Finalize());
+}
+
+template <typename SubmitFn>
+static VkResult Submit2WithDx12Interop(SubmitFn originalSubmit, const char* name, VkQueue queue, uint32_t submitCount,
+                                       const VkSubmitInfo2* pSubmits, VkFence fence,
+                                       const std::vector<PendingInterop>& interops)
+{
+    std::deque<Submit2SplitSubmit> storage;
+    std::vector<VkSubmitInfo2> finalSubmits;
+    finalSubmits.reserve(submitCount + interops.size() * 2);
+    std::vector<PendingInterop> injected;
+
+    size_t next = 0;
+    for (uint32_t i = 0; i < submitCount; i++)
+    {
+        const size_t first = next;
+        while (next < interops.size() && interops[next].submitIndex == i)
+            next++;
+
+        if (first == next)
+        {
             finalSubmits.push_back(pSubmits[i]);
+            continue;
+        }
+
+        const auto& original = pSubmits[i];
+        if (original.pNext != nullptr || original.flags != 0)
+        {
+            AbortPendingD3D12Waits(interops.data() + first, next - first,
+                                   original.pNext != nullptr ? "unsupported VkSubmitInfo2 pNext chain"
+                                                             : "non-zero VkSubmitInfo2 flags are unsupported");
+            finalSubmits.push_back(original);
+            continue;
+        }
+
+        AppendSubmit2InteropSubmits(original, interops.data() + first, next - first, storage, finalSubmits);
+
+        for (size_t k = first; k < next; k++)
+        {
+            LOG_DEBUG("Injected Vulkan w/Dx12 {} for command buffer {:X}", name,
+                      (size_t) interops[k].pending.submitCommandBuffer);
+            injected.push_back(interops[k]);
         }
     }
 
-    return originalSubmit(queue, static_cast<uint32_t>(finalSubmits.size()), finalSubmits.data(), fence);
+    auto result = originalSubmit(queue, static_cast<uint32_t>(finalSubmits.size()), finalSubmits.data(), fence);
+    if (result != VK_SUCCESS && !injected.empty())
+    {
+        LOG_ERROR("{} failed after Vulkan w/Dx12 injection: {}", name, magic_enum::enum_name(result));
+        AbortPendingD3D12Waits(injected.data(), injected.size(), "vkQueueSubmit2 failed");
+    }
+
+    return result;
 }
 
 VkResult Vulkan_wDx12::hk_vkQueueSubmit2(VkQueue queue, uint32_t submitCount, const VkSubmitInfo2* pSubmits,
                                          VkFence fence)
 {
-    if (pSubmits == nullptr || o_vkQueueSubmit2 == nullptr)
+    if (o_vkQueueSubmit2 == nullptr)
     {
         LOG_ERROR("Invalid parameters to hk_vkQueueSubmit2");
         return VK_ERROR_INITIALIZATION_FAILED;
     }
 
-    PendingSubmission pending {};
-    uint32_t submitIndex = UINT32_MAX;
-    uint32_t commandBufferIndex = UINT32_MAX;
+    if (submitCount == 0 || pSubmits == nullptr)
+        return o_vkQueueSubmit2(queue, submitCount, pSubmits, fence);
 
-    for (uint32_t i = 0; i < submitCount && submitIndex == UINT32_MAX; i++)
+    std::vector<PendingInterop> interops;
+    for (uint32_t i = 0; i < submitCount; i++)
     {
         for (uint32_t j = 0; j < pSubmits[i].commandBufferInfoCount; j++)
         {
-            if (TakePendingSubmission(pSubmits[i].pCommandBufferInfos[j].commandBuffer, pending))
-            {
-                submitIndex = i;
-                commandBufferIndex = j;
-                break;
-            }
+            PendingInterop interop { i, j };
+            if (TakePendingSubmission(pSubmits[i].pCommandBufferInfos[j].commandBuffer, interop.pending))
+                interops.push_back(interop);
         }
     }
 
-    if (submitIndex == UINT32_MAX)
+    if (interops.empty())
         return o_vkQueueSubmit2(queue, submitCount, pSubmits, fence);
 
-    LOG_DEBUG("Injected Vulkan w/Dx12 submit2 for command buffer {:X}", (size_t) pending.submitCommandBuffer);
-    auto result = Submit2WithDx12Interop(o_vkQueueSubmit2, queue, submitCount, pSubmits, fence, pending, submitIndex,
-                                         commandBufferIndex);
-    if (result != VK_SUCCESS)
-    {
-        LOG_ERROR("vkQueueSubmit2 failed after Vulkan w/Dx12 injection: {}", magic_enum::enum_name(result));
-        AbortPendingD3D12Wait(pending, "vkQueueSubmit2 failed");
-    }
-
-    return result;
+    return Submit2WithDx12Interop(o_vkQueueSubmit2, "vkQueueSubmit2", queue, submitCount, pSubmits, fence, interops);
 }
 
 VkResult Vulkan_wDx12::hk_vkQueueSubmit2KHR(VkQueue queue, uint32_t submitCount, const VkSubmitInfo2* pSubmits,
                                             VkFence fence)
 {
-    if (pSubmits == nullptr || o_vkQueueSubmit2KHR == nullptr)
+    if (o_vkQueueSubmit2KHR == nullptr)
     {
         LOG_ERROR("Invalid parameters to hk_vkQueueSubmit2KHR");
         return VK_ERROR_INITIALIZATION_FAILED;
     }
 
-    PendingSubmission pending {};
-    uint32_t submitIndex = UINT32_MAX;
-    uint32_t commandBufferIndex = UINT32_MAX;
+    if (submitCount == 0 || pSubmits == nullptr)
+        return o_vkQueueSubmit2KHR(queue, submitCount, pSubmits, fence);
 
-    for (uint32_t i = 0; i < submitCount && submitIndex == UINT32_MAX; i++)
+    std::vector<PendingInterop> interops;
+    for (uint32_t i = 0; i < submitCount; i++)
     {
         for (uint32_t j = 0; j < pSubmits[i].commandBufferInfoCount; j++)
         {
-            if (TakePendingSubmission(pSubmits[i].pCommandBufferInfos[j].commandBuffer, pending))
-            {
-                submitIndex = i;
-                commandBufferIndex = j;
-                break;
-            }
+            PendingInterop interop { i, j };
+            if (TakePendingSubmission(pSubmits[i].pCommandBufferInfos[j].commandBuffer, interop.pending))
+                interops.push_back(interop);
         }
     }
 
-    if (submitIndex == UINT32_MAX)
+    if (interops.empty())
         return o_vkQueueSubmit2KHR(queue, submitCount, pSubmits, fence);
 
-    LOG_DEBUG("Injected Vulkan w/Dx12 submit2KHR for command buffer {:X}", (size_t) pending.submitCommandBuffer);
-    auto result = Submit2WithDx12Interop(o_vkQueueSubmit2KHR, queue, submitCount, pSubmits, fence, pending, submitIndex,
-                                         commandBufferIndex);
-    if (result != VK_SUCCESS)
-    {
-        LOG_ERROR("vkQueueSubmit2KHR failed after Vulkan w/Dx12 injection: {}", magic_enum::enum_name(result));
-        AbortPendingD3D12Wait(pending, "vkQueueSubmit2KHR failed");
-    }
-
-    return result;
+    return Submit2WithDx12Interop(o_vkQueueSubmit2KHR, "vkQueueSubmit2KHR", queue, submitCount, pSubmits, fence,
+                                  interops);
 }
 
 VkResult Vulkan_wDx12::hk_vkBeginCommandBuffer(VkCommandBuffer commandBuffer,

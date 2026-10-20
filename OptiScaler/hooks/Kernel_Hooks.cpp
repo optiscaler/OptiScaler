@@ -5,14 +5,13 @@
 #include "Streamline_Hooks.h"
 #include "LibraryLoad_Hooks.h"
 
-#include <fsr4/FSR4ModelSelection.h>
-
 #include <Util.h>
 #include <State.h>
 #include <Config.h>
 
 #include <cwctype>
 #include <misc/IdentifyGpu.h>
+#include <fsr4/FSR4DriverProvider.h>
 
 #include "Hook_Utils.h"
 #include <proxies/XeLL_Proxy.h>
@@ -181,6 +180,23 @@ HMODULE WINAPI KernelHooks::hk_K32_GetModuleHandleW(LPCWSTR lpModuleName)
             {
                 LOG_INFO("giving a fake HMODULE for amdxc64.dll");
                 return amdxc64Mark;
+            }
+
+            return original;
+        }
+
+        // FSR 4.0.0 and 4.0.1 in amdxcffx64 only hand out their upscaler when this dll is loaded and signed,
+        // the driver dll is signed and Opti uses newer FFX dlls, so it stands in when the driver asks
+        if (_wcsicmp(lpModuleName, L"amd_fidelityfx_dx12.dll") == 0)
+        {
+            auto original = o_K32_GetModuleHandleW(lpModuleName);
+            auto driverModule = FSR4DriverProvider::LoadedModule();
+
+            if (original == nullptr && driverModule != nullptr &&
+                Util::GetCallerModule(_ReturnAddress()) == driverModule)
+            {
+                LOG_DEBUG("Giving amdxcffx64 its own HMODULE for amd_fidelityfx_dx12.dll");
+                return driverModule;
             }
 
             return original;

@@ -2,6 +2,8 @@
 #include "FrameLimit.h"
 
 #include "Config.h"
+#include "State.h"
+#include <framegen/IFGFeature.h>
 // #include "hooks/D3D11Hooks.h"
 
 // https://learn.microsoft.com/en-us/windows/win32/sync/using-waitable-timer-objects
@@ -51,14 +53,33 @@ inline int FrameLimit::combined_sleep(int64_t ns)
     return status;
 }
 
+float FrameLimit::targetFps()
+{
+    auto& state = State::Instance();
+    auto fpsLimit = Config::Instance()->FramerateLimit.value_or_default();
+
+    if (auto fg = state.currentFG; fg != nullptr && fg->IsActive() && !fg->IsPaused() &&
+                                   state.activeFgOutput == FGOutput::XeFG && state.xefgDynamicCapFps > 0.0f &&
+                                   (fpsLimit <= 0.0f || state.xefgDynamicCapFps < fpsLimit))
+    {
+        return state.xefgDynamicCapFps;
+    }
+
+    return fpsLimit;
+}
+
 void FrameLimit::sleep(bool fgActive)
 {
-    if (auto fpsCap = Config::Instance()->FramerateLimit.value_or_default(); fpsCap != 0.0f)
+    if (auto fpsCap = targetFps(); fpsCap != 0.0f)
     {
         uint64_t min_interval_us = std::clamp((uint64_t) (1'000'000 / fpsCap), 0ULL, 100'000'000ULL);
 
+        // The limit counts presented frames, the real frames come once per batch
         if (fgActive)
-            min_interval_us *= 2;
+        {
+            auto fg = State::Instance().CurrentFG();
+            min_interval_us *= fg != nullptr ? fg->GetInterpolatedFrameCount() + 1 : 2;
+        }
 
         static uint64_t previous_frame_time = 0;
         uint64_t current_time = Util::GetTimestamp();

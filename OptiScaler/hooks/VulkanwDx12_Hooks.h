@@ -899,3 +899,101 @@ class Vulkan_wDx12
     static PFN_vkVoidFunction GetInstanceProcAddr(const PFN_vkVoidFunction original, const char* pName);
     static void EndCmdBuffer(VkCommandBuffer commandBuffer);
 };
+
+// A single queue submit can carry the Evaluate command buffers of several upscaler instances (e.g. split screen),
+// so every pending transaction found in the call is collected and gets its own split.
+struct PendingInterop
+{
+    uint32_t submitIndex = 0;
+    uint32_t commandBufferIndex = 0;
+    Vulkan_wDx12::PendingSubmission pending {};
+};
+
+// Storage for one split VkSubmitInfo. Kept in a deque so the pointers inside stay valid while more are appended.
+struct LegacySplitSubmit
+{
+    std::vector<VkSemaphore> waitSemaphores;
+    std::vector<VkPipelineStageFlags> waitStages;
+    std::vector<uint64_t> waitValues;
+    std::vector<VkCommandBuffer> commandBuffers;
+    std::vector<VkSemaphore> signalSemaphores;
+    std::vector<uint64_t> signalValues;
+    VkTimelineSemaphoreSubmitInfo timeline {};
+    VkSubmitInfo submit {};
+
+    void AddWait(VkSemaphore semaphore, VkPipelineStageFlags stage, uint64_t value)
+    {
+        waitSemaphores.push_back(semaphore);
+        waitStages.push_back(stage);
+        waitValues.push_back(value);
+    }
+
+    void AddSignal(VkSemaphore semaphore, uint64_t value)
+    {
+        signalSemaphores.push_back(semaphore);
+        signalValues.push_back(value);
+    }
+
+    const VkSubmitInfo& Finalize()
+    {
+        timeline.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+        timeline.waitSemaphoreValueCount = static_cast<uint32_t>(waitValues.size());
+        timeline.pWaitSemaphoreValues = waitValues.empty() ? nullptr : waitValues.data();
+        timeline.signalSemaphoreValueCount = static_cast<uint32_t>(signalValues.size());
+        timeline.pSignalSemaphoreValues = signalValues.empty() ? nullptr : signalValues.data();
+
+        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit.pNext = &timeline;
+        submit.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.size());
+        submit.pWaitSemaphores = waitSemaphores.empty() ? nullptr : waitSemaphores.data();
+        submit.pWaitDstStageMask = waitStages.empty() ? nullptr : waitStages.data();
+        submit.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
+        submit.pCommandBuffers = commandBuffers.empty() ? nullptr : commandBuffers.data();
+        submit.signalSemaphoreCount = static_cast<uint32_t>(signalSemaphores.size());
+        submit.pSignalSemaphores = signalSemaphores.empty() ? nullptr : signalSemaphores.data();
+        return submit;
+    }
+};
+
+// Storage for one split VkSubmitInfo2. Kept in a deque so the pointers inside stay valid while more are appended.
+struct Submit2SplitSubmit
+{
+    std::vector<VkSemaphoreSubmitInfo> waits;
+    std::vector<VkCommandBufferSubmitInfo> commandBuffers;
+    std::vector<VkSemaphoreSubmitInfo> signals;
+    VkSubmitInfo2 submit {};
+
+    void AddWait(VkSemaphore semaphore, uint64_t value) { waits.push_back(MakeSemaphoreInfo(semaphore, value)); }
+    void AddSignal(VkSemaphore semaphore, uint64_t value) { signals.push_back(MakeSemaphoreInfo(semaphore, value)); }
+
+    void AddCommandBuffer(VkCommandBuffer commandBuffer)
+    {
+        VkCommandBufferSubmitInfo info {};
+        info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+        info.commandBuffer = commandBuffer;
+        commandBuffers.push_back(info);
+    }
+
+    const VkSubmitInfo2& Finalize()
+    {
+        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+        submit.waitSemaphoreInfoCount = static_cast<uint32_t>(waits.size());
+        submit.pWaitSemaphoreInfos = waits.empty() ? nullptr : waits.data();
+        submit.commandBufferInfoCount = static_cast<uint32_t>(commandBuffers.size());
+        submit.pCommandBufferInfos = commandBuffers.empty() ? nullptr : commandBuffers.data();
+        submit.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
+        submit.pSignalSemaphoreInfos = signals.empty() ? nullptr : signals.data();
+        return submit;
+    }
+
+  private:
+    static VkSemaphoreSubmitInfo MakeSemaphoreInfo(VkSemaphore semaphore, uint64_t value)
+    {
+        VkSemaphoreSubmitInfo info {};
+        info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        info.semaphore = semaphore;
+        info.value = value;
+        info.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        return info;
+    }
+};

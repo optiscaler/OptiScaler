@@ -13,6 +13,7 @@
 #include <imgui/ImGuiNotify.hpp>
 #include <shaders/reproject/mouseInputs/InputCollection.h>
 #include <low_latency/input/input_common.h>
+#include <misc/FrameLimit.h>
 
 static inline uint64_t _lastFrameId[20] = { 0 };
 static inline IUnknown* _lastDev[20] = { 0 };
@@ -734,7 +735,8 @@ void ReflexHooks::update(bool fgActive, bool isVulkan)
     if (!State::Instance().reflexLimitsFps)
         return;
 
-    float currentFps = Config::Instance()->FramerateLimit.value_or_default();
+    // The FPS limit, or XeFG's Dynamic MFG target while it runs as a cap
+    float currentFps = FrameLimit::targetFps();
     static uint8_t lastFgNumFramesToGenerate = 0;
 
     if (lastFgNumFramesToGenerate != _FgNumFramesToGenerate)

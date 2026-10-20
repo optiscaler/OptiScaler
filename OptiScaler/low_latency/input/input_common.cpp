@@ -12,6 +12,7 @@
 #include <low_latency/low_latency_tech/ll_antilag_vk.h>
 #include <low_latency/low_latency_tech/ll_fps_limiter.h>
 #include <hooks/Vulkan_Hooks.h>
+#include <misc/FrameLimit.h>
 #include <inputs/FG/XeFG_Inputs_Dx12.h>
 #include <framegen/IFGFeature_Dx12.h>
 #include <nvapi/fakenvapi.h>
@@ -614,9 +615,15 @@ InputResult InputCommon::sleep(const InputContext& inputContext, IUnknown* pDevi
     presents_without_input = 0;
 
     if (auto current_tech = currently_active_tech.load())
+    {
+        const auto start = std::chrono::steady_clock::now();
         current_tech->sleep(frame_id);
+        last_sleep_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    }
     else
+    {
         return InputResult::NoReadyOutput;
+    }
 
     return InputResult::Ok;
 }
@@ -709,8 +716,10 @@ InputResult InputCommon::set_async_marker(const InputContext& inputContext, ID3D
     if (inputContext.caller != activeInput && !inputContext.localContext)
         return InputResult::UsingDifferentInput;
 
-    if (!currently_active_tech.load()) // can't init using ID3D12CommandQueue, can only check if available
-        return InputResult::LowLatencyUpdateFail;
+    // Can't init using ID3D12CommandQueue, can only check if available. Opti's own contexts mark frames whether or not
+    // the game runs a low latency tech, without an output their markers have nowhere to go.
+    if (!currently_active_tech.load())
+        return inputContext.localContext ? InputResult::Ok : InputResult::LowLatencyUpdateFail;
 
     if (!marker_supported(inputContext.markerMode, marker_params.marker_type))
         return InputResult::InputNotSupported;
@@ -1311,7 +1320,8 @@ void InputCommon::update()
     bool active = false;
     ++present_count;
 
-    auto fpsLimit = Config::Instance()->FramerateLimit.value_or_default();
+    // The FPS limit, or XeFG's Dynamic MFG target while it runs as a cap
+    auto fpsLimit = FrameLimit::targetFps();
 
     // The game's XeFG with its own XeLL, only OptiScaler's FPS limit goes to it. XeLL knows the generated frames.
     if (InputXeLL::IsNative())
