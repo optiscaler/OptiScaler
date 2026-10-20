@@ -188,6 +188,15 @@
     <ClInclude Include="State.h">
       <Filter>Config</Filter>
     </ClInclude>
+    <ClInclude Include="shaders\auto_exposure\AE_Common.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\auto_exposure\AE_Dx12.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\auto_exposure\precompile\AE_Shader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="shaders\bias\Bias_Common.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1278,6 +1287,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="shaders\bias\Bias_Dx11.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="shaders\auto_exposure\AE_Dx12.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="shaders\bias\Bias_Dx12.cpp">
