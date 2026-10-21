@@ -289,6 +289,7 @@ bool Config::Reload(std::filesystem::path iniPath)
                 Fsr4Preset.set_from_config(setting);
 
             Fsr4Model.set_from_config(readEnum<FSR4Model>("FSR", "Fsr4Model"));
+            Fsr4DirectMotionVectorsVk.set_from_config(readBool("FSR", "Fsr4DirectMotionVectorsVk"));
 
             FsrNonLinearColorSpace.set_from_config(readBool("FSR", "FsrNonLinearColorSpace"));
             FsrNonLinearPQ.set_from_config(readBool("FSR", "FsrNonLinearPQ"));
@@ -1174,6 +1175,8 @@ bool Config::SaveIni()
         ini.SetValue("FSR", "Fsr4GpuSupport", GetIntValue(Instance()->Fsr4GpuSupport.value_for_config()).c_str());
         ini.SetValue("FSR", "Fsr4Preset", GetIntValue(Instance()->Fsr4Preset.value_for_config()).c_str());
         ini.SetValue("FSR", "Fsr4Model", GetIntValue(Instance()->Fsr4Model.value_for_config()).c_str());
+        ini.SetValue("FSR", "Fsr4DirectMotionVectorsVk",
+                     GetBoolValue(Instance()->Fsr4DirectMotionVectorsVk.value_for_config()).c_str());
         ini.SetValue("FSR", "Fsr4EnableWatermark",
                      GetBoolValue(Instance()->Fsr4EnableWatermark.value_for_config()).c_str());
         ini.SetValue("FSR", "Fsr4DoNotLoadAmdxc64",

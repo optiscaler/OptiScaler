@@ -6,6 +6,7 @@
 #include "nvsdk_ngx_vk.h"
 #include "MathUtils.h"
 #include <fsr4/FSR4DriverProviderVk.h>
+#include <fsr4/FSR4MotionVectorViewsVk.h>
 
 using namespace OptiMath;
 
@@ -298,7 +299,8 @@ bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Param
         return false;
     }
 
-    NVSDK_NGX_Resource_VK* paramVelocity;
+    bool directMotionVectors = false;
+    NVSDK_NGX_Resource_VK* paramVelocity = nullptr;
     InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, (void**) &paramVelocity);
 
     if (paramVelocity)
@@ -309,8 +311,21 @@ bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Param
         auto mvDesc = ffxApiGetImageResourceDescriptionVKLocal(paramVelocity);
         VkImage mvImage = mvInfo.Image;
 
-        // Normalized 16-bit MV formats get copied into an R16G16_SFLOAT image
-        if (mvInfo.Format == VK_FORMAT_R16G16_SNORM || mvInfo.Format == VK_FORMAT_R16G16_UNORM)
+        directMotionVectors = cfg.Fsr4DirectMotionVectorsVk.value_or_default() &&
+                              FSR4MotionVectorViewsVk::IsEligible(mvInfo.Format, mvInfo.SubresourceRange) &&
+                              mvInfo.Image != VK_NULL_HANDLE && mvInfo.ImageView != VK_NULL_HANDLE &&
+                              _ffx == FSR4DriverProviderVk::Module() &&
+                              FSR4DriverProviderVk::CanUseDirectMotionVectors(Device);
+        if (directMotionVectors)
+        {
+            // NGX ReadWrite indicates storage capability. FSR only samples motion vectors,
+            // so avoid asking the backend to create unused normalized storage views.
+            mvDesc.usage = FFX_API_RESOURCE_USAGE_READ_ONLY;
+        }
+
+        // Keep conversion for SDK providers, unsupported inputs and an explicit opt-out.
+        if (!directMotionVectors &&
+            (mvInfo.Format == VK_FORMAT_R16G16_SNORM || mvInfo.Format == VK_FORMAT_R16G16_UNORM))
         {
             if (!_velocityConvert)
                 _velocityConvert = std::make_unique<VelocityConvert_Vk>("VelocityConvert", Device, PhysicalDevice);
@@ -623,7 +638,13 @@ bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Param
     }
 
     LOG_DEBUG("Dispatch!!");
-    auto result = _ffx->Dispatch(&_context, &params.header);
+    ffxReturnCode_t result;
+    {
+        const auto& mvInfo = paramVelocity->Resource.ImageViewInfo;
+        FSR4MotionVectorViewsVk motionVectorViews(directMotionVectors, Device, mvInfo.Image, mvInfo.Format,
+                                                 mvInfo.SubresourceRange);
+        result = _ffx->Dispatch(&_context, &params.header);
+    }
 
     if (result != FFX_API_RETURN_OK)
     {
