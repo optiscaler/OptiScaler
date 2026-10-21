@@ -219,8 +219,9 @@ HRESULT STDMETHODCALLTYPE AmdExtFfxApi::UpdateFfxApiProvider(void* pData, uint32
     if (effectType == FFXStructType::FG && realFsr4Support != FSR4Support::FP8)
         return E_NOINTERFACE;
 
-    // Frame generation is only given out when enabled through the options
-    ProviderOption frameGeneration { .effect = ProviderEffect::FrameGeneration };
+    // Frame generation and its swapchain are only given out when enabled through the options
+    ProviderOption swapchain { .effect = ProviderEffect::FrameGenerationSwapchain };
+    ProviderOption frameGeneration { .effect = ProviderEffect::FrameGeneration, .next = &swapchain };
     auto useOptions = effectType == FFXStructType::FG || effectType == FFXStructType::Upscaling ||
                       effectType == FFXStructType::SwapchainDX12;
 
