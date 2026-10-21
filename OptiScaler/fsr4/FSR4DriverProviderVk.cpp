@@ -251,7 +251,7 @@ VKAPI_ATTR VkResult VKAPI_CALL CreateDriverShaderModule(VkDevice device, const V
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL CreateDriverImageView(VkDevice device, const VkImageViewCreateInfo* info,
-                                                    const VkAllocationCallbacks* allocator, VkImageView* view)
+                                                     const VkAllocationCallbacks* allocator, VkImageView* view)
 {
     const auto functions = GetDriverDeviceFunctions(device);
     return FSR4MotionVectorViewsVk::CreateImageView(functions.createImageView, device, info, allocator, view);

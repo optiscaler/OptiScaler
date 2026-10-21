@@ -642,7 +642,7 @@ bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Param
     {
         const auto& mvInfo = paramVelocity->Resource.ImageViewInfo;
         FSR4MotionVectorViewsVk motionVectorViews(directMotionVectors, Device, mvInfo.Image, mvInfo.Format,
-                                                 mvInfo.SubresourceRange);
+                                                  mvInfo.SubresourceRange);
         result = _ffx->Dispatch(&_context, &params.header);
     }
 
