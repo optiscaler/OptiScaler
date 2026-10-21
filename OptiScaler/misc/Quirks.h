@@ -451,6 +451,9 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("goweday-steam.exe", GameQuirk::AlwaysCaptureFSRFGSwapchain),
     QUIRK_ENTRY("goweday.exe", GameQuirk::AlwaysCaptureFSRFGSwapchain),
 
+    // BeamNG.drive
+    QUIRK_ENTRY("beamng.drive.x64.exe", GameQuirk::DisableDxgiSpoofing),
+
     // SL spoof enough to unlock everything DLSS/No spoof needed for DLSS inputs
     //
     // The Witcher 3, Alan Wake 2, Crysis 3 Remastered, Marvel's Guardians of the Galaxy, UNCHARTED: Legacy of Thieves
