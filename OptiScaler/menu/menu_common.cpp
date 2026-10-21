@@ -2348,10 +2348,6 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             else
                 ImGui::SetWindowFontScale(fpsScale);
 
-            std::string firstLine = "";
-            std::string secondLine = "";
-            std::string thirdLine = "";
-
             auto fg = state.CurrentFG();
             auto fgText = (fg != nullptr && fg->IsActive() && !fg->IsPaused()) ? (" (" + std::string(fg->Name()) + ")")
                                                                                : std::string();
@@ -2446,131 +2442,110 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                 }
             }
 
-            // Upscale ratio, read every frame so dynamic resolution changes show up immediately
-            std::string ratioPart;
-            if (hasFeature && config->FpsOverlayShowRatio.value_or_default() && currentFeature->RenderWidth() > 0)
+            struct OverlayLine
+            {
+                std::string text;
+                const char* graphId = nullptr;
+                RingBuffer<float, plotWidth>* graphData = nullptr;
+                float graphMax = 0.0f;
+            };
+
+            std::vector<OverlayLine> lines;
+
+            if (overlayType == FpsOverlay_JustFPS)
+                lines.push_back({ fpsPart });
+            else
+                lines.push_back(
+                    { StrFmt("%s | %s%s%s", api.c_str(), fpsPart.c_str(), fgText.c_str(), featurePart.c_str()) });
+
+            if (overlayType >= FpsOverlay_Simple && hasFeature && config->FpsOverlayShowRatio.value_or_default() &&
+                currentFeature->RenderWidth() > 0)
             {
                 const float ratio = (float) currentFeature->TargetWidth() / (float) currentFeature->RenderWidth();
 
-                if (overlayType == FpsOverlay_JustFPS)
-                    ratioPart = StrFmt("| %.2fx", ratio);
-                else
-                    ratioPart = StrFmt(" | %ux%u -> %ux%u (%.2fx)", currentFeature->RenderWidth(),
-                                       currentFeature->RenderHeight(), currentFeature->TargetWidth(),
-                                       currentFeature->TargetHeight(), ratio);
+                lines.push_back({ StrFmt("Upscale: %ux%u -> %ux%u (%.2fx)", currentFeature->RenderWidth(),
+                                         currentFeature->RenderHeight(), currentFeature->TargetWidth(),
+                                         currentFeature->TargetHeight(), ratio) });
             }
 
-            if (overlayType == FpsOverlay_JustFPS)
-                firstLine = StrFmt("%s%s", fpsPart.c_str(), ratioPart.c_str());
-            else
-                firstLine = StrFmt("%s | %s%s%s%s", api.c_str(), fpsPart.c_str(), fgText.c_str(), featurePart.c_str(),
-                                   ratioPart.c_str());
-
-            // Prepare Line 2
-            if (config->FpsOverlayType.value_or_default() >= FpsOverlay_Detailed)
+            if (overlayType >= FpsOverlay_Detailed)
             {
-                if (config->FpsOverlayHorizontal.value_or_default())
+                OverlayLine line { StrFmt("Frame Time: %7.2f ms, Avg: %7.2f ms", state.frameTimes.back(),
+                                          averageFrameTime) };
+
+                if (overlayType >= FpsOverlay_DetailedGraph)
                 {
-                    ImGui::SameLine(0.0f, 0.0f);
-                    ImGui::Text(" | ");
-                    ImGui::SameLine(0.0f, 0.0f);
-                }
-                else
-                {
-                    ImGui::Spacing();
+                    line.graphId = "##FrameTimeGraph";
+                    line.graphData = &gFrameTimes;
+                    line.graphMax = 66.6f;
                 }
 
-                secondLine = StrFmt("Frame Time: %7.2f ms, Avg: %7.2f ms", state.frameTimes.back(), averageFrameTime);
+                lines.push_back(std::move(line));
             }
 
-            // Prepare Line 3
-            if (config->FpsOverlayType.value_or_default() >= FpsOverlay_Full)
+            if (overlayType >= FpsOverlay_Full)
             {
-                thirdLine =
-                    StrFmt("Upscaler Time: %7.2f ms, Avg: %7.2f ms", state.upscaleTimes.back(), averageUpscalerFT);
+                OverlayLine line { StrFmt("Upscaler Time: %7.2f ms, Avg: %7.2f ms", state.upscaleTimes.back(),
+                                          averageUpscalerFT) };
+
+                if (overlayType >= FpsOverlay_FullGraph)
+                {
+                    line.graphId = "##UpscalerFrameTimeGraph";
+                    line.graphData = &gUpscalerTimes;
+                    line.graphMax = 20.0f;
+                }
+
+                lines.push_back(std::move(line));
             }
+
+            const bool horizontal = config->FpsOverlayHorizontal.value_or_default();
 
             ImVec2 plotSize;
-            if (config->FpsOverlayHorizontal.value_or_default())
+            if (horizontal)
             {
                 plotSize = { fpsScale * 150, fpsScale * 16 };
             }
             else
             {
-                // Find the widest text width
-                auto firstSize = ImGui::CalcTextSize(firstLine.c_str());
-                auto secondSize = ImGui::CalcTextSize(secondLine.c_str());
-                auto thirdSize = ImGui::CalcTextSize(thirdLine.c_str());
+                // Graphs match the widest text line
                 auto textWidth = 0.0f;
+                for (const auto& line : lines)
+                    textWidth = std::max(textWidth, ImGui::CalcTextSize(line.text.c_str()).x);
 
-                if (firstSize.x > secondSize.x)
-                    textWidth = firstSize.x > thirdSize.x ? firstSize.x : thirdSize.x;
-                else
-                    textWidth = secondSize.x > thirdSize.x ? secondSize.x : thirdSize.x;
-
-                auto minWidth = fpsScale * 300.0f;
-                auto plotWidth = textWidth < minWidth ? minWidth : textWidth;
-
-                plotSize = { plotWidth, fpsScale * 30 };
+                plotSize = { std::max(textWidth, fpsScale * 300.0f), fpsScale * 30 };
             }
 
             // Draw the overlay
-            ImGui::Text(firstLine.c_str());
-
-            if (config->FpsOverlayType.value_or_default() >= FpsOverlay_Detailed)
+            for (size_t i = 0; i < lines.size(); i++)
             {
-                if (config->FpsOverlayHorizontal.value_or_default())
-                {
-                    ImGui::SameLine(0.0f, 0.0f);
-                    ImGui::Text(" | ");
-                    ImGui::SameLine(0.0f, 0.0f);
-                }
-                else
-                {
-                    ImGui::Spacing();
-                }
+                const auto& line = lines[i];
 
-                ImGui::Text(secondLine.c_str());
-            }
-
-            if (config->FpsOverlayType.value_or_default() >= FpsOverlay_DetailedGraph)
-            {
-                if (config->FpsOverlayHorizontal.value_or_default())
-                    ImGui::SameLine(0.0f, 0.0f);
-
-                // Graph of frame times
-                ImGui::PlotLines(
-                    "##FrameTimeGraph",
-                    [](void* rb, int idx) -> float { return static_cast<RingBuffer<float, plotWidth>*>(rb)->At(idx); },
-                    &gFrameTimes, plotWidth, 0, nullptr, 0.0f, 66.6f, plotSize);
-            }
-
-            if (config->FpsOverlayType.value_or_default() >= FpsOverlay_Full)
-            {
-                if (config->FpsOverlayHorizontal.value_or_default())
+                if (i > 0)
                 {
-                    ImGui::SameLine(0.0f, 0.0f);
-                    ImGui::Text(" | ");
-                    ImGui::SameLine(0.0f, 0.0f);
-                }
-                else
-                {
-                    ImGui::Spacing();
+                    if (horizontal)
+                    {
+                        ImGui::SameLine(0.0f, 0.0f);
+                        ImGui::Text(" | ");
+                        ImGui::SameLine(0.0f, 0.0f);
+                    }
+                    else
+                    {
+                        ImGui::Spacing();
+                    }
                 }
 
-                ImGui::Text(thirdLine.c_str());
-            }
+                ImGui::TextUnformatted(line.text.c_str());
 
-            if (config->FpsOverlayType.value_or_default() >= FpsOverlay_FullGraph)
-            {
-                if (config->FpsOverlayHorizontal.value_or_default())
-                    ImGui::SameLine(0.0f, 0.0f);
+                if (line.graphData != nullptr)
+                {
+                    if (horizontal)
+                        ImGui::SameLine(0.0f, 0.0f);
 
-                // Graph of upscaler times
-                ImGui::PlotLines(
-                    "##UpscalerFrameTimeGraph",
-                    [](void* rb, int idx) -> float { return static_cast<RingBuffer<float, plotWidth>*>(rb)->At(idx); },
-                    &gUpscalerTimes, plotWidth, 0, nullptr, 0.0f, 20.0f, plotSize);
+                    ImGui::PlotLines(
+                        line.graphId, [](void* rb, int idx) -> float
+                        { return static_cast<RingBuffer<float, plotWidth>*>(rb)->At(idx); }, line.graphData, plotWidth,
+                        0, nullptr, 0.0f, line.graphMax, plotSize);
+                }
             }
 
             if (config->FpsOverlayType.value_or_default() >= FpsOverlay_ReflexTimings)
