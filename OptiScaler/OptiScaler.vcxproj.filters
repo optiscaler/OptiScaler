@@ -62,6 +62,9 @@
     <ClInclude Include="upscalers\IFeature.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="upscalers\DynamicResolutionDetector.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="upscalers\IFeature_Vk.h">
       <Filter>Header Files</Filter>
     </ClInclude>

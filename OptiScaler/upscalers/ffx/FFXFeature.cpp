@@ -209,6 +209,10 @@ void FFXFeature::InitFlags()
     if (!LowResMV())
         _contextDesc.flags |= FFX_UPSCALE_ENABLE_DISPLAY_RESOLUTION_MOTION_VECTORS;
 
+    // Without it FSR 4 recreates the network every time the upscale ratio moves to another preset
+    if (DynamicResolution())
+        _contextDesc.flags |= FFX_UPSCALE_ENABLE_DYNAMIC_RESOLUTION;
+
     if (Config::Instance()->FsrDebugView.value_or_default())
     {
         LOG_INFO("Debug view enabled!");

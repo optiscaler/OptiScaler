@@ -208,6 +208,8 @@ static bool CreateDLSSContext(FfxFsr2Context* handle, const FfxFsr2DispatchDescr
     if ((initParams->flags & FFX_FSR2_ENABLE_DISPLAY_RESOLUTION_MOTION_VECTORS) == 0)
         initFlags |= NVSDK_NGX_DLSS_Feature_Flags_MVLowRes;
 
+    State::Instance().dynamicResolution = (initParams->flags & FFX_FSR2_ENABLE_DYNAMIC_RESOLUTION) != 0;
+
     params->Set(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags, initFlags);
 
     params->Set(NVSDK_NGX_Parameter_Width, pExecParams->renderSize.width);

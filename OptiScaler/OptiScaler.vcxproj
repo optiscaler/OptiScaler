@@ -497,6 +497,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="upscalers\IFeature_Dx11.h" />
     <ClInclude Include="upscalers\IFeature_Dx12.h" />
     <ClInclude Include="upscalers\IFeature.h" />
+    <ClInclude Include="upscalers\DynamicResolutionDetector.h" />
     <ClInclude Include="upscalers\IFeature_Vk.h" />
     <ClInclude Include="detours\detours.h" />
     <ClInclude Include="dllmain.h" />

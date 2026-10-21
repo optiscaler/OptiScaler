@@ -186,6 +186,9 @@ class State
     // Reseting on creation of new feature
     std::optional<bool> autoExposure;
 
+    // Passed through from the game's FFX create flags
+    bool dynamicResolution = false;
+
     // FG
     uint64_t fgLastFrame = 0;
 

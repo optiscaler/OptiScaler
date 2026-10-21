@@ -2935,6 +2935,12 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                         currentFeature->TargetWidth(), currentFeature->TargetHeight(),
                         (float) currentFeature->TargetWidth() / (float) currentFeature->RenderWidth());
 
+    if (currentFeature->DynamicResolution())
+    {
+        ImGui::SameLine();
+        ImGui::TextDisabled("(DRS)");
+    }
+
     if (!usesDlssd)
     {
         if (state.newBackend != Upscaler::Reset && state.newBackend != currentBackend)
@@ -6911,6 +6917,20 @@ void MenuCommon::RenderInitFlagsSettings(RenderMenuContext& ctx)
         ShowResetButton(&config->DisplayResolution, "R##4");
 
         ImGui::TableNextColumn();
+        ImGui::BeginDisabled(currentBackend != Upscaler::FFX && currentBackend != Upscaler::FFX_on12);
+
+        if (bool drs = currentFeature->DynamicResolution(); ImGui::Checkbox("Dynamic Res. (DRS)", &drs))
+        {
+            config->DynamicResolution = drs;
+            ReInitUpscaler();
+        }
+        ShowTooltip("Enable if the game uses dynamic resolution\n"
+                    "Prevents FSR 4 from switching models when the render size changes");
+        ShowResetButton(&config->DynamicResolution, "R##5");
+
+        ImGui::EndDisabled();
+
+        ImGui::TableNextColumn();
         auto accessToReactiveMask = currentFeature->AccessToReactiveMask();
         ImGui::BeginDisabled(!accessToReactiveMask);
 
@@ -8614,6 +8634,7 @@ void MenuCommon::RenderStatusInfo(RenderMenuContext& ctx)
             flag("HDR", currentFeature->IsHdr());
             flag("Display res. MV", !currentFeature->LowResMV());
             flag("Jitter cancel.", currentFeature->JitteredMV());
+            flag("Dynamic res.", currentFeature->DynamicResolution());
             flag("Output scaling", config->OutputScalingEnabled.value_or_default());
             flag("Sharp. override", config->OverrideSharpness.value_or_default());
             flag("V-Sync override", config->OverrideVsync.value_or_default());

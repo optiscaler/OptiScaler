@@ -257,6 +257,7 @@ class Config
     CustomOptional<bool, NoDefault> HDR;
     CustomOptional<bool, NoDefault> JitterCancellation;
     CustomOptional<bool, NoDefault> DisplayResolution;
+    CustomOptional<bool, NoDefault> DynamicResolution;
     CustomOptional<bool, NoDefault> DisableReactiveMask;
     CustomOptional<float> DlssReactiveMaskBias { 0.45f };
 

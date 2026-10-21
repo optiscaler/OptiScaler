@@ -113,6 +113,8 @@ static bool CreateDLSSContext(Fsr3::FfxFsr3UpscalerContext* handle,
     if ((initParams->flags & Fsr3::FFX_FSR3UPSCALER_ENABLE_DISPLAY_RESOLUTION_MOTION_VECTORS) == 0)
         initFlags |= NVSDK_NGX_DLSS_Feature_Flags_MVLowRes;
 
+    State::Instance().dynamicResolution = (initParams->flags & Fsr3::FFX_FSR3UPSCALER_ENABLE_DYNAMIC_RESOLUTION) != 0;
+
     params->Set(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags, initFlags);
 
     params->Set(NVSDK_NGX_Parameter_Width, pExecParams->renderSize.width);

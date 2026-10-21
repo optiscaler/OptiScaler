@@ -84,12 +84,23 @@ bool IFeature::SetInitParameters(NVSDK_NGX_Parameter* InParameters)
             _initFlags.AutoExposure = _featureFlags & NVSDK_NGX_DLSS_Feature_Flags_AutoExposure;
         }
 
+        if (Config::Instance()->DynamicResolution.has_value())
+        {
+            LOG_INFO("DynamicResolution flag overrided by user: {}", Config::Instance()->DynamicResolution.value());
+            _initFlags.DynamicResolution = Config::Instance()->DynamicResolution.value();
+        }
+        else
+        {
+            _initFlags.DynamicResolution = State::Instance().dynamicResolution;
+        }
+
         LOG_INFO("Init Flag AutoExposure: {}", _initFlags.AutoExposure);
         LOG_INFO("Init Flag DepthInverted: {}", _initFlags.DepthInverted);
         LOG_INFO("Init Flag IsHdr: {}", _initFlags.IsHdr);
         LOG_INFO("Init Flag JitteredMV: {}", _initFlags.JitteredMV);
         LOG_INFO("Init Flag LowResMV: {}", _initFlags.LowResMV);
         LOG_INFO("Init Flag SharpenEnabled: {}", _initFlags.SharpenEnabled);
+        LOG_INFO("Init Flag DynamicResolution: {}", _initFlags.DynamicResolution);
 
         if (State::Instance().activeFgInput == FGInput::Upscaler)
         {
