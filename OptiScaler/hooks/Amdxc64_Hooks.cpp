@@ -163,6 +163,9 @@ HRESULT STDMETHODCALLTYPE Amdxc64Hooks::hkAmdExtD3DCreateInterface(IUnknown* pOu
         if (o_AmdExtD3DCreateInterface != nullptr && o_amdExtD3DFactory == nullptr)
             o_AmdExtD3DCreateInterface(pOuter, riid, (void**) &o_amdExtD3DFactory);
 
+        if (o_amdExtD3DFactory != nullptr)
+            HookFactory(o_amdExtD3DFactory);
+
         return S_OK;
     }
 
@@ -209,7 +212,154 @@ HRESULT STDMETHODCALLTYPE Amdxc64Hooks::hkAmdExtD3DCreateInterface(IUnknown* pOu
 #endif
 
     else if (o_AmdExtD3DCreateInterface != nullptr)
-        return o_AmdExtD3DCreateInterface(pOuter, riid, ppvObject);
+    {
+        auto result = o_AmdExtD3DCreateInterface(pOuter, riid, ppvObject);
+
+        if (SUCCEEDED(result) && riid == __uuidof(IAmdExtD3DFactory) && *ppvObject != nullptr)
+            HookFactory((IAmdExtD3DFactory*) *ppvObject);
+
+        return result;
+    }
 
     return E_NOINTERFACE;
+}
+
+void Amdxc64Hooks::HookFactory(IAmdExtD3DFactory* factory)
+{
+    if (o_FactoryCreateInterface != nullptr)
+        return;
+
+    auto vtable = *(void***) factory;
+    o_FactoryCreateInterface = (PFN_AmdExtD3DFactory_CreateInterface) vtable[3];
+
+    LOG_DEBUG("Hooking IAmdExtD3DFactory::CreateInterface");
+    DetourTransactionBegin();
+    DetourUpdateThread(GetCurrentThread());
+    DetourAttach(&(PVOID&) o_FactoryCreateInterface, hkFactoryCreateInterface);
+
+    auto detourResult = DetourTransactionCommit();
+    if (detourResult != NO_ERROR)
+    {
+        LOG_ERROR("Failed to attach detour: {:X}", detourResult);
+        o_FactoryCreateInterface = nullptr;
+    }
+}
+
+void Amdxc64Hooks::HookFlipMeter(IAmdExtFlipMeter* flipMeter)
+{
+    if (o_FlipMeterSetConfig != nullptr)
+        return;
+
+    auto vtable = *(void***) flipMeter;
+    o_FlipMeterRelease = (PFN_AmdExtFlipMeter_Release) vtable[2];
+    o_FlipMeterSetConfig = (PFN_AmdExtFlipMeter_Config) vtable[4];
+    o_FlipMeterGetConfig = (PFN_AmdExtFlipMeter_Config) vtable[5];
+
+    LOG_DEBUG("Hooking IAmdExtFlipMeter");
+    DetourTransactionBegin();
+    DetourUpdateThread(GetCurrentThread());
+    DetourAttach(&(PVOID&) o_FlipMeterRelease, hkFlipMeterRelease);
+    DetourAttach(&(PVOID&) o_FlipMeterSetConfig, hkFlipMeterSetConfig);
+    DetourAttach(&(PVOID&) o_FlipMeterGetConfig, hkFlipMeterGetConfig);
+
+    auto detourResult = DetourTransactionCommit();
+    if (detourResult != NO_ERROR)
+    {
+        LOG_ERROR("Failed to attach detour: {:X}", detourResult);
+        o_FlipMeterRelease = nullptr;
+        o_FlipMeterSetConfig = nullptr;
+        o_FlipMeterGetConfig = nullptr;
+    }
+}
+
+HRESULT Amdxc64Hooks::SetFlipMeterConfig(IAmdExtFlipMeter* flipMeter, const AmdExtFlipMeterConfig& requested)
+{
+    // Modify a copy so FSR keeps its requested state and doesn't try to re-apply it
+    auto config = requested;
+    if (Config::Instance()->FSRFGDisableFlipMetering.value_or_default())
+        config.mode = 0;
+
+    auto result = o_FlipMeterSetConfig(flipMeter, &config);
+
+    LOG_INFO("Flip meter requested mode: {}, applied mode: {}, flags: {:X}, result: {:X}", requested.mode, config.mode,
+             config.flags, (UINT) result);
+
+    if (SUCCEEDED(result))
+        State::Instance().amdFlipMeterMode = config.mode;
+
+    return result;
+}
+
+void Amdxc64Hooks::ApplyFlipMeterOverride()
+{
+    std::scoped_lock lock(flipMeterMutex);
+
+    if (flipMeter != nullptr && flipMeterRequested.has_value() && o_FlipMeterSetConfig != nullptr)
+        SetFlipMeterConfig(flipMeter, flipMeterRequested.value());
+}
+
+ULONG STDMETHODCALLTYPE Amdxc64Hooks::hkFlipMeterRelease(IAmdExtFlipMeter* This)
+{
+    std::scoped_lock lock(flipMeterMutex);
+
+    auto refCount = o_FlipMeterRelease(This);
+
+    if (refCount == 0 && This == flipMeter)
+    {
+        LOG_DEBUG("IAmdExtFlipMeter released");
+        flipMeter = nullptr;
+        flipMeterRequested.reset();
+        State::Instance().amdFlipMeterCreated = false;
+        State::Instance().amdFlipMeterMode = 0;
+    }
+
+    return refCount;
+}
+
+HRESULT STDMETHODCALLTYPE Amdxc64Hooks::hkFactoryCreateInterface(IAmdExtD3DFactory* This, IUnknown* pOuter, REFIID riid,
+                                                                 void** ppvObject)
+{
+    auto result = o_FactoryCreateInterface(This, pOuter, riid, ppvObject);
+
+    if (riid == __uuidof(IAmdExtFlipMeter))
+    {
+        LOG_INFO("IAmdExtFlipMeter created for swapchain: {:X}, result: {:X}", (size_t) pOuter, (UINT) result);
+
+        if (SUCCEEDED(result) && *ppvObject != nullptr)
+        {
+            HookFlipMeter((IAmdExtFlipMeter*) *ppvObject);
+
+            std::scoped_lock lock(flipMeterMutex);
+            flipMeter = (IAmdExtFlipMeter*) *ppvObject;
+            flipMeterRequested.reset();
+            State::Instance().amdFlipMeterCreated = true;
+        }
+    }
+
+    return result;
+}
+
+HRESULT STDMETHODCALLTYPE Amdxc64Hooks::hkFlipMeterSetConfig(IAmdExtFlipMeter* This, AmdExtFlipMeterConfig* config)
+{
+    std::scoped_lock lock(flipMeterMutex);
+
+    if (This == flipMeter)
+        flipMeterRequested = *config;
+
+    return SetFlipMeterConfig(This, *config);
+}
+
+// FSR reads the config back when SetConfig fails
+HRESULT STDMETHODCALLTYPE Amdxc64Hooks::hkFlipMeterGetConfig(IAmdExtFlipMeter* This, AmdExtFlipMeterConfig* config)
+{
+    std::scoped_lock lock(flipMeterMutex);
+
+    auto result = o_FlipMeterGetConfig(This, config);
+
+    LOG_DEBUG("Flip meter mode: {}, result: {:X}", config->mode, (UINT) result);
+
+    if (SUCCEEDED(result) && This == flipMeter)
+        State::Instance().amdFlipMeterMode = config->mode;
+
+    return result;
 }

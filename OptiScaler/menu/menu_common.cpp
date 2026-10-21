@@ -40,6 +40,7 @@
 #include <type_traits>
 #include <misc/IdentifyGpu.h>
 #include <hooks/Xell_Hooks.h>
+#include <hooks/Amdxc64_Hooks.h>
 #include <low_latency/input/input_common.h>
 #include <hooks/Vulkan_Hooks.h>
 #include <low_latency/input/input_xell.h>
@@ -4336,78 +4337,78 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             }
             ShowTooltip("Enable Async for better FG performance\nMight cause crashes, especially with HUD Fix!");
 
-            ImGui::SameLine(0.0f, 16.0f);
-
-            bool fgDV = config->FGDebugView.value_or_default();
-            if (ImGui::Checkbox("Debug View##2", &fgDV))
+            if (state.amdFlipMeterCreated)
             {
-                config->FGDebugView = fgDV;
+                ImGui::SameLine(0.0f, 16.0f);
 
-                if (config->IsFGEnabled())
+                bool disableFlipMetering = config->FSRFGDisableFlipMetering.value_or_default();
+                if (ImGui::Checkbox("Disable HW Flip Metering", &disableFlipMetering))
                 {
-                    state.fgChanged = true;
-                    LOG_DEBUG("DebugView set FGChanged");
+                    config->FSRFGDisableFlipMetering = disableFlipMetering;
+                    Amdxc64Hooks::ApplyFlipMeterOverride();
                 }
-            }
-            ShowTooltip("Enable FSR3.1-FG Debug view\n\n"
-                        "Top left: Game Motion Vectors\n"
-                        "Top middle: GMV Depth\n"
-                        "Top right: Optical Flow MV\n"
-                        "Middle: Interpolated frame only\n"
-                        "Bottom left: Disocclusion mask\n"
-                        "Bottom middle: Interpolation source (w/o UI)\n"
-                        "Bottom right: HUDless resource");
+                ShowTooltip("Overrides the AMD hardware flip metering requested by FSR");
 
-            ImGui::SameLine(0.0f, 16.0f);
+                ImGui::SameLine(0.0f, 16.0f);
 
-            if (state.currentFG && state.currentFG->Version().major > 3)
-            {
-                if (bool fgwm = config->FSRFGEnableWatermark.value_or_default();
-                    ImGui::Checkbox("Enable Watermark", &fgwm))
-                {
-                    LOG_DEBUG("FSRFGEnableWatermark set FGWatermark: {}", fgwm);
-                    config->FSRFGEnableWatermark = fgwm;
-                }
+                if (state.amdFlipMeterMode != 0)
+                    ImGui::TextDisabled("(Mode %u)", state.amdFlipMeterMode);
+                else
+                    ImGui::TextDisabled("(Off)");
 
-                ShowTooltip("After changing this option, please Save Settings\n"
-                            "It will be applied on next launch.");
+                ShowTooltip("Flip metering mode applied in the driver\nFSR only requests it in exclusive or "
+                            "borderless fullscreen");
             }
 
             ImGui::Spacing();
 
-            if (auto ch = ScopedCollapsingHeader("Extended FSR FG Settings"); ch.IsHeaderOpen())
+            if (auto ch = ScopedCollapsingHeader("Advanced FSR FG Settings"); ch.IsHeaderOpen())
             {
                 ScopedIndent indent {};
                 ImGui::Spacing();
 
-                ImGui::Checkbox("FG Only Generated", &state.fgOnlyGenerated);
-                ShowTooltip("Display only FSR 3.1 Generated frames");
-
-                ImGui::SameLine(0.0f, 16.0f);
-                auto debugResetLines = config->FGDebugResetLines.value_or_default();
-                if (ImGui::Checkbox("Debug Reset Lines", &debugResetLines))
+                if (ImGui::BeginTable("fsrfgAdvanced", 2, ImGuiTableFlags_SizingStretchSame))
                 {
-                    config->FGDebugResetLines = debugResetLines;
-                    LOG_DEBUG("Enabled set FGDebugLines: {}", debugResetLines);
-                }
-                ShowTooltip("Enables drawing of Interpolation skip lines");
+                    ImGui::TableNextColumn();
+                    if (ConfigCheckbox("Debug View##2", config->FGDebugView,
+                                       "Enable FSR3.1-FG Debug view\n\n"
+                                       "Top left: Game Motion Vectors\n"
+                                       "Top middle: GMV Depth\n"
+                                       "Top right: Optical Flow MV\n"
+                                       "Middle: Interpolated frame only\n"
+                                       "Bottom left: Disocclusion mask\n"
+                                       "Bottom middle: Interpolation source (w/o UI)\n"
+                                       "Bottom right: HUDless resource") &&
+                        config->IsFGEnabled())
+                    {
+                        state.fgChanged = true;
+                        LOG_DEBUG("DebugView set FGChanged");
+                    }
 
-                auto debugTearLines = config->FGDebugTearLines.value_or_default();
-                if (ImGui::Checkbox("Debug Tear Lines", &debugTearLines))
-                {
-                    config->FGDebugTearLines = debugTearLines;
-                    LOG_DEBUG("Enabled set FGDebugLines: {}", debugTearLines);
-                }
-                ShowTooltip("Enables drawing of Tear and Interpolation skip lines");
+                    if (state.currentFG && state.currentFG->Version().major > 3)
+                    {
+                        ImGui::TableNextColumn();
+                        ConfigCheckbox("Enable Watermark", config->FSRFGEnableWatermark, "Enables the FSR FG watermark",
+                                       true);
+                    }
 
-                ImGui::SameLine(0.0f, 16.0f);
-                auto debugPacingLines = config->FGDebugPacingLines.value_or_default();
-                if (ImGui::Checkbox("Debug Pacing Lines", &debugPacingLines))
-                {
-                    config->FGDebugPacingLines = debugPacingLines;
-                    LOG_DEBUG("Enabled set FGDebugLines: {}", debugPacingLines);
+                    ImGui::TableNextColumn();
+                    ImGui::Checkbox("FG Only Generated", &state.fgOnlyGenerated);
+                    ShowTooltip("Display only FSR 3.1 Generated frames");
+
+                    ImGui::TableNextColumn();
+                    ConfigCheckbox("Debug Reset Lines", config->FGDebugResetLines,
+                                   "Enables drawing of Interpolation skip lines");
+
+                    ImGui::TableNextColumn();
+                    ConfigCheckbox("Debug Tear Lines", config->FGDebugTearLines,
+                                   "Enables drawing of Tear and Interpolation skip lines");
+
+                    ImGui::TableNextColumn();
+                    ConfigCheckbox("Debug Pacing Lines", config->FGDebugPacingLines, "Enables drawing of Pacing lines");
+
+                    ImGui::EndTable();
                 }
-                ShowTooltip("Enables drawing of Pacing lines");
 
                 ImGui::Spacing();
                 if (ImGui::TreeNode("FG Rectangle Settings"))

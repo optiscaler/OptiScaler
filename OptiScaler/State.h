@@ -284,6 +284,10 @@ class State
     UINT64 frameCount = 0;
     bool vkAntiLagSupported = false;
 
+    // AMD driver flip metering
+    bool amdFlipMeterCreated = false;
+    uint32_t amdFlipMeterMode = 0;
+
     // for realtime changes
     ankerl::unordered_dense::map<unsigned int, bool> changeBackend;
     Upscaler newBackend = Upscaler::Reset;
