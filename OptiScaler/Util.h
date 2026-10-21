@@ -61,6 +61,8 @@ void LoadProxyLibrary(const std::wstring& name, const std::wstring& optiPath, co
 std::map<Luid, std::filesystem::path> GetDriverStore();
 uint64_t GetTimestamp();
 
+void SetFlagEnvVar(const wchar_t* name, bool enabled);
+
 template <typename T> void DelayedDestroy(std::unique_ptr<T> ptr)
 {
     std::thread([p = std::move(ptr)]() mutable { std::this_thread::sleep_for(std::chrono::seconds(2)); }).detach();

@@ -970,3 +970,16 @@ uint64_t Util::GetTimestamp()
 
     return time * 100;
 }
+
+void Util::SetFlagEnvVar(const wchar_t* name, bool enabled)
+{
+    const wchar_t* crtValue = enabled ? L"1" : L"";
+    _wputenv_s(name, crtValue);
+    SetEnvironmentVariableW(name, enabled ? L"1" : nullptr);
+
+    if (auto ucrt = GetModuleHandleW(L"ucrtbase.dll"))
+    {
+        if (auto ucrtPutenv = reinterpret_cast<decltype(&_wputenv_s)>(GetProcAddress(ucrt, "_wputenv_s")))
+            ucrtPutenv(name, crtValue);
+    }
+}
