@@ -677,8 +677,7 @@ NvAPI_Status __cdecl NvAPI_Vulkan_Sleep(HANDLE vkDevice, NvU64 signalValue)
 
     VkDevice device = reinterpret_cast<VkDevice>(vkDevice);
 
-    if (VulkanHooks::o_vkSignalSemaphore)
-        VulkanHooks::o_vkSignalSemaphore(device, &signalInfo);
+    VulkanHooks::SignalSemaphore(device, &signalInfo);
 
     return LowLatencyCtx::get()->Sleep(vkDevice);
 }

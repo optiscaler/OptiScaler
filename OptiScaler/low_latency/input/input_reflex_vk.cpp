@@ -48,17 +48,12 @@ VkResult VKAPI_CALL InputReflexVk::LatencySleep(VkDevice device, VkSwapchainKHR 
     LogResult(InputCommon::sleep(inputContext, (IUnknown*) device), "sleep");
 
     // The game waits for it whatever the output did, the Reflex output's sleep has its own
-    if (VulkanHooks::o_vkSignalSemaphore != nullptr)
-    {
-        VkSemaphoreSignalInfo signalInfo {};
-        signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO;
-        signalInfo.semaphore = pSleepInfo->signalSemaphore;
-        signalInfo.value = pSleepInfo->value;
+    VkSemaphoreSignalInfo signalInfo {};
+    signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO;
+    signalInfo.semaphore = pSleepInfo->signalSemaphore;
+    signalInfo.value = pSleepInfo->value;
 
-        return VulkanHooks::o_vkSignalSemaphore(device, &signalInfo);
-    }
-
-    return VK_SUCCESS;
+    return VulkanHooks::SignalSemaphore(device, &signalInfo);
 }
 
 void VKAPI_CALL InputReflexVk::SetLatencyMarker(VkDevice device, VkSwapchainKHR swapchain,

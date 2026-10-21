@@ -298,14 +298,14 @@ NvAPI_Status InputReflex::Vulkan_Sleep(HANDLE vkDevice, NvU64 signalValue)
     auto result = InputCommon::sleep(vulkanContext, (IUnknown*) vkDevice);
 
     // The game waits for it whatever the output did
-    if (vkSemaphore != VK_NULL_HANDLE && VulkanHooks::o_vkSignalSemaphore != nullptr)
+    if (vkSemaphore != VK_NULL_HANDLE)
     {
         VkSemaphoreSignalInfo signalInfo {};
         signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO;
         signalInfo.semaphore = vkSemaphore;
         signalInfo.value = signalValue;
 
-        VulkanHooks::o_vkSignalSemaphore((VkDevice) vkDevice, &signalInfo);
+        VulkanHooks::SignalSemaphore((VkDevice) vkDevice, &signalInfo);
     }
 
     return ToNvApi(result, "sleep");

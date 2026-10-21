@@ -7,8 +7,11 @@ class VulkanHooks
 
   public:
     static PFN_vkCreateSemaphore o_vkCreateSemaphore;
-    static PFN_vkSignalSemaphore o_vkSignalSemaphore;
     static PFN_vkAntiLagUpdateAMD o_vkAntiLagUpdateAMD;
+
+    // The device's vkSignalSemaphore, or vkSignalSemaphoreKHR on devices with only VK_KHR_timeline_semaphore.
+    // VK_ERROR_FEATURE_NOT_PRESENT when the device has neither.
+    static VkResult SignalSemaphore(VkDevice device, const VkSemaphoreSignalInfo* pSignalInfo);
 
     // The driver's VK_NV_low_latency2
     inline static PFN_vkSetLatencySleepModeNV o_vkSetLatencySleepModeNV = nullptr;
