@@ -59,6 +59,8 @@ void LoadProxyLibrary(const std::wstring& name, const std::wstring& optiPath, co
                       HMODULE* memoryModule, HMODULE* loadedModule);
 void** FindVTableByRtti(HMODULE module, const char* mangledName);
 
+void SetFlagEnvVar(const wchar_t* name, bool enabled);
+
 }; // namespace Util
 
 inline void ThrowIfFailed(HRESULT hr)

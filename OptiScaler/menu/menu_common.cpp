@@ -3434,10 +3434,13 @@ bool MenuCommon::RenderMenu()
                                     {
                                         LOG_DEBUG("FSR4 Watermark set to {}", fsr4wm);
                                         config->Fsr4EnableWatermark = fsr4wm;
-                                    }
 
-                                    ShowHelpMarker("After changing this option, please Save Settings.\n"
-                                                   "It will be applied on next launch.");
+                                        Util::SetFlagEnvVar(L"MLSR-WATERMARK", fsr4wm);
+
+                                        // The driver reads the variable on context creation
+                                        state.newBackend = currentBackend;
+                                        MARK_ALL_BACKENDS_CHANGED();
+                                    }
                                 }
                             }
 
@@ -4192,10 +4195,16 @@ bool MenuCommon::RenderMenu()
                             {
                                 LOG_DEBUG("FSRFGEnableWatermark set FGWatermark: {}", fgwm);
                                 config->FSRFGEnableWatermark = fgwm;
-                            }
 
-                            ShowHelpMarker("After changing this option, please Save Settings\n"
-                                           "It will be applied on next launch.");
+                                Util::SetFlagEnvVar(L"MLFI-WATERMARK", fgwm);
+
+                                // The driver reads the variable on context creation, SCchanged also required
+                                if (config->FGEnabled.value_or_default())
+                                {
+                                    state.FGchanged = true;
+                                    state.SCchanged = true;
+                                }
+                            }
                         }
 
                         // Only exists after the FSR FG swapchain asked the driver for it (RDNA4, FG swapchain 4.0+)
