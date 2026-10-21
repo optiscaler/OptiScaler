@@ -268,9 +268,11 @@ HRESULT STDMETHODCALLTYPE AmdExtD3DDevice8::GetWaveMatrixProperties(uint64_t* co
     waveMatrixProperties->nSize = 16;
     waveMatrixProperties->kSize = 16;
 
+    // Emulated FP8 is for FG and an explicitly selected FP8 upscaler, otherwise the detected INT8 model is used
     if (fsr4Support == FSR4Support::FP8 ||
         (realFsr4Support == FSR4Support::FP8 &&
-         Util::WhoIsTheCaller(_ReturnAddress()).starts_with("amd_fidelityfx_framegeneration_dx12")))
+         (Config::Instance()->Fsr4Model.value_or(FSR4Model::Count) == FSR4Model::FP8 ||
+          Util::WhoIsTheCaller(_ReturnAddress()).starts_with("amd_fidelityfx_framegeneration_dx12"))))
     {
         waveMatrixProperties->aType = fp8;
     }
