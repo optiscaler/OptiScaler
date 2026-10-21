@@ -38,6 +38,11 @@ class ResourceCopy_Vk : public Shader_Vk
 
     bool InitializeViews(VkImageView InResourceView, VkImageView OutResourceView);
 
+  protected:
+    // Same copy pipeline with another shader that has the same bindings
+    ResourceCopy_Vk(std::string InName, VkDevice InDevice, VkPhysicalDevice InPhysicalDevice,
+                    const std::vector<char>& InShaderCode);
+
   public:
     bool CreateImageResource(VkDevice device, VkPhysicalDevice physicalDevice, uint32_t width, uint32_t height,
                              VkFormat format, VkImageUsageFlags usage);

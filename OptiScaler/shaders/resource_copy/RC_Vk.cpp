@@ -7,6 +7,12 @@
 #include "precompile/rc_Shader_Vk.h"
 
 ResourceCopy_Vk::ResourceCopy_Vk(std::string InName, VkDevice InDevice, VkPhysicalDevice InPhysicalDevice)
+    : ResourceCopy_Vk(InName, InDevice, InPhysicalDevice, std::vector<char>(rc_spv, rc_spv + sizeof(rc_spv)))
+{
+}
+
+ResourceCopy_Vk::ResourceCopy_Vk(std::string InName, VkDevice InDevice, VkPhysicalDevice InPhysicalDevice,
+                                 const std::vector<char>& InShaderCode)
     : Shader_Vk(InName, InDevice, InPhysicalDevice)
 {
     if (InDevice == VK_NULL_HANDLE)
@@ -21,9 +27,7 @@ ResourceCopy_Vk::ResourceCopy_Vk(std::string InName, VkDevice InDevice, VkPhysic
     CreateDescriptorPool();
     CreateDescriptorSets();
 
-    // Load precompiled shader
-    std::vector<char> shaderCode(rc_spv, rc_spv + sizeof(rc_spv));
-    if (!CreateComputePipeline(_device, _pipelineLayout, &_pipeline, shaderCode))
+    if (!CreateComputePipeline(_device, _pipelineLayout, &_pipeline, InShaderCode))
     {
         LOG_ERROR("[{0}] Failed to create pipeline!", _name);
         _init = false;

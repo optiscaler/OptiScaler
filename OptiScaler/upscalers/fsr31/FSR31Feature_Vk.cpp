@@ -406,10 +406,25 @@ bool FSR31FeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
     {
         LOG_DEBUG("MotionVectors exist..");
 
-        params.motionVectors =
-            ffxApiGetResourceVK(((NVSDK_NGX_Resource_VK*) paramVelocity)->Resource.ImageViewInfo.Image,
-                                ffxApiGetImageResourceDescriptionVKLocal((NVSDK_NGX_Resource_VK*) paramVelocity),
-                                FFX_API_RESOURCE_STATE_COMPUTE_READ);
+        auto& mvInfo = ((NVSDK_NGX_Resource_VK*) paramVelocity)->Resource.ImageViewInfo;
+        auto mvDesc = ffxApiGetImageResourceDescriptionVKLocal((NVSDK_NGX_Resource_VK*) paramVelocity);
+        VkImage mvImage = mvInfo.Image;
+
+        // Normalized 16-bit MV formats get copied into an R16G16_SFLOAT image
+        if (mvInfo.Format == VK_FORMAT_R16G16_SNORM || mvInfo.Format == VK_FORMAT_R16G16_UNORM)
+        {
+            if (!_velocityConvert)
+                _velocityConvert = std::make_unique<VelocityConvert_Vk>("VelocityConvert", Device, PhysicalDevice);
+
+            if (_velocityConvert->CanRender() &&
+                _velocityConvert->Dispatch(InCmdBuffer, mvInfo.ImageView, { mvInfo.Width, mvInfo.Height }))
+            {
+                mvImage = _velocityConvert->GetImage();
+                mvDesc.format = FFX_API_SURFACE_FORMAT_R16G16_FLOAT;
+            }
+        }
+
+        params.motionVectors = ffxApiGetResourceVK(mvImage, mvDesc, FFX_API_RESOURCE_STATE_COMPUTE_READ);
     }
     else
     {

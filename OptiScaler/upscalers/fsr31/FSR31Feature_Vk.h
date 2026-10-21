@@ -4,6 +4,7 @@
 
 #include <include/ffx/FfxVkHeader.h>
 #include <proxies/FfxApi_Proxy.h>
+#include <shaders/velocity_convert/VC_Vk.h>
 
 class FSR31FeatureVk : public FSR31Feature, public IFeature_Vk
 {
@@ -12,6 +13,8 @@ class FSR31FeatureVk : public FSR31Feature, public IFeature_Vk
     PfnFfxConfigure _configure = &FfxApiProxy::VULKAN_Configure;
     PfnFfxDispatch _dispatch = &FfxApiProxy::VULKAN_Dispatch;
     PfnFfxDestroyContext _destroyContext = &FfxApiProxy::VULKAN_DestroyContext;
+
+    std::unique_ptr<VelocityConvert_Vk> _velocityConvert = nullptr;
 
   protected:
     bool InitFSR3(const NVSDK_NGX_Parameter* InParameters);
