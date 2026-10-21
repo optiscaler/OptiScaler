@@ -10,7 +10,7 @@
 class MenuBlur_Dx12 : public Shader_Dx12, public MenuBlur_Common
 {
   private:
-    static constexpr UINT MaxBackBuffers = 8;
+    static constexpr UINT MaxBackBuffers = 16; // DXGI_MAX_SWAP_CHAIN_BUFFERS
 
     // Descriptor layout, every pass uses a SRV + UAV pair
     // [2 * i]: back buffer i SRV, [2 * i + 1]: blur A UAV
