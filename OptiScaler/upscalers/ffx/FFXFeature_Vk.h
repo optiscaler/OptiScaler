@@ -4,12 +4,15 @@
 
 #include "vk/ffx_api_vk.h"
 #include <proxies/FfxApi_Proxy.h>
+#include <shaders/velocity_convert/VC_Vk.h>
 
 class FFXFeatureVk : public FFXFeature, public IFeature_Vk
 {
   private:
     // amd_fidelityfx_vk.dll or the driver provided upscaler
     FfxModule* _ffx = nullptr;
+
+    std::unique_ptr<VelocityConvert_Vk> _velocityConvert = nullptr;
 
     // Last logged inputs of the driver provided FSR 4
     std::string _lastFsr4Inputs;

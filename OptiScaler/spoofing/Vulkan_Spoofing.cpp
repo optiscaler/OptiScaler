@@ -612,6 +612,8 @@ struct VulkanDeviceFeatureState::Impl
                                features != &features2);
             EnableFeatureValue(modifiedFeatures, features->features.shaderStorageImageWriteWithoutFormat,
                                supported.features.shaderStorageImageWriteWithoutFormat, features != &features2);
+            EnableFeatureValue(modifiedFeatures, features->features.shaderStorageImageExtendedFormats,
+                               supported.features.shaderStorageImageExtendedFormats, features != &features2);
             return;
         }
 
@@ -623,6 +625,9 @@ struct VulkanDeviceFeatureState::Impl
 
         if (supported.features.shaderStorageImageWriteWithoutFormat == VK_TRUE)
             coreFeatures.shaderStorageImageWriteWithoutFormat = VK_TRUE;
+
+        if (supported.features.shaderStorageImageExtendedFormats == VK_TRUE)
+            coreFeatures.shaderStorageImageExtendedFormats = VK_TRUE;
 
         pCreateInfo->pEnabledFeatures = &coreFeatures;
     }
