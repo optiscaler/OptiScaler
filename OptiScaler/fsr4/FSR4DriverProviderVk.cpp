@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "FSR4DriverProviderVk.h"
 
+#include "FSR4PipelineLayouts.h"
+
 #include <misc/IdentifyGpu.h>
 
 #include <mutex>
@@ -304,6 +306,8 @@ static std::optional<DriverProvider> GetProvider(uint64_t descType)
 {
     if (amdvkffx64.Load() == nullptr)
         return std::nullopt;
+
+    FSR4PipelineLayouts::Hook(amdvkffx64.Module());
 
     // Frame generation and its swapchain are only given out when enabled through the options
     ProviderOption swapchain { .effect = ProviderEffect::FrameGenerationSwapchain };
