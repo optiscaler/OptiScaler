@@ -7,7 +7,6 @@
 #include <proxies/Ntdll_Proxy.h>
 #include <low_latency/input/input_antilag2.h>
 #include <misc/IdentifyGpu.h>
-#include "Streamline_Hooks.h"
 
 #pragma endregion
 
@@ -194,7 +193,6 @@ HRESULT STDMETHODCALLTYPE Amdxc64Hooks::hkAmdExtD3DCreateInterface(IUnknown* pOu
         return S_OK;
     }
 
-#ifdef LOW_LATENCY_INPUTS
     else if (riid == IID_IAmdExtAntiLagApi && giveGameAl2Proxy)
     {
         if (amdExtAntiLagApi == nullptr)
@@ -207,18 +205,6 @@ HRESULT STDMETHODCALLTYPE Amdxc64Hooks::hkAmdExtD3DCreateInterface(IUnknown* pOu
 
         return S_OK;
     }
-#else
-    else if (riid == IID_IAmdExtAntiLagApi && giveGameAl2Proxy &&
-             (StreamlineHooks::isReflexHooked() || State::Instance().activeFgInput == FGInput::NvngxFG ||
-              State::Instance().activeFgInput == FGInput::DLSSG))
-    {
-        *ppvObject = nullptr;
-
-        LOG_INFO("Killing native AL2");
-
-        return S_OK;
-    }
-#endif
 
     else if (o_AmdExtD3DCreateInterface != nullptr)
     {

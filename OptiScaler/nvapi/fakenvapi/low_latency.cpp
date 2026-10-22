@@ -9,10 +9,7 @@ void LowLatency::update_effective_fg_state()
         if (!current_tech)
             return;
 
-        if (forced_fg.has_value())
-            current_tech->set_effective_fg_state(forced_fg.value());
-        else
-            current_tech->set_effective_fg_state(fg);
+        current_tech->set_effective_fg_state(fg);
     }
 }
 
@@ -69,29 +66,6 @@ bool LowLatency::get_low_latency_tech_context(void** low_latency_context, LowLat
     }
 
     return true;
-}
-
-bool LowLatency::set_low_latency_tech_mode(IUnknown* device, LowLatencyMode low_latency_tech)
-{
-    forced_low_latency_tech = low_latency_tech;
-
-    deinit_current_tech();
-
-    if (!device)
-        return false;
-
-    auto result = update_low_latency_tech(device);
-
-    if (result)
-    {
-        void* lowLatencyContext = nullptr;
-        LowLatencyMode currentLowLatencyMode {};
-
-        return get_low_latency_tech_context(&lowLatencyContext, &currentLowLatencyMode) &&
-               low_latency_tech == currentLowLatencyMode;
-    }
-
-    return false;
 }
 
 bool LowLatency::is_low_latency_enabled()

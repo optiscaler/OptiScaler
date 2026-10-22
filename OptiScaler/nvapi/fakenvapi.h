@@ -7,12 +7,6 @@
 
 class fakenvapi
 {
-    inline static struct AntiLag2Data
-    {
-        void* context;
-        bool enabled;
-    } antilag2_data;
-
     inline static bool _usingFakenvapiAsMainNvapi = false;
     inline static bool _usingOnNvidia = false;
     inline static void* _lowLatencyTechContext = nullptr;
@@ -31,19 +25,12 @@ class fakenvapi
     }
 
   public:
-    inline static const GUID IID_IFfxAntiLag2Data = {
-        0x5083ae5b, 0x8070, 0x4fca, { 0x8e, 0xe5, 0x35, 0x82, 0xdd, 0x36, 0x7d, 0x13 }
-    };
-
     static void init(bool onlyContext);
     static void deinit();
     static void* queryInterface(NvU32 id);
-    static void reportFGPresent(IDXGISwapChain* pSwapChain, bool fg_state, bool frame_interpolated);
-    static bool forceMode(IUnknown* device, LowLatencyMode mode);
     static bool isLowLatencyActive();
 
     static LowLatencyMode getCurrentMode();
-    static void* getCurrentContext();
 
     static bool isUsingAsMainNvapi();
     static void setUsingAsMainNvapi(bool usingAsMain);

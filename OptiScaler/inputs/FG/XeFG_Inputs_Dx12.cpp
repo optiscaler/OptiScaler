@@ -805,14 +805,12 @@ void XeFGInputs::Hook(HMODULE libxessFg)
 
     if (State::Instance().activeFgInput != FGInput::XeFG)
     {
-#ifdef LOW_LATENCY_INPUTS
         // One library, its trampoline is kept in the table
         if (_nativeHooks[0].target == nullptr)
         {
             hooked = libxessFg;
             LOG_INFO("XeFG XeLL hook: {}", Attach(libxessFg, _nativeHooks));
         }
-#endif
         return;
     }
 
@@ -828,15 +826,6 @@ void XeFGInputs::Hook(HMODULE libxessFg)
     }
 
     bool result = XeFGProxy::Module() != nullptr && Redirect(libxessFg, XeFGProxy::Module());
-
-#ifndef LOW_LATENCY_INPUTS
-    // XeFG and XeLL contexts must come from the same pair of libraries. With low latency inputs the game's XeLL
-    // already goes to OptiScaler's XeLL input, which uses OptiScaler's libxell while XeFG runs.
-    auto libxell = KernelBaseProxy::GetModuleHandleW_()(L"libxell.dll");
-
-    if (result && libxell != nullptr && XeLLProxy::Module() != nullptr && libxell != XeLLProxy::Module())
-        result = Redirect(libxell, XeLLProxy::Module());
-#endif
 
     LOG_INFO("XeFG passthrough: {}", result);
 }

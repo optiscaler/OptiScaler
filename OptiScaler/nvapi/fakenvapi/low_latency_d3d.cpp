@@ -21,24 +21,6 @@ bool LowLatency::update_low_latency_tech(IUnknown* pDevice)
 
     if (!currently_active_tech.load())
     {
-        if (forced_low_latency_tech == LowLatencyMode::XeLL)
-        {
-            auto new_tech_xell = std::make_shared<XeLL>();
-            if (new_tech_xell->init(pDevice))
-            {
-                LOG_INFO("LowLatency algo: XeLL (forced)");
-
-                new_tech_xell->set_forced_mode(true);
-
-                SleepMode sleepMode {};
-                sleepMode.low_latency_enabled = true;
-                new_tech_xell->set_sleep_mode(&sleepMode);
-
-                currently_active_tech.store(std::move(new_tech_xell));
-                return true;
-            }
-        }
-
         // Don't use AL2 and XeLL when using DMFG
         if (!Config::Instance()->FN_ForceLatencyFlex.value_or_default() &&
             State::Instance().dlssgLastSetMode != sl::DLSSGMode::eDynamic)
@@ -76,10 +58,6 @@ bool LowLatency::update_low_latency_tech(IUnknown* pDevice)
     bool force_latencyflex = Config::Instance()->FN_ForceLatencyFlex.value_or_default();
     bool change_detected = last_force_latencyflex != force_latencyflex;
     last_force_latencyflex = force_latencyflex;
-
-    // Don't allow for deinit with forced mode
-    if (forced_low_latency_tech != LowLatencyMode::None)
-        return true;
 
     if (State::Instance().fakenvapiReloadLowLatency)
     {

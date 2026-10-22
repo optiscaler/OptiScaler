@@ -7,7 +7,6 @@
 #include <proxies/Streamline_Proxy.h>
 
 #include <magic_enum.hpp>
-#include <nvapi/fakenvapi/nvapi_calls.h>
 
 #include <math.h>
 #include <imgui/ImGuiNotify.hpp>
@@ -19,21 +18,6 @@ static inline uint64_t _lastFrameId[20] = { 0 };
 static inline IUnknown* _lastDev[20] = { 0 };
 
 // #define LOG_REFLEX_CALLS
-
-// Without the low latency inputs XeFG's Reflex is fakenvapi's translation. With them the game's D3D Reflex reaches
-// these hooks only through the Reflex output (XeFG then paces from its own XeLL context) and OptiScaler's own
-// Streamline, both meant for the driver.
-static bool XeFGUsesFakenvapi()
-{
-#ifdef LOW_LATENCY_INPUTS
-    return false;
-#else
-    return State::Instance().activeFgOutput == FGOutput::XeFG &&
-           !Config::Instance()->ImASillyGooseThatIsAboutToMisuseReflex.value_or_default();
-#endif
-}
-
-std::optional<TimingEntry> ReflexHooks::timingData[TimingType::TimingTypeCOUNT] {};
 
 NvAPI_Status ReflexHooks::hkNvAPI_D3D_SetSleepMode(IUnknown* pDev, NV_SET_SLEEP_MODE_PARAMS* pSetSleepModeParams)
 {
@@ -49,11 +33,6 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_SetSleepMode(IUnknown* pDev, NV_SET_SLEEP_
 
     if (_minimumIntervalUs != 0)
         pSetSleepModeParams->minimumIntervalUs = _minimumIntervalUs;
-
-    if (XeFGUsesFakenvapi())
-    {
-        return nvapi_calls::NvAPI_D3D_SetSleepMode(pDev, pSetSleepModeParams);
-    }
 
     return o_NvAPI_D3D_SetSleepMode(pDev, pSetSleepModeParams);
 }
@@ -82,11 +61,6 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_Sleep(IUnknown* pDev)
         return o_NvAPI_D3D_Sleep(pDev);
     }
 
-    if (XeFGUsesFakenvapi())
-    {
-        return nvapi_calls::NvAPI_D3D_Sleep(pDev);
-    }
-
     _lastSleepDev = pDev;
     return o_NvAPI_D3D_Sleep(pDev);
 }
@@ -97,11 +71,6 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_GetLatency(IUnknown* pDev, NV_LATENCY_RESU
     LOG_FUNC();
 #endif
 
-    if (XeFGUsesFakenvapi())
-    {
-        return nvapi_calls::NvAPI_D3D_GetLatency(pDev, pGetLatencyParams);
-    }
-
     return o_NvAPI_D3D_GetLatency(pDev, pGetLatencyParams);
 }
 
@@ -110,11 +79,6 @@ NvAPI_Status ReflexHooks::sendMarker(IUnknown* pDev, NV_LATENCY_MARKER_PARAMS* p
 {
     if (toStreamline)
         return NVAPI_OK;
-
-    if (XeFGUsesFakenvapi())
-    {
-        return nvapi_calls::NvAPI_D3D_SetLatencyMarker(pDev, pSetLatencyMarkerParams);
-    }
 
     return o_NvAPI_D3D_SetLatencyMarker(pDev, pSetLatencyMarkerParams);
 }
@@ -126,14 +90,10 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_SetLatencyMarker(IUnknown* pDev,
     LOG_FUNC();
 #endif
 
-#ifdef LOW_LATENCY_INPUTS
     // The game's markers are processed by the Reflex input, these come from the Reflex output and OptiScaler's own
     // Streamline
     _updatesWithoutMarker = 0;
     return sendMarker(pDev, pSetLatencyMarkerParams, false);
-#else
-    return processGameMarker(pDev, pSetLatencyMarkerParams, &sendMarker);
-#endif
 }
 
 NvAPI_Status ReflexHooks::processGameMarker(IUnknown* pDev, NV_LATENCY_MARKER_PARAMS* pSetLatencyMarkerParams,
@@ -424,11 +384,6 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D12_SetAsyncFrameMarker(ID3D12CommandQueue* 
     //    }
     //}
 
-    if (XeFGUsesFakenvapi())
-    {
-        return nvapi_calls::NvAPI_D3D12_SetAsyncFrameMarker(pCommandQueue, pSetAsyncFrameMarkerParams);
-    }
-
     return o_NvAPI_D3D12_SetAsyncFrameMarker(pCommandQueue, pSetAsyncFrameMarkerParams);
 }
 
@@ -442,7 +397,6 @@ void* ReflexHooks::getHookedReflexSync(PFN_NvApi_QueryInterface& queryInterface)
 
 NvAPI_Status ReflexHooks::hkNvAPI_D3D_SetReflexSync(IUnknown* pDev, NV_SET_REFLEX_SYNC_PARAMS* pSetReflexSyncParams)
 {
-#ifdef LOW_LATENCY_INPUTS
     // With the Reflex output OptiScaler's FSR-FG and XeFG report their own frame multiplier, the game's Streamline
     // doesn't know it
     if (InputCommon::active_output() == LowLatencyMode::Reflex &&
@@ -450,7 +404,6 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_SetReflexSync(IUnknown* pDev, NV_SET_REFLE
     {
         return NVAPI_OK;
     }
-#endif
 
     return o_NvAPI_D3D_SetReflexSync(pDev, pSetReflexSyncParams);
 }
@@ -563,97 +516,6 @@ void* ReflexHooks::getHookedReflex(unsigned int InterfaceId)
     return nullptr;
 }
 
-#define UPDATE_TIMING_ENTRY(name, type)                                                                                \
-    if (frameReport.name##EndTime >= frameReport.name##StartTime)                                                      \
-    {                                                                                                                  \
-        double name##Pos = (double) (frameReport.name##StartTime - start) / rangeNs;                                   \
-        double name##Length = (double) (frameReport.name##EndTime - frameReport.name##StartTime) / rangeNs;            \
-        timingData[TimingType::type] = TimingEntry { .position = name##Pos, .length = name##Length };                  \
-    }                                                                                                                  \
-    else                                                                                                               \
-    {                                                                                                                  \
-        timingData[TimingType::type].reset();                                                                          \
-    }
-
-bool ReflexHooks::updateTimingData()
-{
-    if (!_inited)
-        return false;
-
-    auto processFrameReport = [&](const auto& frameReport) -> bool
-    {
-        uint64_t start = UINT64_MAX;
-        uint64_t end = 0;
-
-        // Please don't look, just thought it would be least work
-        auto pTimes = (const uint64_t*) &frameReport.simStartTime;
-        for (auto i = 0; i < 11; i++)
-        {
-            auto& time = pTimes[i];
-            if (time == 0)
-                continue;
-
-            if (time < start)
-                start = time;
-
-            if (time > end)
-                end = time;
-        }
-
-        if (end < start)
-            return false;
-
-        double rangeNs = static_cast<double>(end - start);
-
-        timingData[TimingType::TimeRange] = TimingEntry { .position = 0, .length = rangeNs };
-        UPDATE_TIMING_ENTRY(sim, Simulation)
-        UPDATE_TIMING_ENTRY(renderSubmit, RenderSubmit)
-        UPDATE_TIMING_ENTRY(present, Present)
-        UPDATE_TIMING_ENTRY(driver, Driver)
-        UPDATE_TIMING_ENTRY(osRenderQueue, OsRenderQueue)
-        UPDATE_TIMING_ENTRY(gpuRender, GpuRender)
-
-        if (frameReport.frameID != 0)
-            State::Instance().reflexFrameId = frameReport.frameID;
-
-        return true;
-    };
-
-    if (_lastSleepDev && o_NvAPI_D3D_GetLatency)
-    {
-        // Not calling free on this but it's static so hopefully fine
-        static NV_LATENCY_RESULT_PARAMS* results = new NV_LATENCY_RESULT_PARAMS();
-        results->version = NV_LATENCY_RESULT_PARAMS_VER;
-
-        if (auto result = hkNvAPI_D3D_GetLatency(_lastSleepDev, results); result != NVAPI_OK)
-        {
-            LOG_WARN("NvAPI_D3D_GetLatency failed: {}", magic_enum::enum_name(result));
-            return false;
-        }
-
-        // 64th element has the latest data
-        return processFrameReport(results->frameReport[63]);
-    }
-
-    if (_lastVkSleepDev && o_NvAPI_Vulkan_GetLatency)
-    {
-        // Not calling free on this but it's static so hopefully fine
-        static NV_VULKAN_LATENCY_RESULT_PARAMS* results = new NV_VULKAN_LATENCY_RESULT_PARAMS();
-        results->version = NV_VULKAN_LATENCY_RESULT_PARAMS_VER;
-
-        if (auto result = hkNvAPI_Vulkan_GetLatency(_lastVkSleepDev, results); result != NVAPI_OK)
-        {
-            LOG_WARN("NvAPI_Vulkan_GetLatency failed: {}", magic_enum::enum_name(result));
-            return false;
-        }
-
-        // 64th element has the latest data
-        return processFrameReport(results->frameReport[63]);
-    }
-
-    return false;
-}
-
 // For updating information about Reflex hooks
 void ReflexHooks::update(bool fgActive, bool isVulkan)
 {
@@ -663,12 +525,8 @@ void ReflexHooks::update(bool fgActive, bool isVulkan)
 
     State::Instance().reflexShowWarning = false;
 
-    // With the low latency inputs the game's D3D Reflex only reaches the driver through the Reflex output
-    bool reflexOutput = true;
-
-#ifdef LOW_LATENCY_INPUTS
-    reflexOutput = InputCommon::active_output() == LowLatencyMode::Reflex;
-#endif
+    // The game's D3D Reflex only reaches the driver through the Reflex output
+    bool reflexOutput = InputCommon::active_output() == LowLatencyMode::Reflex;
 
     if (_updatesWithoutMarker > 20 || !_inited)
     {
@@ -771,12 +629,8 @@ void ReflexHooks::update(bool fgActive, bool isVulkan)
     // _FgNumFramesToGenerate needs to be correctly updated
     if (fgActive && State::Instance().activeFgOutput == FGOutput::FSRFG)
     {
-        bool driverCountsFg = false;
-
-#ifdef LOW_LATENCY_INPUTS
         // The Reflex output reports FSR-FG's frame multiplier (Reflex Sync), the driver limits the output frames
-        driverCountsFg = reflexOutput && InputCommon::output_reports_fg_multiplier();
-#endif
+        bool driverCountsFg = reflexOutput && InputCommon::output_reports_fg_multiplier();
 
         if (!driverCountsFg)
             currentFps /= 2;
@@ -809,14 +663,7 @@ void ReflexHooks::setFPSLimit(float fps)
         memcpy(&temp, &_lastSleepParams, sizeof(NV_SET_SLEEP_MODE_PARAMS));
         temp.minimumIntervalUs = _minimumIntervalUs;
 
-        if (XeFGUsesFakenvapi())
-        {
-            nvapi_calls::NvAPI_D3D_SetSleepMode(_lastSleepDev, &temp);
-        }
-        else
-        {
-            o_NvAPI_D3D_SetSleepMode(_lastSleepDev, &temp);
-        }
+        o_NvAPI_D3D_SetSleepMode(_lastSleepDev, &temp);
     }
 
     if (_lastVkSleepDev != nullptr)

@@ -839,9 +839,6 @@
     <ClInclude Include="low_latency\ll_util.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="hooks\Xell_Hooks.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="misc\IdentifyGpu.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1641,9 +1638,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="low_latency\ll_util.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="hooks\Xell_Hooks.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="misc\IdentifyGpu.cpp">

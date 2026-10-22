@@ -16,13 +16,10 @@
 #include <d3d11.h>
 #include <d3d12.h>
 #include <misc/IdentifyGpu.h>
-#include <hooks/Xell_Hooks.h>
 
 #include <magic_enum.hpp>
 
-#ifdef LOW_LATENCY_INPUTS
 #include <low_latency/input/input_antilag2.h>
-#endif
 
 #ifdef DXGI_DEBUG_ENABLED
 #include <magic_enum.hpp>
