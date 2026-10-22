@@ -511,6 +511,7 @@ class Config
     CustomOptional<bool, SoftDefault> DontUseNTShared { true };
 
     // vulkanwdx12
+    CustomOptional<bool> VulkanDx12ComputeQueue { false };
     CustomOptional<bool> VulkanUseCopyForInputs { false };
     CustomOptional<bool> VulkanUseCopyForOutput { false };
 

@@ -1912,6 +1912,13 @@ HRESULT IFeature_VkwDx12::CreateDx12Device()
 
     if (Dx12CommandQueue == nullptr)
     {
+        // The bridge only uses COMMON, NON_PIXEL_SHADER_RESOURCE and UNORDERED_ACCESS states (valid on compute)
+        if (Config::Instance()->VulkanDx12ComputeQueue.value_or_default())
+            Dx12CommandListType = D3D12_COMMAND_LIST_TYPE_COMPUTE;
+
+        LOG_INFO("Creating {} queue for Vulkan w/Dx12",
+                 Dx12CommandListType == D3D12_COMMAND_LIST_TYPE_COMPUTE ? "compute" : "direct");
+
         D3D12_COMMAND_QUEUE_DESC queueDesc = {};
         queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
         queueDesc.Type = Dx12CommandListType;

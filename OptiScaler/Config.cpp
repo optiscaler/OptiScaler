@@ -685,6 +685,11 @@ bool Config::Reload(std::filesystem::path iniPath)
             DontUseNTShared.set_from_config(readBool("Dx11withDx12", "DontUseNTShared"));
         }
 
+        // Vulkan with Dx12
+        {
+            VulkanDx12ComputeQueue.set_from_config(readBool("VulkanWithDx12", "UseComputeQueue"));
+        }
+
         // NvApi
         {
             DisableFlipMetering.set_from_config(readBool("NvApi", "DisableFlipMetering"));
@@ -1481,6 +1486,12 @@ bool Config::SaveIni()
     {
         ini.SetValue("Dx11withDx12", "DontUseNTShared",
                      GetBoolValue(Instance()->DontUseNTShared.value_for_config()).c_str());
+    }
+
+    // Vulkan with Dx12
+    {
+        ini.SetValue("VulkanWithDx12", "UseComputeQueue",
+                     GetBoolValue(Instance()->VulkanDx12ComputeQueue.value_for_config()).c_str());
     }
 
     // Logging
