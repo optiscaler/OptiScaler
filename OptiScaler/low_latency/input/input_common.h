@@ -1,6 +1,9 @@
 #pragma once
 
 #include <xell.h>
+#include <d3d11.h>
+#include <d3d12.h>
+#include <functional>
 
 #include <low_latency/low_latency_tech/low_latency_tech.h>
 #include <Config.h>
@@ -36,6 +39,14 @@ enum class InputResult : uint32_t
 };
 
 class ReflexVk;
+
+enum class PcLatencySource
+{
+    None,
+    Driver,    // Reflex output's latency reports
+    GpuFence,  // OptiScaler's fence after the game's present
+    Estimated, // CPU side markers only
+};
 
 struct TimingData
 {
@@ -84,6 +95,11 @@ class InputCommon
     inline static std::atomic_uint64_t xefg_frame_id = 0;
     // Time the output's last sleep took, for XeFG's Dynamic MFG (the frame time it doesn't need)
     inline static std::atomic<double> last_sleep_ms = 0.0;
+    // The same for the overlay, summed until it takes them
+    inline static std::atomic_uint64_t overlay_sleep_us = 0;
+    inline static std::atomic_uint32_t overlay_sleeps = 0;
+    inline static std::atomic_uint64_t overlay_present_us = 0;
+    inline static std::atomic_uint32_t overlay_presents = 0;
 
     static void mark_frame_generation(LowLatencyInput input)
     {
@@ -98,6 +114,9 @@ class InputCommon
 
     static bool xefg_paced();
 
+    // The simulation start of the frame the game presents now
+    static std::optional<uint64_t> game_present_sim_start();
+
     inline static flag_set<LowLatencyInput> avaliableInputs {};
     inline static LowLatencyInput activeInput = LowLatencyInput::None;
     inline static LowLatencyMode activeOutput = LowLatencyMode::None;
@@ -111,6 +130,7 @@ class InputCommon
     static bool init_tech(IUnknown* pDevice, API api, LowLatencyMode desiredMode);
     static bool update_low_latency_tech(IUnknown* pDevice, API api, std::optional<LowLatencyMode> mode = std::nullopt);
     static void add_marker_to_report(const MarkerParams& marker_params);
+    static void note_sim_start_without_id();
     static bool copy_frame_reports(FrameReport* reports); // NVAPI_BUFFER_SIZE reports, oldest first
 
     // The API of the call's device
@@ -145,6 +165,46 @@ class InputCommon
     // The reports of the markers OptiScaler tracked, NVAPI_BUFFER_SIZE of them, oldest first
     static InputResult get_frame_reports(const InputContext& inputContext, IUnknown* pDev, FrameReport* reports);
     static bool get_timing_data(TimingData& timingDataOut);
+
+    // Average latency of the last frames in ms, simulation start to the end of the GPU work of the frame shown:
+    // measured with a fence after the presents (with frame generation the real frame's, after the generated ones),
+    // else as the Reflex output's driver reports it, else estimated from the markers OptiScaler tracked (simulation
+    // start to present end, no GPU time). Asking starts the fence tracking.
+    static std::optional<double> get_pc_latency_ms(PcLatencySource& source);
+
+    // For get_pc_latency_ms, only while it's being asked for: the simulation start of the frame being presented and a
+    // wait for the end of its GPU work. D3D12 signals a fence after the present, D3D11 before it (the present submits
+    // it), Vulkan submits a fence after it.
+    static bool pcl_requested();
+    static bool pcl_tracking();
+    static std::optional<uint64_t> take_present_sim_start();
+
+    // OptiScaler's frame generation swapchain: the game's present of a frame the frame generation then presents
+    // frameMultiplier times, while the game goes on with the next ones
+    static void note_fg_game_present(uint32_t frameMultiplier);
+
+    // How many presents the frame generation makes of the game frame it was given last, when it tells (XeFG)
+    static void fg_game_presents(uint32_t presents);
+
+    static void track_present_gpu_end(uint64_t simStartUs, std::function<bool()> waitGpuEnd);
+    static void track_present_gpu_end(ID3D12CommandQueue* queue);
+    static void track_present_gpu_end(ID3D11Device* device);
+
+    // PC latency pings as FrameView's: OptiScaler posts the game's PC latency stats message to its window at random
+    // times, the game marks the frame that picks it up with PC_LATENCY_PING. The time from the ping to that frame's
+    // simulation start is the input's wait.
+    static void send_latency_ping(HWND window);
+    static void note_latency_ping(uint64_t frameId);
+
+    // Average input wait of the last pings in ms, nullopt while the game doesn't answer them
+    static std::optional<double> get_input_wait_ms();
+
+    // The game's present call for the overlay's bottleneck, through the frame generation's swapchain when there is one
+    static void note_game_present_ms(double ms, bool frameGenSwapchain);
+
+    // How long the game waited per frame in ms since the last call: the low latency output's sleep and its present
+    static std::optional<double> take_overlay_wait_ms();
+
     static uint64_t get_last_present_start_frame_id() { return last_present_start_frame_id; };
     static flag_set<LowLatencyInput> get_avaliable_inputs() { return avaliableInputs; };
     static LowLatencyMode active_output() { return activeOutput; }

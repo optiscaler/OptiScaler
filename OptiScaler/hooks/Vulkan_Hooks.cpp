@@ -748,6 +748,44 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
     return result;
 }
 
+#ifdef LOW_LATENCY_INPUTS
+// A fence submitted after the present signals when the frame's GPU work is done
+static void TrackPresentGpuEnd(VkDevice device, VkQueue queue)
+{
+    auto simStartUs = InputCommon::take_present_sim_start();
+    if (!simStartUs.has_value())
+        return;
+
+    VkFenceCreateInfo fenceInfo { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
+    VkFence fence = VK_NULL_HANDLE;
+
+    if (vkCreateFence(device, &fenceInfo, nullptr, &fence) != VK_SUCCESS)
+        return;
+
+    if (vkQueueSubmit(queue, 0, nullptr, fence) != VK_SUCCESS)
+    {
+        vkDestroyFence(device, fence, nullptr);
+        return;
+    }
+
+    InputCommon::track_present_gpu_end(simStartUs.value(),
+                                       [device, fence]()
+                                       {
+                                           auto result = vkWaitForFences(device, 1, &fence, VK_TRUE, 500'000'000);
+                                           const bool done = result == VK_SUCCESS;
+
+                                           // Only a fence that's no longer in use can be destroyed
+                                           if (!done)
+                                               result = vkWaitForFences(device, 1, &fence, VK_TRUE, 5'000'000'000);
+
+                                           if (result == VK_SUCCESS)
+                                               vkDestroyFence(device, fence, nullptr);
+
+                                           return done;
+                                       });
+}
+#endif
+
 VALIDATE_HOOK(hkvkQueuePresentKHR, PFN_vkQueuePresentKHR)
 static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo)
 {
@@ -851,6 +889,12 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
     // dxvk/vkd3d-proton's are counted by the DXGI swapchain
     if (!dxgiBacked)
         DeferredRelease::Process();
+
+#ifdef LOW_LATENCY_INPUTS
+    // GPU end of the frame for the overlay's PC latency
+    if (!dxgiBacked && _device != VK_NULL_HANDLE && InputCommon::pcl_tracking())
+        TrackPresentGpuEnd(_device, queue);
+#endif
 
     // Unsure about Vulkan Reflex fps limit and if that could be causing an issue here
     if (!State::Instance().reflexLimitsFps && !InputCommon::can_limit_fps())

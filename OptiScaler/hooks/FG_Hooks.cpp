@@ -1351,6 +1351,9 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
         frameMultiplier = fg->IsActive() && !fg->IsPaused() ? fg->GetInterpolatedFrameCount() + 1 : 1;
         InputCommon::fg_game_present(gameQueue, false, frameMultiplier);
 
+        // For the overlay's PC latency: the frame generation's presents of this frame come later
+        InputCommon::note_fg_game_present(frameMultiplier);
+
         if (state.activeFgOutput == FGOutput::XeFG)
         {
             xefgContext = fg->SwapchainContext();
@@ -1379,6 +1382,9 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
             XEFG_SWAPCHAIN_RESULT_SUCCESS)
         {
             InputCommon::xefg_present_status(xefgFrameId, status.framesPresented);
+
+            // For the overlay's PC latency, XeFG's own count when it couldn't generate a frame
+            InputCommon::fg_game_presents(status.framesPresented);
         }
     }
 #endif
@@ -1419,7 +1425,13 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
     }
 
     if (willPresent)
+    {
         state.lastFGPresentMs = Util::MillisecondsNow() - presentStart;
+
+#ifdef LOW_LATENCY_INPUTS
+        InputCommon::note_game_present_ms(state.lastFGPresentMs, true);
+#endif
+    }
 
     if ((config->SimulateWaitableObject.value_or_default() ||
          (state.gameEngine == GameEngineType::Unity && state.activeFgOutput == FGOutput::XeFG)) &&

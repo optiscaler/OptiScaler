@@ -154,7 +154,27 @@ enum FpsOverlayPos : uint32_t
     FpsOverlayPos_TopRight,
     FpsOverlayPos_BottomLeft,
     FpsOverlayPos_BottomRight,
+    FpsOverlayPos_TopCenter,
+    FpsOverlayPos_BottomCenter,
+    FpsOverlayPos_Custom, // FpsOverlayPosX/Y
     FpsOverlayPos_COUNT,
+};
+
+// PC latency up to the frame on screen, up to the end of its GPU work, or both
+enum FpsOverlayLatency : uint32_t
+{
+    FpsOverlayLatency_Display,
+    FpsOverlayLatency_Render,
+    FpsOverlayLatency_Both,
+    FpsOverlayLatency_COUNT,
+};
+
+enum FpsOverlayShadow : uint32_t
+{
+    FpsOverlayShadow_Off,
+    FpsOverlayShadow_Shadow,
+    FpsOverlayShadow_Outline,
+    FpsOverlayShadow_COUNT,
 };
 
 enum FpsOverlay : uint32_t
@@ -369,8 +389,39 @@ class Config
     CustomOptional<int> FpsCycleShortcutKey { VK_NEXT };
     CustomOptional<bool> FpsOverlayHorizontal { false };
     CustomOptional<bool> FpsOverlayShowRatio { false };
+    CustomOptional<bool> FpsOverlayShowLows { false };
+    CustomOptional<bool> FpsOverlayShowLatency { false };
+    CustomOptional<FpsOverlayLatency> FpsOverlayLatencyType { FpsOverlayLatency_Display };
+    CustomOptional<bool> FpsOverlayShowUpscalerTime { false }; // Also below the Full overlay type
+    CustomOptional<bool> FpsOverlayShowFpsCost { false };
+    CustomOptional<bool> FpsOverlayShowPointOneLow { false };
+    CustomOptional<bool> FpsOverlayShowBottleneck { false };
+    CustomOptional<bool> FpsOverlayShowVram { false };
+    CustomOptional<bool> FpsOverlayCompactLabels { false };
+    // Comma separated row keys: fps, framegen, upscale, latency, frametime, upscaler. No value means that order
+    CustomOptional<std::string, NoDefault> FpsOverlayRowOrder;
+    CustomOptional<float, NoDefault> FpsOverlayRowSpacing; // No value means the default spacing
     CustomOptional<float> FpsOverlayAlpha { 0.4f };
     CustomOptional<float, NoDefault> FpsScale; // No value means same as MenuScale
+    CustomOptional<float> FpsOverlayGraphHeight { 1.0f };
+    // Position for FpsOverlayPos_Custom, 0.0 left/top to 1.0 right/bottom
+    CustomOptional<float> FpsOverlayPosX { 0.0f };
+    CustomOptional<float> FpsOverlayPosY { 0.0f };
+    // Font file in the Windows fonts folder or a full path, no value means the menu font
+    CustomOptional<std::string, NoDefault> FpsOverlayFont;
+    CustomOptional<float, NoDefault> FpsOverlayFontSize; // No value means the menu font size
+    // Labels are the metric names, values their numbers
+    CustomOptional<float> FpsOverlayLabelScale { 1.0f };
+    CustomOptional<float> FpsOverlayValueScale { 1.0f };
+    // 0xRRGGBB, used when the overlays don't use the theme colors
+    CustomOptional<uint32_t> FpsOverlayLabelColor { 0xFFFFFF };
+    CustomOptional<uint32_t> FpsOverlayValueColor { 0xFFFFFF };
+    CustomOptional<uint32_t> FpsOverlayGraphColor { 0x00FF00 };
+    CustomOptional<uint32_t> FpsOverlayBGColor { 0x000000 };
+    CustomOptional<FpsOverlayShadow> FpsOverlayShadowType { FpsOverlayShadow_Off };
+    CustomOptional<float> FpsOverlayShadowStrength { 0.5f };
+    CustomOptional<float, NoDefault> FpsOverlayRounding; // No value means same as MenuRounding
+    CustomOptional<float> MenuRounding { 2.0f };         // Window corner radius, 0 is square
     CustomOptional<bool> UseHQFont { true };
     CustomOptional<bool> DisableSplash { false };
     CustomOptional<float> FontSize { 14.0f };
@@ -729,6 +780,11 @@ class Config
 
     std::vector<std::string> GetConfigLog();
 
+    // The FPS overlay's settings as a code to copy, and applying a copied one: the ones that differ from the
+    // defaults, so they can be kept across updates and shared without another file
+    std::string ExportOverlaySettings();
+    bool ImportOverlaySettings(const std::string& code);
+
     static Config* Instance();
 
   private:
@@ -739,6 +795,10 @@ class Config
     std::wstring fileName = L"OptiScaler.ini";
 
     bool Reload(std::filesystem::path iniPath);
+
+    // The FPS overlay's keys of the Menu section: read when loading the ini, or assigned for a pasted code
+    void ReadOverlaySettings(bool assign);
+    void WriteOverlaySettings();
 
     std::optional<std::string> readString(std::string section, std::string key, bool lowercase = false);
     std::optional<std::wstring> readWString(std::string section, std::string key, bool lowercase = false);
