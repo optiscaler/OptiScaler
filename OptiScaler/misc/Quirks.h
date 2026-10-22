@@ -572,10 +572,10 @@ static const QuirkEntry quirkTable[] = {
 
     // World War Z
     QUIRK_ENTRY("wwzretail.exe", GameQuirk::UseFsr2VulkanInputs, GameQuirk::EnableVulkanExtensionSpoofing,
-                GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceDepthD32S8),
+                GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceDepthD32S8, GameQuirk::UseManualInputs),
 
     QUIRK_ENTRY("wwzretailegs.exe", GameQuirk::UseFsr2VulkanInputs, GameQuirk::EnableVulkanExtensionSpoofing,
-                GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceDepthD32S8),
+                GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceDepthD32S8, GameQuirk::UseManualInputs),
 
     // Baldur's Gate 3
     // VK Ext spoof needed for FSR3
