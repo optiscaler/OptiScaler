@@ -80,7 +80,8 @@ class FSR4DriverDll
   public:
     // sdkModules are the FFX SDK dlls the driver needs to see loaded and signed before it hands out providers. When the
     // game hasn't loaded them, the driver dll stands in for them, it's signed with the same certificate. The driver
-    // also derives the SDK version from the file version of the first one it finds, with a stand-in its own version
+    // also derives the SDK version from the file version of the first one it checks, so Load() has it check itself
+    // first, before any FFX dll of the game
     FSR4DriverDll(const wchar_t* name, std::vector<std::wstring> sdkModules);
 
     FSR4DriverDll(const FSR4DriverDll&) = delete;

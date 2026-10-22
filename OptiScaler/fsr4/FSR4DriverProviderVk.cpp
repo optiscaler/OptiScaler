@@ -382,6 +382,9 @@ bool FSR4DriverProviderVk::InitFg()
 
     initTried = true;
 
+    // Real FP8 support comes from the D3D12 checks, the game's Vulkan device can be created before anything ran them
+    IdentifyGpu::updateD3d12Capabilities();
+
     if (IdentifyGpu::getPrimaryGpu().realFsr4Support != FSR4Support::FP8)
     {
         LOG_INFO("GPU doesn't support FP8, not using the driver FG");
