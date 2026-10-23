@@ -422,6 +422,7 @@ class State
 
     bool isShuttingDown = false;
     std::set<PVOID> modulesToFree;
+    std::mutex modulesToFreeMutex;
 
     // menu warnings
     bool fgSettingsChanged = false;
