@@ -1389,7 +1389,8 @@ void InputCommon::update()
         auto mode = current_tech->get_mode();
 
         // Their limiters only work with low latency enabled, for XeLL with XeFG it only skips the sleep calls.
-        // Vulkan's Reflex has no hooks to limit through, its sleep mode limits without low latency too.
+        // Vulkan's Reflex has no hooks to limit through, its sleep mode limits without low latency too. It needs the
+        // swapchain though, with FSR-FG's swapchain OptiScaler's own limiter takes over in present.
         // The FPS Limiter is only a limiter, it ignores the game's state but can be force disabled.
         if (mode == LowLatencyMode::AntiLag2 || mode == LowLatencyMode::XeLL || mode == LowLatencyMode::LatencyFlex ||
             mode == LowLatencyMode::AntiLagVk)
@@ -1398,7 +1399,8 @@ void InputCommon::update()
         }
         else if (mode == LowLatencyMode::Reflex && output_api == API::Vulkan)
         {
-            active = true;
+            auto reflex = std::dynamic_pointer_cast<ReflexVk>(current_tech);
+            active = reflex != nullptr && reflex->has_swapchain();
         }
         else if (mode == LowLatencyMode::FpsLimiter)
         {
@@ -1415,12 +1417,18 @@ void InputCommon::update()
         // The limit is for the presented frames, the output limits the game's. XeFG paces through XeLL, which knows
         // about its generated frames. The game's own DLSSG reports its count through the NGX evaluate.
         auto fg = state.CurrentFG();
+        bool fgActive = fg != nullptr && fg->IsActive() && !fg->IsPaused();
 
-        if (xefg_paced())
+        // VK_NV_low_latency2 enforces the interval between all presents to the swapchain, DLSSG's generated ones too
+        auto vkFg = state.currentVkFG;
+        bool driverCountsFg = fgActive && activeOutput == LowLatencyMode::Reflex && output_api == API::Vulkan &&
+                              vkFg != nullptr && vkFg->OwnsSwapchain(VulkanHooks::LowLatencySwapchain());
+
+        if (xefg_paced() || driverCountsFg)
         {
-            // XeLL already counts XeFG's generated frames
+            // XeLL already counts XeFG's generated frames, the driver DLSSG's
         }
-        else if (fg != nullptr && fg->IsActive() && !fg->IsPaused())
+        else if (fgActive)
         {
             interval *= fg->GetInterpolatedFrameCount() + 1;
         }

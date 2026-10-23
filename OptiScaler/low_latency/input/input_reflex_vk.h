@@ -12,6 +12,15 @@ class InputReflexVk
                                                     .markerMode = InputMarkerMode::FullMarkers,
                                                     .api = API::Vulkan };
 
+    // OptiScaler's own Streamline (DLSSG output), its sl.reflex gets these too. The input when the game has none of
+    // its own, next to the game's its sleep and frame ids would be a second set on the same swapchain.
+    const static inline InputContext optiScalerContext { .caller = LowLatencyInput::OptiScaler,
+                                                         .noFrameId = false,
+                                                         .markerMode = InputMarkerMode::FullMarkers,
+                                                         .api = API::Vulkan };
+
+    static const InputContext& Context(void* returnAddress);
+
   public:
     static VkResult VKAPI_CALL SetLatencySleepMode(VkDevice device, VkSwapchainKHR swapchain,
                                                    const VkLatencySleepModeInfoNV* pSleepModeInfo);
