@@ -29,7 +29,7 @@ HRESULT STDMETHODCALLTYPE AmdExtAntiLagApi::UpdateAntiLagState(VOID* pData)
 
         result = InputCommon::set_marker(inputContext, device, markerParams);
 
-        if (result != InputResult::Ok)
+        if (result != InputResult::Ok && result != InputResult::UsingDifferentInput)
         {
             LOG_ERROR("set_marker result: {}", magic_enum::enum_name(result));
             return E_FAIL;
