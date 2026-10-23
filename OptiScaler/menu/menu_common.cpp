@@ -8426,7 +8426,7 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
         { "main", "Upscaling", RenderUpscalerStateMessage },
         { "main", "Frame Gen" },
         { "main", "Latency" },
-        { "system", "Textures" },
+        { "system", "Textures", nullptr, [](RenderMenuContext& c) { return c.state.swapchainApi != Vulkan; } },
         { "system", "Compatibility" },
         { "advanced", "Menu" },
         { "advanced", "Quirks", RenderQuirksSettings, [](RenderMenuContext& c) { return QuirksTabVisible(c.state); },
