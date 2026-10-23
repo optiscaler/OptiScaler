@@ -230,13 +230,10 @@ static void RunAgilityUpgrade(HMODULE dx12Module)
 }
 
 // Remembers the plugin for the menu
-static void RegisterLoadedAsi(const std::filesystem::path& path, bool hasPatchResult)
+static void RegisterLoadedAsi(const std::filesystem::path& path)
 {
     std::string name = wstring_to_string(path.filename().wstring()); // .string() can crash
-    std::string lowerName(name);
-    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    const bool isOptiPatcher = hasPatchResult || lowerName.find("optipatcher") != std::string::npos;
+    std::string version = Util::GetFileVersionString(path.wstring());
     auto& state = State::Instance();
     std::lock_guard<std::mutex> lock(state.loadedAsiPluginsMutex);
     // Late-load entries can be handled more than once
@@ -245,7 +242,7 @@ static void RegisterLoadedAsi(const std::filesystem::path& path, bool hasPatchRe
         if (plugin.name == name)
             return;
     }
-    state.loadedAsiPlugins.push_back({ name, isOptiPatcher });
+    state.loadedAsiPlugins.push_back({ name, version });
 }
 
 void LoadAsiPlugins()
@@ -287,7 +284,7 @@ void LoadAsiPlugins()
                 auto init = (PFN_InitializeASI) KernelBaseProxy::GetProcAddress_()(hMod, "InitializeASI");
                 auto patchResult = (PFN_PatchResult) KernelBaseProxy::GetProcAddress_()(hMod, "PatchResult");
 
-                RegisterLoadedAsi(entry.path(), patchResult != nullptr);
+                RegisterLoadedAsi(entry.path());
 
                 if (init != nullptr)
                     init();
@@ -350,7 +347,7 @@ void LoadAsiPlugins()
                                     auto patchResult =
                                         (PFN_PatchResult) KernelBaseProxy::GetProcAddress_()(hMod, "PatchResult");
 
-                                    RegisterLoadedAsi(entry.path(), patchResult != nullptr);
+                                    RegisterLoadedAsi(entry.path());
 
                                     if (init != nullptr)
                                         init();

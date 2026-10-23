@@ -6910,15 +6910,17 @@ void MenuCommon::RenderMagnifierSettings(RenderMenuContext& ctx)
     }
 }
 
-// List loaded ASI plugins, excluding OptiPatcher
+// List loaded ASI plugins, with their version when the file has one
 static std::vector<std::string> ListedAsiPlugins(State& state)
 {
     std::vector<std::string> names;
     std::lock_guard<std::mutex> lock(state.loadedAsiPluginsMutex);
     for (const auto& plugin : state.loadedAsiPlugins)
     {
-        if (!plugin.isOptiPatcher)
+        if (plugin.version.empty())
             names.push_back(plugin.name);
+        else
+            names.push_back(std::format("{} ({})", plugin.name, plugin.version));
     }
     return names;
 }
