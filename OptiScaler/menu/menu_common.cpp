@@ -2825,14 +2825,6 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
     // UPSCALERS -----------------------------
     SectionTitle("Upscalers");
 
-    // Row - API | GPU | Upscaler input
-    ImGui::TextWrapped("%s%s | %s | Input: %s", ApiName(state.api),
-                       IdentifyGpu::gameUsesDxvk()          ? " (DXVK)"
-                       : IdentifyGpu::gameUsesVkd3dProton() ? " (VKD3D)"
-                                                            : "",
-                       primaryGpu.name.c_str(), ApiUpscalerInputName(state.currentInputApiName).c_str());
-    ImGui::Spacing();
-
     GetCurrentBackendInfo(state.api, currentBackend, &currentBackendName);
 
     ImGui::PushItemWidth(150.0f * menuResScale);
@@ -8712,6 +8704,19 @@ void MenuCommon::RenderCustomTabSettings(RenderMenuContext& ctx)
     }
 }
 
+// Session timer
+static std::string SessionTimeText(const State& state)
+{
+    const auto elapsed =
+        std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - state.startTime).count();
+    const auto hours = elapsed / 3600;
+    const auto minutes = (elapsed / 60) % 60;
+    const auto secs = elapsed % 60;
+    if (hours > 0)
+        return StrFmt("%02lld:%02lld:%02lld", (long long) hours, (long long) minutes, (long long) secs);
+    return StrFmt("%02lld:%02lld", (long long) minutes, (long long) secs);
+}
+
 void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
 {
     auto& state = ctx.state;
@@ -8839,7 +8844,7 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
         const bool optiPatcher = state.isOptiPatcherSucceed;
 
         // Compact state of the upscaler and FG pinned to the bottom of the sidebar
-        const float statusLines = 3.0f + (optiPatcher ? 1.0f : 0.0f);
+        const float statusLines = 4.0f + (optiPatcher ? 1.0f : 0.0f);
         const float statusHeight = 1.0f + ImGui::GetTextLineHeightWithSpacing() * statusLines + style.ItemSpacing.y;
         const float gap = ImGui::GetContentRegionAvail().y - statusHeight - style.ItemSpacing.y;
         if (gap > 0.0f)
@@ -8920,6 +8925,9 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
             ImGui::SameLine(0.0f, 8.0f * menuResScale);
             ImGui::TextColored(toneMapColor(ImVec4(0.35f, 0.85f, 0.45f, 1.f)), "Yes");
         }
+        ImGui::TextDisabled("Uptime");
+        ImGui::SameLine(0.0f, 8.0f * menuResScale);
+        ImGui::TextUnformatted(SessionTimeText(state).c_str());
     }
 
     ImGui::EndChild();
@@ -9417,6 +9425,19 @@ void MenuCommon::RenderHudlessResourcesWindow(RenderMenuContext& ctx, ImGuiWindo
     }
 }
 
+// Game name | API | GPU | Input, above the tabs
+static void RenderGameInfoRow(State& state, const GpuInformation& primaryGpu)
+{
+    ScopedCard card;
+    std::string line = state.gameName.empty() ? "" : state.gameName + " | ";
+    line += StrFmt("%s%s | %s | Input: %s", ApiName(state.api),
+                   IdentifyGpu::gameUsesDxvk()          ? " (DXVK)"
+                   : IdentifyGpu::gameUsesVkd3dProton() ? " (VKD3D)"
+                                                        : "",
+                   primaryGpu.name.c_str(), ApiUpscalerInputName(state.currentInputApiName).c_str());
+    ImGui::TextWrapped("%s", line.c_str());
+}
+
 void MenuCommon::RenderMainMenuWindow(RenderMenuContext& ctx)
 {
     auto& state = ctx.state;
@@ -9498,14 +9519,16 @@ void MenuCommon::RenderMainMenuWindow(RenderMenuContext& ctx)
     // Main menu window
     if (windowTitle.empty())
     {
-        windowTitle = StrFmt("%s - %s %s", BuildInfo::ProductName(), state.gameExe.c_str(),
-                             state.gameName.empty() ? "" : StrFmt("- %s", state.gameName.c_str()).c_str());
+        windowTitle = StrFmt("%s - %s", BuildInfo::ProductName(), state.gameExe.c_str());
     }
 
     if (ImGui::Begin(windowTitle.c_str(), NULL, mainFlags))
     {
         // Update and config notices shown above the tabs.
         RenderMainMenuHeaderMessages(ctx);
+
+        // Game name, API, GPU and input, above the tabs.
+        RenderGameInfoRow(state, *ctx.primaryGpu);
 
         // Tabs on the left, tab content on the right.
         RenderMainMenuTabs(ctx);

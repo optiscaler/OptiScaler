@@ -8,6 +8,7 @@
 #include <inputs/FG/Streamline_Inputs.h>
 #include <inputs/FG/Streamline_Inputs_Sl1_Dx12.h>
 
+#include <chrono>
 #include <set>
 #include <deque>
 #include <mutex>
@@ -172,6 +173,8 @@ class State
 
     std::string gameExe;
     std::string gameName;
+    // Counts from when the dll is attached to the process
+    std::chrono::steady_clock::time_point startTime { std::chrono::steady_clock::now() };
     std::string gameVersion;
     GameEngineType gameEngine = GameEngineType::Other;
     bool isWindows10 = false;

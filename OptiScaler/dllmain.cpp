@@ -1527,6 +1527,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         HMODULE handle = nullptr;
         OSVERSIONINFOW winVer { 0 };
 
+        State::Instance().startTime = std::chrono::steady_clock::now();
+
         dllModule = hModule;
         exeModule = GetModuleHandle(nullptr);
         processId = GetCurrentProcessId();
