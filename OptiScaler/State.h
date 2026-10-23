@@ -212,6 +212,14 @@ class State
     // This should be set to a non-None value only if all other requirements are met and nvngx can be used
     FGNvngxReplacement activeFgNvngx = FGNvngxReplacement::None;
 
+    // slInit with the DLSSG input or output, for XeFG on Vulkan's refusal reason
+    bool slInitSeen = false;
+    bool slDlssgRemoved = false;
+    bool slLoadsAllFeatures = false;
+    // DLSS-G's plugin JSON lost its swapchain hooks, and whether Streamline still asked for one
+    bool slDlssgHooksCleared = false;
+    bool slDlssgHooksResolved = false;
+
     // Streamline FG inputs
     Sl_Inputs slFGInputs = {};
     Sl1_Inputs_Dx12 s_sl1FGInputs {};
@@ -279,6 +287,9 @@ class State
 
     // Framerate
     bool reflexLimitsFps = false;
+    // XeFG on Vulkan: the engine limited FPS in its own sleep, and which (0 XeLL, 1 Reflex, 2 Anti-Lag 2)
+    bool xefgVkEngineLimitsFps = false;
+    uint32_t xefgVkEngineLatency = 0;
     bool reflexShowWarning = false;
     bool rtssReflexInjection = false;
     UINT64 reflexFrameId = 0;
@@ -456,6 +467,9 @@ class State
 
         return currentVkFG;
     }
+
+    // DXGI swapchains made while Vulkan creates one, or while frame generation runs on Vulkan, stay as they are
+    bool VulkanDxgiSwapchain() const { return vulkanCreatingSC || currentVkFG != nullptr; }
 
     bool FGSwapchainExists() const
     {

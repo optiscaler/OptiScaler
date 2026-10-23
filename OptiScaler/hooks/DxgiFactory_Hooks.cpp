@@ -400,7 +400,7 @@ HRESULT DxgiFactoryHooks::CreateSwapChain(IDXGIFactory* realFactory, IUnknown* p
 {
     *ppSwapChain = nullptr;
 
-    if (State::Instance().vulkanCreatingSC)
+    if (State::Instance().VulkanDxgiSwapchain())
     {
         LOG_WARN("Vulkan is creating swapchain!");
 
@@ -760,7 +760,7 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
         _skipFGSwapChainCreation = true;
     }
 
-    if (State::Instance().vulkanCreatingSC)
+    if (State::Instance().VulkanDxgiSwapchain())
     {
         LOG_WARN("Vulkan is creating swapchain!");
         HRESULT result;
@@ -1161,7 +1161,7 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForCoreWindow(IDXGIFactory2* realFactor
                                                        const DXGI_SWAP_CHAIN_DESC1* pDesc,
                                                        IDXGIOutput* pRestrictToOutput, IDXGISwapChain1** ppSwapChain)
 {
-    if (State::Instance().vulkanCreatingSC)
+    if (State::Instance().VulkanDxgiSwapchain())
     {
         LOG_WARN("Vulkan is creating swapchain!");
 
@@ -1276,7 +1276,7 @@ HRESULT DxgiFactoryHooks::DLSSGCreateSwapChain(IDXGIFactory* realFactory, IUnkno
 {
     *ppSwapChain = nullptr;
 
-    if (State::Instance().vulkanCreatingSC)
+    if (State::Instance().VulkanDxgiSwapchain())
     {
         LOG_WARN("Vulkan is creating swapchain!");
 
@@ -1561,7 +1561,7 @@ HRESULT DxgiFactoryHooks::DLSSGCreateSwapChainForHwnd(IDXGIFactory2* realFactory
         _skipFGSwapChainCreation = true;
     }
 
-    if (State::Instance().vulkanCreatingSC)
+    if (State::Instance().VulkanDxgiSwapchain())
     {
         LOG_WARN("Vulkan is creating swapchain!");
         HRESULT result;
@@ -1874,7 +1874,7 @@ HRESULT DxgiFactoryHooks::DLSSGCreateSwapChainForCoreWindow(IDXGIFactory2* realF
                                                             IDXGIOutput* pRestrictToOutput,
                                                             IDXGISwapChain1** ppSwapChain)
 {
-    if (State::Instance().vulkanCreatingSC)
+    if (State::Instance().VulkanDxgiSwapchain())
     {
         LOG_WARN("Vulkan is creating swapchain!");
 

@@ -104,6 +104,14 @@ class XeFG_DynamicCount
         if (s.targetFps <= 0.0 || s.frameMs <= 0.0 || s.frameMs > 250.0)
             return count;
 
+        // An isolated hitch (shader compile, streaming) is no load change either, a third in a row is
+        if (_frameMs > 0.0 && s.frameMs > _frameMs * kHitchFactor && _hitchRun < kMaxHitchRun)
+        {
+            ++_hitchRun;
+            return count;
+        }
+        _hitchRun = 0;
+
         const double nowMs = s.nowMs;
         const double work = std::max(s.frameMs - std::clamp(s.waitMs, 0.0, s.frameMs), 0.5);
 
@@ -380,8 +388,16 @@ class XeFG_DynamicCount
         const bool worthTry = unreached && (!costKnown || hidden || lower >= keep);
         const bool tryDown = canDown && (capTest || hidden || worthTry || lower >= needed * tryShare);
 
-        if (Held(_tryHold, tryDown && !knownBad, nowMs) >= down.backoffMs)
+        // Held at a cap the game's waits don't show (its own XeLL or AntiLag 2 sleep, a driver cap): try a step less
+        // now and then, as the cap controller does
+        const bool heldAtCap = atCap(target) || atCap(s.limitFps) || atCap(s.refreshFps);
+        const bool capProbe = canDown && heldAtCap && waitShare < kUnseenWaitShare && sinceChange >= kCapProbeMs;
+
+        if (Held(_tryHold, (tryDown || capProbe) && !knownBad, nowMs) >= std::min(down.backoffMs, kTryHoldMs) &&
+            sinceChange >= down.backoffMs)
+        {
             return Change(count - 1, nowMs, Reason::Probe, Check::Down, presented);
+        }
 
         return count;
     }
@@ -401,6 +417,7 @@ class XeFG_DynamicCount
         _lastDownMs = -1.0;
         _check = Check::None;
         _fresh = true;
+        _hitchRun = 0;
     }
 
     Reason LastReason() const { return _reason; }
@@ -458,6 +475,11 @@ class XeFG_DynamicCount
     static constexpr double kAtMost = 1.03;        // down rounding without a cap: at or below the target up to here
     static constexpr double kLimitNear = 1.1;      // an FPS limit up to this far above the target caps the rate near it
     static constexpr double kCapMemoryMs = 2000.0; // a cap seen this recently still holds the rate
+    static constexpr double kHitchFactor = 2.5;    // a frame this much longer than the average is a hitch
+    static constexpr int kMaxHitchRun = 2;         // more in a row are a load change
+    static constexpr double kTryHoldMs = 3000.0;   // a try's condition holds this long at most
+    static constexpr double kCapProbeMs = 15000.0; // a try at a cap the waits don't explain, after the last change
+    static constexpr double kUnseenWaitShare = 0.15; // waits this short at a cap aren't what holds the rate there
 
     // A cap holds the presented rate: an FPS limit at or near the target (also while the rate dips under it), the
     // rate held at the FPS limit or the refresh rate (V-Sync), or at the target while the game didn't wait in
@@ -742,6 +764,7 @@ class XeFG_DynamicCount
     }
 
     bool _fresh = true; // no frame seen since a (re)start
+    int _hitchRun = 0;  // hitch frames skipped in a row
     double _frameMs = 0.0;
     double _workMs = 0.0;
     double _lastChangeMs = 0.0;

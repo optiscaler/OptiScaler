@@ -284,10 +284,16 @@ sl::Result StreamlineHooks::hkslInit(const sl::Preferences& pref, uint64_t sdkVe
         }
     }
 
+    State::Instance().slInitSeen = true;
+
     if (State::Instance().activeFgInput == FGInput::DLSSG || State::Instance().activeFgOutput == FGOutput::DLSSG)
     {
         std::vector<sl::Feature> localFeaturesToLoad(pref.featuresToLoad, pref.featuresToLoad + pref.numFeaturesToLoad);
-        std::erase(localFeaturesToLoad, sl::kFeatureDLSS_G);
+        State::Instance().slLoadsAllFeatures = localFeaturesToLoad.empty();
+        State::Instance().slDlssgRemoved = std::erase(localFeaturesToLoad, sl::kFeatureDLSS_G) > 0;
+
+        if (State::Instance().slLoadsAllFeatures)
+            LOG_WARN("slInit without a feature list loads every plugin, DLSS-G can't be left out");
 
         localPref.featuresToLoad = localFeaturesToLoad.data();
         localPref.numFeaturesToLoad = (uint32_t) localFeaturesToLoad.size();
@@ -470,8 +476,13 @@ sl::Result StreamlineHooks::hkslSetTag(const sl::ViewportHandle& viewport, const
         return o_slSetTag(viewport, tags, numTags, cmdBuffer);
     }
 
-    if (renderApi == sl::RenderAPI::eCount)
+    // Also when slInit ran before OptiScaler loaded, so once
+    static bool warned = false;
+    if (renderApi == sl::RenderAPI::eCount && !warned)
+    {
+        warned = true;
         LOG_WARN("Incomplete Streamline hooks");
+    }
 
     if (tags == nullptr)
     {
@@ -557,8 +568,13 @@ sl::Result StreamlineHooks::hkslSetTagForFrame(const sl::FrameToken& frame, cons
         return o_slSetTagForFrame(frame, viewport, resources, numResources, cmdBuffer);
     }
 
-    if (renderApi == sl::RenderAPI::eCount)
+    // Also when slInit ran before OptiScaler loaded, so once
+    static bool warned = false;
+    if (renderApi == sl::RenderAPI::eCount && !warned)
+    {
+        warned = true;
         LOG_WARN("Incomplete Streamline hooks");
+    }
 
     if (resources == nullptr)
     {
@@ -1076,6 +1092,8 @@ bool StreamlineHooks::hkdlssg_slOnPluginLoad(sl::param::IParameters* params, con
     // Kill the DLSSG streamline swapchain hooks
     if (State::Instance().activeFgInput == FGInput::DLSSG || State::Instance().activeFgOutput == FGOutput::DLSSG)
     {
+        State::Instance().slDlssgHooksCleared = true;
+
         if (configJson.contains("/hooks"_json_pointer))
             configJson["hooks"].clear();
 
@@ -1586,6 +1604,10 @@ void* StreamlineHooks::hkdlssg_slGetPluginFunction(PFN_slGetPluginFunction origi
                                                    void* caller)
 {
     LOG_DEBUG("{}", functionName);
+
+    // Streamline asks for the hooks the plugin JSON names (slHookVkPresent, slHookVkCreateSwapchainKHR, ...)
+    if (strncmp(functionName, "slHook", 6) == 0)
+        State::Instance().slDlssgHooksResolved = true;
 
     if (strcmp(functionName, "slOnPluginLoad") == 0)
     {

@@ -18,6 +18,7 @@
 
 #include <framegen/nvngx/Nvngx_FG.h>
 #include <framegen/reprojection/Reprojection_Dx12.h>
+#include <framegen/xefg/XeFG_Vk.h>
 
 #include <nvapi/fakenvapi.h>
 #include <hooks/Reflex_Hooks.h>
@@ -3684,7 +3685,8 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
     // XeFG output requirements
     auto constexpr xefgOutputIndex = (uint32_t) FGOutput::XeFG;
-    outputOptions[xefgOutputIndex].set_disabled(state.swapchainApi == API::Vulkan, "Unsupported API");
+    outputOptions[xefgOutputIndex].set_disabled(state.swapchainApi == API::Vulkan && XeFG_Vk::EngineApi() == nullptr,
+                                                "Unsupported API");
     // Unsupported FG input selected
     const auto currentInputIndex = (uint32_t) state.activeFgInput;
     if (config->FGInput != FGInput::NoFG && inputOptions.size() > currentInputIndex &&
@@ -4463,10 +4465,14 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         }
     }
 
-    // XeFG controls
+    // XeFG controls, D3D12 or Vulkan (the checks are D3D12's)
+    auto xefgVk = dynamic_cast<XeFG_Vk*>(state.currentVkFG);
+    const bool vulkanXeFG = xefgVk != nullptr && xefgVk->HasSwapchain();
+    IFGFeature* xefgOutput = vulkanXeFG ? xefgVk : static_cast<IFGFeature*>(fgOutput);
+
     if (ScopedCard::Shows("fg_xefg") && state.activeFgOutput == FGOutput::XeFG &&
         state.activeFgInput != FGInput::NoFG && state.activeFgInput != FGInput::ForceXeLL &&
-        state.currentFGSwapchain != nullptr && XeFGProxy::InitXeFG() && fgOutput)
+        (vulkanXeFG || (state.currentFGSwapchain != nullptr && XeFGProxy::InitXeFG() && fgOutput)))
     {
         ScopedCard card { "XeFG Settings" };
 
@@ -4476,18 +4482,20 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         if (state.activeFgInput == FGInput::Upscaler && currentFeature != nullptr)
             nativeAA = currentFeature->RenderWidth() == currentFeature->DisplayWidth();
 
-        const bool correctMVs = fgOutput->IsLowResMV() || nativeAA ||
+        const bool correctMVs = vulkanXeFG || xefgOutput->IsLowResMV() || nativeAA ||
                                 (State::Instance().gameQuirks & GameQuirk::ForceFGRenderSizeMVs) || ignoreChecks;
+        const bool exclusiveFullscreen = !vulkanXeFG && state.realExclusiveFullscreen;
 
-        if (!correctMVs || state.realExclusiveFullscreen)
+        if (!correctMVs || exclusiveFullscreen)
         {
             config->FGEnabled.set_volatile_value(false);
             config->FGXeFGDebugView.reset();
         }
 
-        const bool restartNeeded = config->FGXeFGDepthInverted.value_or_default() != fgOutput->IsInvertedDepth() ||
-                                   config->FGXeFGJitteredMV.value_or_default() != fgOutput->IsJitteredMVs() ||
-                                   config->FGXeFGHighResMV.value_or_default() == fgOutput->IsLowResMV();
+        const bool restartNeeded =
+            !vulkanXeFG && (config->FGXeFGDepthInverted.value_or_default() != xefgOutput->IsInvertedDepth() ||
+                            config->FGXeFGJitteredMV.value_or_default() != xefgOutput->IsJitteredMVs() ||
+                            config->FGXeFGHighResMV.value_or_default() == xefgOutput->IsLowResMV());
 
         bool cantActivate = false;
         if (restartNeeded)
@@ -4501,13 +4509,13 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)),
                                    "Requires disabling dilated motion vectors");
 
-            if (!ignoreChecks && state.realExclusiveFullscreen)
+            if (!ignoreChecks && exclusiveFullscreen)
             {
                 cantActivate = true;
                 ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)), "Borderless display mode required!");
             }
 
-            if (!ignoreChecks && outputIsHdr)
+            if (!ignoreChecks && outputIsHdr && !vulkanXeFG)
             {
                 if (state.currentSwapchainDesc.BufferDesc.Format >= DXGI_FORMAT_R32G32B32A32_TYPELESS &&
                     state.currentSwapchainDesc.BufferDesc.Format <= DXGI_FORMAT_R16G16B16A16_SINT)
@@ -4528,7 +4536,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                         "It might cause crashes and bad IQ!");
         }
 
-        const int maxCount = fgOutput->GetMaxInterpolationCount();
+        const int maxCount = xefgOutput->GetMaxInterpolationCount();
         const bool dynamicMFG = maxCount >= 1 && config->FGXeFGDynamicMFG.value_or_default();
 
         // Frame Gen at 2X: Dynamic MFG only switches between off and 2X
@@ -4537,14 +4545,14 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
         ImGui::Text("Current XeFG state:");
         ImGui::SameLine();
-        if (!fgOutput->IsActive())
+        if (!xefgOutput->IsActive())
         {
             ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)), "OFF");
         }
         else
         {
             // Dynamic MFG's 1X keeps FG running with no generated frames
-            const auto count = fgOutput->GetInterpolatedFrameCount();
+            const auto count = xefgOutput->GetInterpolatedFrameCount();
             const auto color = count > 0 ? ImVec4(0.f, 1.f, 0.25f, 1.f) : ImVec4(1.0f, 0.647f, 0.0f, 1.f);
             ImGui::TextColored(toneMapColor(color), std::format("ON {}x", count + 1).c_str());
 
@@ -4648,7 +4656,8 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         {
             config->FGXeFGDebugView = fgDV;
 
-            if (config->FGXeFGDebugView.value_or_default())
+            // The Vulkan engine applies it at the next present
+            if (!vulkanXeFG && config->FGXeFGDebugView.value_or_default())
             {
                 state.fgChanged = true;
                 LOG_DEBUG("DebugView set FGChanged");
@@ -4659,18 +4668,26 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         ImGui::EndDisabled();
 
         ImGui::SameLine(0.0f, 16.0f);
+        ImGui::BeginDisabled(vulkanXeFG);
         bool fgBorderless = config->FGXeFGForceBorderless.value_or_default();
         if (ImGui::Checkbox("Force Borderless", &fgBorderless))
             config->FGXeFGForceBorderless = fgBorderless;
 
-        ShowTooltip("Forces Borderless display mode\n\n"
-                    "For best results, set fullscreen \n"
-                    "resolution to your display resolution\n"
-                    "Might cause some instability issues.\n\n"
-                    "NEEDS GAME RESTART TO BE ACTIVE!");
+        if (vulkanXeFG)
+            ShowTooltip("D3D12 only: set borderless or windowed\n"
+                        "in the game's own settings");
+        else
+            ShowTooltip("Forces Borderless display mode\n\n"
+                        "For best results, set fullscreen \n"
+                        "resolution to your display resolution\n"
+                        "Might cause some instability issues.\n\n"
+                        "NEEDS GAME RESTART TO BE ACTIVE!");
+        ImGui::EndDisabled();
 
+        // XeFG on Vulkan has no HUDless or UI resources
         ImGui::SameLine(0.0f, 16.0f);
-        ImGui::BeginDisabled(!fgOutput->IsUsingHudlessAny() || XeFGProxy::SetUiCompositionState() == nullptr);
+        ImGui::BeginDisabled(vulkanXeFG || !xefgOutput->IsUsingHudlessAny() ||
+                             XeFGProxy::SetUiCompositionState() == nullptr);
         bool fgCompositeUI = config->FGXeFGUIComposition.value_or_default();
         if (ImGui::Checkbox("UI Composition", &fgCompositeUI))
             config->FGXeFGUIComposition = fgCompositeUI;
@@ -4733,6 +4750,17 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             ImGui::Spacing();
             ImGui::Spacing();
         }
+    }
+    // XeFG on Vulkan that the engine turned down: why, instead of a silent OFF
+    else if (ScopedCard::Shows("fg_xefg") && state.activeFgOutput == FGOutput::XeFG &&
+             state.activeFgInput != FGInput::NoFG && xefgVk != nullptr && !vulkanXeFG)
+    {
+        ScopedCard card { "XeFG Settings" };
+
+        ImGui::Text("Current XeFG state:");
+        ImGui::SameLine();
+        ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.6f, 0.f, 1.f)), "Not available on this game");
+        ImGui::TextWrapped("Reason: %s", xefgVk->EngineReason().c_str());
     }
 
     // DLSSG controls
@@ -5883,7 +5911,13 @@ void MenuCommon::RenderFramerateSettings(RenderMenuContext& ctx)
         }
         else
         {
-            currentMethod = "Fallback";
+            // XeFG on Vulkan: the engine limits in its Reflex or Anti-Lag 2 sleep
+            if (state.xefgVkEngineLatency == 1)
+                currentMethod = "Reflex (XeFG)";
+            else if (state.xefgVkEngineLatency == 2)
+                currentMethod = "FSR Anti-Lag 2.0 (XeFG)";
+            else
+                currentMethod = "Fallback";
         }
 
         if (state.rtssReflexInjection)
@@ -7897,6 +7931,38 @@ void MenuCommon::RenderVsyncSettings(RenderMenuContext& ctx)
                 LOG_DEBUG("V-Sync change detected, forcing XeFG reset");
                 state.WAR_xefgRequestFGToggle = true;
             }
+        }
+    }
+    // XeFG on Vulkan: the engine presents with the present mode its swapchain is created with
+    else if (state.activeFgOutput == FGOutput::XeFG)
+    {
+        SectionTitle("V-Sync Settings");
+        {
+            ScopedID sectionId { "V-Sync Settings" };
+
+            auto forceVsyncOn = config->ForceVsync.has_value() && config->ForceVsync.value();
+            auto forceVsyncOff = config->ForceVsync.has_value() && !config->ForceVsync.value();
+
+            if (ImGui::Checkbox("V-Sync On", &forceVsyncOn))
+            {
+                if (forceVsyncOn)
+                    config->ForceVsync = true;
+                else
+                    config->ForceVsync.reset();
+            }
+            ImGui::SameLine(0.0f, 16.0f);
+
+            if (ImGui::Checkbox("V-Sync Off", &forceVsyncOff))
+            {
+                if (forceVsyncOff)
+                    config->ForceVsync = false;
+                else
+                    config->ForceVsync.reset();
+            }
+
+            ShowTooltip("XeFG's presents, whatever present mode the game asks for (No Man's Sky asks\n"
+                        "for V-Sync while its DLSS Frame Generation is on).\n\n"
+                        "Applies when the game makes its next swapchain: please Save Settings and restart.");
         }
     }
 }

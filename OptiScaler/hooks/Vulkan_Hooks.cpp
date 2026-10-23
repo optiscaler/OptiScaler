@@ -13,6 +13,7 @@
 #include <framegen/ffx/FSRFG_Vk.h>
 #include <framegen/dlssg/DLSSG_Vk.h>
 #include <framegen/reprojection/Reprojection_Vk.h>
+#include <framegen/xefg/XeFG_Vk.h>
 #include <fsr4/FSR4DriverProviderVk.h>
 
 #include <misc/FrameLimit.h>
@@ -45,6 +46,7 @@ static HWND _hwnd = nullptr;
 
 static std::mutex _vkApiVersionMutex;
 static std::unordered_map<VkInstance, uint32_t> _instanceApiVersions;
+static std::unordered_map<VkInstance, uint32_t> _instanceUsedApiVersions; // after raising it for FG
 static std::unordered_map<VkPhysicalDevice, VkInstance> _physicalDeviceInstances;
 
 static std::mutex _surfaceWindowsMutex;
@@ -241,6 +243,14 @@ static bool EnableRadvCooperativeMatrix2()
     return setUnixEnv && setUnixEnv("radv_cooperative_matrix2_nv", "true") >= 0;
 }
 
+// Core private-data functions, detoured as games call them straight from vulkan-1.dll. Answered for XeFG's swapchain.
+static PFN_vkSetPrivateData o_vkSetPrivateData = nullptr;
+static PFN_vkGetPrivateData o_vkGetPrivateData = nullptr;
+static VkResult VKAPI_CALL hkvkSetPrivateData(VkDevice device, VkObjectType objectType, uint64_t objectHandle,
+                                              VkPrivateDataSlot privateDataSlot, uint64_t data);
+static void VKAPI_CALL hkvkGetPrivateData(VkDevice device, VkObjectType objectType, uint64_t objectHandle,
+                                          VkPrivateDataSlot privateDataSlot, uint64_t* pData);
+
 static void HookDevice(VkDevice InDevice)
 {
     if (o_CreateSwapchainKHR != nullptr || State::Instance().vulkanSkipHooks)
@@ -257,6 +267,8 @@ static void HookDevice(VkDevice InDevice)
     o_SetHdrMetadataEXT = (PFN_vkSetHdrMetadataEXT) (vkGetDeviceProcAddr(InDevice, "vkSetHdrMetadataEXT"));
     o_WaitForPresentKHR = (PFN_vkWaitForPresentKHR) (vkGetDeviceProcAddr(InDevice, "vkWaitForPresentKHR"));
     o_WaitForPresent2KHR = (PFN_vkWaitForPresent2KHR) (vkGetDeviceProcAddr(InDevice, "vkWaitForPresent2KHR"));
+    o_vkSetPrivateData = (PFN_vkSetPrivateData) (vkGetDeviceProcAddr(InDevice, "vkSetPrivateData"));
+    o_vkGetPrivateData = (PFN_vkGetPrivateData) (vkGetDeviceProcAddr(InDevice, "vkGetPrivateData"));
 
     if (o_CreateSwapchainKHR)
     {
@@ -293,6 +305,12 @@ static void HookDevice(VkDevice InDevice)
         if (o_WaitForPresent2KHR != nullptr)
             DetourAttach(&(PVOID&) o_WaitForPresent2KHR, hkvkWaitForPresent2KHR);
 
+        if (o_vkSetPrivateData != nullptr)
+            DetourAttach(&(PVOID&) o_vkSetPrivateData, hkvkSetPrivateData);
+
+        if (o_vkGetPrivateData != nullptr)
+            DetourAttach(&(PVOID&) o_vkGetPrivateData, hkvkGetPrivateData);
+
         auto detourResult = DetourTransactionCommit();
         if (detourResult != NO_ERROR)
         {
@@ -306,6 +324,8 @@ static void HookDevice(VkDevice InDevice)
             o_SetHdrMetadataEXT = nullptr;
             o_WaitForPresentKHR = nullptr;
             o_WaitForPresent2KHR = nullptr;
+            o_vkSetPrivateData = nullptr;
+            o_vkGetPrivateData = nullptr;
         }
     }
 }
@@ -342,8 +362,290 @@ static IFGFeature_Vk* CreateFGFeature()
     {
         state.currentVkFG = new Reprojection_Vk();
     }
+    else if (state.activeFgOutput == FGOutput::XeFG)
+    {
+        // XeFG is D3D12 only, the engine runs it on Vulkan
+        if (XeFG_Vk::EngineApi() != nullptr)
+            state.currentVkFG = new XeFG_Vk();
+        else
+            LOG_ERROR("XeFG Vulkan engine isn't loaded, XeFG won't be available");
+    }
 
     return state.currentVkFG;
+}
+
+// swapchain_maintenance1's image release on XeFG's swapchain goes to its engine, the driver doesn't know that handle
+static PFN_vkReleaseSwapchainImagesKHR o_vkReleaseSwapchainImagesKHR = nullptr;
+static PFN_vkReleaseSwapchainImagesEXT o_vkReleaseSwapchainImagesEXT = nullptr;
+
+static XeFG_Vk* XeFGOwning(VkSwapchainKHR swapchain)
+{
+    auto fg = dynamic_cast<XeFG_Vk*>(State::Instance().currentVkFG);
+    return fg != nullptr && fg->OwnsSwapchain(swapchain) ? fg : nullptr;
+}
+
+static VkResult VKAPI_CALL hkvkReleaseSwapchainImagesKHR(VkDevice device,
+                                                         const VkReleaseSwapchainImagesInfoKHR* pReleaseInfo)
+{
+    if (auto fg = pReleaseInfo != nullptr ? XeFGOwning(pReleaseInfo->swapchain) : nullptr)
+        return fg->ReleaseSwapchainImages(device, pReleaseInfo->swapchain, pReleaseInfo->imageIndexCount,
+                                          pReleaseInfo->pImageIndices);
+
+    return o_vkReleaseSwapchainImagesKHR(device, pReleaseInfo);
+}
+
+static VkResult VKAPI_CALL hkvkReleaseSwapchainImagesEXT(VkDevice device,
+                                                         const VkReleaseSwapchainImagesInfoEXT* pReleaseInfo)
+{
+    if (auto fg = pReleaseInfo != nullptr ? XeFGOwning(pReleaseInfo->swapchain) : nullptr)
+        return fg->ReleaseSwapchainImages(device, pReleaseInfo->swapchain, pReleaseInfo->imageIndexCount,
+                                          pReleaseInfo->pImageIndices);
+
+    return o_vkReleaseSwapchainImagesEXT(device, pReleaseInfo);
+}
+
+// The common swapchain extensions' entry points, answered here for XeFG's swapchain (SetHostRoutes)
+static PFN_vkAcquireFullScreenExclusiveModeEXT o_vkAcquireFullScreenExclusiveModeEXT = nullptr;
+static PFN_vkReleaseFullScreenExclusiveModeEXT o_vkReleaseFullScreenExclusiveModeEXT = nullptr;
+static PFN_vkGetRefreshCycleDurationGOOGLE o_vkGetRefreshCycleDurationGOOGLE = nullptr;
+static PFN_vkGetPastPresentationTimingGOOGLE o_vkGetPastPresentationTimingGOOGLE = nullptr;
+static PFN_vkSetLocalDimmingAMD o_vkSetLocalDimmingAMD = nullptr;
+static PFN_vkGetSwapchainStatusKHR o_vkGetSwapchainStatusKHR = nullptr;
+static PFN_vkGetSwapchainCounterEXT o_vkGetSwapchainCounterEXT = nullptr;
+static PFN_vkSetDebugUtilsObjectNameEXT o_vkSetDebugUtilsObjectNameEXT = nullptr;
+static PFN_vkSetDebugUtilsObjectTagEXT o_vkSetDebugUtilsObjectTagEXT = nullptr;
+static PFN_vkDebugMarkerSetObjectNameEXT o_vkDebugMarkerSetObjectNameEXT = nullptr;
+static PFN_vkDebugMarkerSetObjectTagEXT o_vkDebugMarkerSetObjectTagEXT = nullptr;
+static PFN_vkSetPrivateData o_vkSetPrivateDataEXT = nullptr;
+static PFN_vkGetPrivateData o_vkGetPrivateDataEXT = nullptr;
+
+// Private data the game stores on XeFG's handle: (handle, slot) -> value
+static std::mutex xefgPrivateDataMutex;
+static std::map<std::pair<uint64_t, uint64_t>, uint64_t> xefgPrivateData;
+
+static XeFG_Vk* XeFGOwningObject(VkObjectType objectType, uint64_t objectHandle)
+{
+    return objectType == VK_OBJECT_TYPE_SWAPCHAIN_KHR ? XeFGOwning((VkSwapchainKHR) objectHandle) : nullptr;
+}
+
+// The engine's own swapchain has the game's full screen exclusive mode
+static VkResult VKAPI_CALL hkvkAcquireFullScreenExclusiveModeEXT(VkDevice device, VkSwapchainKHR swapchain)
+{
+    if (XeFGOwning(swapchain))
+        return VK_SUCCESS;
+
+    return o_vkAcquireFullScreenExclusiveModeEXT(device, swapchain);
+}
+
+static VkResult VKAPI_CALL hkvkReleaseFullScreenExclusiveModeEXT(VkDevice device, VkSwapchainKHR swapchain)
+{
+    if (XeFGOwning(swapchain))
+        return VK_SUCCESS;
+
+    return o_vkReleaseFullScreenExclusiveModeEXT(device, swapchain);
+}
+
+static VkResult VKAPI_CALL hkvkGetRefreshCycleDurationGOOGLE(VkDevice device, VkSwapchainKHR swapchain,
+                                                             VkRefreshCycleDurationGOOGLE* pDisplayTimingProperties)
+{
+    if (auto fg = XeFGOwning(swapchain); fg != nullptr && pDisplayTimingProperties != nullptr)
+    {
+        pDisplayTimingProperties->refreshDuration = fg->RefreshDurationNs();
+        return VK_SUCCESS;
+    }
+
+    return o_vkGetRefreshCycleDurationGOOGLE(device, swapchain, pDisplayTimingProperties);
+}
+
+static VkResult VKAPI_CALL hkvkGetPastPresentationTimingGOOGLE(VkDevice device, VkSwapchainKHR swapchain,
+                                                               uint32_t* pPresentationTimingCount,
+                                                               VkPastPresentationTimingGOOGLE* pPresentationTimings)
+{
+    // XeFG presents the frames, no timing of the game's presents is available
+    if (XeFGOwning(swapchain) && pPresentationTimingCount != nullptr)
+    {
+        *pPresentationTimingCount = 0;
+        return VK_SUCCESS;
+    }
+
+    return o_vkGetPastPresentationTimingGOOGLE(device, swapchain, pPresentationTimingCount, pPresentationTimings);
+}
+
+static void VKAPI_CALL hkvkSetLocalDimmingAMD(VkDevice device, VkSwapchainKHR swapChain, VkBool32 localDimmingEnable)
+{
+    if (XeFGOwning(swapChain))
+        return;
+
+    o_vkSetLocalDimmingAMD(device, swapChain, localDimmingEnable);
+}
+
+static VkResult VKAPI_CALL hkvkGetSwapchainStatusKHR(VkDevice device, VkSwapchainKHR swapchain)
+{
+    if (XeFGOwning(swapchain))
+        return VK_SUCCESS;
+
+    return o_vkGetSwapchainStatusKHR(device, swapchain);
+}
+
+static VkResult VKAPI_CALL hkvkGetSwapchainCounterEXT(VkDevice device, VkSwapchainKHR swapchain,
+                                                      VkSurfaceCounterFlagBitsEXT counter, uint64_t* pCounterValue)
+{
+    // The engine refuses swapchains created with surface counters
+    if (XeFGOwning(swapchain))
+        return VK_ERROR_OUT_OF_DATE_KHR;
+
+    return o_vkGetSwapchainCounterEXT(device, swapchain, counter, pCounterValue);
+}
+
+static VkResult VKAPI_CALL hkvkSetDebugUtilsObjectNameEXT(VkDevice device,
+                                                          const VkDebugUtilsObjectNameInfoEXT* pNameInfo)
+{
+    if (pNameInfo != nullptr && XeFGOwningObject(pNameInfo->objectType, pNameInfo->objectHandle))
+        return VK_SUCCESS;
+
+    return o_vkSetDebugUtilsObjectNameEXT(device, pNameInfo);
+}
+
+static VkResult VKAPI_CALL hkvkSetDebugUtilsObjectTagEXT(VkDevice device, const VkDebugUtilsObjectTagInfoEXT* pTagInfo)
+{
+    if (pTagInfo != nullptr && XeFGOwningObject(pTagInfo->objectType, pTagInfo->objectHandle))
+        return VK_SUCCESS;
+
+    return o_vkSetDebugUtilsObjectTagEXT(device, pTagInfo);
+}
+
+static VkResult VKAPI_CALL hkvkDebugMarkerSetObjectNameEXT(VkDevice device,
+                                                           const VkDebugMarkerObjectNameInfoEXT* pNameInfo)
+{
+    if (pNameInfo != nullptr && pNameInfo->objectType == VK_DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT &&
+        XeFGOwning((VkSwapchainKHR) pNameInfo->object))
+    {
+        return VK_SUCCESS;
+    }
+
+    return o_vkDebugMarkerSetObjectNameEXT(device, pNameInfo);
+}
+
+static VkResult VKAPI_CALL hkvkDebugMarkerSetObjectTagEXT(VkDevice device,
+                                                          const VkDebugMarkerObjectTagInfoEXT* pTagInfo)
+{
+    if (pTagInfo != nullptr && pTagInfo->objectType == VK_DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT &&
+        XeFGOwning((VkSwapchainKHR) pTagInfo->object))
+    {
+        return VK_SUCCESS;
+    }
+
+    return o_vkDebugMarkerSetObjectTagEXT(device, pTagInfo);
+}
+
+static VkResult SetXeFGPrivateData(uint64_t objectHandle, VkPrivateDataSlot slot, uint64_t data)
+{
+    std::scoped_lock lock(xefgPrivateDataMutex);
+    xefgPrivateData[{ objectHandle, (uint64_t) slot }] = data;
+    return VK_SUCCESS;
+}
+
+static void GetXeFGPrivateData(uint64_t objectHandle, VkPrivateDataSlot slot, uint64_t* pData)
+{
+    std::scoped_lock lock(xefgPrivateDataMutex);
+    auto found = xefgPrivateData.find({ objectHandle, (uint64_t) slot });
+    *pData = found != xefgPrivateData.end() ? found->second : 0;
+}
+
+static VkResult VKAPI_CALL hkvkSetPrivateData(VkDevice device, VkObjectType objectType, uint64_t objectHandle,
+                                              VkPrivateDataSlot privateDataSlot, uint64_t data)
+{
+    if (XeFGOwningObject(objectType, objectHandle))
+        return SetXeFGPrivateData(objectHandle, privateDataSlot, data);
+
+    return o_vkSetPrivateData(device, objectType, objectHandle, privateDataSlot, data);
+}
+
+static VkResult VKAPI_CALL hkvkSetPrivateDataEXT(VkDevice device, VkObjectType objectType, uint64_t objectHandle,
+                                                 VkPrivateDataSlot privateDataSlot, uint64_t data)
+{
+    if (XeFGOwningObject(objectType, objectHandle))
+        return SetXeFGPrivateData(objectHandle, privateDataSlot, data);
+
+    return o_vkSetPrivateDataEXT(device, objectType, objectHandle, privateDataSlot, data);
+}
+
+static void VKAPI_CALL hkvkGetPrivateData(VkDevice device, VkObjectType objectType, uint64_t objectHandle,
+                                          VkPrivateDataSlot privateDataSlot, uint64_t* pData)
+{
+    if (pData != nullptr && XeFGOwningObject(objectType, objectHandle))
+        return GetXeFGPrivateData(objectHandle, privateDataSlot, pData);
+
+    o_vkGetPrivateData(device, objectType, objectHandle, privateDataSlot, pData);
+}
+
+static void VKAPI_CALL hkvkGetPrivateDataEXT(VkDevice device, VkObjectType objectType, uint64_t objectHandle,
+                                             VkPrivateDataSlot privateDataSlot, uint64_t* pData)
+{
+    if (pData != nullptr && XeFGOwningObject(objectType, objectHandle))
+        return GetXeFGPrivateData(objectHandle, privateDataSlot, pData);
+
+    o_vkGetPrivateDataEXT(device, objectType, objectHandle, privateDataSlot, pData);
+}
+
+template <class T> static PFN_vkVoidFunction RouteXeFG(T& original, PFN_vkVoidFunction orgFunc, T hook)
+{
+    if (original == nullptr)
+        original = (T) orgFunc;
+
+    return (PFN_vkVoidFunction) hook;
+}
+
+// The swapchain calls above on XeFG's swapchain, only for functions the driver has
+static PFN_vkVoidFunction XeFGSwapchainHook(const char* pName, PFN_vkVoidFunction orgFunc)
+{
+    if (State::Instance().activeFgOutput != FGOutput::XeFG || State::Instance().vulkanSkipHooks || orgFunc == nullptr)
+        return nullptr;
+
+    if (std::strcmp(pName, "vkAcquireFullScreenExclusiveModeEXT") == 0)
+        return RouteXeFG(o_vkAcquireFullScreenExclusiveModeEXT, orgFunc, hkvkAcquireFullScreenExclusiveModeEXT);
+    if (std::strcmp(pName, "vkReleaseFullScreenExclusiveModeEXT") == 0)
+        return RouteXeFG(o_vkReleaseFullScreenExclusiveModeEXT, orgFunc, hkvkReleaseFullScreenExclusiveModeEXT);
+    if (std::strcmp(pName, "vkGetRefreshCycleDurationGOOGLE") == 0)
+        return RouteXeFG(o_vkGetRefreshCycleDurationGOOGLE, orgFunc, hkvkGetRefreshCycleDurationGOOGLE);
+    if (std::strcmp(pName, "vkGetPastPresentationTimingGOOGLE") == 0)
+        return RouteXeFG(o_vkGetPastPresentationTimingGOOGLE, orgFunc, hkvkGetPastPresentationTimingGOOGLE);
+    if (std::strcmp(pName, "vkSetLocalDimmingAMD") == 0)
+        return RouteXeFG(o_vkSetLocalDimmingAMD, orgFunc, hkvkSetLocalDimmingAMD);
+    if (std::strcmp(pName, "vkGetSwapchainStatusKHR") == 0)
+        return RouteXeFG(o_vkGetSwapchainStatusKHR, orgFunc, hkvkGetSwapchainStatusKHR);
+    if (std::strcmp(pName, "vkGetSwapchainCounterEXT") == 0)
+        return RouteXeFG(o_vkGetSwapchainCounterEXT, orgFunc, hkvkGetSwapchainCounterEXT);
+    if (std::strcmp(pName, "vkSetDebugUtilsObjectNameEXT") == 0)
+        return RouteXeFG(o_vkSetDebugUtilsObjectNameEXT, orgFunc, hkvkSetDebugUtilsObjectNameEXT);
+    if (std::strcmp(pName, "vkSetDebugUtilsObjectTagEXT") == 0)
+        return RouteXeFG(o_vkSetDebugUtilsObjectTagEXT, orgFunc, hkvkSetDebugUtilsObjectTagEXT);
+    if (std::strcmp(pName, "vkDebugMarkerSetObjectNameEXT") == 0)
+        return RouteXeFG(o_vkDebugMarkerSetObjectNameEXT, orgFunc, hkvkDebugMarkerSetObjectNameEXT);
+    if (std::strcmp(pName, "vkDebugMarkerSetObjectTagEXT") == 0)
+        return RouteXeFG(o_vkDebugMarkerSetObjectTagEXT, orgFunc, hkvkDebugMarkerSetObjectTagEXT);
+    if (std::strcmp(pName, "vkSetPrivateDataEXT") == 0)
+        return RouteXeFG(o_vkSetPrivateDataEXT, orgFunc, (PFN_vkSetPrivateData) hkvkSetPrivateDataEXT);
+    if (std::strcmp(pName, "vkGetPrivateDataEXT") == 0)
+        return RouteXeFG(o_vkGetPrivateDataEXT, orgFunc, (PFN_vkGetPrivateData) hkvkGetPrivateDataEXT);
+
+    if (std::strcmp(pName, "vkReleaseSwapchainImagesKHR") == 0)
+    {
+        if (o_vkReleaseSwapchainImagesKHR == nullptr)
+            o_vkReleaseSwapchainImagesKHR = (PFN_vkReleaseSwapchainImagesKHR) orgFunc;
+
+        return (PFN_vkVoidFunction) hkvkReleaseSwapchainImagesKHR;
+    }
+
+    if (std::strcmp(pName, "vkReleaseSwapchainImagesEXT") == 0)
+    {
+        if (o_vkReleaseSwapchainImagesEXT == nullptr)
+            o_vkReleaseSwapchainImagesEXT = (PFN_vkReleaseSwapchainImagesEXT) orgFunc;
+
+        return (PFN_vkVoidFunction) hkvkReleaseSwapchainImagesEXT;
+    }
+
+    return nullptr;
 }
 
 VALIDATE_HOOK(hkvkCreateWin32SurfaceKHR, PFN_vkCreateWin32SurfaceKHR)
@@ -426,6 +728,7 @@ static void UntrackInstance(VkInstance instance)
 {
     std::scoped_lock lock(_vkApiVersionMutex);
     _instanceApiVersions.erase(instance);
+    _instanceUsedApiVersions.erase(instance);
 
     for (auto it = _physicalDeviceInstances.begin(); it != _physicalDeviceInstances.end();)
     {
@@ -522,20 +825,43 @@ static VkResult hkvkCreateInstance(const VkInstanceCreateInfo* pCreateInfo, cons
     VkApplicationInfo appInfo { VK_STRUCTURE_TYPE_APPLICATION_INFO };
     const auto fgOutput = State::Instance().activeFgOutput;
 
-    if ((fgOutput == FGOutput::FSRFG || fgOutput == FGOutput::DLSSG) && !State::Instance().creatingD3DDevice)
+    if ((fgOutput == FGOutput::FSRFG || fgOutput == FGOutput::DLSSG || fgOutput == FGOutput::XeFG) &&
+        !State::Instance().creatingD3DDevice)
     {
         if (localCreateInfo.pApplicationInfo != nullptr)
             appInfo = *localCreateInfo.pApplicationInfo;
 
-        if (appInfo.apiVersion < VK_API_VERSION_1_2)
-        {
-            LOG_INFO("Raising the API version from {}.{} to 1.2 for FG", VK_API_VERSION_MAJOR(appInfo.apiVersion),
-                     VK_API_VERSION_MINOR(appInfo.apiVersion));
+        // The XeFG engine needs 1.3 (SPIR-V 1.6) when the loader has it
+        uint32_t neededVersion = VK_API_VERSION_1_2;
 
-            appInfo.apiVersion = VK_API_VERSION_1_2;
+        if (fgOutput == FGOutput::XeFG)
+        {
+            auto enumerateVersion = (PFN_vkEnumerateInstanceVersion) VulkanHooks::GetInstanceProcAddr(
+                VK_NULL_HANDLE, "vkEnumerateInstanceVersion");
+            uint32_t loaderVersion = VK_API_VERSION_1_0;
+
+            if (enumerateVersion != nullptr && enumerateVersion(&loaderVersion) == VK_SUCCESS &&
+                loaderVersion >= VK_API_VERSION_1_3)
+            {
+                neededVersion = VK_API_VERSION_1_3;
+            }
+        }
+
+        if (appInfo.apiVersion < neededVersion)
+        {
+            LOG_INFO("Raising the API version from {}.{} to {}.{} for FG", VK_API_VERSION_MAJOR(appInfo.apiVersion),
+                     VK_API_VERSION_MINOR(appInfo.apiVersion), VK_API_VERSION_MAJOR(neededVersion),
+                     VK_API_VERSION_MINOR(neededVersion));
+
+            appInfo.apiVersion = neededVersion;
             localCreateInfo.pApplicationInfo = &appInfo;
         }
     }
+
+    const uint32_t usedApiVersion =
+        localCreateInfo.pApplicationInfo != nullptr && localCreateInfo.pApplicationInfo->apiVersion != 0
+            ? localCreateInfo.pApplicationInfo->apiVersion
+            : VK_API_VERSION_1_0;
 
     VkResult result;
     {
@@ -549,6 +875,7 @@ static VkResult hkvkCreateInstance(const VkInstanceCreateInfo* pCreateInfo, cons
         {
             std::scoped_lock lock(_vkApiVersionMutex);
             _instanceApiVersions[*pInstance] = requestedApiVersion;
+            _instanceUsedApiVersions[*pInstance] = usedApiVersion;
         }
 
         State::Instance().VulkanInstance = *pInstance;
@@ -851,8 +1178,12 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
         DeferredRelease::Process();
 
     // Unsure about Vulkan Reflex fps limit and if that could be causing an issue here
-    if (!State::Instance().reflexLimitsFps && !InputCommon::can_limit_fps())
-        FrameLimit::sleep(false);
+    // The XeFG engine limits FPS itself with the Reflex or Anti-Lag 2 output
+    if (!State::Instance().reflexLimitsFps && !InputCommon::can_limit_fps() &&
+        !(fgPresent && State::Instance().xefgVkEngineLimitsFps))
+    {
+        FrameLimit::sleep(fgPresent && fg->IsActive() && !fg->IsPaused());
+    }
 
     LOG_FUNC_RESULT(result);
     return result;
@@ -950,9 +1281,13 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
         _device = device;
         LOG_DEBUG("_device captured: {0:X}", (UINT64) _device);
 
-        auto hwnd = VulkanHooks::SurfaceWindow(pCreateInfo->surface);
-        MenuOverlayVk::CreateSwapchain(device, _PD, _instance, hwnd != nullptr ? hwnd : _hwnd, pCreateInfo, pAllocator,
-                                       pSwapchain);
+        // The hooks are also there for an FG output with the overlay menu off, which has no ImGui context
+        if (Config::Instance()->OverlayMenu.value_or_default())
+        {
+            auto hwnd = VulkanHooks::SurfaceWindow(pCreateInfo->surface);
+            MenuOverlayVk::CreateSwapchain(device, _PD, _instance, hwnd != nullptr ? hwnd : _hwnd, pCreateInfo,
+                                           pAllocator, pSwapchain);
+        }
     }
 
     LOG_FUNC_RESULT(result);
@@ -1059,6 +1394,12 @@ static VkResult hkvkWaitForPresentKHR(VkDevice device, VkSwapchainKHR swapchain,
     if (auto fg = State::Instance().currentVkFG;
         fg != nullptr && fg->OwnsSwapchain(swapchain) && !FromFGOutput(_ReturnAddress()))
     {
+        if (auto xefg = XeFGOwning(swapchain))
+        {
+            ScopedFGCall fgCall {};
+            return xefg->WaitForPresent(device, swapchain, presentId, timeout);
+        }
+
         return VK_SUCCESS;
     }
 
@@ -1072,6 +1413,12 @@ static VkResult hkvkWaitForPresent2KHR(VkDevice device, VkSwapchainKHR swapchain
     if (auto fg = State::Instance().currentVkFG;
         fg != nullptr && fg->OwnsSwapchain(swapchain) && !FromFGOutput(_ReturnAddress()))
     {
+        if (auto xefg = XeFGOwning(swapchain); xefg != nullptr && pPresentWait2Info != nullptr)
+        {
+            ScopedFGCall fgCall {};
+            return xefg->WaitForPresent(device, swapchain, pPresentWait2Info->presentId, pPresentWait2Info->timeout);
+        }
+
         return VK_SUCCESS;
     }
 
@@ -1139,6 +1486,9 @@ PFN_vkVoidFunction hkvkGetInstanceProcAddr(VkInstance instance, const char* pNam
     if (auto lowLatencyInput = LowLatencyInputHook(pName, orgFunc, _ReturnAddress()))
         return lowLatencyInput;
 
+    if (auto xefgSwapchain = XeFGSwapchainHook(pName, orgFunc))
+        return xefgSwapchain;
+
     auto result = VulkanSpoofing::hkvkGetInstanceProcAddr(orgFunc, pName);
     if (result != VK_NULL_HANDLE)
         return result;
@@ -1178,6 +1528,9 @@ PFN_vkVoidFunction hkvkGetDeviceProcAddr(VkDevice device, const char* pName)
 
     if (auto lowLatencyInput = LowLatencyInputHook(pName, orgFunc, _ReturnAddress()))
         return lowLatencyInput;
+
+    if (auto xefgSwapchain = XeFGSwapchainHook(pName, orgFunc))
+        return xefgSwapchain;
 
     auto result = VulkanSpoofing::hkvkGetDeviceProcAddr(orgFunc, pName);
     if (result != VK_NULL_HANDLE)
@@ -1264,6 +1617,34 @@ PFN_vkVoidFunction VulkanHooks::GetInstanceProcAddr(VkInstance instance, const c
         return o_vkGetInstanceProcAddr(instance, pName);
 
     return vkGetInstanceProcAddr(instance, pName);
+}
+
+uint32_t VulkanHooks::InstanceApiVersion(VkPhysicalDevice physicalDevice, VkInstance* instance)
+{
+    if (instance != nullptr)
+        *instance = VK_NULL_HANDLE;
+
+    std::scoped_lock lock(_vkApiVersionMutex);
+
+    const auto physicalDeviceIt = _physicalDeviceInstances.find(physicalDevice);
+
+    // Enumerated outside of our hooks: the only instance, if there's one
+    if (physicalDeviceIt == _physicalDeviceInstances.end())
+    {
+        if (_instanceUsedApiVersions.size() != 1)
+            return 0;
+
+        if (instance != nullptr)
+            *instance = _instanceUsedApiVersions.begin()->first;
+
+        return _instanceUsedApiVersions.begin()->second;
+    }
+
+    if (instance != nullptr)
+        *instance = physicalDeviceIt->second;
+
+    const auto versionIt = _instanceUsedApiVersions.find(physicalDeviceIt->second);
+    return versionIt != _instanceUsedApiVersions.end() ? versionIt->second : 0;
 }
 
 PFN_vkVoidFunction VulkanHooks::OriginalSwapchainFunction(const char* pName)
@@ -1420,6 +1801,12 @@ void VulkanHooks::Unhook()
     if (o_WaitForPresent2KHR != nullptr)
         DetourDetach(&(PVOID&) o_WaitForPresent2KHR, hkvkWaitForPresent2KHR);
 
+    if (o_vkSetPrivateData != nullptr)
+        DetourDetach(&(PVOID&) o_vkSetPrivateData, hkvkSetPrivateData);
+
+    if (o_vkGetPrivateData != nullptr)
+        DetourDetach(&(PVOID&) o_vkGetPrivateData, hkvkGetPrivateData);
+
     if (o_vkCreateDevice != nullptr)
         DetourDetach(&(PVOID&) o_vkCreateDevice, hkvkCreateDevice);
 
@@ -1460,6 +1847,8 @@ void VulkanHooks::Unhook()
         o_SetHdrMetadataEXT = nullptr;
         o_WaitForPresentKHR = nullptr;
         o_WaitForPresent2KHR = nullptr;
+        o_vkSetPrivateData = nullptr;
+        o_vkGetPrivateData = nullptr;
         o_vkCreateDevice = nullptr;
         o_vkCreateInstance = nullptr;
         o_vkDestroyInstance = nullptr;

@@ -41,6 +41,9 @@ class VulkanHooks
     // vkGetInstanceProcAddr without OptiScaler's hooks
     static PFN_vkVoidFunction GetInstanceProcAddr(VkInstance instance, const char* pName);
 
+    // The API version the device's instance was created with, 0 if unknown
+    static uint32_t InstanceApiVersion(VkPhysicalDevice physicalDevice, VkInstance* instance);
+
     // The driver's swapchain function behind OptiScaler's hook, below hooks others put on the same function.
     // vkQueuePresentKHR's also times the presented frames for the menu. nullptr when it isn't hooked.
     static PFN_vkVoidFunction OriginalSwapchainFunction(const char* pName);
