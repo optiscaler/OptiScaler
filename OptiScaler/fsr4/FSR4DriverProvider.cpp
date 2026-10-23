@@ -9,6 +9,8 @@
 
 #include <detours/detours.h>
 
+#include <ffx_upscale.h>
+
 namespace
 {
 struct PatchedDll
@@ -20,6 +22,9 @@ struct PatchedDll
 std::vector<PatchedDll> patchedDlls;
 std::mutex patchedDllsMutex;
 
+// Driver dll that gets itself for every FFX SDK dll it looks up while it sets its SDK version
+std::atomic<HMODULE> primingDll = nullptr;
+
 std::vector<FSR4DriverDll*>& DriverDlls()
 {
     static std::vector<FSR4DriverDll*> dlls;
@@ -28,18 +33,27 @@ std::vector<FSR4DriverDll*>& DriverDlls()
 
 HMODULE LoadDriverDll(const wchar_t* name)
 {
-    HMODULE module = nullptr;
-    HMODULE memModule = nullptr;
-    auto optiPath = Config::Instance()->MainDllPath.value();
-    Util::LoadProxyLibrary(name, L"", optiPath, &memModule, &module);
-
-    if (module == nullptr && memModule != nullptr)
-        module = memModule;
+    auto module = KernelBaseProxy::GetModuleHandleW_()(name);
 
     if (module != nullptr)
     {
-        LOG_INFO(L"{} loaded from game folder", name);
+        LOG_INFO(L"{} already in memory", name);
         return module;
+    }
+
+    // A copy next to Opti overrides the driver's. Only explicit paths are tried, a search by name can find an old copy
+    // that a previous driver left in System32
+    auto optiPath = std::filesystem::path(Config::Instance()->MainDllPath.value()) / name;
+
+    if (std::filesystem::exists(optiPath))
+    {
+        module = NtdllProxy::LoadLibraryExW_Ldr(optiPath.c_str(), NULL, 0);
+
+        if (module != nullptr)
+        {
+            LOG_INFO(L"{} loaded from {}", name, optiPath.wstring());
+            return module;
+        }
     }
 
     for (const auto& [luid, path] : Util::GetDriverStore())
@@ -65,6 +79,12 @@ HMODULE WINAPI hkGetModuleHandleW(LPCWSTR lpModuleName)
 {
     auto caller = Util::GetCallerModule(_ReturnAddress());
     HMODULE module = nullptr;
+
+    if (caller != nullptr && caller == primingDll && lpModuleName != nullptr &&
+        _wcsnicmp(lpModuleName, L"amd_fidelityfx_", 15) == 0)
+    {
+        return caller;
+    }
 
     {
         std::scoped_lock lock(patchedDllsMutex);
@@ -132,8 +152,25 @@ HMODULE FSR4DriverDll::Load()
 
                            if (patched.o_GetModuleHandleW != nullptr)
                            {
-                               std::scoped_lock lock(patchedDllsMutex);
-                               patchedDlls.push_back(patched);
+                               {
+                                   std::scoped_lock lock(patchedDllsMutex);
+                                   patchedDlls.push_back(patched);
+                               }
+
+                               // The driver keeps the SDK version of the first FFX dll it checks for the rest of
+                               // the process. An old one, like the legacy amd_fidelityfx_dx12.dll that struct
+                               // version 1 requests check, rules out frame generation and its swapchain. This
+                               // request runs before any other and has the driver dll check itself, its file
+                               // version counts as the newest SDK
+                               ExternalProviderData data {};
+                               data.structVersion = 2;
+                               data.descType = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE;
+
+                               primingDll = module;
+                               auto result = UpdateFfxApiProvider(&data, ExternalProviderData::SizeFor(2));
+                               primingDll = nullptr;
+
+                               LOG_DEBUG(L"Set the SDK version of {}, result: 0x{:X}", _name, (UINT) result);
                            }
                            else
                            {

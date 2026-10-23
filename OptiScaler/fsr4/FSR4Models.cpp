@@ -116,6 +116,9 @@ bool hkIsSupported(void* provider, void* device)
 
         LOG_DEBUG("{}: {}", Provider(model).name, supported);
 
+        if (device == nullptr)
+            return supported;
+
         lock.lock();
         patched->lastReportedSupport = supported;
 

@@ -857,10 +857,8 @@ struct VulkanDeviceFeatureState::Impl
                                 &VkPhysicalDeviceComputeShaderDerivativesFeaturesKHR::computeDerivativeGroupQuads,
                                 &VkPhysicalDeviceComputeShaderDerivativesFeaturesKHR::computeDerivativeGroupLinear);
 
-#ifdef LOW_LATENCY_INPUTS
         if (HasExtension(pCreateInfo, VK_NV_LOW_LATENCY_2_EXTENSION_NAME))
             EnableTimelineSemaphores(physicalDevice);
-#endif
     }
 
     void EnableFeatures(VkPhysicalDevice physicalDevice)
@@ -1132,7 +1130,6 @@ VkResult VulkanSpoofing::hkvkCreateDevice(VkPhysicalDevice physicalDevice, VkDev
         effectiveApiVersion < VK_API_VERSION_1_2 && !addExtension(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME))
         addExtension(VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
 
-#ifdef LOW_LATENCY_INPUTS
     // For the Reflex output, games with Vulkan Reflex already have it
     if (featureState != nullptr && supportedDeviceExtensionsValid &&
         !HasExtension(newExtensionList, VK_NV_LOW_LATENCY_2_EXTENSION_NAME) &&
@@ -1149,7 +1146,6 @@ VkResult VulkanSpoofing::hkvkCreateDevice(VkPhysicalDevice physicalDevice, VkDev
         addExtension(VK_KHR_PRESENT_ID_EXTENSION_NAME);
         addExtension(VK_NV_LOW_LATENCY_2_EXTENSION_NAME);
     }
-#endif
 
     addExtension(VK_NVX_BINARY_IMPORT_EXTENSION_NAME);
     addExtension(VK_NVX_IMAGE_VIEW_HANDLE_EXTENSION_NAME);

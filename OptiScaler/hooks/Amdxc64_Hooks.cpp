@@ -7,12 +7,14 @@
 #include <proxies/Ntdll_Proxy.h>
 #include <low_latency/input/input_antilag2.h>
 #include <misc/IdentifyGpu.h>
-#include "Streamline_Hooks.h"
 
 #pragma endregion
 
 struct AmdExtD3DFactory : public IAmdExtD3DFactory
 {
+    IAmdExtD3DFactory* real = nullptr;
+    std::atomic<ULONG> refCount = 1;
+
     bool linux = false;
     FSR4Support fsr4Support {};
     FSR4Support realFsr4Support {};
@@ -27,8 +29,8 @@ struct AmdExtD3DFactory : public IAmdExtD3DFactory
 
             *ppvObject = Amdxc64Hooks::amdExtD3DShaderIntrinsics;
 
-            Amdxc64Hooks::o_amdExtD3DFactory->CreateInterface(pOuter, riid,
-                                                              (void**) &Amdxc64Hooks::o_amdExtD3DShaderIntrinsics);
+            if (real != nullptr)
+                real->CreateInterface(pOuter, riid, (void**) &Amdxc64Hooks::o_amdExtD3DShaderIntrinsics);
 
             LOG_INFO("Custom IAmdExtD3DShaderIntrinsics queried, returning custom AmdExtD3DShaderIntrinsics");
 
@@ -50,9 +52,9 @@ struct AmdExtD3DFactory : public IAmdExtD3DFactory
 
             return S_OK;
         }
-        else if (Amdxc64Hooks::o_amdExtD3DFactory)
+        else if (real != nullptr)
         {
-            return Amdxc64Hooks::o_amdExtD3DFactory->CreateInterface(pOuter, riid, ppvObject);
+            return real->CreateInterface(pOuter, riid, ppvObject);
         }
 
         return E_NOINTERFACE;
@@ -60,31 +62,36 @@ struct AmdExtD3DFactory : public IAmdExtD3DFactory
 
     HRESULT __stdcall QueryInterface(REFIID riid, void** ppvObject) override
     {
-        if (Amdxc64Hooks::o_amdExtD3DFactory)
-            return Amdxc64Hooks::o_amdExtD3DFactory->QueryInterface(riid, ppvObject);
+        if (ppvObject == nullptr)
+            return E_POINTER;
 
-        return E_NOTIMPL;
-    }
-    ULONG __stdcall AddRef(void) override
-    {
-        if (Amdxc64Hooks::o_amdExtD3DFactory)
-            return Amdxc64Hooks::o_amdExtD3DFactory->AddRef();
-
-        return 0;
-    }
-    ULONG __stdcall Release(void) override
-    {
-        if (Amdxc64Hooks::o_amdExtD3DFactory)
+        if (riid == __uuidof(IUnknown) || riid == __uuidof(IAmdExtD3DFactory))
         {
-            auto result = Amdxc64Hooks::o_amdExtD3DFactory->Release();
-
-            if (result == 0)
-                Amdxc64Hooks::o_amdExtD3DFactory = nullptr;
-
-            return result;
+            AddRef();
+            *ppvObject = this;
+            return S_OK;
         }
 
-        return 0;
+        if (real != nullptr)
+            return real->QueryInterface(riid, ppvObject);
+
+        *ppvObject = nullptr;
+        return E_NOINTERFACE;
+    }
+    ULONG __stdcall AddRef(void) override { return ++refCount; }
+    ULONG __stdcall Release(void) override
+    {
+        auto result = --refCount;
+
+        if (result == 0)
+        {
+            if (real != nullptr)
+                real->Release();
+
+            delete this;
+        }
+
+        return result;
     }
 };
 
@@ -147,24 +154,25 @@ HRESULT STDMETHODCALLTYPE Amdxc64Hooks::hkAmdExtD3DCreateInterface(IUnknown* pOu
     if (runFsr4Upgrade && riid == __uuidof(IAmdExtD3DFactory))
     {
         // Required for the custom AmdExtFfxApi, lack of it triggers visual glitches
-        if (amdExtD3DFactory == nullptr)
+        auto factory = new AmdExtD3DFactory();
+        factory->linux = State::Instance().isRunningOnLinux;
+        factory->fsr4Support = primaryGpu.fsr4Support;
+        factory->realFsr4Support = primaryGpu.realFsr4Support;
+        factory->fsr4ForcedSupport = primaryGpu.fsr4ForcedSupport;
+
+        if (o_AmdExtD3DCreateInterface != nullptr &&
+            FAILED(o_AmdExtD3DCreateInterface(pOuter, riid, (void**) &factory->real)))
         {
-            amdExtD3DFactory = new AmdExtD3DFactory();
-            amdExtD3DFactory->linux = State::Instance().isRunningOnLinux;
-            amdExtD3DFactory->fsr4Support = primaryGpu.fsr4Support;
-            amdExtD3DFactory->realFsr4Support = primaryGpu.realFsr4Support;
-            amdExtD3DFactory->fsr4ForcedSupport = primaryGpu.fsr4ForcedSupport;
+            factory->real = nullptr;
         }
 
-        *ppvObject = amdExtD3DFactory;
+        if (factory->real != nullptr)
+            HookFactory(factory->real);
 
-        LOG_INFO("IAmdExtD3DFactory queried, returning custom AmdExtD3DFactory");
+        LOG_INFO("IAmdExtD3DFactory queried, returning custom AmdExtD3DFactory: {:X}, real: {:X}", (size_t) factory,
+                 (size_t) factory->real);
 
-        if (o_AmdExtD3DCreateInterface != nullptr && o_amdExtD3DFactory == nullptr)
-            o_AmdExtD3DCreateInterface(pOuter, riid, (void**) &o_amdExtD3DFactory);
-
-        if (o_amdExtD3DFactory != nullptr)
-            HookFactory(o_amdExtD3DFactory);
+        *ppvObject = factory;
 
         return S_OK;
     }
@@ -185,7 +193,6 @@ HRESULT STDMETHODCALLTYPE Amdxc64Hooks::hkAmdExtD3DCreateInterface(IUnknown* pOu
         return S_OK;
     }
 
-#ifdef LOW_LATENCY_INPUTS
     else if (riid == IID_IAmdExtAntiLagApi && giveGameAl2Proxy)
     {
         if (amdExtAntiLagApi == nullptr)
@@ -198,18 +205,6 @@ HRESULT STDMETHODCALLTYPE Amdxc64Hooks::hkAmdExtD3DCreateInterface(IUnknown* pOu
 
         return S_OK;
     }
-#else
-    else if (riid == IID_IAmdExtAntiLagApi && giveGameAl2Proxy &&
-             (StreamlineHooks::isReflexHooked() || State::Instance().activeFgInput == FGInput::NvngxFG ||
-              State::Instance().activeFgInput == FGInput::DLSSG))
-    {
-        *ppvObject = nullptr;
-
-        LOG_INFO("Killing native AL2");
-
-        return S_OK;
-    }
-#endif
 
     else if (o_AmdExtD3DCreateInterface != nullptr)
     {

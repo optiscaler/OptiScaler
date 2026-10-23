@@ -39,7 +39,6 @@
 #include <memory>
 #include <type_traits>
 #include <misc/IdentifyGpu.h>
-#include <hooks/Xell_Hooks.h>
 #include <hooks/Amdxc64_Hooks.h>
 #include <low_latency/input/input_common.h>
 #include <hooks/Vulkan_Hooks.h>
@@ -2554,7 +2553,6 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                 static auto previousPoll = 0.0;
                 static bool gotData = false;
 
-#ifdef LOW_LATENCY_INPUTS
                 static TimingData timingData {};
 
                 if (previousPoll <= 0.001 || previousPoll + delayBetweenPollsMs < now)
@@ -2614,61 +2612,6 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                     drawTiming(timingData.osRenderQueue, "RenderQueue", ImVec4(0.76f, 0.51f, 0.188f, 1.0f));
                     drawTiming(timingData.gpuRender, "GpuRender", ImVec4(0.569f, 0.117f, 0.705f, 1.0f));
                 }
-#else
-                if (previousPoll <= 0.001 || previousPoll + delayBetweenPollsMs < now)
-                {
-                    gotData = ReflexHooks::updateTimingData();
-                    previousPoll = now;
-                }
-
-                auto& timingData = ReflexHooks::timingData;
-
-                if (gotData && timingData[TimingType::TimeRange].has_value())
-                {
-                    ImDrawList* drawList = ImGui::GetWindowDrawList();
-                    constexpr float offsetForText = 155;
-
-                    const auto& rangeInNs = timingData[TimingType::TimeRange].value().length;
-
-                    UINT64 localFrameCount = 0;
-
-                    if (fg != nullptr)
-                        localFrameCount = fg->FrameCount();
-
-                    ImGui::Text("FGId: %llu, RfxId: %llu", localFrameCount, state.reflexFrameId);
-                    ImGui::Text("Reflex timings, whole frame: %.1fms", rangeInNs / 1000.0);
-
-                    const auto maxWidth =
-                        config->FpsOverlayHorizontal.value_or_default() ? ImGui::GetWindowWidth() : plotSize.x;
-
-                    const auto drawTiming = [&](TimingType type, const char* desc, ImVec4 color)
-                    {
-                        if (!timingData[type].has_value())
-                            return;
-
-                        auto toneMappedColor = toneMapColor(color);
-
-                        auto& timing = timingData[type].value();
-                        float duration = static_cast<float>(timing.length * rangeInNs / 1000.0);
-                        ImGui::TextColored(toneMappedColor, "%-12s %4.1fms", desc, duration);
-                        auto leftLimit = ImGui::GetItemRectMin().x + offsetForText * fpsScale;
-                        auto start = static_cast<float>(leftLimit + (ImGui::GetItemRectMin().x + maxWidth - leftLimit) *
-                                                                        timing.position);
-                        auto end = static_cast<float>(start + (ImGui::GetItemRectMin().x + maxWidth - leftLimit) *
-                                                                  timing.length);
-                        auto pos = ImVec2(start, ImGui::GetItemRectMin().y);
-                        auto size = ImVec2(end, ImGui::GetItemRectMax().y);
-                        drawList->AddRectFilled(pos, size, ImGui::ColorConvertFloat4ToU32(toneMappedColor));
-                    };
-
-                    drawTiming(TimingType::Simulation, "Simulation", ImVec4(0.768f, 0.169f, 0.169f, 1.0f));
-                    drawTiming(TimingType::RenderSubmit, "RenderSubmit", ImVec4(0.235f, 0.705f, 0.294f, 1.0f));
-                    drawTiming(TimingType::Present, "Present", ImVec4(1.0f, 0.88f, 0.098f, 1.0f));
-                    drawTiming(TimingType::Driver, "Driver", ImVec4(0.263f, 0.388f, 0.847f, 1.0f));
-                    drawTiming(TimingType::OsRenderQueue, "RenderQueue", ImVec4(0.76f, 0.51f, 0.188f, 1.0f));
-                    drawTiming(TimingType::GpuRender, "GpuRender", ImVec4(0.569f, 0.117f, 0.705f, 1.0f));
-                }
-#endif
             }
         }
 
@@ -2881,14 +2824,6 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
 
     // UPSCALERS -----------------------------
     SectionTitle("Upscalers");
-
-    // Row - API | GPU | Upscaler input
-    ImGui::TextWrapped("%s%s | %s | Input: %s", ApiName(state.api),
-                       IdentifyGpu::gameUsesDxvk()          ? " (DXVK)"
-                       : IdentifyGpu::gameUsesVkd3dProton() ? " (VKD3D)"
-                                                            : "",
-                       primaryGpu.name.c_str(), ApiUpscalerInputName(state.currentInputApiName).c_str());
-    ImGui::Spacing();
 
     GetCurrentBackendInfo(state.api, currentBackend, &currentBackendName);
 
@@ -5921,83 +5856,42 @@ void MenuCommon::RenderFramerateSettings(RenderMenuContext& ctx)
             "Framerate", "Uses Reflex when possible\nOn AMD/Intel cards, you can use Fakenvapi to substitute Reflex");
 
         static std::string currentMethod {};
-        LowLatencyMode fakenvapiMode = {};
+        const LowLatencyMode activeOutput = InputCommon::active_output();
+
+        // The Reflex output limits through the driver's Reflex
         if (state.reflexLimitsFps)
         {
-            fakenvapiMode = fakenvapi::getCurrentMode();
-
-#ifdef LOW_LATENCY_INPUTS
-            // The D3D Reflex output limits through the driver's Reflex, fakenvapi's mode is only its own
-            LowLatencyInput activeInput {};
-            LowLatencyMode activeOutput {};
-            InputCommon::get_currently_active(activeInput, activeOutput);
-
-            if (activeOutput == LowLatencyMode::Reflex)
-                fakenvapiMode = LowLatencyMode::None;
-#endif
-
-            if (fakenvapiMode == LowLatencyMode::AntiLag2)
-                currentMethod = "FSR Anti-Lag 2.0";
-            else if (fakenvapiMode == LowLatencyMode::LatencyFlex)
-                currentMethod = "LatencyFlex";
-            else if (fakenvapiMode == LowLatencyMode::XeLL)
-                currentMethod = "XeLL";
-            else if (fakenvapiMode == LowLatencyMode::AntiLagVk)
-                currentMethod = "Vulkan AntiLag";
-            else if (fakenvapiMode == LowLatencyMode::None)
-            {
-                if (fakenvapi::isUsingAsMainNvapi())
-                    currentMethod = "None";
-                else
-                    currentMethod = "Reflex";
-            }
-
-            if (state.rtssReflexInjection && fakenvapiMode == LowLatencyMode::AntiLag2 &&
-                config->FGOutput.value_or_default() == FGOutput::FSRFG)
-                ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)),
-                                   "Using RTSS Reflex injection with FSR Anti-Lag 2.0 and FSR FG "
-                                   "might cause issues");
+            currentMethod = "Reflex";
         }
         else if (InputCommon::can_limit_fps())
         {
-            fakenvapiMode = InputCommon::active_output();
-
             // The game's XeFG with its own XeLL
             if (InputXeLL::IsNative())
                 currentMethod = "Game's XeLL";
-            else if (fakenvapiMode == LowLatencyMode::AntiLag2)
+            else if (activeOutput == LowLatencyMode::AntiLag2)
                 currentMethod = "FSR Anti-Lag 2.0";
-            else if (fakenvapiMode == LowLatencyMode::LatencyFlex)
+            else if (activeOutput == LowLatencyMode::LatencyFlex)
                 currentMethod = "LatencyFlex";
-            else if (fakenvapiMode == LowLatencyMode::AntiLagVk)
+            else if (activeOutput == LowLatencyMode::AntiLagVk)
                 currentMethod = "Vulkan AntiLag";
-            else if (fakenvapiMode == LowLatencyMode::Reflex)
+            else if (activeOutput == LowLatencyMode::Reflex)
                 currentMethod = "Reflex";
-            else if (fakenvapiMode == LowLatencyMode::FpsLimiter)
+            else if (activeOutput == LowLatencyMode::FpsLimiter)
                 currentMethod = "FPS Limiter";
             else
                 currentMethod = "XeLL";
         }
         else
         {
-            if (XellHooks::canLimit())
-                currentMethod = "Game's XeLL";
-            else
-                currentMethod = "Fallback";
+            currentMethod = "Fallback";
         }
 
         if (state.rtssReflexInjection)
             currentMethod.append(" (RTSS)");
 
-        const bool fakenvapiInactive = (fakenvapi::isUsingAsMainNvapi() || fakenvapiMode == LowLatencyMode::XeLL) &&
-                                       !fakenvapi::isLowLatencyActive() && state.reflexLimitsFps;
-
-        if (fakenvapiInactive)
-            currentMethod.append(" (inactive)");
-
         ImGui::Text("Current method: %s", currentMethod.c_str());
 
-        if (fakenvapiMode == LowLatencyMode::AntiLag2)
+        if (activeOutput == LowLatencyMode::AntiLag2)
             ShowTooltip("FSR Anti-Lag 2.0 is the new name for AntiLag 2\nDon't ask me why");
 
         if (state.reflexShowWarning)
@@ -6040,7 +5934,7 @@ void MenuCommon::RenderFramerateSettings(RenderMenuContext& ctx)
 
             float refreshRateF = static_cast<float>(refreshRate);
             // it's fine to use with real reflex, we only care about antilag
-            auto fpsLimitTech = fakenvapi::getCurrentMode();
+            auto fpsLimitTech = InputCommon::active_output();
             constexpr float margin = 0.3f; // in ms
             float frameCap = std::round(10000.f / (1000.f / refreshRateF + margin)) / 10.f;
 
@@ -6057,86 +5951,6 @@ void MenuCommon::RenderFramerateSettings(RenderMenuContext& ctx)
                 config->FramerateLimit = _limitFps;
             }
         }
-    }
-}
-
-void MenuCommon::RenderFakenvapiSettings(RenderMenuContext& ctx)
-{
-    auto& state = ctx.state;
-    auto config = ctx.config;
-
-    // Using state.reflexLimitsFps as a detection for Reflex being used on Nvidia
-    const bool showLatencyFlex =
-        fakenvapi::isUsingAsMainNvapi() || (state.activeFgOutput == FGOutput::XeFG && state.reflexLimitsFps);
-    const bool showForceXell = state.swapchainApi != API::Vulkan;
-
-    if (!showLatencyFlex && !showForceXell)
-        return;
-
-    // FAKENVAPI ---------------------------
-    SectionTitle("fakenvapi");
-
-    if (showLatencyFlex)
-    {
-        ImGui::BeginDisabled(state.activeFgOutput == FGOutput::XeFG || state.activeFgInput == FGInput::ForceXeLL);
-        if (bool forceLFX = config->FN_ForceLatencyFlex.value_or_default();
-            ImGui::Checkbox("Force LatencyFlex", &forceLFX))
-        {
-            config->FN_ForceLatencyFlex = forceLFX;
-        }
-        ShowTooltip("By default, FSR Anti-Lag 2.0/XeLL is used when available.\n"
-                    "This setting lets you force LatencyFlex instead");
-        ImGui::EndDisabled();
-    }
-
-    if (showForceXell)
-    {
-        if (showLatencyFlex)
-            ImGui::SameLine(0.0f, 16.0f);
-
-        bool forceXell = config->ForceXeLL.value_or_default();
-        static bool activeForceXeLL = forceXell;
-
-        if (ImGui::Checkbox("Force XeLL", &forceXell))
-        {
-            config->ForceXeLL = forceXell;
-        }
-        ShowTooltip("Allows XeLL to work without FG on non-Intel cards.\n\nDisables FG "
-                    "options\n\nRequires a restart");
-
-        if (activeForceXeLL != forceXell)
-        {
-            ImGui::Spacing();
-            ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.0f, 1.f)), "Save INI and restart to apply the changes");
-            ImGui::Spacing();
-        }
-    }
-
-    if (showLatencyFlex)
-    {
-        // clang-format off
-        static const std::vector<MenuOption<LFXMode>> lfx_modes = {
-            { LFXMode::Conservative, "Conservative",
-                "The safest, but might not reduce latency well" },
-            { LFXMode::Aggressive, "Aggressive",
-                "Improves latency, but in some cases will lower FPS more than expected" },
-            { LFXMode::ReflexIDs, "Reflex ID",
-                "Best when can be used, some games are not compatible (e.g. Cyberpunk)\n"
-                "and will fallback to Aggressive" }
-        };
-
-        bool usingLFX = fakenvapi::getCurrentMode() == LowLatencyMode::LatencyFlex;
-
-        ImGui::BeginDisabled(!usingLFX);
-        PopulateCombo("LatencyFlex mode", config->FN_LatencyFlexMode, lfx_modes);
-        ImGui::EndDisabled();
-
-        static std::vector<MenuOption<ForceReflex>> reflex_modes = { { ForceReflex::InGame, "Follow in-game" },
-                                                                { ForceReflex::ForceDisable, "Force Disable" },
-                                                                { ForceReflex::ForceEnable, "Force Enable" } };
-
-        PopulateCombo("Force Reflex", config->FN_ForceReflex, reflex_modes);
-        // clang-format on
     }
 }
 
@@ -6251,8 +6065,6 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
         const auto api = InputCommon::uses_api();
         const bool vulkan = api == API::Vulkan;
         const bool outputForced = InputCommon::forced_output().has_value();
-        const auto vendorId = IdentifyGpu::getPrimaryGpu().vendorId;
-        const bool nvidia = vendorId == VendorId::Nvidia;
 
         // OptiScaler's XeFG paces with XeLL on D3D12 (also for D3D11 games through interop), the GPU's Reflex or
         // AntiLag 2 output can sleep instead while XeFG keeps an XeLL context of its own
@@ -6269,22 +6081,12 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
             option.tooltip = condition ? reason : "";
         };
 
-        disable(lowLatencyOutput[(uint32_t) LowLatencyMode::AntiLagVk], VulkanHooks::o_vkAntiLagUpdateAMD == nullptr,
-                "Needs an AMD GPU with VK_AMD_anti_lag");
-
-        if (vulkan)
+        for (auto mode : { LowLatencyMode::Reflex, LowLatencyMode::AntiLag2, LowLatencyMode::AntiLagVk })
         {
-            disable(lowLatencyOutput[(uint32_t) LowLatencyMode::Reflex],
-                    !nvidia || VulkanHooks::o_vkSetLatencySleepModeNV == nullptr,
-                    "Needs an Nvidia GPU with VK_NV_low_latency2");
-        }
-        else
-        {
-            disable(lowLatencyOutput[(uint32_t) LowLatencyMode::Reflex], !nvidia || fakenvapi::isUsingAsMainNvapi(),
-                    "Needs an Nvidia GPU");
+            auto reason = InputCommon::output_unavailable(mode, api);
+            disable(lowLatencyOutput[(uint32_t) mode], reason != nullptr, reason);
         }
 
-        disable(lowLatencyOutput[(uint32_t) LowLatencyMode::AntiLag2], vendorId != VendorId::AMD, "Needs an AMD GPU");
         disable(lowLatencyOutput[(uint32_t) LowLatencyMode::LatencyFlex], optiXefg, "Not with XeFG");
 
         lowLatencyOutput[(uint32_t) LowLatencyMode::Auto].label = "Auto";
@@ -8709,11 +8511,7 @@ const MenuCommon::MenuBox* MenuCommon::GetMenuBoxes(size_t& count)
         { "fg_sl_inputs", "Frame Gen", "Streamline FG Inputs", nullptr, RenderFrameGenerationRuntimeSettings },
 
         { "framerate", "Latency & FPS", "Framerate", [](RenderMenuContext& c) { RenderCard(c, RenderFramerateSettings); } },
-#ifdef LOW_LATENCY_INPUTS
         { "low_latency", "Latency & FPS", "Low Latency", [](RenderMenuContext& c) { RenderCard(c, RenderLowLatencySettings); } },
-#else
-        { "low_latency", "Latency & FPS", "fakenvapi", [](RenderMenuContext& c) { RenderCard(c, RenderFakenvapiSettings); } },
-#endif
         { "vsync", "Latency & FPS", "V-Sync", [](RenderMenuContext& c) { RenderCard(c, RenderVsyncSettings); } },
 
         { "mipmap", "Textures", "Mipmap Bias", nullptr, RenderApiAndTextureSettings },
@@ -8906,6 +8704,19 @@ void MenuCommon::RenderCustomTabSettings(RenderMenuContext& ctx)
     }
 }
 
+// Session timer
+static std::string SessionTimeText(const State& state)
+{
+    const auto elapsed =
+        std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - state.startTime).count();
+    const auto hours = elapsed / 3600;
+    const auto minutes = (elapsed / 60) % 60;
+    const auto secs = elapsed % 60;
+    if (hours > 0)
+        return StrFmt("%02lld:%02lld:%02lld", (long long) hours, (long long) minutes, (long long) secs);
+    return StrFmt("%02lld:%02lld", (long long) minutes, (long long) secs);
+}
+
 void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
 {
     auto& state = ctx.state;
@@ -9033,7 +8844,7 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
         const bool optiPatcher = state.isOptiPatcherSucceed;
 
         // Compact state of the upscaler and FG pinned to the bottom of the sidebar
-        const float statusLines = 3.0f + (optiPatcher ? 1.0f : 0.0f);
+        const float statusLines = 4.0f + (optiPatcher ? 1.0f : 0.0f);
         const float statusHeight = 1.0f + ImGui::GetTextLineHeightWithSpacing() * statusLines + style.ItemSpacing.y;
         const float gap = ImGui::GetContentRegionAvail().y - statusHeight - style.ItemSpacing.y;
         if (gap > 0.0f)
@@ -9114,6 +8925,9 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
             ImGui::SameLine(0.0f, 8.0f * menuResScale);
             ImGui::TextColored(toneMapColor(ImVec4(0.35f, 0.85f, 0.45f, 1.f)), "Yes");
         }
+        ImGui::TextDisabled("Uptime");
+        ImGui::SameLine(0.0f, 8.0f * menuResScale);
+        ImGui::TextUnformatted(SessionTimeText(state).c_str());
     }
 
     ImGui::EndChild();
@@ -9611,6 +9425,19 @@ void MenuCommon::RenderHudlessResourcesWindow(RenderMenuContext& ctx, ImGuiWindo
     }
 }
 
+// Game name | API | GPU | Input, above the tabs
+static void RenderGameInfoRow(State& state, const GpuInformation& primaryGpu)
+{
+    ScopedCard card;
+    std::string line = state.gameName.empty() ? "" : state.gameName + " | ";
+    line += StrFmt("%s%s | %s | Input: %s", ApiName(state.api),
+                   IdentifyGpu::gameUsesDxvk()          ? " (DXVK)"
+                   : IdentifyGpu::gameUsesVkd3dProton() ? " (VKD3D)"
+                                                        : "",
+                   primaryGpu.name.c_str(), ApiUpscalerInputName(state.currentInputApiName).c_str());
+    ImGui::TextWrapped("%s", line.c_str());
+}
+
 void MenuCommon::RenderMainMenuWindow(RenderMenuContext& ctx)
 {
     auto& state = ctx.state;
@@ -9692,14 +9519,16 @@ void MenuCommon::RenderMainMenuWindow(RenderMenuContext& ctx)
     // Main menu window
     if (windowTitle.empty())
     {
-        windowTitle = StrFmt("%s - %s %s", BuildInfo::ProductName(), state.gameExe.c_str(),
-                             state.gameName.empty() ? "" : StrFmt("- %s", state.gameName.c_str()).c_str());
+        windowTitle = StrFmt("%s - %s", BuildInfo::ProductName(), state.gameExe.c_str());
     }
 
     if (ImGui::Begin(windowTitle.c_str(), NULL, mainFlags))
     {
         // Update and config notices shown above the tabs.
         RenderMainMenuHeaderMessages(ctx);
+
+        // Game name, API, GPU and input, above the tabs.
+        RenderGameInfoRow(state, *ctx.primaryGpu);
 
         // Tabs on the left, tab content on the right.
         RenderMainMenuTabs(ctx);

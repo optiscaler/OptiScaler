@@ -5,19 +5,6 @@
 #include "Hook_Utils.h"
 #include "low_latency/ll_util.h"
 
-enum TimingType : uint32_t
-{
-    TimeRange, // in ns, value stored in length
-    Simulation,
-    RenderSubmit,
-    Present,
-    Driver,
-    OsRenderQueue,
-    GpuRender,
-
-    TimingTypeCOUNT
-};
-
 class ReflexHooks
 {
     inline static bool _inited = false;
@@ -75,8 +62,6 @@ class ReflexHooks
     VALIDATE_MEMBER_HOOK(hkNvAPI_Vulkan_GetLatency, decltype(&NvAPI_Vulkan_GetLatency))
 
   public:
-    static std::optional<TimingEntry> timingData[TimingType::TimingTypeCOUNT];
-
     // Set while OptiScaler's own Streamline (DLSSG output) is called, its Reflex calls aren't a game input
     inline static thread_local bool optiScalerCall = false;
 
@@ -86,7 +71,6 @@ class ReflexHooks
     static void setDlssgFrameCount(uint8_t count);
     static bool isReflexHooked();
     static void* getHookedReflex(unsigned int InterfaceId);
-    static bool updateTimingData();
     static bool gameIsSendingMarkers();
 
     // Delivers a game's marker on, toStreamline when OptiScaler's Streamline (DLSSG output) took it instead

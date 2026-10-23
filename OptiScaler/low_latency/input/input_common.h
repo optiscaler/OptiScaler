@@ -193,9 +193,13 @@ class InputCommon
     // The GPU vendor's own low latency output
     static LowLatencyMode default_output(API api);
 
-    // Why the GPU can't run the output, nullptr when it can: Reflex needs an Nvidia GPU (and its nvapi on D3D),
-    // AntiLag 2 an AMD GPU
+    // Why the GPU can't run the output, nullptr when it can: Reflex needs the driver's Reflex, AntiLag an AMD GPU
+    // (and VK_AMD_anti_lag on Vulkan)
     static const char* output_unavailable(LowLatencyMode output, API api);
+
+    // The driver's Reflex: an Nvidia GPU with its nvapi on D3D (fakenvapi's isn't Reflex), with VK_NV_low_latency2
+    // on Vulkan
+    static bool driver_reflex_available(API api);
 
     // Why the input can't drive the output, nullptr when it can
     static const char* incompatibility(LowLatencyInput input, LowLatencyMode output);

@@ -775,7 +775,6 @@ void LibraryLoadHooks::AfterFreeLibrary(PVOID lpLibrary)
 
 void LibraryLoadHooks::AfterLoadLibrary(HMODULE library)
 {
-#ifdef LOW_LATENCY_INPUTS
     if (library == nullptr || State::Instance().isShuttingDown)
         return;
 
@@ -791,7 +790,6 @@ void LibraryLoadHooks::AfterLoadLibrary(HMODULE library)
     {
         XeLLProxy::RedirectToInput(library);
     }
-#endif
 }
 
 HMODULE LibraryLoadHooks::LoadNvApi()

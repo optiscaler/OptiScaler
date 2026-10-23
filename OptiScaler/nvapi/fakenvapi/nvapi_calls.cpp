@@ -3,11 +3,9 @@
 #include "proxies/Dxgi_Proxy.h"
 #include <misc/IdentifyGpu.h>
 #include <NvApiDriverSettings.h>
-#include <hooks/Vulkan_Hooks.h>
 
 using Microsoft::WRL::ComPtr;
 
-LowLatency* LowLatencyCtx::lowlatency_ctx = nullptr;
 static auto init_mutex = std::mutex {};
 
 namespace nvapi_calls
@@ -346,47 +344,6 @@ NvAPI_Status __cdecl NvAPI_D3D_GetObjectHandleForResource(IUnknown* invalid, IUn
 
 NvAPI_Status __cdecl NvAPI_D3D_SetResourceHint() { return ERROR_VALUE(NVAPI_NO_IMPLEMENTATION); }
 
-NvAPI_Status __cdecl NvAPI_D3D_GetSleepStatus(IUnknown* pDevice, NV_GET_SLEEP_STATUS_PARAMS* pGetSleepStatusParams)
-{
-    if (!pDevice || !pGetSleepStatusParams)
-        return ERROR_VALUE(NVAPI_INVALID_ARGUMENT);
-
-    return LowLatencyCtx::get()->GetSleepStatus(pDevice, pGetSleepStatusParams);
-}
-
-NvAPI_Status __cdecl NvAPI_D3D_GetLatency(IUnknown* pDevice, NV_LATENCY_RESULT_PARAMS* pGetLatencyParams)
-{
-    if (!pDevice || !pGetLatencyParams)
-        return ERROR_VALUE(NVAPI_INVALID_ARGUMENT);
-
-    // xellGetFramesReports() currently doesn't give any extra data that we can't already get
-    return LowLatencyCtx::get()->GetLatency(pDevice, pGetLatencyParams);
-}
-
-NvAPI_Status __cdecl NvAPI_D3D_SetSleepMode(IUnknown* pDevice, NV_SET_SLEEP_MODE_PARAMS* pSetSleepModeParams)
-{
-    if (!pDevice || !pSetSleepModeParams)
-        return ERROR_VALUE(NVAPI_INVALID_ARGUMENT);
-
-    return LowLatencyCtx::get()->SetSleepMode(pDevice, pSetSleepModeParams);
-}
-
-NvAPI_Status __cdecl NvAPI_D3D_SetLatencyMarker(IUnknown* pDevice, NV_LATENCY_MARKER_PARAMS* pSetLatencyMarkerParams)
-{
-    if (!pDevice || !pSetLatencyMarkerParams)
-        return ERROR_VALUE(NVAPI_INVALID_ARGUMENT);
-
-    return LowLatencyCtx::get()->SetLatencyMarker(pDevice, pSetLatencyMarkerParams);
-}
-
-NvAPI_Status __cdecl NvAPI_D3D_Sleep(IUnknown* pDevice)
-{
-    if (!pDevice)
-        return ERROR_VALUE(NVAPI_INVALID_ARGUMENT);
-
-    return LowLatencyCtx::get()->Sleep(pDevice);
-}
-
 NvAPI_Status __cdecl NvAPI_D3D_SetReflexSync(IUnknown* pDevice, NV_SET_REFLEX_SYNC_PARAMS* pSetReflexSyncParams)
 {
     return OK();
@@ -600,105 +557,6 @@ NvAPI_Status __cdecl NvAPI_D3D12_NotifyOutOfBandCommandQueue(ID3D12CommandQueue*
     return OK();
 }
 
-NvAPI_Status __cdecl NvAPI_D3D12_SetAsyncFrameMarker(ID3D12CommandQueue* pCommandQueue,
-                                                     NV_ASYNC_FRAME_MARKER_PARAMS* pSetAsyncFrameMarkerParams)
-{
-    if (pSetAsyncFrameMarkerParams == nullptr)
-        return ERROR_VALUE(NVAPI_INVALID_ARGUMENT);
-
-    return LowLatencyCtx::get()->SetAsyncFrameMarker(pCommandQueue, pSetAsyncFrameMarkerParams);
-}
-
-NvAPI_Status __cdecl NvAPI_Vulkan_InitLowLatencyDevice(HANDLE vkDevice, HANDLE* signalSemaphoreHandle)
-{
-    if (!vkDevice || !signalSemaphoreHandle)
-        return ERROR();
-
-    VkDevice device = reinterpret_cast<VkDevice>(vkDevice);
-
-    VkSemaphoreTypeCreateInfo timelineInfo {};
-    timelineInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
-    timelineInfo.pNext = nullptr;
-    timelineInfo.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
-    timelineInfo.initialValue = 0;
-
-    VkSemaphoreCreateInfo createInfo {};
-    createInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    createInfo.pNext = &timelineInfo;
-    createInfo.flags = 0;
-
-    VkResult res = VK_ERROR_UNKNOWN;
-
-    if (VulkanHooks::o_vkCreateSemaphore && low_latency_semaphore == VK_NULL_HANDLE)
-        res = VulkanHooks::o_vkCreateSemaphore(device, &createInfo, nullptr, &low_latency_semaphore);
-
-    if (res != VK_SUCCESS)
-        return NVAPI_ERROR;
-
-    *signalSemaphoreHandle = reinterpret_cast<HANDLE>(low_latency_semaphore);
-
-    // It happens automatically on every reflex call
-    return OK();
-}
-
-NvAPI_Status __cdecl NvAPI_Vulkan_DestroyLowLatencyDevice(HANDLE vkDevice)
-{
-    LowLatencyCtx::get()->deinit_current_tech();
-    return OK();
-}
-
-NvAPI_Status __cdecl NvAPI_Vulkan_GetSleepStatus(HANDLE vkDevice,
-                                                 NV_VULKAN_GET_SLEEP_STATUS_PARAMS* pGetSleepStatusParams)
-{
-    if (!vkDevice || !pGetSleepStatusParams)
-        return ERROR_VALUE(NVAPI_INVALID_ARGUMENT);
-
-    return LowLatencyCtx::get()->GetSleepStatus(vkDevice, pGetSleepStatusParams);
-}
-
-NvAPI_Status __cdecl NvAPI_Vulkan_SetSleepMode(HANDLE vkDevice, NV_VULKAN_SET_SLEEP_MODE_PARAMS* pSetSleepModeParams)
-{
-    if (!vkDevice || !pSetSleepModeParams)
-        return ERROR_VALUE(NVAPI_INVALID_ARGUMENT);
-
-    return LowLatencyCtx::get()->SetSleepMode(vkDevice, pSetSleepModeParams);
-}
-
-NvAPI_Status __cdecl NvAPI_Vulkan_Sleep(HANDLE vkDevice, NvU64 signalValue)
-{
-    if (!vkDevice)
-        return ERROR_VALUE(NVAPI_INVALID_ARGUMENT);
-
-    VkSemaphoreSignalInfo signalInfo {};
-    signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO;
-    signalInfo.pNext = nullptr;
-    signalInfo.semaphore = low_latency_semaphore;
-    signalInfo.value = signalValue;
-
-    VkDevice device = reinterpret_cast<VkDevice>(vkDevice);
-
-    VulkanHooks::SignalSemaphore(device, &signalInfo);
-
-    return LowLatencyCtx::get()->Sleep(vkDevice);
-}
-
-NvAPI_Status __cdecl NvAPI_Vulkan_GetLatency(HANDLE vkDevice, NV_VULKAN_LATENCY_RESULT_PARAMS* pGetLatencyParams)
-{
-    if (!vkDevice || !pGetLatencyParams)
-        return ERROR_VALUE(NVAPI_INVALID_ARGUMENT);
-
-    return LowLatencyCtx::get()->GetLatency(vkDevice, pGetLatencyParams);
-}
-
-NvAPI_Status __cdecl NvAPI_Vulkan_SetLatencyMarker(HANDLE vkDevice,
-                                                   NV_VULKAN_LATENCY_MARKER_PARAMS* pSetLatencyMarkerParams)
-{
-    if (!vkDevice || !pSetLatencyMarkerParams)
-        return ERROR_VALUE(NVAPI_INVALID_ARGUMENT);
-
-    return LowLatencyCtx::get()->SetLatencyMarker(vkDevice, pSetLatencyMarkerParams);
-}
-
 NvAPI_Status __cdecl NvAPI_Vulkan_NotifyOutOfBandVkQueue(HANDLE vkDevice, HANDLE queueHandle,
                                                          NV_VULKAN_OUT_OF_BAND_QUEUE_TYPE queueType)
 {
@@ -770,15 +628,7 @@ NvAPI_Status __cdecl NvAPI_Unload()
     if (ref_count == 0)
         return ERROR_VALUE(NVAPI_API_NOT_INITIALIZED);
 
-    if (--ref_count == 0)
-    {
-        auto context = LowLatencyCtx::get();
-
-        if (!context)
-            return ERROR();
-
-        context->deinit_current_tech();
-    }
+    --ref_count;
 
     return OK();
 }

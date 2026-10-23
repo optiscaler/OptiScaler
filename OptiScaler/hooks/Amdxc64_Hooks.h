@@ -161,8 +161,6 @@ class Amdxc64Hooks
     inline static AmdExtD3DDevice8* amdExtD3DDevice8 = nullptr;
     inline static AmdExtD3DShaderIntrinsics* amdExtD3DShaderIntrinsics = nullptr;
     inline static AmdExtD3DShaderIntrinsics* o_amdExtD3DShaderIntrinsics = nullptr;
-    inline static AmdExtD3DFactory* amdExtD3DFactory = nullptr;
-    inline static AmdExtD3DFactory* o_amdExtD3DFactory = nullptr;
     inline static AmdExtFfxApi* amdExtFfxApi = nullptr;
     inline static AmdExtAntiLagApi* amdExtAntiLagApi = nullptr;
 

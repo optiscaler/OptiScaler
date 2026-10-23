@@ -48,29 +48,15 @@ bool XeLL::init(IUnknown* pDevice)
     if (hr != S_OK)
         return false;
 
-#ifdef LOW_LATENCY_INPUTS
     // Created as OptiScaler's own, it goes straight to the real XeLL. Opti's XeFG gets it too.
     auto result = InputXeLL::D3D12CreateLocalContext(dx12_pDevice, (InputXeLL::xell_input_handle_t*) &xell_context) ==
                   XELL_RESULT_SUCCESS;
-#else
-    auto result = o_xellD3D12CreateContext(dx12_pDevice, &xell_context) == XELL_RESULT_SUCCESS;
-
-    if (result)
-    {
-        XellHooks::blockExternalContexts(true);
-        XellHooks::setOurContext(xell_context);
-    }
-#endif
 
     return result;
 }
 
 void XeLL::deinit()
 {
-#ifndef LOW_LATENCY_INPUTS
-    XellHooks::blockExternalContexts(false);
-#endif
-
     o_xellDestroyContext(xell_context);
     LOG_INFO("XeLL deinitialized");
 }

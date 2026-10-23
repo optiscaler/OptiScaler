@@ -61,12 +61,7 @@
 #include <d3d12sdklayers.h>
 #endif
 
-// Enables Low Latency inputs
-#define LOW_LATENCY_INPUTS
-
-#ifdef LOW_LATENCY_INPUTS
 #define XELL_EXPORT_API
-#endif
 
 // Use vkQueueSubmit2KHR instead of vkQueueSubmit for testing Linux issue
 // #define USE_QUEUE_SUBMIT_2_KHR

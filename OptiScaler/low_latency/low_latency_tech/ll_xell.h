@@ -40,7 +40,7 @@ class XeLL : public LowLatencyTech
     {
         if (XeLLProxy::InitXeLL())
         {
-            // With the low latency inputs these are OptiScaler's XeLL exports, its own contexts reach the real XeLL
+            // OptiScaler's XeLL exports, its own contexts reach the real XeLL
             o_xellDestroyContext = XeLLProxy::DestroyContext();
             o_xellSetSleepMode = XeLLProxy::SetSleepMode();
             o_xellGetSleepMode = XeLLProxy::GetSleepMode();

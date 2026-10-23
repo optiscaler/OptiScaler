@@ -200,14 +200,12 @@ NvAPI_Status __stdcall NvApiHooks::hkNvAPI_DRS_GetSetting(NvDRSSessionHandle hSe
 
 void* __stdcall NvApiHooks::hkNvAPI_QueryInterface(unsigned int InterfaceId)
 {
-#ifdef LOW_LATENCY_INPUTS
     // Frame generation reports its multiplier through Reflex Sync, OptiScaler's own FG output reports its own
     if (InterfaceId == GET_ID(NvAPI_D3D_SetReflexSync))
     {
         if (auto hooked = ReflexHooks::getHookedReflexSync(o_NvAPI_QueryInterface))
             return hooked;
     }
-#endif
 
     if (!o_NvAPI_QueryInterface)
         if (Config::Instance()->UseFakenvapi.value_or_default())
@@ -228,17 +226,12 @@ void* __stdcall NvApiHooks::hkNvAPI_QueryInterface(unsigned int InterfaceId)
     if (InterfaceId == GET_ID(NvAPI_D3D_SetSleepMode) || InterfaceId == GET_ID(NvAPI_D3D_Sleep) ||
         InterfaceId == GET_ID(NvAPI_D3D_GetLatency) || InterfaceId == GET_ID(NvAPI_D3D_SetLatencyMarker) ||
         InterfaceId == GET_ID(NvAPI_D3D12_SetAsyncFrameMarker) || InterfaceId == GET_ID(NvAPI_Vulkan_GetLatency) ||
-        InterfaceId == GET_ID(NvAPI_Vulkan_SetLatencyMarker) || InterfaceId == GET_ID(NvAPI_Vulkan_SetSleepMode)
-#ifdef LOW_LATENCY_INPUTS
-        || InterfaceId == GET_ID(NvAPI_D3D_GetSleepStatus) ||
-        InterfaceId == GET_ID(NvAPI_Vulkan_InitLowLatencyDevice) ||
+        InterfaceId == GET_ID(NvAPI_Vulkan_SetLatencyMarker) || InterfaceId == GET_ID(NvAPI_Vulkan_SetSleepMode) ||
+        InterfaceId == GET_ID(NvAPI_D3D_GetSleepStatus) || InterfaceId == GET_ID(NvAPI_Vulkan_InitLowLatencyDevice) ||
         InterfaceId == GET_ID(NvAPI_Vulkan_DestroyLowLatencyDevice) ||
         InterfaceId == GET_ID(NvAPI_Vulkan_GetSleepStatus) || InterfaceId == GET_ID(NvAPI_Vulkan_Sleep) ||
-        InterfaceId == GET_ID(NvAPI_Vulkan_NotifyOutOfBandVkQueue)
-#endif
-    )
+        InterfaceId == GET_ID(NvAPI_Vulkan_NotifyOutOfBandVkQueue))
     {
-#ifdef LOW_LATENCY_INPUTS
         // The Reflex output and OptiScaler's own Reflex calls use the Reflex hooks
         ReflexHooks::hookReflex(o_NvAPI_QueryInterface);
 
@@ -270,11 +263,6 @@ void* __stdcall NvApiHooks::hkNvAPI_QueryInterface(unsigned int InterfaceId)
             return InputReflex::Vulkan_SetLatencyMarker;
         else if (InterfaceId == GET_ID(NvAPI_Vulkan_NotifyOutOfBandVkQueue))
             return InputReflex::Vulkan_NotifyOutOfBandVkQueue;
-#endif
-
-        // LOG_DEBUG("counter: {}, hookReflex()", qiCounter);
-        ReflexHooks::hookReflex(o_NvAPI_QueryInterface);
-        return ReflexHooks::getHookedReflex(InterfaceId);
     }
 
     ReflexHooks::hookReflex(o_NvAPI_QueryInterface);
@@ -322,12 +310,6 @@ void NvApiHooks::Hook(HMODULE nvapiModule)
     if (o_NvAPI_QueryInterface != nullptr)
     {
         LOG_INFO("NvAPI_QueryInterface found, hooking!");
-
-        constexpr bool leanMode = true;
-        if (fakenvapi::isUsingAsMainNvapi())
-            fakenvapi::init(!leanMode);
-        else if (State::Instance().activeFgOutput == FGOutput::XeFG)
-            fakenvapi::init(leanMode);
 
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());

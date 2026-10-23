@@ -1459,18 +1459,24 @@ class FfxApiProxy
 
         FSR4DriverProviderDx12::AddToVersionList(ids, names, driverListing);
 
+        if (desc->outputCount == nullptr)
+            return FFX_API_RETURN_ERROR_PARAMETER;
+
         // Same contract as FFX, a non-zero count is the capacity of the arrays
         auto count = ids.size();
-        if (*desc->outputCount != 0 && (desc->versionIds != nullptr || desc->versionNames != nullptr))
+        if (*desc->outputCount != 0)
+
+        {
             count = std::min<size_t>(count, *desc->outputCount);
 
-        for (size_t i = 0; i < count; i++)
-        {
-            if (desc->versionIds != nullptr)
-                desc->versionIds[i] = ids[i];
+            for (size_t i = 0; i < count; i++)
+            {
+                if (desc->versionIds != nullptr)
+                    desc->versionIds[i] = ids[i];
 
-            if (desc->versionNames != nullptr)
-                desc->versionNames[i] = names[i];
+                if (desc->versionNames != nullptr)
+                    desc->versionNames[i] = names[i];
+            }
         }
 
         *desc->outputCount = count;

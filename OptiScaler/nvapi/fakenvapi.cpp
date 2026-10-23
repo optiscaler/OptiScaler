@@ -1,6 +1,5 @@
 #include "pch.h"
 
-#include "proxies/FfxApi_Proxy.h"
 #include <unordered_map>
 
 #include "fakenvapi.h"
@@ -12,20 +11,6 @@
 #undef nvapi_interface_table
 
 std::unordered_map<NvU32, void*> fakenvapi::idToFuncMapping;
-
-void fakenvapi::init(bool onlyContext)
-{
-    LowLatencyCtx::init();
-
-    if (onlyContext)
-        return;
-}
-
-void fakenvapi::deinit()
-{
-    LowLatencyCtx::get()->deinit_current_tech();
-    LowLatencyCtx::shutdown();
-}
 
 // names from: https://github.com/SveSop/nvapi_standalone/blob/master/dlls/nvapi/nvapi.c
 static NVAPI_INTERFACE_TABLE additional_interface_table[] = { { "NvAPI_Diag_ReportCallStart", 0x33c7358c },
@@ -103,11 +88,6 @@ void* __cdecl fakenvapi::queryInterface(NvU32 id)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_SYS_GetGpuAndOutputIdFromDisplayId)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D_SetResourceHint)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D_GetObjectHandleForResource)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D_GetSleepStatus)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D_GetLatency)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D_SetSleepMode)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D_SetLatencyMarker)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D_Sleep)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D_SetReflexSync)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D11_IsNvShaderExtnOpCodeSupported)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D11_BeginUAVOverlap)
@@ -119,14 +99,6 @@ void* __cdecl fakenvapi::queryInterface(NvU32 id)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D12_GetRaytracingAccelerationStructurePrebuildInfoEx)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D12_BuildRaytracingAccelerationStructureEx)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D12_NotifyOutOfBandCommandQueue)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D12_SetAsyncFrameMarker)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_Vulkan_InitLowLatencyDevice)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_Vulkan_DestroyLowLatencyDevice)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_Vulkan_GetSleepStatus)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_Vulkan_SetSleepMode)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_Vulkan_Sleep)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_Vulkan_GetLatency)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_Vulkan_SetLatencyMarker)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_Vulkan_NotifyOutOfBandVkQueue)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_DRS_CreateSession)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_DRS_LoadSettings)
@@ -147,127 +119,6 @@ void* __cdecl fakenvapi::queryInterface(NvU32 id)
     LOG_DEBUG("{}: not implemented, placeholder given", it->func);
     return idToFuncMapping.insert({ id, (void*) placeholder }).first->second;
     // return registry.insert({ id, nullptr }).first->second;
-}
-
-// Inform AntiLag 2 when present of interpolated frames starts
-void fakenvapi::reportFGPresent(IDXGISwapChain* pSwapChain, bool fg_state, bool frame_interpolated)
-{
-    if (!isUsingAsMainNvapi() || State::Instance().activeFgOutput != FGOutput::FSRFG)
-        return;
-
-    auto lowLatencyCtx = LowLatencyCtx::get();
-
-    // Lets fakenvapi log and reset correctly
-    if (lowLatencyCtx)
-        lowLatencyCtx->set_forced_fg(fg_state);
-    else
-        LOG_ERROR("Couldn't get low latency context");
-
-    if (fg_state)
-    {
-        // Starting with FSR 3.1.1 we can provide an AntiLag 2 context to FSR FG
-        // and it will call SetFrameGenFrameType for us
-        auto static ffxApiVersion = FfxApiProxy::VersionDx12();
-        constexpr feature_version requiredVersion = { 3, 1, 1 };
-        if (ffxApiVersion >= requiredVersion && updateModeAndContext())
-        {
-            antilag2_data.enabled = _lowLatencyTechContext != nullptr && _lowLatencyMode == LowLatencyMode::AntiLag2;
-            antilag2_data.context = antilag2_data.enabled ? _lowLatencyTechContext : nullptr;
-
-            pSwapChain->SetPrivateData(IID_IFfxAntiLag2Data, sizeof(antilag2_data), &antilag2_data);
-        }
-        else
-        {
-            // Tell fakenvapi to call SetFrameGenFrameType by itself
-            // Reflex frame id might get used in the future
-            LOG_TRACE("Fake_InformPresentFG: {}", frame_interpolated);
-
-            if (lowLatencyCtx)
-                lowLatencyCtx->set_fg_type(frame_interpolated, 0);
-        }
-    }
-    else
-    {
-        // Remove it or other FG mods won't work with AL2
-        pSwapChain->SetPrivateData(IID_IFfxAntiLag2Data, 0, nullptr);
-    }
-}
-
-bool fakenvapi::updateModeAndContext()
-{
-    LOG_FUNC();
-
-    auto lowLatencyCtx = LowLatencyCtx::get();
-
-    if (!lowLatencyCtx)
-    {
-        // Real reflex should fall here and not log
-        if (_usingFakenvapiAsMainNvapi)
-            LOG_ERROR("Couldn't get low latency context");
-
-        return false;
-    }
-
-    auto result = lowLatencyCtx->get_low_latency_tech_context(&_lowLatencyTechContext, &_lowLatencyMode);
-
-    if (!result)
-        LOG_TRACE_FAKENVAPI("Can't get Low Latency context from fakenvapi");
-
-    return result;
-}
-
-bool fakenvapi::forceMode(IUnknown* device, LowLatencyMode mode)
-{
-    LOG_FUNC();
-
-    // Force init here, in case Reflex is not supported
-    LowLatencyCtx::init();
-
-    auto lowLatencyCtx = LowLatencyCtx::get();
-
-    if (!lowLatencyCtx)
-    {
-        LOG_ERROR("Couldn't get low latency context");
-        return false;
-    }
-
-    auto result = lowLatencyCtx->set_low_latency_tech_mode(device, mode);
-
-    if (!result)
-        LOG_TRACE_FAKENVAPI("Can't set Low Latency context from fakenvapi");
-
-    return result;
-}
-
-bool fakenvapi::isLowLatencyActive()
-{
-    auto lowLatencyCtx = LowLatencyCtx::get();
-
-    if (!lowLatencyCtx)
-    {
-        if (_usingFakenvapiAsMainNvapi)
-            LOG_ERROR("Couldn't get low latency context");
-
-        return false;
-    }
-
-    return lowLatencyCtx->is_low_latency_enabled();
-}
-
-LowLatencyMode fakenvapi::getCurrentMode()
-{
-    if (updateModeAndContext())
-        return _lowLatencyMode;
-    else
-        return LowLatencyMode::None;
-}
-
-void* fakenvapi::getCurrentContext()
-{
-    if (updateModeAndContext())
-        return _lowLatencyTechContext;
-    else
-        return nullptr;
 }
 
 bool fakenvapi::isUsingAsMainNvapi() { return _usingFakenvapiAsMainNvapi; }

@@ -188,7 +188,6 @@ static bool IsDxgiBackedCaller(void* returnAddress)
 // use them for the D3D games' own, those are the D3D inputs.
 static PFN_vkVoidFunction LowLatencyInputHook(const char* pName, PFN_vkVoidFunction orgFunc, void* returnAddress)
 {
-#ifdef LOW_LATENCY_INPUTS
     if (pName == nullptr || State::Instance().vulkanSkipHooks)
         return nullptr;
 
@@ -221,7 +220,6 @@ static PFN_vkVoidFunction LowLatencyInputHook(const char* pName, PFN_vkVoidFunct
 
     if (std::strcmp(pName, "vkAntiLagUpdateAMD") == 0)
         return hook(VulkanHooks::o_vkAntiLagUpdateAMD, &InputAntiLagVk::AntiLagUpdate);
-#endif
 
     return nullptr;
 }
@@ -890,7 +888,6 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
         }
     }
 
-#ifdef LOW_LATENCY_INPUTS
     // The Reflex output needs the swapchain's low latency mode, games with VK_NV_low_latency2 enable it themselves
     VkSwapchainLatencyCreateInfoNV latencyCreateInfo {};
     bool lowLatencySwapchain = false;
@@ -921,7 +918,6 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
             lowLatencySwapchain = true;
         }
     }
-#endif
 
     VkResult result = VK_SUCCESS;
     {
@@ -939,10 +935,8 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
             result = o_CreateSwapchainKHR(device, pCreateInfo, pAllocator, pSwapchain);
     }
 
-#ifdef LOW_LATENCY_INPUTS
     if (result == VK_SUCCESS && lowLatencySwapchain)
         VulkanHooks::SetLowLatencySwapchain(*pSwapchain);
-#endif
 
     if (result == VK_SUCCESS && device != VK_NULL_HANDLE && pCreateInfo != nullptr && *pSwapchain != VK_NULL_HANDLE &&
         !State::Instance().vulkanSkipHooks && !dxgiBacked)

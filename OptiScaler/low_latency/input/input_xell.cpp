@@ -7,15 +7,7 @@
 #include <unordered_set>
 
 // The real XeLL's function, its exports go to OptiScaler's
-static FARPROC RealExport(const char* name)
-{
-#ifdef LOW_LATENCY_INPUTS
-    return (FARPROC) XeLLProxy::RealFunction(name);
-#else
-    auto module = XeLLProxy::Module();
-    return module != nullptr ? KernelBaseProxy::GetProcAddress_()(module, name) : nullptr;
-#endif
-}
+static FARPROC RealExport(const char* name) { return (FARPROC) XeLLProxy::RealFunction(name); }
 
 // The contexts OptiScaler gave out. A context the real XeLL made before it was redirected goes to it untouched.
 static std::shared_mutex contextsMutex;
@@ -497,8 +489,6 @@ xell_result_t InputXeLL::SetGeneratedFramesCount(xell_input_handle_t context, ui
                          : XELL_RESULT_SUCCESS;
 }
 
-#ifdef LOW_LATENCY_INPUTS
-
 // A context OptiScaler didn't give out goes to the real XeLL as is
 #define FORWARD_FOREIGN(name, context, ...)                                                                            \
     if (IsForeign(context))                                                                                            \
@@ -617,5 +607,3 @@ XELL_EXPORT xell_result_t xellAILGetDecision(void* param1, void* param2)
 XELL_EXPORT uint32_t xellAILGetVersion() { return InputXeLL::AILGetVersion(); }
 
 XELL_EXPORT bool xellAILIsSupportedDevice(uint32_t param1) { return InputXeLL::AILIsSupportedDevice(param1); }
-
-#endif
