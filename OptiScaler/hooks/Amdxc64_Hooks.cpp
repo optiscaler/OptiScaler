@@ -118,6 +118,13 @@ void Amdxc64Hooks::Init()
         GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN, L"amdxc64.dll", &moduleAmdxc64);
 
         LOG_INFO("amdxc64.dll loaded");
+
+        static std::mutex initMutex;
+        std::scoped_lock lock(initMutex);
+
+        if (o_AmdExtD3DCreateInterface != nullptr)
+            return;
+
         o_AmdExtD3DCreateInterface = (PFN_AmdExtD3DCreateInterface) KernelBaseProxy::GetProcAddress_()(
             moduleAmdxc64, "AmdExtD3DCreateInterface");
 
