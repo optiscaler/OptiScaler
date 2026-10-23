@@ -1368,14 +1368,10 @@ static ImVec4 legacyHdrToneMap(const ImVec4& color)
 
 static ImVec4 toneMapColor(const ImVec4& color);
 
-// Status colors, ApplyThemeStyle picks them to stay readable on the current theme
-static ImVec4 gStatusOk { 0.45f, 0.80f, 0.50f, 1.0f };
-static ImVec4 gStatusWarn { 0.95f, 0.75f, 0.25f, 1.0f };
-static ImVec4 gStatusError { 0.95f, 0.40f, 0.38f, 1.0f };
-
-static ImVec4 StatusOk() { return toneMapColor(gStatusOk); }
-static ImVec4 StatusWarn() { return toneMapColor(gStatusWarn); }
-static ImVec4 StatusError() { return toneMapColor(gStatusError); }
+// Status colors shared by the whole menu
+static ImVec4 StatusOk() { return toneMapColor(ImVec4(0.35f, 0.85f, 0.45f, 1.f)); }
+static ImVec4 StatusWarn() { return toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)); }
+static ImVec4 StatusError() { return toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)); }
 
 static ImVec4 toneMapColor(const ImVec4& color)
 {
@@ -1561,10 +1557,6 @@ void MenuCommon::ApplyThemeStyle()
                              conf->MenuBGColorB.value_or_default(), 1.0f);
 
     float luminance = Luminance(accent);
-
-    gStatusOk = lightTheme ? ImVec4(0.10f, 0.50f, 0.20f, 1.0f) : ImVec4(0.45f, 0.80f, 0.50f, 1.0f);
-    gStatusWarn = lightTheme ? ImVec4(0.70f, 0.45f, 0.00f, 1.0f) : ImVec4(0.95f, 0.75f, 0.25f, 1.0f);
-    gStatusError = lightTheme ? ImVec4(0.75f, 0.15f, 0.15f, 1.0f) : ImVec4(0.95f, 0.40f, 0.38f, 1.0f);
 
     const ImVec4 bgDark = lightTheme ? ImVec4(0.80f, 0.82f, 0.86f, 1.00f) : ImVec4(0.09f, 0.09f, 0.10f, 1.00f);
     const ImVec4 bgMid = lightTheme ? ImVec4(0.89f, 0.91f, 0.95f, 1.00f) : ImVec4(0.11f, 0.11f, 0.12f, 1.00f);
@@ -4582,7 +4574,8 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         {
             // Dynamic MFG's 1X keeps FG running with no generated frames
             const auto count = fgOutput->GetInterpolatedFrameCount();
-            ImGui::TextColored(count > 0 ? StatusOk() : StatusWarn(), std::format("ON {}x", count + 1).c_str());
+            const auto color = count > 0 ? ImVec4(0.f, 1.f, 0.25f, 1.f) : ImVec4(1.0f, 0.647f, 0.0f, 1.f);
+            ImGui::TextColored(toneMapColor(color), std::format("ON {}x", count + 1).c_str());
 
             if (dynamicMFG)
             {
@@ -4791,7 +4784,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         ImGui::SameLine();
         if (auto count = state.dlssgDetectedInterpolationCount; count > 0)
         {
-            ImGui::TextColored(StatusOk(), std::format("ON {}x", count + 1).c_str());
+            ImGui::TextColored(toneMapColor(ImVec4(0.f, 1.f, 0.25f, 1.f)), std::format("ON {}x", count + 1).c_str());
         }
         else
         {
@@ -5468,7 +5461,8 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 ImGui::SameLine();
                 if (auto count = state.dlssgDetectedInterpolationCount; count > 0)
                 {
-                    ImGui::TextColored(StatusOk(), std::format("ON {}x", count + 1).c_str());
+                    ImGui::TextColored(toneMapColor(ImVec4(0.f, 1.f, 0.25f, 1.f)),
+                                       std::format("ON {}x", count + 1).c_str());
                 }
                 else
                 {
@@ -5711,9 +5705,9 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             if (state.fsrfgInputActive)
             {
                 if (fgOutput->IsActive())
-                    ImGui::TextColored(StatusOk(), "ON");
+                    ImGui::TextColored(toneMapColor(ImVec4(0.f, 1.f, 0.25f, 1.f)), "ON");
                 else
-                    ImGui::TextColored(StatusWarn(), "ACTIVATE FG");
+                    ImGui::TextColored(toneMapColor(ImVec4(1.0f, 0.647f, 0.0f, 1.f)), "ACTIVATE FG");
             }
             else
             {
@@ -5760,9 +5754,9 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             if ((state.fgLastFrame - state.dlssgLastFrame) < 3)
             {
                 if (fgOutput->IsActive())
-                    ImGui::TextColored(StatusOk(), "ON");
+                    ImGui::TextColored(toneMapColor(ImVec4(0.f, 1.f, 0.25f, 1.f)), "ON");
                 else
-                    ImGui::TextColored(StatusWarn(), "ACTIVATE FG");
+                    ImGui::TextColored(toneMapColor(ImVec4(1.0f, 0.647f, 0.0f, 1.f)), "ACTIVATE FG");
             }
             else
             {
@@ -7864,17 +7858,29 @@ static const char* ApiName(API api)
     return "Unknown";
 }
 
-// Normal text for on / found, dimmed for off / missing. Goes into the next table cell
+// Filled dot for on / found, hollow dot for off / missing. Goes into the next table cell
 static void StatusFlag(const char* label, bool on, bool warnWhenOn = false)
 {
     ImGui::TableNextColumn();
 
-    if (!on)
-        ImGui::TextDisabled("%s", label);
-    else if (warnWhenOn)
-        ImGui::TextColored(StatusWarn(), "%s", label);
+    const float lineHeight = ImGui::GetTextLineHeight();
+    const float radius = lineHeight * 0.28f;
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    const ImVec2 center(pos.x + lineHeight * 0.5f, pos.y + lineHeight * 0.5f);
+    auto drawList = ImGui::GetWindowDrawList();
+
+    if (on)
+        drawList->AddCircleFilled(center, radius, ImGui::GetColorU32(warnWhenOn ? StatusWarn() : StatusOk()));
     else
+        drawList->AddCircle(center, radius, ImGui::GetColorU32(ImGuiCol_TextDisabled), 0, 1.5f);
+
+    ImGui::Dummy(ImVec2(lineHeight, lineHeight));
+    ImGui::SameLine(0.0f, 0.0f);
+
+    if (on)
         ImGui::TextUnformatted(label);
+    else
+        ImGui::TextDisabled("%s", label);
 }
 
 // Which libraries and GPU features were found. Used by the Status tab and when no upscaler is available
