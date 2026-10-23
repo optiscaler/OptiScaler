@@ -12,20 +12,6 @@
 
 std::unordered_map<NvU32, void*> fakenvapi::idToFuncMapping;
 
-void fakenvapi::init(bool onlyContext)
-{
-    LowLatencyCtx::init();
-
-    if (onlyContext)
-        return;
-}
-
-void fakenvapi::deinit()
-{
-    LowLatencyCtx::get()->deinit_current_tech();
-    LowLatencyCtx::shutdown();
-}
-
 // names from: https://github.com/SveSop/nvapi_standalone/blob/master/dlls/nvapi/nvapi.c
 static NVAPI_INTERFACE_TABLE additional_interface_table[] = { { "NvAPI_Diag_ReportCallStart", 0x33c7358c },
                                                               { "NvAPI_Diag_ReportCallReturn", 0x593e8644 },
@@ -102,11 +88,6 @@ void* __cdecl fakenvapi::queryInterface(NvU32 id)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_SYS_GetGpuAndOutputIdFromDisplayId)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D_SetResourceHint)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D_GetObjectHandleForResource)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D_GetSleepStatus)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D_GetLatency)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D_SetSleepMode)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D_SetLatencyMarker)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D_Sleep)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D_SetReflexSync)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D11_IsNvShaderExtnOpCodeSupported)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D11_BeginUAVOverlap)
@@ -118,14 +99,6 @@ void* __cdecl fakenvapi::queryInterface(NvU32 id)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D12_GetRaytracingAccelerationStructurePrebuildInfoEx)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D12_BuildRaytracingAccelerationStructureEx)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D12_NotifyOutOfBandCommandQueue)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_D3D12_SetAsyncFrameMarker)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_Vulkan_InitLowLatencyDevice)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_Vulkan_DestroyLowLatencyDevice)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_Vulkan_GetSleepStatus)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_Vulkan_SetSleepMode)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_Vulkan_Sleep)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_Vulkan_GetLatency)
-    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_Vulkan_SetLatencyMarker)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_Vulkan_NotifyOutOfBandVkQueue)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_DRS_CreateSession)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_DRS_LoadSettings)
@@ -146,52 +119,6 @@ void* __cdecl fakenvapi::queryInterface(NvU32 id)
     LOG_DEBUG("{}: not implemented, placeholder given", it->func);
     return idToFuncMapping.insert({ id, (void*) placeholder }).first->second;
     // return registry.insert({ id, nullptr }).first->second;
-}
-
-bool fakenvapi::updateModeAndContext()
-{
-    LOG_FUNC();
-
-    auto lowLatencyCtx = LowLatencyCtx::get();
-
-    if (!lowLatencyCtx)
-    {
-        // Real reflex should fall here and not log
-        if (_usingFakenvapiAsMainNvapi)
-            LOG_ERROR("Couldn't get low latency context");
-
-        return false;
-    }
-
-    auto result = lowLatencyCtx->get_low_latency_tech_context(&_lowLatencyTechContext, &_lowLatencyMode);
-
-    if (!result)
-        LOG_TRACE_FAKENVAPI("Can't get Low Latency context from fakenvapi");
-
-    return result;
-}
-
-bool fakenvapi::isLowLatencyActive()
-{
-    auto lowLatencyCtx = LowLatencyCtx::get();
-
-    if (!lowLatencyCtx)
-    {
-        if (_usingFakenvapiAsMainNvapi)
-            LOG_ERROR("Couldn't get low latency context");
-
-        return false;
-    }
-
-    return lowLatencyCtx->is_low_latency_enabled();
-}
-
-LowLatencyMode fakenvapi::getCurrentMode()
-{
-    if (updateModeAndContext())
-        return _lowLatencyMode;
-    else
-        return LowLatencyMode::None;
 }
 
 bool fakenvapi::isUsingAsMainNvapi() { return _usingFakenvapiAsMainNvapi; }

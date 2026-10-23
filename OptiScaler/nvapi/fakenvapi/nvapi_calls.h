@@ -4,8 +4,6 @@
 #include <d3d12.h>
 #include <vector>
 
-#include "low_latency.h"
-
 #include "low_latency/ll_util.h"
 #include "log.h"
 
@@ -16,8 +14,6 @@ static auto drs_session = reinterpret_cast<NvDRSSessionHandle>(&drs);
 static auto drs_profile = reinterpret_cast<NvDRSProfileHandle>(&drs);
 
 static uint64_t ref_count = 0;
-
-static VkSemaphore low_latency_semaphore = VK_NULL_HANDLE;
 
 NvAPI_Status __cdecl NvAPI_Initialize();
 NvAPI_Status __cdecl NvAPI_GetInterfaceVersionString(NvAPI_ShortString desc);
@@ -67,11 +63,6 @@ NvAPI_Status __cdecl NvAPI_SYS_GetGpuAndOutputIdFromDisplayId(NvU32 displayId, N
 NvAPI_Status __cdecl NvAPI_D3D_GetObjectHandleForResource(IUnknown* invalid, IUnknown* pResource,
                                                           NVDX_ObjectHandle* pHandle);
 NvAPI_Status __cdecl NvAPI_D3D_SetResourceHint();
-NvAPI_Status __cdecl NvAPI_D3D_GetSleepStatus(IUnknown* pDevice, NV_GET_SLEEP_STATUS_PARAMS* pGetSleepStatusParams);
-NvAPI_Status __cdecl NvAPI_D3D_GetLatency(IUnknown* pDev, NV_LATENCY_RESULT_PARAMS* pGetLatencyParams);
-NvAPI_Status __cdecl NvAPI_D3D_SetSleepMode(IUnknown* pDevice, NV_SET_SLEEP_MODE_PARAMS* pSetSleepModeParams);
-NvAPI_Status __cdecl NvAPI_D3D_SetLatencyMarker(IUnknown* pDev, NV_LATENCY_MARKER_PARAMS* pSetLatencyMarkerParams);
-NvAPI_Status __cdecl NvAPI_D3D_Sleep(IUnknown* pDevice);
 NvAPI_Status __cdecl NvAPI_D3D_SetReflexSync(IUnknown* pDev, NV_SET_REFLEX_SYNC_PARAMS* pSetReflexSyncParams);
 NvAPI_Status __cdecl NvAPI_D3D11_IsNvShaderExtnOpCodeSupported(IUnknown* invalid, NvU32 opCode, bool* pSupported);
 NvAPI_Status __cdecl NvAPI_D3D11_BeginUAVOverlap(IUnknown* pDeviceOrContext);
@@ -87,17 +78,6 @@ NvAPI_Status __cdecl NvAPI_D3D12_BuildRaytracingAccelerationStructureEx(
     ID3D12GraphicsCommandList4* pCommandList, const NVAPI_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_EX_PARAMS* pParams);
 NvAPI_Status __cdecl NvAPI_D3D12_NotifyOutOfBandCommandQueue(ID3D12CommandQueue* pCommandQueue,
                                                              NV_OUT_OF_BAND_CQ_TYPE cqType);
-NvAPI_Status __cdecl NvAPI_D3D12_SetAsyncFrameMarker(ID3D12CommandQueue* pCommandQueue,
-                                                     NV_ASYNC_FRAME_MARKER_PARAMS* pSetAsyncFrameMarkerParams);
-NvAPI_Status __cdecl NvAPI_Vulkan_InitLowLatencyDevice(HANDLE vkDevice, HANDLE* signalSemaphoreHandle);
-NvAPI_Status __cdecl NvAPI_Vulkan_DestroyLowLatencyDevice(HANDLE vkDevice);
-NvAPI_Status __cdecl NvAPI_Vulkan_GetSleepStatus(HANDLE vkDevice,
-                                                 NV_VULKAN_GET_SLEEP_STATUS_PARAMS* pGetSleepStatusParams);
-NvAPI_Status __cdecl NvAPI_Vulkan_SetSleepMode(HANDLE vkDevice, NV_VULKAN_SET_SLEEP_MODE_PARAMS* pSetSleepModeParams);
-NvAPI_Status __cdecl NvAPI_Vulkan_Sleep(HANDLE vkDevice, NvU64 signalValue);
-NvAPI_Status __cdecl NvAPI_Vulkan_GetLatency(HANDLE vkDevice, NV_VULKAN_LATENCY_RESULT_PARAMS* pGetLatencyParams);
-NvAPI_Status __cdecl NvAPI_Vulkan_SetLatencyMarker(HANDLE vkDevice,
-                                                   NV_VULKAN_LATENCY_MARKER_PARAMS* pSetLatencyMarkerParams);
 NvAPI_Status __cdecl NvAPI_Vulkan_NotifyOutOfBandVkQueue(HANDLE vkDevice, HANDLE queueHandle,
                                                          NV_VULKAN_OUT_OF_BAND_QUEUE_TYPE queueType);
 NvAPI_Status __cdecl NvAPI_DRS_CreateSession(NvDRSSessionHandle* session);

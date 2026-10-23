@@ -8,14 +8,8 @@
 class fakenvapi
 {
     inline static bool _usingFakenvapiAsMainNvapi = false;
-    inline static bool _usingOnNvidia = false;
-    inline static void* _lowLatencyTechContext = nullptr;
-    inline static LowLatencyMode _lowLatencyMode = LowLatencyMode::LatencyFlex;
-    inline static HMODULE _dllForNvidia = nullptr;
 
     static std::unordered_map<NvU32, void*> idToFuncMapping;
-
-    static bool updateModeAndContext();
 
     static NvAPI_Status __cdecl placeholder()
     {
@@ -25,13 +19,7 @@ class fakenvapi
     }
 
   public:
-    static void init(bool onlyContext);
-    static void deinit();
     static void* queryInterface(NvU32 id);
-    static bool isLowLatencyActive();
-
-    static LowLatencyMode getCurrentMode();
-
     static bool isUsingAsMainNvapi();
     static void setUsingAsMainNvapi(bool usingAsMain);
 };

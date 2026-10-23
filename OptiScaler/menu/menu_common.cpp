@@ -5864,57 +5864,27 @@ void MenuCommon::RenderFramerateSettings(RenderMenuContext& ctx)
             "Framerate", "Uses Reflex when possible\nOn AMD/Intel cards, you can use Fakenvapi to substitute Reflex");
 
         static std::string currentMethod {};
-        LowLatencyMode fakenvapiMode = {};
+        const LowLatencyMode activeOutput = InputCommon::active_output();
+
+        // The Reflex output limits through the driver's Reflex
         if (state.reflexLimitsFps)
         {
-            fakenvapiMode = fakenvapi::getCurrentMode();
-
-            // The D3D Reflex output limits through the driver's Reflex, fakenvapi's mode is only its own
-            LowLatencyInput activeInput {};
-            LowLatencyMode activeOutput {};
-            InputCommon::get_currently_active(activeInput, activeOutput);
-
-            if (activeOutput == LowLatencyMode::Reflex)
-                fakenvapiMode = LowLatencyMode::None;
-
-            if (fakenvapiMode == LowLatencyMode::AntiLag2)
-                currentMethod = "FSR Anti-Lag 2.0";
-            else if (fakenvapiMode == LowLatencyMode::LatencyFlex)
-                currentMethod = "LatencyFlex";
-            else if (fakenvapiMode == LowLatencyMode::XeLL)
-                currentMethod = "XeLL";
-            else if (fakenvapiMode == LowLatencyMode::AntiLagVk)
-                currentMethod = "Vulkan AntiLag";
-            else if (fakenvapiMode == LowLatencyMode::None)
-            {
-                if (fakenvapi::isUsingAsMainNvapi())
-                    currentMethod = "None";
-                else
-                    currentMethod = "Reflex";
-            }
-
-            if (state.rtssReflexInjection && fakenvapiMode == LowLatencyMode::AntiLag2 &&
-                config->FGOutput.value_or_default() == FGOutput::FSRFG)
-                ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)),
-                                   "Using RTSS Reflex injection with FSR Anti-Lag 2.0 and FSR FG "
-                                   "might cause issues");
+            currentMethod = "Reflex";
         }
         else if (InputCommon::can_limit_fps())
         {
-            fakenvapiMode = InputCommon::active_output();
-
             // The game's XeFG with its own XeLL
             if (InputXeLL::IsNative())
                 currentMethod = "Game's XeLL";
-            else if (fakenvapiMode == LowLatencyMode::AntiLag2)
+            else if (activeOutput == LowLatencyMode::AntiLag2)
                 currentMethod = "FSR Anti-Lag 2.0";
-            else if (fakenvapiMode == LowLatencyMode::LatencyFlex)
+            else if (activeOutput == LowLatencyMode::LatencyFlex)
                 currentMethod = "LatencyFlex";
-            else if (fakenvapiMode == LowLatencyMode::AntiLagVk)
+            else if (activeOutput == LowLatencyMode::AntiLagVk)
                 currentMethod = "Vulkan AntiLag";
-            else if (fakenvapiMode == LowLatencyMode::Reflex)
+            else if (activeOutput == LowLatencyMode::Reflex)
                 currentMethod = "Reflex";
-            else if (fakenvapiMode == LowLatencyMode::FpsLimiter)
+            else if (activeOutput == LowLatencyMode::FpsLimiter)
                 currentMethod = "FPS Limiter";
             else
                 currentMethod = "XeLL";
@@ -5927,15 +5897,9 @@ void MenuCommon::RenderFramerateSettings(RenderMenuContext& ctx)
         if (state.rtssReflexInjection)
             currentMethod.append(" (RTSS)");
 
-        const bool fakenvapiInactive = (fakenvapi::isUsingAsMainNvapi() || fakenvapiMode == LowLatencyMode::XeLL) &&
-                                       !fakenvapi::isLowLatencyActive() && state.reflexLimitsFps;
-
-        if (fakenvapiInactive)
-            currentMethod.append(" (inactive)");
-
         ImGui::Text("Current method: %s", currentMethod.c_str());
 
-        if (fakenvapiMode == LowLatencyMode::AntiLag2)
+        if (activeOutput == LowLatencyMode::AntiLag2)
             ShowTooltip("FSR Anti-Lag 2.0 is the new name for AntiLag 2\nDon't ask me why");
 
         if (state.reflexShowWarning)
@@ -5978,7 +5942,7 @@ void MenuCommon::RenderFramerateSettings(RenderMenuContext& ctx)
 
             float refreshRateF = static_cast<float>(refreshRate);
             // it's fine to use with real reflex, we only care about antilag
-            auto fpsLimitTech = fakenvapi::getCurrentMode();
+            auto fpsLimitTech = InputCommon::active_output();
             constexpr float margin = 0.3f; // in ms
             float frameCap = std::round(10000.f / (1000.f / refreshRateF + margin)) / 10.f;
 
@@ -6109,8 +6073,6 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
         const auto api = InputCommon::uses_api();
         const bool vulkan = api == API::Vulkan;
         const bool outputForced = InputCommon::forced_output().has_value();
-        const auto vendorId = IdentifyGpu::getPrimaryGpu().vendorId;
-        const bool nvidia = vendorId == VendorId::Nvidia;
 
         // OptiScaler's XeFG paces with XeLL on D3D12 (also for D3D11 games through interop), the GPU's Reflex or
         // AntiLag 2 output can sleep instead while XeFG keeps an XeLL context of its own
@@ -6127,22 +6089,12 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
             option.tooltip = condition ? reason : "";
         };
 
-        disable(lowLatencyOutput[(uint32_t) LowLatencyMode::AntiLagVk], VulkanHooks::o_vkAntiLagUpdateAMD == nullptr,
-                "Needs an AMD GPU with VK_AMD_anti_lag");
-
-        if (vulkan)
+        for (auto mode : { LowLatencyMode::Reflex, LowLatencyMode::AntiLag2, LowLatencyMode::AntiLagVk })
         {
-            disable(lowLatencyOutput[(uint32_t) LowLatencyMode::Reflex],
-                    !nvidia || VulkanHooks::o_vkSetLatencySleepModeNV == nullptr,
-                    "Needs an Nvidia GPU with VK_NV_low_latency2");
-        }
-        else
-        {
-            disable(lowLatencyOutput[(uint32_t) LowLatencyMode::Reflex], !nvidia || fakenvapi::isUsingAsMainNvapi(),
-                    "Needs an Nvidia GPU");
+            auto reason = InputCommon::output_unavailable(mode, api);
+            disable(lowLatencyOutput[(uint32_t) mode], reason != nullptr, reason);
         }
 
-        disable(lowLatencyOutput[(uint32_t) LowLatencyMode::AntiLag2], vendorId != VendorId::AMD, "Needs an AMD GPU");
         disable(lowLatencyOutput[(uint32_t) LowLatencyMode::LatencyFlex], optiXefg, "Not with XeFG");
 
         lowLatencyOutput[(uint32_t) LowLatencyMode::Auto].label = "Auto";

@@ -3,6 +3,7 @@
 
 #include <hooks/LibraryLoad_Hooks.h>
 #include <nvapi/NvApiHooks.h>
+#include <low_latency/input/input_common.h>
 
 bool Reflex::init(IUnknown* pDevice)
 {
@@ -12,8 +13,7 @@ bool Reflex::init(IUnknown* pDevice)
     if (NvApiHooks::o_NvAPI_QueryInterface == nullptr)
         LibraryLoadHooks::LoadNvApi();
 
-    // fakenvapi's Reflex is a translation of its own, only the driver's is Reflex
-    if (NvApiHooks::o_NvAPI_QueryInterface == nullptr || fakenvapi::isUsingAsMainNvapi())
+    if (NvApiHooks::o_NvAPI_QueryInterface == nullptr || !InputCommon::driver_reflex_available(API::DX12))
     {
         LOG_INFO("Reflex needs NVIDIA's nvapi");
         return false;

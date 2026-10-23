@@ -263,10 +263,6 @@ void* __stdcall NvApiHooks::hkNvAPI_QueryInterface(unsigned int InterfaceId)
             return InputReflex::Vulkan_SetLatencyMarker;
         else if (InterfaceId == GET_ID(NvAPI_Vulkan_NotifyOutOfBandVkQueue))
             return InputReflex::Vulkan_NotifyOutOfBandVkQueue;
-
-        // LOG_DEBUG("counter: {}, hookReflex()", qiCounter);
-        ReflexHooks::hookReflex(o_NvAPI_QueryInterface);
-        return ReflexHooks::getHookedReflex(InterfaceId);
     }
 
     ReflexHooks::hookReflex(o_NvAPI_QueryInterface);
@@ -314,12 +310,6 @@ void NvApiHooks::Hook(HMODULE nvapiModule)
     if (o_NvAPI_QueryInterface != nullptr)
     {
         LOG_INFO("NvAPI_QueryInterface found, hooking!");
-
-        constexpr bool leanMode = true;
-        if (fakenvapi::isUsingAsMainNvapi())
-            fakenvapi::init(!leanMode);
-        else if (State::Instance().activeFgOutput == FGOutput::XeFG)
-            fakenvapi::init(leanMode);
 
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());

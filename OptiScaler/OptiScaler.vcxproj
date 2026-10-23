@@ -270,7 +270,6 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="shaders\hudless_compare_compute\HCC_Dx12.h" />
     <ClInclude Include="low_latency\ll_util.h" />
     <ClInclude Include="nvapi\fakenvapi\log.h" />
-    <ClInclude Include="nvapi\fakenvapi\low_latency.h" />
     <ClInclude Include="low_latency\low_latency_tech\ll_antilag2.h" />
     <ClInclude Include="low_latency\low_latency_tech\ll_antilag_vk.h" />
     <ClInclude Include="low_latency\low_latency_tech\ll_latencyflex.h" />
@@ -618,8 +617,6 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="inputs\XeSS_Dx11.cpp" />
     <ClCompile Include="low_latency\ll_util.cpp" />
     <ClCompile Include="nvapi\fakenvapi\log.cpp" />
-    <ClCompile Include="nvapi\fakenvapi\low_latency.cpp" />
-    <ClCompile Include="nvapi\fakenvapi\low_latency_d3d.cpp" />
     <ClCompile Include="low_latency\low_latency_tech\ll_antilag2.cpp" />
     <ClCompile Include="low_latency\low_latency_tech\ll_antilag_vk.cpp" />
     <ClCompile Include="low_latency\low_latency_tech\ll_latencyflex.cpp" />
@@ -627,7 +624,6 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="low_latency\low_latency_tech\ll_reflex.cpp" />
     <ClCompile Include="low_latency\low_latency_tech\ll_reflex_vk.cpp" />
     <ClCompile Include="low_latency\low_latency_tech\ll_xell.cpp" />
-    <ClCompile Include="nvapi\fakenvapi\low_latency_vk.cpp" />
     <ClCompile Include="nvapi\fakenvapi\nvapi_calls.cpp" />
     <ClCompile Include="framegen\nvngx\Nvngx_FFX.cpp" />
     <ClCompile Include="framegen\nvngx\Nvngx_Nukems.cpp" />

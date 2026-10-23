@@ -2,8 +2,6 @@
 #include "Reflex_Hooks.h"
 #include <Config.h>
 
-#include <nvapi/fakenvapi.h>
-
 #include <proxies/Streamline_Proxy.h>
 
 #include <magic_enum.hpp>
@@ -537,8 +535,7 @@ void ReflexHooks::update(bool fgActive, bool isVulkan)
     if (isVulkan && _lastVkSleepDev)
     {
         // fgActive doesn't matter for vulkan
-        // isUsingAsMainNvapi() because fakenvapi might override the reflex' setting and we don't know it
-        State::Instance().reflexLimitsFps = fakenvapi::isUsingAsMainNvapi() || _lastVkSleepParams.bLowLatencyMode;
+        State::Instance().reflexLimitsFps = _lastVkSleepParams.bLowLatencyMode;
     }
     else if (!reflexOutput)
     {
@@ -548,44 +545,22 @@ void ReflexHooks::update(bool fgActive, bool isVulkan)
     else if (_lastSleepDev)
     {
         // Don't use when: Real Reflex markers + FSR FG + Reflex disabled, causes huge input latency
-        State::Instance().reflexLimitsFps =
-            fakenvapi::isUsingAsMainNvapi() || !fgActive || _lastSleepParams.bLowLatencyMode;
-        State::Instance().reflexShowWarning = State::Instance().activeFgOutput == FGOutput::FSRFG &&
-                                              !fakenvapi::isUsingAsMainNvapi() && fgActive &&
-                                              _lastSleepParams.bLowLatencyMode;
+        State::Instance().reflexLimitsFps = !fgActive || _lastSleepParams.bLowLatencyMode;
+        State::Instance().reflexShowWarning =
+            State::Instance().activeFgOutput == FGOutput::FSRFG && fgActive && _lastSleepParams.bLowLatencyMode;
     }
     else
     {
         State::Instance().reflexLimitsFps = false;
     }
 
-    // Disable reflex fps limiting when reflex is force disabled
-    // TODO: It changes without pressing apply, XeLL with XeFG can't actually be disabled so this is wrong
-    //
-    // Wait for fakenvapi to be merged into Opti for better integration
-    //
-    // if (State::Instance().reflexLimitsFps && (fakenvapi::isUsingAsMainNvapi() ||
-    // fakenvapi::isUsingOnNvidia())
-    // &&
-    //    Config::Instance()->FN_ForceReflex.value_or_default() == 1)
-    //{
-    //    State::Instance().reflexLimitsFps = false;
-    //}
-
     static float lastFps = 0;
     static bool lastReflexLimitsFps = State::Instance().reflexLimitsFps;
-    static LowLatencyMode lastLowLatencyMode = fakenvapi::getCurrentMode();
 
     // Reset required when toggling Reflex
     if (State::Instance().reflexLimitsFps != lastReflexLimitsFps)
     {
         lastReflexLimitsFps = State::Instance().reflexLimitsFps;
-        lastFps = 0;
-        setFPSLimit(0);
-    }
-    else if (fakenvapi::isUsingAsMainNvapi() && lastLowLatencyMode != fakenvapi::getCurrentMode())
-    {
-        lastLowLatencyMode = fakenvapi::getCurrentMode();
         lastFps = 0;
         setFPSLimit(0);
     }
@@ -599,23 +574,6 @@ void ReflexHooks::update(bool fgActive, bool isVulkan)
 
     if (lastFgNumFramesToGenerate != _FgNumFramesToGenerate)
     {
-        if (fakenvapi::isUsingAsMainNvapi())
-        {
-            // Don't reload when using Dynamic MFG
-            if (State::Instance().dlssgLastSetMode != sl::DLSSGMode::eDynamic &&
-                !Config::Instance()->FGDLSSGForceDMFG.value_or_default())
-            {
-                State::Instance().fakenvapiReloadLowLatency = true;
-            }
-
-            // fakenvapi's latency techs fall apart with Dynamic MFG
-            if (Config::Instance()->FN_ForceReflex.value_or_default() != ForceReflex::ForceEnable &&
-                State::Instance().dlssgLastSetMode == sl::DLSSGMode::eDynamic)
-            {
-                Config::Instance()->FN_ForceReflex.set_volatile_value(ForceReflex::ForceDisable);
-            }
-        }
-
         lastFgNumFramesToGenerate = _FgNumFramesToGenerate;
         setFPSLimit(currentFps);
 
@@ -634,11 +592,6 @@ void ReflexHooks::update(bool fgActive, bool isVulkan)
 
         if (!driverCountsFg)
             currentFps /= 2;
-    }
-    else if (_FgNumFramesToGenerate > 0 && fakenvapi::isUsingAsMainNvapi() &&
-             fakenvapi::getCurrentMode() != LowLatencyMode::XeLL)
-    {
-        currentFps /= (_FgNumFramesToGenerate + 1);
     }
 
     if (currentFps != lastFps)
