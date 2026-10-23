@@ -1679,9 +1679,18 @@ class FfxApiProxy
         LOG_INFO("LoadResult: {}", loadResult);
 
         if (loadResult)
+        {
+            // Pin the dll so the hooks stay valid if the game unloads it
+            HMODULE pinned = nullptr;
+            GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+                               (LPCWSTR) main_vk.dll, &pinned);
+
             VersionVk();
+        }
         else
+        {
             main_vk.dll = nullptr;
+        }
 
         return loadResult;
     }
