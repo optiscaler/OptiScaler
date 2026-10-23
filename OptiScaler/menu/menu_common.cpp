@@ -282,17 +282,13 @@ static std::string NameWithVersion(IFeature* feature)
 // CARDS -----------------------------
 static void DrawCardTitle(const char* label)
 {
-    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
     ImGui::TextUnformatted(label, ImGui::FindRenderedTextEnd(label));
-    ImGui::PopStyleColor();
 
     // Spacing below is not an item the tooltips should attach to
     const ImRect titleRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
     const ImGuiID titleId = ImGui::GetItemID();
 
     ImGui::Spacing();
-    ImGui::Spacing();
-    // ImGui::Separator();
 
     // HoveredRect has to reflect the mouse, IsItemHovered trusts it
     const ImGuiItemStatusFlags hovered =
@@ -343,10 +339,18 @@ ScopedCard::ScopedCard(const char* title)
     _current = this;
 
     if (title != nullptr)
-    {
-        DrawCardTitle(title);
-        _hasTitle = true;
-    }
+        DrawTitle(title);
+}
+
+void ScopedCard::DrawTitle(const char* label)
+{
+    // Title sits on the top border, like a group box
+    _window->DC.CursorPos.y = _min.y;
+    DrawCardTitle(label);
+
+    _titleMin = ImGui::GetItemRectMin();
+    _titleMax = ImGui::GetItemRectMax();
+    _hasTitle = true;
 }
 
 ScopedCard::~ScopedCard()
@@ -375,8 +379,30 @@ ScopedCard::~ScopedCard()
     const ImVec2 max(_min.x + _width, bottom);
 
     _splitter.SetCurrentChannel(drawList, 0);
-    // drawList->AddRectFilled(_min, max, ImGui::GetColorU32(ImGuiCol_WindowBg), style.ChildRounding);
-    drawList->AddRect(_min, max, ImGui::GetColorU32(ImGuiCol_Separator), style.ChildRounding);
+
+    const ImU32 borderColor = ImGui::GetColorU32(ImGuiCol_Separator);
+
+    if (_hasTitle)
+    {
+        // Same half pixel offsets as AddRect. Top line goes through the middle of the title, with a gap for it
+        const float r = style.ChildRounding;
+        const float gap = style.ItemInnerSpacing.x;
+        const ImVec2 a(_min.x + 0.5f, std::floor((_titleMin.y + _titleMax.y) * 0.5f) + 0.5f);
+        const ImVec2 b(max.x - 0.49f, max.y - 0.49f);
+
+        drawList->PathLineTo(ImVec2(_titleMax.x + gap, a.y));
+        drawList->PathArcToFast(ImVec2(b.x - r, a.y + r), r, 9, 12);
+        drawList->PathArcToFast(ImVec2(b.x - r, b.y - r), r, 0, 3);
+        drawList->PathArcToFast(ImVec2(a.x + r, b.y - r), r, 3, 6);
+        drawList->PathArcToFast(ImVec2(a.x + r, a.y + r), r, 6, 9);
+        drawList->PathLineTo(ImVec2(_titleMin.x - gap, a.y));
+        drawList->PathStroke(borderColor, ImDrawFlags_None, 1.0f);
+    }
+    else
+    {
+        drawList->AddRect(_min, max, borderColor, style.ChildRounding);
+    }
+
     _splitter.Merge(drawList);
 
     // Registers the size of the card and leaves a gap before the next one
@@ -393,8 +419,7 @@ bool ScopedCard::TryTitle(const char* label)
     if (ImGui::GetCurrentWindow() != _current->_window || _current->_window->DC.CursorPos.y != _current->_contentStartY)
         return false;
 
-    DrawCardTitle(label);
-    _current->_hasTitle = true;
+    _current->DrawTitle(label);
 
     return true;
 }
@@ -1341,6 +1366,17 @@ static ImVec4 legacyHdrToneMap(const ImVec4& color)
     return ImVec4(color.x * scale, color.y * scale, color.z * scale, color.w);
 }
 
+static ImVec4 toneMapColor(const ImVec4& color);
+
+// Status colors, ApplyThemeStyle picks them to stay readable on the current theme
+static ImVec4 gStatusOk { 0.45f, 0.80f, 0.50f, 1.0f };
+static ImVec4 gStatusWarn { 0.95f, 0.75f, 0.25f, 1.0f };
+static ImVec4 gStatusError { 0.95f, 0.40f, 0.38f, 1.0f };
+
+static ImVec4 StatusOk() { return toneMapColor(gStatusOk); }
+static ImVec4 StatusWarn() { return toneMapColor(gStatusWarn); }
+static ImVec4 StatusError() { return toneMapColor(gStatusError); }
+
 static ImVec4 toneMapColor(const ImVec4& color)
 {
     const auto mode = getUiTargetMode();
@@ -1487,7 +1523,7 @@ void MenuCommon::ApplyThemeStyle()
     bool lightTheme = conf->LightTheme.value_or_default();
 
     style.WindowRounding = 2.0f;
-    style.ChildRounding = 1.0f;
+    style.ChildRounding = 2.0f;
     style.FrameRounding = 2.0f;
     style.PopupRounding = 2.0f;
     style.ScrollbarRounding = 2.0f;
@@ -1525,6 +1561,10 @@ void MenuCommon::ApplyThemeStyle()
                              conf->MenuBGColorB.value_or_default(), 1.0f);
 
     float luminance = Luminance(accent);
+
+    gStatusOk = lightTheme ? ImVec4(0.10f, 0.50f, 0.20f, 1.0f) : ImVec4(0.45f, 0.80f, 0.50f, 1.0f);
+    gStatusWarn = lightTheme ? ImVec4(0.70f, 0.45f, 0.00f, 1.0f) : ImVec4(0.95f, 0.75f, 0.25f, 1.0f);
+    gStatusError = lightTheme ? ImVec4(0.75f, 0.15f, 0.15f, 1.0f) : ImVec4(0.95f, 0.40f, 0.38f, 1.0f);
 
     const ImVec4 bgDark = lightTheme ? ImVec4(0.80f, 0.82f, 0.86f, 1.00f) : ImVec4(0.09f, 0.09f, 0.10f, 1.00f);
     const ImVec4 bgMid = lightTheme ? ImVec4(0.89f, 0.91f, 0.95f, 1.00f) : ImVec4(0.11f, 0.11f, 0.12f, 1.00f);
@@ -2685,8 +2725,8 @@ void MenuCommon::RenderMainMenuHeaderMessages(RenderMenuContext& ctx)
         if (versionStatus.updateAvailable && !versionStatus.latestTag.empty())
         {
             ImGui::Spacing();
-            ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)), "Update available: %s (current %s)",
-                               versionStatus.latestTag.c_str(), currentVersionText.c_str());
+            ImGui::TextColored(StatusWarn(), "Update available: %s (current %s)", versionStatus.latestTag.c_str(),
+                               currentVersionText.c_str());
 
             if (!versionStatus.latestUrl.empty())
             {
@@ -2713,7 +2753,7 @@ void MenuCommon::RenderMainMenuHeaderMessages(RenderMenuContext& ctx)
     if (state.nvngxIniDetected)
     {
         ImGui::Spacing();
-        ImGui::PushStyleColor(ImGuiCol_Text, toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)));
+        ImGui::PushStyleColor(ImGuiCol_Text, StatusError());
         ImGui::TextWrapped("nvngx.ini detected, please move over to using OptiScaler.ini and delete the old config");
         ImGui::PopStyleColor();
         ImGui::Spacing();
@@ -2885,7 +2925,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
     if (primaryGpu.dlssCapable && !state.NVNGX_DLSS_Path.has_value())
     {
         ImGui::Spacing();
-        ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)), "nvngx_dlss.dll not found, DLSS disabled!");
+        ImGui::TextColored(StatusWarn(), "nvngx_dlss.dll not found, DLSS disabled!");
     }
 
     // Dx11 with Dx12
@@ -3100,7 +3140,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
             if (state.currentFsr4Preset.has_value())
                 ImGui::TextDisabled("(Active: %d)", state.currentFsr4Preset.value());
             else if (FSR4Presets::IsAnyModuleHooked())
-                ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)), "(Potential FSR3 fallback)");
+                ImGui::TextColored(StatusWarn(), "(Potential FSR3 fallback)");
             else
                 ImGui::TextDisabled("(Failed to hook)");
 
@@ -3160,7 +3200,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                 if (auto activeModel = FSR4Models::ActiveModel(upscalerModule))
                     ImGui::TextDisabled("(Active: %s)", FSR4Models::Name(*activeModel));
                 else
-                    ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)), "(Potential FSR3 fallback)");
+                    ImGui::TextColored(StatusWarn(), "(Potential FSR3 fallback)");
             }
         }
 
@@ -3356,7 +3396,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
 
         if (overridden)
         {
-            ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)), "Presets are overridden externally");
+            ImGui::TextColored(StatusWarn(), "Presets are overridden externally");
             ShowTooltip("This usually happens due to using tools\n"
                         "such as Nvidia App or Nvidia Inspector");
             // ImGui::Text("Selecting setting below will disable that external override\n"
@@ -3844,8 +3884,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
         if (state.fgSettingsChanged)
         {
             ImGui::Spacing();
-            ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.0f, 1.f)),
-                               "Save Settings and restart to apply the changes");
+            ImGui::TextColored(StatusError(), "Save Settings and restart to apply the changes");
             ImGui::Spacing();
         }
 
@@ -4492,19 +4531,17 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         bool cantActivate = false;
         if (restartNeeded)
         {
-            ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)),
-                               "Restart the game to apply correct XeFG settings!");
+            ImGui::TextColored(StatusWarn(), "Restart the game to apply correct XeFG settings!");
         }
         else
         {
             if (!correctMVs)
-                ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)),
-                                   "Requires disabling dilated motion vectors");
+                ImGui::TextColored(StatusError(), "Requires disabling dilated motion vectors");
 
             if (!ignoreChecks && state.realExclusiveFullscreen)
             {
                 cantActivate = true;
-                ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)), "Borderless display mode required!");
+                ImGui::TextColored(StatusError(), "Borderless display mode required!");
             }
 
             if (!ignoreChecks && outputIsHdr)
@@ -4513,7 +4550,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                     state.currentSwapchainDesc.BufferDesc.Format <= DXGI_FORMAT_R16G16B16A16_SINT)
                 {
                     cantActivate = true;
-                    ImGui::TextColored(toneMapColor(ImVec4(1.0f, 0.0f, 0.0f, 1.f)), "XeFG only supports HDR10");
+                    ImGui::TextColored(StatusError(), "XeFG only supports HDR10");
                 }
             }
         }
@@ -4539,14 +4576,13 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         ImGui::SameLine();
         if (!fgOutput->IsActive())
         {
-            ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)), "OFF");
+            ImGui::TextColored(StatusError(), "OFF");
         }
         else
         {
             // Dynamic MFG's 1X keeps FG running with no generated frames
             const auto count = fgOutput->GetInterpolatedFrameCount();
-            const auto color = count > 0 ? ImVec4(0.f, 1.f, 0.25f, 1.f) : ImVec4(1.0f, 0.647f, 0.0f, 1.f);
-            ImGui::TextColored(toneMapColor(color), std::format("ON {}x", count + 1).c_str());
+            ImGui::TextColored(count > 0 ? StatusOk() : StatusWarn(), std::format("ON {}x", count + 1).c_str());
 
             if (dynamicMFG)
             {
@@ -4747,7 +4783,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             if (state.currentSwapchainDesc.BufferDesc.Format >= DXGI_FORMAT_R32G32B32A32_TYPELESS &&
                 state.currentSwapchainDesc.BufferDesc.Format <= DXGI_FORMAT_R16G16B16A16_SINT)
             {
-                ImGui::TextColored(toneMapColor(ImVec4(1.0f, 0.0f, 0.0f, 1.f)), "DLSSG only supports HDR10");
+                ImGui::TextColored(StatusError(), "DLSSG only supports HDR10");
             }
         }
 
@@ -4755,11 +4791,11 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         ImGui::SameLine();
         if (auto count = state.dlssgDetectedInterpolationCount; count > 0)
         {
-            ImGui::TextColored(toneMapColor(ImVec4(0.f, 1.f, 0.25f, 1.f)), std::format("ON {}x", count + 1).c_str());
+            ImGui::TextColored(StatusOk(), std::format("ON {}x", count + 1).c_str());
         }
         else
         {
-            ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)), "OFF");
+            ImGui::TextColored(StatusError(), "OFF");
         }
 
         RenderFGModeSlider(ctx, "Frame Gen##dlssg", dlssg->GetMaxInterpolationCount(),
@@ -4826,7 +4862,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         else if (reprojectionOutput->IsActive() && reprojectionOutput->GetReproject() &&
                  reprojectionOutput->GetReproject()->IsBypassed())
         {
-            ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)), "Paused, 3rd person detected");
+            ImGui::TextColored(StatusWarn(), "Paused, 3rd person detected");
         }
         else
         {
@@ -4980,8 +5016,8 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         }
         else if (reproject->ThirdPersonDetected())
         {
-            ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)), "3rd person detected (%.2f, orbit %.2f)",
-                               reproject->ThirdPersonScore(), reproject->OrbitScore());
+            ImGui::TextColored(StatusWarn(), "3rd person detected (%.2f, orbit %.2f)", reproject->ThirdPersonScore(),
+                               reproject->OrbitScore());
         }
         else
         {
@@ -5384,8 +5420,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
             if (!state.nukemsFgFileAvailable)
             {
-                ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)),
-                                   "Please put dlssg_to_fsr3_amd_is_better.dll into OptiScaler folder");
+                ImGui::TextColored(StatusError(), "Please put dlssg_to_fsr3_amd_is_better.dll into OptiScaler folder");
             }
         }
         else if (activeNvngxFg == FGNvngxReplacement::Arturs)
@@ -5395,12 +5430,10 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
             if (!state.artursFgFileAvailable)
             {
-                ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)),
-                                   "Please put dlss-enabler-headless.dll into OptiScaler folder");
+                ImGui::TextColored(StatusError(), "Please put dlss-enabler-headless.dll into OptiScaler folder");
             }
 
-            ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)),
-                               "Using a subset of features from DLSS Enabler");
+            ImGui::TextColored(StatusWarn(), "Using a subset of features from DLSS Enabler");
         }
         else if (activeNvngxFg == FGNvngxReplacement::FFX)
         {
@@ -5420,7 +5453,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
             if (!ReflexHooks::isReflexHooked())
             {
-                ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)), "Reflex not hooked");
+                ImGui::TextColored(StatusError(), "Reflex not hooked");
                 ImGui::Text("If you are using an AMD/Intel GPU, then make sure you have Fakenvapi");
             }
             else if (ReflexHooks::dlssgFrameCountToGenerate() == 0 && !dmfgActive)
@@ -5435,12 +5468,11 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 ImGui::SameLine();
                 if (auto count = state.dlssgDetectedInterpolationCount; count > 0)
                 {
-                    ImGui::TextColored(toneMapColor(ImVec4(0.f, 1.f, 0.25f, 1.f)),
-                                       std::format("ON {}x", count + 1).c_str());
+                    ImGui::TextColored(StatusOk(), std::format("ON {}x", count + 1).c_str());
                 }
                 else
                 {
-                    ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)), "OFF");
+                    ImGui::TextColored(StatusError(), "OFF");
                 }
 
                 // Issue mostly shows up on AMD on Windows on pre-RDNA3 in some non-UE games
@@ -5679,13 +5711,13 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             if (state.fsrfgInputActive)
             {
                 if (fgOutput->IsActive())
-                    ImGui::TextColored(toneMapColor(ImVec4(0.f, 1.f, 0.25f, 1.f)), "ON");
+                    ImGui::TextColored(StatusOk(), "ON");
                 else
-                    ImGui::TextColored(toneMapColor(ImVec4(1.0f, 0.647f, 0.0f, 1.f)), "ACTIVATE FG");
+                    ImGui::TextColored(StatusWarn(), "ACTIVATE FG");
             }
             else
             {
-                ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)), "OFF");
+                ImGui::TextColored(StatusError(), "OFF");
                 ImGui::Text("Please select FSR Frame Generation in the game options\n"
                             "You might need to select FSR first");
             }
@@ -5718,7 +5750,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
         if (!ReflexHooks::isReflexHooked())
         {
-            ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)), "Reflex not hooked");
+            ImGui::TextColored(StatusError(), "Reflex not hooked");
             ImGui::Text("If you are using an AMD/Intel GPU, then make sure you have fakenvapi");
         }
         else if (fgOutput != nullptr)
@@ -5728,13 +5760,13 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             if ((state.fgLastFrame - state.dlssgLastFrame) < 3)
             {
                 if (fgOutput->IsActive())
-                    ImGui::TextColored(toneMapColor(ImVec4(0.f, 1.f, 0.25f, 1.f)), "ON");
+                    ImGui::TextColored(StatusOk(), "ON");
                 else
-                    ImGui::TextColored(toneMapColor(ImVec4(1.0f, 0.647f, 0.0f, 1.f)), "ACTIVATE FG");
+                    ImGui::TextColored(StatusWarn(), "ACTIVATE FG");
             }
             else
             {
-                ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)), "OFF");
+                ImGui::TextColored(StatusError(), "OFF");
                 ImGui::Text("Please select DLSS Frame Generation in the game options\n"
                             "You might need to select DLSS first");
             }
@@ -5896,8 +5928,7 @@ void MenuCommon::RenderFramerateSettings(RenderMenuContext& ctx)
 
         if (state.reflexShowWarning)
         {
-            ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)),
-                               "Using Reflex's limit with FSR FG has performance overhead");
+            ImGui::TextColored(StatusError(), "Using Reflex's limit with FSR FG has performance overhead");
 
             ImGui::Spacing();
         }
@@ -6141,14 +6172,14 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
 
     if (InputCommon::xefg_output_change_pending())
     {
-        ImGui::PushStyleColor(ImGuiCol_Text, toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)));
+        ImGui::PushStyleColor(ImGuiCol_Text, StatusWarn());
         ImGui::TextWrapped("Save Settings and restart the game: XeFG keeps the low latency output it started with");
         ImGui::PopStyleColor();
     }
 
     if (auto reason = InputCommon::incompatibility(activeInput, activeOutput))
     {
-        ImGui::PushStyleColor(ImGuiCol_Text, toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)));
+        ImGui::PushStyleColor(ImGuiCol_Text, StatusWarn());
         ImGui::TextWrapped("Incompatible: %s", reason);
         ImGui::PopStyleColor();
     }
@@ -6905,7 +6936,7 @@ static const char* QuirksTabLabel(State& state)
     const bool quirks = !state.detectedQuirks.empty();
     const bool asi = !ListedAsiPlugins(state).empty();
     if (quirks && asi)
-        return "Quirks / ASI";
+        return "Quirks and ASI";
     return asi ? "ASI" : "Quirks";
 }
 
@@ -6950,7 +6981,7 @@ void MenuCommon::RenderAdvancedSettings(RenderMenuContext& ctx)
     // SPOOFING/HOOKING -----------------------------
     if (ScopedCard::Shows("spoofing") && nonDlssActive)
     {
-        ScopedCard card { "Spoofing / Hooking" };
+        ScopedCard card { "Spoofing" };
 
         if (ImGui::BeginTable("hooking", 2, ImGuiTableFlags_SizingStretchSame))
         {
@@ -6994,7 +7025,7 @@ void MenuCommon::RenderAdvancedSettings(RenderMenuContext& ctx)
     // PLUGINS/MISC -----------------------------
     if (ScopedCard::Shows("plugins"))
     {
-        ScopedCard card { "Plugins / Startup" };
+        ScopedCard card { "Startup" };
 
         if (ImGui::BeginTable("plugins", 2, ImGuiTableFlags_SizingStretchSame))
         {
@@ -7019,7 +7050,7 @@ void MenuCommon::RenderAdvancedSettings(RenderMenuContext& ctx)
     // SHADERS, LIMITS AND DRS -----------------------------
     if (ScopedCard::Shows("shaders_limits"))
     {
-        ScopedCard card { "Shaders / Limits" };
+        ScopedCard card { "Shaders" };
 
         if (ImGui::BeginTable("limits", 2, ImGuiTableFlags_SizingStretchSame))
         {
@@ -7164,21 +7195,36 @@ void MenuCommon::RenderThemeSettings(RenderMenuContext& ctx)
 
         bool lightTheme = config->LightTheme.value_or_default();
 
-        const ImVec4 bgDark = lightTheme ? ImVec4(0.80f, 0.82f, 0.86f, 1.00f) : ImVec4(0.09f, 0.09f, 0.10f, 1.00f);
-        const ImVec4 bgMid = lightTheme ? ImVec4(0.89f, 0.91f, 0.95f, 1.00f) : ImVec4(0.11f, 0.11f, 0.12f, 1.00f);
-        const ImVec4 bgLight = lightTheme ? ImVec4(0.96f, 0.97f, 0.99f, 1.00f) : ImVec4(0.14f, 0.14f, 0.15f, 1.00f);
+        static constexpr std::pair<const char*, ImVec4> presets[] = {
+            { "Blue", { 0.00f, 0.40f, 0.77f, 1.0f } },   { "Teal", { 0.00f, 1.00f, 0.91f, 1.0f } },
+            { "Gray", { 0.54f, 0.54f, 0.54f, 1.0f } },   { "Yellow", { 1.00f, 0.89f, 0.00f, 1.0f } },
+            { "Green", { 0.25f, 1.00f, 0.00f, 1.0f } },  { "Red", { 1.00f, 0.00f, 0.00f, 1.0f } },
+            { "Orange", { 1.00f, 0.52f, 0.00f, 1.0f } }, { "Purple", { 0.576f, 0.00f, 1.00f, 1.0f } },
+        };
 
-        auto Mix = [](const ImVec4& a, const ImVec4& b, float t, float alpha = 1.0f)
-        { return ImVec4(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t, alpha); };
+        // Row of clickable swatches, same presets for the accent and the background
+        auto presetSwatches = [&](const char* id, auto& r, auto& g, auto& b)
+        {
+            const float size = ImGui::GetFrameHeight();
 
-        auto AccentSoft = [&](ImVec4 accent, float alpha = 1.0f)
-        { return toneMapColor(lightTheme ? Mix(bgLight, accent, 0.24f, alpha) : Mix(bgDark, accent, 0.32f, alpha)); };
+            ImGui::PushID(id);
+            for (const auto& [name, color] : presets)
+            {
+                if (name != presets[0].first)
+                    ImGui::SameLine(0.0f, 4.0f);
 
-        auto AccentMed = [&](ImVec4 accent, float alpha = 1.0f)
-        { return toneMapColor(lightTheme ? Mix(bgLight, accent, 0.42f, alpha) : Mix(bgDark, accent, 0.55f, alpha)); };
+                if (ImGui::ColorButton(name, toneMapColor(color), ImGuiColorEditFlags_NoTooltip, ImVec2(size, size)))
+                {
+                    r = color.x;
+                    g = color.y;
+                    b = color.z;
+                    ApplyThemeStyle();
+                }
 
-        auto AccentStrong = [&](ImVec4 accent, float alpha = 1.0f)
-        { return toneMapColor(ImVec4(accent.x, accent.y, accent.z, alpha)); };
+                ShowTooltip(name);
+            }
+            ImGui::PopID();
+        };
 
         if (ImGui::Checkbox("Light Theme", &lightTheme))
         {
@@ -7188,185 +7234,7 @@ void MenuCommon::RenderThemeSettings(RenderMenuContext& ctx)
 
         SectionTitle("Accent Colour");
 
-        ImGui::Text("Presets:");
-        ImGui::SameLine(0.0f, 6.0f);
-
-        ImVec4 colorBlue = { 0.00f, 0.40f, 0.77f, 1.0f };
-        ImVec4 colorTeal = { 0.00f, 1.00f, 0.91f, 1.0f };
-        ImVec4 colorGray = { 0.54f, 0.54f, 0.54f, 1.0f };
-        ImVec4 colorYellow = { 1.00f, 0.89f, 0.00f, 1.0f };
-        ImVec4 colorGreen = { 0.25f, 1.00f, 0.00f, 1.0f };
-        ImVec4 colorRed = { 1.00f, 0.00f, 0.00f, 1.0f };
-        ImVec4 colorOrange = { 1.00f, 0.52f, 0.00f, 1.0f };
-        ImVec4 colorPurple = { 0.576f, 0.00f, 1.00f, 1.0f };
-
-        ImVec4 color = {};
-
-        color = colorBlue;
-        ImGui::PushStyleColor(ImGuiCol_Button, AccentSoft(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, AccentMed(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, AccentStrong(color));
-
-        if (ImGui::Button("Blue"))
-        {
-            ImGui::PopStyleColor(3);
-
-            config->MenuAccentColorR = color.x;
-            config->MenuAccentColorG = color.y;
-            config->MenuAccentColorB = color.z;
-            ApplyThemeStyle();
-        }
-        else
-        {
-            ImGui::PopStyleColor(3);
-        }
-
-        ImGui::SameLine(0.0f, 6.0f);
-
-        color = colorTeal;
-        ImGui::PushStyleColor(ImGuiCol_Button, AccentSoft(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, AccentMed(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, AccentStrong(color));
-
-        if (ImGui::Button("Teal"))
-        {
-            ImGui::PopStyleColor(3);
-
-            config->MenuAccentColorR = color.x;
-            config->MenuAccentColorG = color.y;
-            config->MenuAccentColorB = color.z;
-            ApplyThemeStyle();
-        }
-        else
-        {
-            ImGui::PopStyleColor(3);
-        }
-
-        ImGui::SameLine(0.0f, 6.0f);
-
-        color = colorGray;
-        ImGui::PushStyleColor(ImGuiCol_Button, AccentSoft(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, AccentMed(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, AccentStrong(color));
-
-        if (ImGui::Button("Gray"))
-        {
-            ImGui::PopStyleColor(3);
-
-            config->MenuAccentColorR = color.x;
-            config->MenuAccentColorG = color.y;
-            config->MenuAccentColorB = color.z;
-            ApplyThemeStyle();
-        }
-        else
-        {
-            ImGui::PopStyleColor(3);
-        }
-
-        ImGui::SameLine(0.0f, 6.0f);
-
-        color = colorYellow;
-        ImGui::PushStyleColor(ImGuiCol_Button, AccentSoft(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, AccentMed(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, AccentStrong(color));
-
-        if (ImGui::Button("Yellow"))
-        {
-            ImGui::PopStyleColor(3);
-
-            config->MenuAccentColorR = color.x;
-            config->MenuAccentColorG = color.y;
-            config->MenuAccentColorB = color.z;
-            ApplyThemeStyle();
-        }
-        else
-        {
-            ImGui::PopStyleColor(3);
-        }
-
-        ImGui::SameLine(0.0f, 6.0f);
-
-        color = colorGreen;
-        ImGui::PushStyleColor(ImGuiCol_Button, AccentSoft(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, AccentMed(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, AccentStrong(color));
-
-        if (ImGui::Button("Green"))
-        {
-            ImGui::PopStyleColor(3);
-
-            config->MenuAccentColorR = color.x;
-            config->MenuAccentColorG = color.y;
-            config->MenuAccentColorB = color.z;
-            ApplyThemeStyle();
-        }
-        else
-        {
-            ImGui::PopStyleColor(3);
-        }
-
-        ImGui::SameLine(0.0f, 6.0f);
-
-        color = colorRed;
-        ImGui::PushStyleColor(ImGuiCol_Button, AccentSoft(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, AccentMed(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, AccentStrong(color));
-
-        if (ImGui::Button("Red"))
-        {
-            ImGui::PopStyleColor(3);
-
-            config->MenuAccentColorR = color.x;
-            config->MenuAccentColorG = color.y;
-            config->MenuAccentColorB = color.z;
-            ApplyThemeStyle();
-        }
-        else
-        {
-            ImGui::PopStyleColor(3);
-        }
-
-        ImGui::SameLine(0.0f, 6.0f);
-
-        color = colorOrange;
-        ImGui::PushStyleColor(ImGuiCol_Button, AccentSoft(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, AccentMed(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, AccentStrong(color));
-
-        if (ImGui::Button("Orange"))
-        {
-            ImGui::PopStyleColor(3);
-
-            config->MenuAccentColorR = color.x;
-            config->MenuAccentColorG = color.y;
-            config->MenuAccentColorB = color.z;
-            ApplyThemeStyle();
-        }
-        else
-        {
-            ImGui::PopStyleColor(3);
-        }
-
-        ImGui::SameLine(0.0f, 6.0f);
-
-        color = colorPurple;
-        ImGui::PushStyleColor(ImGuiCol_Button, AccentSoft(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, AccentMed(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, AccentStrong(color));
-
-        if (ImGui::Button("Purple"))
-        {
-            ImGui::PopStyleColor(3);
-
-            config->MenuAccentColorR = color.x;
-            config->MenuAccentColorG = color.y;
-            config->MenuAccentColorB = color.z;
-            ApplyThemeStyle();
-        }
-        else
-        {
-            ImGui::PopStyleColor(3);
-        }
+        presetSwatches("accent", config->MenuAccentColorR, config->MenuAccentColorG, config->MenuAccentColorB);
 
         float accentColor[3] = { config->MenuAccentColorR.value_or_default(),
                                  config->MenuAccentColorG.value_or_default(),
@@ -7394,174 +7262,7 @@ void MenuCommon::RenderThemeSettings(RenderMenuContext& ctx)
 
         SectionTitle("Background Colour");
 
-        ImGui::Text("Presets:");
-        ImGui::SameLine(0.0f, 6.0f);
-
-        color = colorBlue;
-        ImGui::PushStyleColor(ImGuiCol_Button, AccentSoft(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, AccentMed(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, AccentStrong(color));
-
-        if (ImGui::Button("Blue##2"))
-        {
-            ImGui::PopStyleColor(3);
-
-            config->MenuBGColorR = color.x;
-            config->MenuBGColorG = color.y;
-            config->MenuBGColorB = color.z;
-            ApplyThemeStyle();
-        }
-        else
-        {
-            ImGui::PopStyleColor(3);
-        }
-
-        ImGui::SameLine(0.0f, 6.0f);
-
-        color = colorTeal;
-        ImGui::PushStyleColor(ImGuiCol_Button, AccentSoft(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, AccentMed(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, AccentStrong(color));
-
-        if (ImGui::Button("Teal##2"))
-        {
-            ImGui::PopStyleColor(3);
-
-            config->MenuBGColorR = color.x;
-            config->MenuBGColorG = color.y;
-            config->MenuBGColorB = color.z;
-            ApplyThemeStyle();
-        }
-        else
-        {
-            ImGui::PopStyleColor(3);
-        }
-
-        ImGui::SameLine(0.0f, 6.0f);
-
-        color = colorGray;
-        ImGui::PushStyleColor(ImGuiCol_Button, AccentSoft(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, AccentMed(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, AccentStrong(color));
-
-        if (ImGui::Button("Gray##2"))
-        {
-            ImGui::PopStyleColor(3);
-
-            config->MenuBGColorR = color.x;
-            config->MenuBGColorG = color.y;
-            config->MenuBGColorB = color.z;
-            ApplyThemeStyle();
-        }
-        else
-        {
-            ImGui::PopStyleColor(3);
-        }
-
-        ImGui::SameLine(0.0f, 6.0f);
-
-        color = colorYellow;
-        ImGui::PushStyleColor(ImGuiCol_Button, AccentSoft(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, AccentMed(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, AccentStrong(color));
-
-        if (ImGui::Button("Yellow##2"))
-        {
-            ImGui::PopStyleColor(3);
-
-            config->MenuBGColorR = color.x;
-            config->MenuBGColorG = color.y;
-            config->MenuBGColorB = color.z;
-            ApplyThemeStyle();
-        }
-        else
-        {
-            ImGui::PopStyleColor(3);
-        }
-
-        ImGui::SameLine(0.0f, 6.0f);
-
-        color = colorGreen;
-        ImGui::PushStyleColor(ImGuiCol_Button, AccentSoft(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, AccentMed(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, AccentStrong(color));
-
-        if (ImGui::Button("Green##2"))
-        {
-            ImGui::PopStyleColor(3);
-
-            config->MenuBGColorR = color.x;
-            config->MenuBGColorG = color.y;
-            config->MenuBGColorB = color.z;
-            ApplyThemeStyle();
-        }
-        else
-        {
-            ImGui::PopStyleColor(3);
-        }
-
-        ImGui::SameLine(0.0f, 6.0f);
-
-        color = colorRed;
-        ImGui::PushStyleColor(ImGuiCol_Button, AccentSoft(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, AccentMed(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, AccentStrong(color));
-
-        if (ImGui::Button("Red##2"))
-        {
-            ImGui::PopStyleColor(3);
-
-            config->MenuBGColorR = color.x;
-            config->MenuBGColorG = color.y;
-            config->MenuBGColorB = color.z;
-            ApplyThemeStyle();
-        }
-        else
-        {
-            ImGui::PopStyleColor(3);
-        }
-
-        ImGui::SameLine(0.0f, 6.0f);
-
-        color = colorOrange;
-        ImGui::PushStyleColor(ImGuiCol_Button, AccentSoft(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, AccentMed(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, AccentStrong(color));
-
-        if (ImGui::Button("Orange##2"))
-        {
-            ImGui::PopStyleColor(3);
-
-            config->MenuBGColorR = color.x;
-            config->MenuBGColorG = color.y;
-            config->MenuBGColorB = color.z;
-            ApplyThemeStyle();
-        }
-        else
-        {
-            ImGui::PopStyleColor(3);
-        }
-
-        ImGui::SameLine(0.0f, 6.0f);
-
-        color = colorPurple;
-        ImGui::PushStyleColor(ImGuiCol_Button, AccentSoft(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, AccentMed(color));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, AccentStrong(color));
-
-        if (ImGui::Button("Purple##2"))
-        {
-            ImGui::PopStyleColor(3);
-
-            config->MenuBGColorR = color.x;
-            config->MenuBGColorG = color.y;
-            config->MenuBGColorB = color.z;
-            ApplyThemeStyle();
-        }
-        else
-        {
-            ImGui::PopStyleColor(3);
-        }
+        presetSwatches("bg", config->MenuBGColorR, config->MenuBGColorG, config->MenuBGColorB);
 
         float bgColor[3] = { config->MenuBGColorR.value_or_default(), config->MenuBGColorG.value_or_default(),
                              config->MenuBGColorB.value_or_default() };
@@ -7768,7 +7469,7 @@ void MenuCommon::RenderUpscalerInputsSettings(RenderMenuContext& ctx)
 
         if (restartNeeded)
         {
-            ImGui::PushStyleColor(ImGuiCol_Text, toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)));
+            ImGui::PushStyleColor(ImGuiCol_Text, StatusWarn());
             ImGui::TextWrapped("Save Settings and restart the game for Enable and Pattern changes to apply");
             ImGui::PopStyleColor();
         }
@@ -8163,32 +7864,17 @@ static const char* ApiName(API api)
     return "Unknown";
 }
 
-// Filled dot for on / found, hollow dot for off / missing. Goes into the next table cell
+// Normal text for on / found, dimmed for off / missing. Goes into the next table cell
 static void StatusFlag(const char* label, bool on, bool warnWhenOn = false)
 {
-    const ImVec4 onColor = toneMapColor(ImVec4(0.35f, 0.85f, 0.45f, 1.f));
-    const ImVec4 warnColor = toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f));
-
     ImGui::TableNextColumn();
 
-    const float lineHeight = ImGui::GetTextLineHeight();
-    const float radius = lineHeight * 0.28f;
-    const ImVec2 pos = ImGui::GetCursorScreenPos();
-    const ImVec2 center(pos.x + lineHeight * 0.5f, pos.y + lineHeight * 0.5f);
-    auto drawList = ImGui::GetWindowDrawList();
-
-    if (on)
-        drawList->AddCircleFilled(center, radius, ImGui::GetColorU32(warnWhenOn ? warnColor : onColor));
-    else
-        drawList->AddCircle(center, radius, ImGui::GetColorU32(ImGuiCol_TextDisabled), 0, 1.5f);
-
-    ImGui::Dummy(ImVec2(lineHeight, lineHeight));
-    ImGui::SameLine(0.0f, 0.0f);
-
-    if (on)
-        ImGui::TextUnformatted(label);
-    else
+    if (!on)
         ImGui::TextDisabled("%s", label);
+    else if (warnWhenOn)
+        ImGui::TextColored(StatusWarn(), "%s", label);
+    else
+        ImGui::TextUnformatted(label);
 }
 
 // Which libraries and GPU features were found. Used by the Status tab and when no upscaler is available
@@ -8389,7 +8075,7 @@ void MenuCommon::RenderStatusInfo(RenderMenuContext& ctx)
     // HOOKS AND CONFIG -----------------------------
     if (ScopedCard::Shows("status_hooks"))
     {
-        ScopedCard card { "Hooks / Config" };
+        ScopedCard card { "Hooks" };
 
         if (ImGui::BeginTable("statusConfig", 4, ImGuiTableFlags_SizingStretchSame))
         {
@@ -8510,9 +8196,9 @@ const MenuCommon::MenuBox* MenuCommon::GetMenuBoxes(size_t& count)
         { "fg_fsrfg_inputs", "Frame Gen", "FSR-FG Inputs", nullptr, RenderFrameGenerationRuntimeSettings },
         { "fg_sl_inputs", "Frame Gen", "Streamline FG Inputs", nullptr, RenderFrameGenerationRuntimeSettings },
 
-        { "framerate", "Latency & FPS", "Framerate", [](RenderMenuContext& c) { RenderCard(c, RenderFramerateSettings); } },
-        { "low_latency", "Latency & FPS", "Low Latency", [](RenderMenuContext& c) { RenderCard(c, RenderLowLatencySettings); } },
-        { "vsync", "Latency & FPS", "V-Sync", [](RenderMenuContext& c) { RenderCard(c, RenderVsyncSettings); } },
+        { "framerate", "Latency", "Framerate", [](RenderMenuContext& c) { RenderCard(c, RenderFramerateSettings); } },
+        { "low_latency", "Latency", "Low Latency", [](RenderMenuContext& c) { RenderCard(c, RenderLowLatencySettings); } },
+        { "vsync", "Latency", "V-Sync", [](RenderMenuContext& c) { RenderCard(c, RenderVsyncSettings); } },
 
         { "mipmap", "Textures", "Mipmap Bias", nullptr, RenderApiAndTextureSettings },
         { "anisotropy", "Textures", "Anisotropic Filtering", nullptr, RenderApiAndTextureSettings },
@@ -8520,9 +8206,9 @@ const MenuCommon::MenuBox* MenuCommon::GetMenuBoxes(size_t& count)
         { "init_flags", "Compatibility", "Init Flags", [](RenderMenuContext& c) { RenderCard(c, RenderInitFlagsSettings); } },
         { "fsr_common", "Compatibility", "FSR Common Settings", [](RenderMenuContext& c) { RenderCard(c, RenderFsrCommonSettings); } },
         { "upscaler_inputs", "Compatibility", "Upscaler Inputs", [](RenderMenuContext& c) { RenderCard(c, RenderUpscalerInputsSettings); } },
-        { "spoofing", "Compatibility", "Spoofing / Hooking", nullptr, RenderAdvancedSettings },
-        { "plugins", "Compatibility", "Plugins / Startup", nullptr, RenderAdvancedSettings },
-        { "shaders_limits", "Compatibility", "Shaders / Limits", nullptr, RenderAdvancedSettings },
+        { "spoofing", "Compatibility", "Spoofing", nullptr, RenderAdvancedSettings },
+        { "plugins", "Compatibility", "Startup", nullptr, RenderAdvancedSettings },
+        { "shaders_limits", "Compatibility", "Shaders", nullptr, RenderAdvancedSettings },
         { "barriers", "Compatibility", "Resource Barriers", nullptr, RenderAdvancedSettings },
         { "root_signatures", "Compatibility", "Root Signatures", nullptr, RenderAdvancedSettings },
 
@@ -8535,11 +8221,11 @@ const MenuCommon::MenuBox* MenuCommon::GetMenuBoxes(size_t& count)
         { "active_quirks", "Quirks / ASI", "Active Quirks", nullptr, RenderQuirksSettings },
         { "loaded_asi_plugins", "Quirks / ASI", "Loaded ASI Plugins", nullptr, RenderQuirksSettings },
 
-        { "status_system", "Help / Status", "System", nullptr, RenderStatusInfo },
-        { "status_detected", "Help / Status", "Detected", nullptr, RenderStatusInfo },
-        { "status_hooks", "Help / Status", "Hooks / Config", nullptr, RenderStatusInfo },
-        { "status_init", "Help / Status", "Init Flags (active)", nullptr, RenderStatusInfo },
-        { "logging", "Help / Status", "Logging", [](RenderMenuContext& c) { RenderCard(c, RenderLoggingSettings); } },
+        { "status_system", "Status", "System", nullptr, RenderStatusInfo },
+        { "status_detected", "Status", "Detected", nullptr, RenderStatusInfo },
+        { "status_hooks", "Status", "Hooks", nullptr, RenderStatusInfo },
+        { "status_init", "Status", "Init Flags (active)", nullptr, RenderStatusInfo },
+        { "logging", "Status", "Logging", [](RenderMenuContext& c) { RenderCard(c, RenderLoggingSettings); } },
     };
     // clang-format on
 
@@ -8701,20 +8387,12 @@ void MenuCommon::RenderCustomTabSettings(RenderMenuContext& ctx)
 
         if (changed)
             config->CustomTabCards = newPinned;
-    }
-}
 
-// Session timer
-static std::string SessionTimeText(const State& state)
-{
-    const auto elapsed =
-        std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - state.startTime).count();
-    const auto hours = elapsed / 3600;
-    const auto minutes = (elapsed / 60) % 60;
-    const auto secs = elapsed % 60;
-    if (hours > 0)
-        return StrFmt("%02lld:%02lld:%02lld", (long long) hours, (long long) minutes, (long long) secs);
-    return StrFmt("%02lld:%02lld", (long long) minutes, (long long) secs);
+        ImGui::Spacing();
+
+        if (ImGui::Button("Reset Custom Tab"))
+            config->CustomTabCards.reset();
+    }
 }
 
 void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
@@ -8728,11 +8406,9 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
 
     struct Tab
     {
-        const char* group;
+        const char* group; // Groups are split by a line in the sidebar
         const char* label;
-        const char* description;
-        DrawFn draw; // Drawn above the boxes of the tab
-        bool hideLabelInMenu;
+        DrawFn draw = nullptr;                                     // Drawn above the boxes of the tab
         bool (*visible)(RenderMenuContext&) = nullptr;             // Tab hidden when returned false
         const char* (*displayLabel)(RenderMenuContext&) = nullptr; // Name shown in the sidebar
     };
@@ -8740,17 +8416,16 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
     // Boxes of a tab come from GetMenuBoxes, by the label of the tab
     // clang-format off
     static const Tab tabs[] = {
-        { "MAIN", "Custom", "Boxes picked in Menu > Custom Tab.", RenderCustomTab },
-        { "MAIN", "Upscaling", "Backend, sharpness and output scaling.", RenderUpscalerStateMessage },
-        { "MAIN", "Frame Gen", "Frame generation source, output and pacing." },
-        { "MAIN", "Latency & FPS", "Frame limiter, low latency and V-Sync." },
-        { "SYSTEM", "Textures", "Mipmap bias and anisotropic filtering." },
-        { "SYSTEM", "Compatibility", "Init flags, hooks, plugins and game specific workarounds." },
-        { "ADVANCED", "Menu", "Menu scale, theme, FPS overlay and keybinds." },
-        { "ADVANCED", "Quirks", "Game specific quirks applied by OptiScaler and loaded ASI plugins.",
-          RenderQuirksSettings, false, [](RenderMenuContext& c) { return QuirksTabVisible(c.state); },
+        { "main", "Custom", RenderCustomTab },
+        { "main", "Upscaling", RenderUpscalerStateMessage },
+        { "main", "Frame Gen" },
+        { "main", "Latency" },
+        { "system", "Textures" },
+        { "system", "Compatibility" },
+        { "advanced", "Menu" },
+        { "advanced", "Quirks", RenderQuirksSettings, [](RenderMenuContext& c) { return QuirksTabVisible(c.state); },
           [](RenderMenuContext& c) { return QuirksTabLabel(c.state); } },
-        { "ADVANCED", "Help / Status", "Support info. Filled dot: on or found, hollow dot: off or missing.", nullptr, true },
+        { "advanced", "Status" },
     };
     // clang-format on
 
@@ -8809,14 +8484,10 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
             if (!isTabVisible(i))
                 continue;
 
-            if (lastGroup == nullptr || strcmp(lastGroup, tabs[i].group) != 0)
-            {
-                if (lastGroup != nullptr)
-                    ImGui::Dummy(ImVec2(0.0f, style.ItemSpacing.y));
+            if (lastGroup != nullptr && strcmp(lastGroup, tabs[i].group) != 0)
+                ImGui::Separator();
 
-                ImGui::TextDisabled("%s", tabs[i].group);
-                lastGroup = tabs[i].group;
-            }
+            lastGroup = tabs[i].group;
 
             const bool selected = selectedMenuTab == i;
 
@@ -8825,17 +8496,11 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
                 selectedMenuTab = i;
             ImGui::PopID();
 
-            // Label is drawn manually to center it vertically and to leave room for the accent bar
+            // Label is drawn manually to center it vertically
             const ImVec2 rectMin = ImGui::GetItemRectMin();
-            const ImVec2 rectMax = ImGui::GetItemRectMax();
-            auto drawList = ImGui::GetWindowDrawList();
 
-            if (selected)
-                drawList->AddRectFilled(rectMin, ImVec2(rectMin.x + 3.0f * menuResScale, rectMax.y),
-                                        ImGui::GetColorU32(ImGuiCol_CheckMark));
-
-            drawList->AddText(
-                ImVec2(rectMin.x + 10.0f * menuResScale, rectMin.y + (tabHeight - ImGui::GetTextLineHeight()) * 0.5f),
+            ImGui::GetWindowDrawList()->AddText(
+                ImVec2(rectMin.x + 6.0f * menuResScale, rectMin.y + (tabHeight - ImGui::GetTextLineHeight()) * 0.5f),
                 ImGui::GetColorU32(ImGuiCol_Text),
                 tabs[i].displayLabel != nullptr ? tabs[i].displayLabel(ctx) : tabs[i].label);
         }
@@ -8844,7 +8509,7 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
         const bool optiPatcher = state.isOptiPatcherSucceed;
 
         // Compact state of the upscaler and FG pinned to the bottom of the sidebar
-        const float statusLines = 4.0f + (optiPatcher ? 1.0f : 0.0f);
+        const float statusLines = 3.0f + (optiPatcher ? 1.0f : 0.0f);
         const float statusHeight = 1.0f + ImGui::GetTextLineHeightWithSpacing() * statusLines + style.ItemSpacing.y;
         const float gap = ImGui::GetContentRegionAvail().y - statusHeight - style.ItemSpacing.y;
         if (gap > 0.0f)
@@ -8858,14 +8523,13 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
         if (currentFeature == nullptr || !currentFeature->IsInited())
             ImGui::TextDisabled("None");
         else if (currentFeature->IsFrozen())
-            ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)), "Idle");
+            ImGui::TextColored(StatusWarn(), "Idle");
         else
         {
             const float renderWidth = (float) currentFeature->RenderWidth();
             const float upscaleRatio = renderWidth > 0.0f ? (float) currentFeature->TargetWidth() / renderWidth : 0.0f;
 
-            ImGui::TextColored(toneMapColor(ImVec4(0.35f, 0.85f, 0.45f, 1.f)), "%s (%.2f)",
-                               currentFeature->ShortName().c_str(), upscaleRatio);
+            ImGui::TextColored(StatusOk(), "%s (%.2f)", currentFeature->ShortName().c_str(), upscaleRatio);
         }
 
         ImGui::TextDisabled("FG");
@@ -8891,8 +8555,7 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
             else
             {
                 const bool unsupported = detectedCount > Nvngx_FG::getMaxFakeFramesCount();
-                const ImVec4 color = unsupported ? ImVec4(1.f, 0.8f, 0.f, 1.f) : ImVec4(0.35f, 0.85f, 0.45f, 1.f);
-                ImGui::TextColored(toneMapColor(color), "%s %dx", nvngxName, detectedCount + 1);
+                ImGui::TextColored(unsupported ? StatusWarn() : StatusOk(), "%s %dx", nvngxName, detectedCount + 1);
             }
         }
 
@@ -8906,7 +8569,7 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
             if (fgName.ends_with(multiplierSuffix))
                 fgName.erase(fgName.size() - multiplierSuffix.size());
 
-            ImGui::TextColored(toneMapColor(ImVec4(0.35f, 0.85f, 0.45f, 1.f)), "%s %ux", fgName.c_str(), multiplier);
+            ImGui::TextColored(StatusOk(), "%s %ux", fgName.c_str(), multiplier);
         }
         else
             ImGui::TextDisabled("Off");
@@ -8915,7 +8578,7 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
         ImGui::TextDisabled("Spoof");
         ImGui::SameLine(0.0f, 8.0f * menuResScale);
         if (spoofing)
-            ImGui::TextColored(toneMapColor(ImVec4(0.35f, 0.85f, 0.45f, 1.f)), "Yes");
+            ImGui::TextColored(StatusOk(), "Yes");
         else
             ImGui::TextDisabled("No");
 
@@ -8923,39 +8586,19 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
         {
             ImGui::TextDisabled("OP");
             ImGui::SameLine(0.0f, 8.0f * menuResScale);
-            ImGui::TextColored(toneMapColor(ImVec4(0.35f, 0.85f, 0.45f, 1.f)), "Yes");
+            ImGui::TextColored(StatusOk(), "Yes");
         }
-        ImGui::TextDisabled("Uptime");
-        ImGui::SameLine(0.0f, 8.0f * menuResScale);
-        ImGui::TextUnformatted(SessionTimeText(state).c_str());
     }
 
     ImGui::EndChild();
 
     ImGui::SameLine();
 
-    // Tab title, short explanation and the scrollable content -----------------------------
+    // Scrollable content of the tab -----------------------------
     ImGui::BeginChild("##MenuContent", ImVec2(0.0f, -footerHeight), ImGuiChildFlags_NavFlattened,
                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     {
         const Tab& tab = tabs[selectedMenuTab];
-
-        // if (!tab.hideLabelInMenu)
-        //{
-        //     if (config->UseHQFont.value_or_default())
-        //         ImGui::PushFontSize(std::round(fontSize * menuResScale * 1.3f));
-
-        //    ImGui::TextUnformatted(tab.label);
-
-        //    if (config->UseHQFont.value_or_default())
-        //        ImGui::PopFontSize();
-        //}
-
-        // ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-        // ImGui::TextWrapped("%s", tab.description);
-        // ImGui::PopStyleColor();
-
-        // ImGui::Separator();
 
         // Own ID per tab, so every tab remembers its scroll position
         ImGui::PushID(selectedMenuTab);
@@ -9148,25 +8791,26 @@ void MenuCommon::RenderMainMenuBottomBar(RenderMenuContext& ctx)
         auto ctx = ImGui::GetCurrentContext();
         pIO->Platform_OpenInShellFn(ctx, "https://github.com/optiscaler/OptiScaler/wiki");
     }
-    ShowTooltip("Click to open the OptiScaler Wiki page\nin your default browser\n\n"
-                "Compatibility list with known game issues\nand workarounds, FG options explained\n"
-                "and other useful info");
+    ShowTooltip("Compatibility list, known issues and FG options explained");
 
     ImGui::SameLine();
 
+    const auto saveLabel = "Save Settings";
+    const auto closeLabel = "Close";
+
     auto& style = ImGui::GetStyle();
-    float rightButtonsWidth =
-        ImGui::CalcTextSize("Save Settings").x + ImGui::CalcTextSize("Close").x + style.FramePadding.x * 4.0f + 6.0f;
+    float rightButtonsWidth = ImGui::CalcTextSize(saveLabel, nullptr, true).x +
+                              ImGui::CalcTextSize(closeLabel, nullptr, true).x + style.FramePadding.x * 4.0f + 6.0f;
 
     float avail = ImGui::GetContentRegionAvail().x;
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - rightButtonsWidth);
 
-    if (ImGui::Button("Save Settings"))
+    if (ImGui::Button(saveLabel))
         config->SaveIni();
 
     ImGui::SameLine(0.0f, 6.0f);
 
-    if (ImGui::Button("Close"))
+    if (ImGui::Button(closeLabel))
     {
         _isVisible = false;
         hasGamepad = (io.BackendFlags | ImGuiBackendFlags_HasGamepad) > 0;
@@ -9428,13 +9072,13 @@ void MenuCommon::RenderHudlessResourcesWindow(RenderMenuContext& ctx, ImGuiWindo
 // Game name | API | GPU | Input, above the tabs
 static void RenderGameInfoRow(State& state, const GpuInformation& primaryGpu)
 {
+    // Game name is in the window title
     ScopedCard card;
-    std::string line = state.gameName.empty() ? "" : state.gameName + " | ";
-    line += StrFmt("%s%s | %s | Input: %s", ApiName(state.api),
-                   IdentifyGpu::gameUsesDxvk()          ? " (DXVK)"
-                   : IdentifyGpu::gameUsesVkd3dProton() ? " (VKD3D)"
-                                                        : "",
-                   primaryGpu.name.c_str(), ApiUpscalerInputName(state.currentInputApiName).c_str());
+    std::string line = StrFmt("%s%s | %s | Input: %s", ApiName(state.api),
+                              IdentifyGpu::gameUsesDxvk()          ? " (DXVK)"
+                              : IdentifyGpu::gameUsesVkd3dProton() ? " (VKD3D)"
+                                                                   : "",
+                              primaryGpu.name.c_str(), ApiUpscalerInputName(state.currentInputApiName).c_str());
     ImGui::TextWrapped("%s", line.c_str());
 }
 
@@ -9516,11 +9160,9 @@ void MenuCommon::RenderMainMenuWindow(RenderMenuContext& ctx)
     ImGui::SetNextWindowSize(ImVec2(menuWidth, menuHeight), ImGuiCond_Always);
     ImGui::SetNextWindowSizeConstraints(ImVec2(menuWidth, minMenuHeight), ImVec2(menuWidth, maxMenuHeight));
 
-    // Main menu window
-    if (windowTitle.empty())
-    {
-        windowTitle = StrFmt("%s - %s", BuildInfo::ProductName(), state.gameExe.c_str());
-    }
+    // Main menu window, fixed ID as the game name can show up later
+    windowTitle = StrFmt("%s - %s###OptiScalerMenu", BuildInfo::ProductName(),
+                         state.gameName.empty() ? state.gameExe.c_str() : state.gameName.c_str());
 
     if (ImGui::Begin(windowTitle.c_str(), NULL, mainFlags))
     {
