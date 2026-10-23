@@ -1099,12 +1099,15 @@ std::mutex xefg_batch_mutex;
 std::deque<XeFGBatch> xefg_batches; // Marked, not presented yet
 XeFGBatch xefg_batch;               // Presenting
 constexpr size_t xefg_max_batches = 8;
+uint32_t xefg_types_logged = 0; // AntiLag 2 frame types logged since FG started
+constexpr uint32_t xefg_types_log_limit = 16;
 
 void reset_xefg_batches()
 {
     std::scoped_lock lock(xefg_batch_mutex);
     xefg_batches.clear();
     xefg_batch = {};
+    xefg_types_logged = 0;
 }
 } // namespace
 
@@ -1139,6 +1142,10 @@ void InputCommon::fg_output_present(ID3D12CommandQueue* presentQueue, bool prese
             return;
 
         uint64_t frame_id = 0;
+        std::optional<bool> interpolated;
+        uint32_t position = 0;
+        uint32_t frames = 0;
+        bool logType = false;
 
         {
             std::scoped_lock lock(xefg_batch_mutex);
@@ -1155,12 +1162,37 @@ void InputCommon::fg_output_present(ID3D12CommandQueue* presentQueue, bool prese
             }
 
             frame_id = xefg_batch.frame_id;
+
+            // XeFG presents a batch's generated frames first and its real frame last
+            if (!presented && frame_id != 0 && activeOutput == LowLatencyMode::AntiLag2)
+            {
+                position = xefg_batch.presented;
+                frames = xefg_batch.frames;
+
+                if (position < frames)
+                    interpolated = position + 1 < frames;
+
+                if (xefg_types_logged < xefg_types_log_limit)
+                {
+                    xefg_types_logged++;
+                    logType = true;
+                }
+            }
         }
 
         if (frame_id != 0)
         {
-            tech->set_async_marker(presentQueue, { frame_id, presented ? MarkerType::OUT_OF_BAND_PRESENT_END
-                                                                       : MarkerType::OUT_OF_BAND_PRESENT_START });
+            MarkerParams params { frame_id, presented ? MarkerType::OUT_OF_BAND_PRESENT_END
+                                                      : MarkerType::OUT_OF_BAND_PRESENT_START };
+            params.interpolated = interpolated;
+
+            if (logType)
+            {
+                LOG_INFO("XeFG AntiLag 2 frame type: frame id {}, position {} of {} frames, interpolated {}", frame_id,
+                         position, frames, interpolated.has_value() ? (*interpolated ? "true" : "false") : "inferred");
+            }
+
+            tech->set_async_marker(presentQueue, params);
         }
 
         return;
@@ -1198,8 +1230,8 @@ void InputCommon::fg_output_present(ID3D12CommandQueue* presentQueue, bool prese
 }
 
 // AntiLag 2 only knows the generated frames from the frame type set right before each present. DLSSG's out of band
-// present markers don't give a usable one with more than 1 generated frame, like OptiScaler's XeFG (fg_output_present)
-// the presents themselves do: the first of each batch as the real frame.
+// present markers don't give a usable one with more than 1 generated frame, the presents themselves do: the first of
+// each batch as the real frame. OptiScaler's XeFG sets it in fg_output_present, its real frame is the last of a batch.
 bool InputCommon::dlssg_types_presents()
 {
     auto fgOutput = State::Instance().activeFgOutput;
