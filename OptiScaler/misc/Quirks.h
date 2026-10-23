@@ -454,6 +454,10 @@ static const QuirkEntry quirkTable[] = {
     // BeamNG.drive
     QUIRK_ENTRY("beamng.drive.x64.exe", GameQuirk::DisableDxgiSpoofing),
 
+    // METRO 2033 Redux, METRO Last Light Redux
+    // Manual Input polling for fixing invisible Opti Overlay
+    QUIRK_ENTRY("metro.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::UseManualInputs),
+
     // SL spoof enough to unlock everything DLSS/No spoof needed for DLSS inputs
     //
     // The Witcher 3, Alan Wake 2, Crysis 3 Remastered, Marvel's Guardians of the Galaxy, UNCHARTED: Legacy of Thieves
