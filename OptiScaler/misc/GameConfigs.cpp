@@ -527,6 +527,13 @@ const std::vector<GameConfig> gameConfigs = {
         .defaults = { DxgiSpoofing = false },
     },
 
+    // Kingdom Come: Deliverance II
+    // Streamline stalls its flip queue when it also waits on the game's frame latency waitable
+    {
+        .exes = { "kingdomcome.exe" },
+        .quirks = { DLSSGFrameLatencyWaitable },
+    },
+
     // Star Wars: Outlaws
     // SL spoof enough to unlock everything DLSS, Hudfix incompatible
     {

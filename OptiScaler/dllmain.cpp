@@ -1281,6 +1281,9 @@ static void printQuirks(flag_set<GameQuirk>& quirks)
     if (quirks & GameQuirk::XeFGCameraMotionFill)
         stringQuirks.push_back("Fill XeFG input motion vectors with camera motion");
 
+    if (quirks & GameQuirk::DLSSGFrameLatencyWaitable)
+        stringQuirks.push_back("Request frame latency waitable swapchain for DLSSG");
+
     state->detectedQuirks.append_range(stringQuirks);
     for (auto& stringQuirk : stringQuirks)
         spdlog::info("Quirk: {}", stringQuirk);

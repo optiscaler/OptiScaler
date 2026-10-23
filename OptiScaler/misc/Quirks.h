@@ -29,7 +29,8 @@ enum class GameQuirk : uint64_t
     IgnoreTagsWithoutHudlessForFG,
     ForceFGRenderSizeMVs,
     CreateSLOnThe2ndDevice,
-    XeFGCameraMotionFill, // XeFG inputs: velocity has alpha 0 where only the camera moved (The Witcher 3)
+    XeFGCameraMotionFill,      // XeFG inputs: velocity has alpha 0 where only the camera moved (The Witcher 3)
+    DLSSGFrameLatencyWaitable, // Game waits on the frame latency waitable, SL must not consume it too
     // Don't forget to add the new entry to printQuirks
     _
 };
