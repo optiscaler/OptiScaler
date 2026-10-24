@@ -468,27 +468,13 @@ bool Config::Reload(std::filesystem::path iniPath)
             UseHQFont.set_from_config(readBool("Menu", "UseHQFont"));
             DisableSplash.set_from_config(readBool("Menu", "DisableSplash"));
 
-            if (auto setting = readUInt("Menu", "FpsOverlayPos"); setting.has_value())
-            {
-                FpsOverlayPosition.set_from_config(
-                    (FpsOverlayPos) std::clamp(setting.value(), 0U, FpsOverlayPos_COUNT - 1));
-            }
-
-            if (auto setting = readUInt("Menu", "FpsOverlayType"); setting.has_value())
-            {
-                FpsOverlayType.set_from_config((FpsOverlay) std::clamp(setting.value(), 0U, FpsOverlay_COUNT - 1));
-            }
+            ReadOverlaySettings(false);
 
             FpsShortcutKey.set_from_config(readInt("Menu", "FpsShortcutKey"));
             FpsCycleShortcutKey.set_from_config(readInt("Menu", "FpsCycleShortcutKey"));
-            FpsOverlayHorizontal.set_from_config(readBool("Menu", "FpsOverlayHorizontal"));
-            FpsOverlayShowRatio.set_from_config(readBool("Menu", "FpsOverlayShowRatio"));
 
-            if (auto setting = readFloat("Menu", "FpsOverlayAlpha"); setting.has_value())
-                FpsOverlayAlpha.set_from_config(std::clamp(setting.value(), 0.0f, 1.0f));
-
-            if (auto setting = readFloat("Menu", "FpsScale"); setting.has_value())
-                FpsScale.set_from_config(std::clamp(setting.value(), 0.5f, 2.0f));
+            if (auto setting = readFloat("Menu", "Rounding"); setting.has_value())
+                MenuRounding.set_from_config(std::clamp(setting.value(), 0.0f, 16.0f));
 
             FontSize.set_from_config(readFloat("Menu", "FontSize"));
             TTFFontPath.set_from_config(readWString("Menu", "TTFFontPath"));
@@ -496,7 +482,6 @@ bool Config::Reload(std::filesystem::path iniPath)
             FGShortcutKey.set_from_config(readInt("Menu", "FGShortcutKey"));
 
             LightTheme.set_from_config(readBool("Menu", "LightTheme"));
-            OverlaysUseTheme.set_from_config(readBool("Menu", "OverlaysUseTheme"));
             MenuAccentColorR.set_from_config(readFloat("Menu", "AccentColorR"));
             MenuAccentColorG.set_from_config(readFloat("Menu", "AccentColorG"));
             MenuAccentColorB.set_from_config(readFloat("Menu", "AccentColorB"));
@@ -891,6 +876,391 @@ std::string GetFloatValue(std::optional<float> value)
         return "auto";
 
     return std::to_string(value.value());
+}
+
+// How a key's value is packed in a settings code
+enum class OverlayValueType
+{
+    Bool,
+    Index,
+    Float,
+    Color,
+    Text,
+};
+
+struct OverlayIniKey
+{
+    const char* name;
+    OverlayValueType type;
+};
+
+// FPS overlay settings, in the Menu section. Codes refer to a key by its place here, so new keys go at the end.
+static const OverlayIniKey overlayIniKeys[] = {
+    { "OverlaysUseTheme", OverlayValueType::Bool },       { "FpsOverlayPos", OverlayValueType::Index },
+    { "FpsOverlayType", OverlayValueType::Index },        { "FpsOverlayHorizontal", OverlayValueType::Bool },
+    { "FpsOverlayShowRatio", OverlayValueType::Bool },    { "FpsOverlayCompactLabels", OverlayValueType::Bool },
+    { "FpsOverlayRows", OverlayValueType::Text },         { "FpsOverlayFpsRow", OverlayValueType::Index },
+    { "FpsOverlayRowSpacing", OverlayValueType::Float },  { "FpsOverlayUpdateInterval", OverlayValueType::Float },
+    { "FpsOverlayAlpha", OverlayValueType::Float },       { "FpsScale", OverlayValueType::Float },
+    { "FpsOverlayGraphHeight", OverlayValueType::Float }, { "FpsOverlayPosX", OverlayValueType::Float },
+    { "FpsOverlayPosY", OverlayValueType::Float },        { "FpsOverlayFont", OverlayValueType::Text },
+    { "FpsOverlayFontSize", OverlayValueType::Float },    { "FpsOverlayLetterSpacing", OverlayValueType::Float },
+    { "FpsOverlayLabelScale", OverlayValueType::Float },  { "FpsOverlayValueScale", OverlayValueType::Float },
+    { "FpsOverlayLabelColor", OverlayValueType::Color },  { "FpsOverlayValueColor", OverlayValueType::Color },
+    { "FpsOverlayGraphColor", OverlayValueType::Color },  { "FpsOverlayBGColor", OverlayValueType::Color },
+    { "FpsOverlayShadow", OverlayValueType::Index },      { "FpsOverlayShadowStrength", OverlayValueType::Float },
+    { "FpsOverlayShadowColor", OverlayValueType::Color }, { "FpsOverlayRounding", OverlayValueType::Float },
+};
+
+void Config::ReadOverlaySettings(bool assign)
+{
+    // Loading the ini fills only what isn't set yet, applying a code replaces the values
+    auto apply = [assign](auto& setting, const auto& value)
+    {
+        if (assign)
+            setting = value;
+        else
+            setting.set_from_config(value);
+    };
+
+    auto readClamped = [&](const char* key, float low, float high)
+    { return readFloat("Menu", key).transform([=](float value) { return std::clamp(value, low, high); }); };
+
+    auto readColor = [&](const char* key)
+    { return readUInt("Menu", key).transform([](uint32_t value) { return value & 0xFFFFFF; }); };
+
+    auto readIndex = [&](const char* key, uint32_t count)
+    { return readUInt("Menu", key).transform([=](uint32_t value) { return std::min(value, count - 1); }); };
+
+    apply(OverlaysUseTheme, readBool("Menu", "OverlaysUseTheme"));
+    apply(FpsOverlayPosition, readIndex("FpsOverlayPos", FpsOverlayPos_COUNT)
+                                  .transform([](uint32_t value) { return (FpsOverlayPos) value; }));
+    apply(FpsOverlayType,
+          readIndex("FpsOverlayType", FpsOverlay_COUNT).transform([](uint32_t value) { return (FpsOverlay) value; }));
+    apply(FpsOverlayHorizontal, readBool("Menu", "FpsOverlayHorizontal"));
+    apply(FpsOverlayShowRatio, readBool("Menu", "FpsOverlayShowRatio"));
+    apply(FpsOverlayCompactLabels, readBool("Menu", "FpsOverlayCompactLabels"));
+    apply(FpsOverlayRows, readString("Menu", "FpsOverlayRows", true));
+    apply(FpsOverlayFpsRowType, readIndex("FpsOverlayFpsRow", FpsOverlayFpsRow_COUNT)
+                                    .transform([](uint32_t value) { return (FpsOverlayFpsRow) value; }));
+    apply(FpsOverlayRowSpacing, readClamped("FpsOverlayRowSpacing", 0.0f, 32.0f));
+    apply(FpsOverlayUpdateInterval, readClamped("FpsOverlayUpdateInterval", 0.0f, 1000.0f));
+    apply(FpsOverlayAlpha, readClamped("FpsOverlayAlpha", 0.0f, 1.0f));
+    apply(FpsScale, readClamped("FpsScale", 0.5f, 3.0f));
+    apply(FpsOverlayGraphHeight, readClamped("FpsOverlayGraphHeight", 0.5f, 3.0f));
+    apply(FpsOverlayPosX, readClamped("FpsOverlayPosX", 0.0f, 1.0f));
+    apply(FpsOverlayPosY, readClamped("FpsOverlayPosY", 0.0f, 1.0f));
+    apply(FpsOverlayFont, readString("Menu", "FpsOverlayFont"));
+    apply(FpsOverlayFontSize, readClamped("FpsOverlayFontSize", 8.0f, 48.0f));
+    apply(FpsOverlayLetterSpacing, readClamped("FpsOverlayLetterSpacing", -2.0f, 8.0f));
+    apply(FpsOverlayLabelScale, readClamped("FpsOverlayLabelScale", 0.5f, 2.0f));
+    apply(FpsOverlayValueScale, readClamped("FpsOverlayValueScale", 0.5f, 2.0f));
+    apply(FpsOverlayLabelColor, readColor("FpsOverlayLabelColor"));
+    apply(FpsOverlayValueColor, readColor("FpsOverlayValueColor"));
+    apply(FpsOverlayGraphColor, readColor("FpsOverlayGraphColor"));
+    apply(FpsOverlayBGColor, readColor("FpsOverlayBGColor"));
+    apply(FpsOverlayShadowType, readIndex("FpsOverlayShadow", FpsOverlayShadow_COUNT)
+                                    .transform([](uint32_t value) { return (FpsOverlayShadow) value; }));
+    apply(FpsOverlayShadowStrength, readClamped("FpsOverlayShadowStrength", 0.0f, 1.0f));
+    apply(FpsOverlayShadowColor, readColor("FpsOverlayShadowColor"));
+    apply(FpsOverlayRounding, readClamped("FpsOverlayRounding", 0.0f, 16.0f));
+}
+
+void Config::WriteOverlaySettings()
+{
+    ini.SetValue("Menu", "OverlaysUseTheme", GetBoolValue(OverlaysUseTheme.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsOverlayPos", GetIntValue(FpsOverlayPosition.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsOverlayType", GetIntValue(FpsOverlayType.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsOverlayHorizontal", GetBoolValue(FpsOverlayHorizontal.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsOverlayShowRatio", GetBoolValue(FpsOverlayShowRatio.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsOverlayCompactLabels", GetBoolValue(FpsOverlayCompactLabels.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsOverlayRows", FpsOverlayRows.value_for_config_or("auto").c_str());
+    ini.SetValue("Menu", "FpsOverlayFpsRow", GetIntValue(FpsOverlayFpsRowType.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsOverlayRowSpacing", GetFloatValue(FpsOverlayRowSpacing.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsOverlayUpdateInterval",
+                 GetFloatValue(FpsOverlayUpdateInterval.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsOverlayAlpha", GetFloatValue(FpsOverlayAlpha.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsScale", GetFloatValue(FpsScale.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsOverlayGraphHeight", GetFloatValue(FpsOverlayGraphHeight.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsOverlayPosX", GetFloatValue(FpsOverlayPosX.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsOverlayPosY", GetFloatValue(FpsOverlayPosY.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsOverlayFont", FpsOverlayFont.value_for_config_or("auto").c_str());
+    ini.SetValue("Menu", "FpsOverlayFontSize", GetFloatValue(FpsOverlayFontSize.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsOverlayLetterSpacing", GetFloatValue(FpsOverlayLetterSpacing.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsOverlayLabelScale", GetFloatValue(FpsOverlayLabelScale.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsOverlayValueScale", GetFloatValue(FpsOverlayValueScale.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsOverlayLabelColor", GetIntValue(FpsOverlayLabelColor.value_for_config(), true).c_str());
+    ini.SetValue("Menu", "FpsOverlayValueColor", GetIntValue(FpsOverlayValueColor.value_for_config(), true).c_str());
+    ini.SetValue("Menu", "FpsOverlayGraphColor", GetIntValue(FpsOverlayGraphColor.value_for_config(), true).c_str());
+    ini.SetValue("Menu", "FpsOverlayBGColor", GetIntValue(FpsOverlayBGColor.value_for_config(), true).c_str());
+    ini.SetValue("Menu", "FpsOverlayShadow", GetIntValue(FpsOverlayShadowType.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsOverlayShadowStrength",
+                 GetFloatValue(FpsOverlayShadowStrength.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsOverlayShadowColor", GetIntValue(FpsOverlayShadowColor.value_for_config(), true).c_str());
+    ini.SetValue("Menu", "FpsOverlayRounding", GetFloatValue(FpsOverlayRounding.value_for_config()).c_str());
+}
+
+// The code: a versioned prefix and, as base64, the keys that differ from their defaults, each as its place in
+// overlayIniKeys and its value packed
+static constexpr std::string_view overlayCodePrefix = "OptiOverlay1:";
+static constexpr std::string_view overlayKeyPrefix = "FpsOverlay";
+
+static std::string_view OverlayCodeKey(std::string_view key)
+{
+    if (key.starts_with(overlayKeyPrefix))
+        key.remove_prefix(overlayKeyPrefix.size());
+
+    return key;
+}
+
+static constexpr std::string_view base64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+static std::string Base64Encode(std::string_view data)
+{
+    std::string out;
+    uint32_t bits = 0;
+    int count = 0;
+
+    for (unsigned char c : data)
+    {
+        bits = (bits << 8) | c;
+        count += 8;
+
+        for (; count >= 6; count -= 6)
+            out += base64Chars[(bits >> (count - 6)) & 0x3F];
+    }
+
+    // Without the padding, the decoder doesn't need it
+    if (count > 0)
+        out += base64Chars[(bits << (6 - count)) & 0x3F];
+
+    return out;
+}
+
+// Skips whitespace, so a code a chat wrapped over lines still decodes, and the padding
+static std::optional<std::string> Base64Decode(std::string_view data)
+{
+    std::string out;
+    uint32_t bits = 0;
+    int count = 0;
+
+    for (char c : data)
+    {
+        if (c == '=' || std::isspace((unsigned char) c))
+            continue;
+
+        const auto value = base64Chars.find(c);
+        if (value == std::string_view::npos)
+            return std::nullopt;
+
+        bits = (bits << 6) | static_cast<uint32_t>(value);
+        count += 6;
+
+        if (count >= 8)
+        {
+            count -= 8;
+            out += static_cast<char>((bits >> count) & 0xFF);
+        }
+    }
+
+    return out;
+}
+
+// A value as the ini has it, packed by its type: a byte for a bool or an index, three for a color, four for a float,
+// a text as its length and characters
+static void PackOverlayValue(std::string& data, OverlayValueType type, const char* value)
+{
+    switch (type)
+    {
+    case OverlayValueType::Bool:
+        data += static_cast<char>(lstrcmpiA(value, "true") == 0);
+        break;
+
+    case OverlayValueType::Index:
+        data += static_cast<char>(std::strtoul(value, nullptr, 10));
+        break;
+
+    case OverlayValueType::Color:
+    {
+        const auto rgb = std::strtoul(value, nullptr, 16);
+        data += static_cast<char>(rgb >> 16);
+        data += static_cast<char>(rgb >> 8);
+        data += static_cast<char>(rgb);
+        break;
+    }
+
+    case OverlayValueType::Float:
+    {
+        const float number = std::strtof(value, nullptr);
+        data.append(reinterpret_cast<const char*>(&number), sizeof(number));
+        break;
+    }
+
+    case OverlayValueType::Text:
+    {
+        const size_t length = std::min<size_t>(std::strlen(value), 255);
+        data += static_cast<char>(length);
+        data.append(value, length);
+        break;
+    }
+    }
+}
+
+// Packed values back as the Key=Value text, nothing for an unknown key or data that ends inside a value
+static std::optional<std::string> UnpackOverlayValues(std::string_view data)
+{
+    std::string text;
+
+    while (!data.empty())
+    {
+        const auto index = static_cast<uint8_t>(data.front());
+        data.remove_prefix(1);
+
+        if (index >= std::size(overlayIniKeys))
+            return std::nullopt;
+
+        const auto& key = overlayIniKeys[index];
+
+        size_t size = 1;
+        if (key.type == OverlayValueType::Color)
+            size = 3;
+        else if (key.type == OverlayValueType::Float)
+            size = sizeof(float);
+        else if (key.type == OverlayValueType::Text && !data.empty())
+            size += static_cast<uint8_t>(data.front());
+
+        if (data.size() < size)
+            return std::nullopt;
+
+        const auto bytes = data.substr(0, size);
+        data.remove_prefix(size);
+
+        auto byte = [&](size_t i) { return static_cast<uint32_t>(static_cast<uint8_t>(bytes[i])); };
+
+        std::string value;
+
+        switch (key.type)
+        {
+        case OverlayValueType::Bool:
+            value = byte(0) != 0 ? "true" : "false";
+            break;
+
+        case OverlayValueType::Index:
+            value = std::to_string(byte(0));
+            break;
+
+        case OverlayValueType::Color:
+            value = std::format("{:#08x}", (byte(0) << 16) | (byte(1) << 8) | byte(2));
+            break;
+
+        case OverlayValueType::Float:
+        {
+            float number;
+            std::memcpy(&number, bytes.data(), sizeof(number));
+            value = std::format("{}", number);
+            break;
+        }
+
+        case OverlayValueType::Text:
+            value = bytes.substr(1);
+            break;
+        }
+
+        text += std::format("{}={};", OverlayCodeKey(key.name), value);
+    }
+
+    return text;
+}
+
+std::string Config::ExportOverlaySettings()
+{
+    WriteOverlaySettings();
+
+    std::string data;
+
+    for (size_t i = 0; i < std::size(overlayIniKeys); i++)
+    {
+        const char* value = ini.GetValue("Menu", overlayIniKeys[i].name, "auto");
+
+        if (value == nullptr || lstrcmpiA(value, "auto") == 0)
+            continue;
+
+        data += static_cast<char>(i);
+        PackOverlayValue(data, overlayIniKeys[i].type, value);
+    }
+
+    return std::string(overlayCodePrefix) + Base64Encode(data);
+}
+
+bool Config::ImportOverlaySettings(std::string_view code)
+{
+    while (!code.empty() && std::isspace((unsigned char) code.front()))
+        code.remove_prefix(1);
+
+    while (!code.empty() && std::isspace((unsigned char) code.back()))
+        code.remove_suffix(1);
+
+    if (!code.starts_with(overlayCodePrefix))
+        return false;
+
+    code.remove_prefix(overlayCodePrefix.size());
+
+    auto data = Base64Decode(code);
+    if (!data.has_value())
+        return false;
+
+    auto text = UnpackOverlayValues(data.value());
+    if (!text.has_value())
+        return false;
+
+    return ApplyOverlaySettings(text.value());
+}
+
+bool Config::ApplyOverlaySettings(std::string_view text)
+{
+    // Known keys only, their values are checked as the ini's are
+    std::vector<std::pair<const char*, std::string>> values;
+    std::istringstream entries { std::string(text) };
+    std::string entry;
+
+    while (std::getline(entries, entry, ';'))
+    {
+        const auto separator = entry.find('=');
+        if (separator == std::string::npos)
+            continue;
+
+        const std::string_view name = std::string_view(entry).substr(0, separator);
+        std::string value = entry.substr(separator + 1);
+
+        // A font by its name in the Windows fonts folder, not a path on the computer it was copied from
+        if (name == OverlayCodeKey("FpsOverlayFont") && value.find_first_of("\\/:") != std::string::npos)
+            continue;
+
+        for (const auto& key : overlayIniKeys)
+        {
+            if (OverlayCodeKey(key.name) == name)
+            {
+                values.emplace_back(key.name, std::move(value));
+                break;
+            }
+        }
+    }
+
+    // A code with text but no known key is broken or from a later version
+    if (values.empty() && !text.empty())
+        return false;
+
+    // What the code doesn't list goes back to its default
+    for (const auto& key : overlayIniKeys)
+        ini.SetValue("Menu", key.name, "auto");
+
+    for (const auto& [key, value] : values)
+        ini.SetValue("Menu", key, value.c_str());
+
+    ReadOverlaySettings(true);
+    LOG_INFO("Applied {} FPS overlay settings", values.size());
+
+    return true;
 }
 
 bool Config::SaveIni()
@@ -1326,20 +1696,14 @@ bool Config::SaveIni()
         ini.SetValue("Menu", "FpsCycleShortcutKey",
                      GetIntValue(Instance()->FpsCycleShortcutKey.value_for_config(), setting > 0).c_str());
 
-        ini.SetValue("Menu", "FpsOverlayPos", GetIntValue(Instance()->FpsOverlayPosition.value_for_config()).c_str());
-        ini.SetValue("Menu", "FpsOverlayType", GetIntValue(Instance()->FpsOverlayType.value_for_config()).c_str());
-        ini.SetValue("Menu", "FpsOverlayHorizontal",
-                     GetBoolValue(Instance()->FpsOverlayHorizontal.value_for_config()).c_str());
-        ini.SetValue("Menu", "FpsOverlayShowRatio",
-                     GetBoolValue(Instance()->FpsOverlayShowRatio.value_for_config()).c_str());
-        ini.SetValue("Menu", "FpsOverlayAlpha", GetFloatValue(Instance()->FpsOverlayAlpha.value_for_config()).c_str());
-        ini.SetValue("Menu", "FpsScale", GetFloatValue(Instance()->FpsScale.value_for_config()).c_str());
+        WriteOverlaySettings();
+
+        ini.SetValue("Menu", "Rounding", GetFloatValue(Instance()->MenuRounding.value_for_config()).c_str());
         ini.SetValue("Menu", "FontSize", GetFloatValue(Instance()->FontSize.value_for_config()).c_str());
         ini.SetValue("Menu", "TTFFontPath",
                      wstring_to_string(Instance()->TTFFontPath.value_for_config_or(L"auto")).c_str());
 
         ini.SetValue("Menu", "LightTheme", GetBoolValue(Instance()->LightTheme.value_for_config()).c_str());
-        ini.SetValue("Menu", "OverlaysUseTheme", GetBoolValue(Instance()->OverlaysUseTheme.value_for_config()).c_str());
         ini.SetValue("Menu", "AccentColorR", GetFloatValue(Instance()->MenuAccentColorR.value_for_config()).c_str());
         ini.SetValue("Menu", "AccentColorG", GetFloatValue(Instance()->MenuAccentColorG.value_for_config()).c_str());
         ini.SetValue("Menu", "AccentColorB", GetFloatValue(Instance()->MenuAccentColorB.value_for_config()).c_str());
