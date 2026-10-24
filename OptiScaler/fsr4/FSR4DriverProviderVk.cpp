@@ -2,6 +2,7 @@
 #include "FSR4DriverProviderVk.h"
 
 #include "FSR4PipelineLayouts.h"
+#include "FSR4MotionVectorViewsVk.h"
 
 #include <misc/IdentifyGpu.h>
 
@@ -31,6 +32,7 @@ struct DriverDeviceFunctions
 {
     PFN_vkGetDeviceProcAddr getDeviceProcAddr;
     PFN_vkCreateShaderModule createShaderModule;
+    PFN_vkCreateImageView createImageView;
 };
 
 std::mutex driverDevicesMutex;
@@ -248,11 +250,20 @@ VKAPI_ATTR VkResult VKAPI_CALL CreateDriverShaderModule(VkDevice device, const V
     return functions.createShaderModule(device, &compatibleInfo, allocator, module);
 }
 
+VKAPI_ATTR VkResult VKAPI_CALL CreateDriverImageView(VkDevice device, const VkImageViewCreateInfo* info,
+                                                     const VkAllocationCallbacks* allocator, VkImageView* view)
+{
+    const auto functions = GetDriverDeviceFunctions(device);
+    return FSR4MotionVectorViewsVk::CreateImageView(functions.createImageView, device, info, allocator, view);
+}
+
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL GetDriverDeviceProcAddr(VkDevice device, const char* name)
 {
     const auto functions = GetDriverDeviceFunctions(device);
     if (name != nullptr && strcmp(name, "vkCreateShaderModule") == 0)
         return reinterpret_cast<PFN_vkVoidFunction>(&CreateDriverShaderModule);
+    if (name != nullptr && strcmp(name, "vkCreateImageView") == 0 && functions.createImageView != nullptr)
+        return reinterpret_cast<PFN_vkVoidFunction>(&CreateDriverImageView);
     return functions.getDeviceProcAddr != nullptr ? functions.getDeviceProcAddr(device, name) : nullptr;
 }
 
@@ -272,9 +283,10 @@ ffxReturnCode_t CreateWithDriverShaders(PfnFfxCreateContext original, ffxContext
             reinterpret_cast<PFN_vkCreateShaderModule>(gdpa(backend->vkDevice, "vkCreateShaderModule"));
         if (createShader == nullptr)
             break;
+        const auto createView = reinterpret_cast<PFN_vkCreateImageView>(gdpa(backend->vkDevice, "vkCreateImageView"));
         {
             std::lock_guard lock(driverDevicesMutex);
-            driverDevices[backend->vkDevice] = { gdpa, createShader };
+            driverDevices[backend->vkDevice] = { gdpa, createShader, createView };
         }
         backend->vkDeviceProcAddr = &GetDriverDeviceProcAddr;
         const auto result = original(context, desc, allocator);
@@ -296,6 +308,11 @@ ffxReturnCode_t CreateDriverFgContext(ffxContext* context, ffxCreateContextDescH
     return CreateWithDriverShaders(driverCreateFgContext, context, desc, allocator);
 }
 } // namespace
+
+bool FSR4DriverProviderVk::CanUseDirectMotionVectors(VkDevice device)
+{
+    return GetDriverDeviceFunctions(device).createImageView != nullptr;
+}
 
 // amdvkffx64 only gives out providers when it sees a signed FFX SDK dll loaded in the process.
 static FSR4DriverDll amdvkffx64 { L"amdvkffx64.dll",

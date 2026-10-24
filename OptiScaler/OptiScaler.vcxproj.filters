@@ -899,6 +899,9 @@
     <ClInclude Include="fsr4\FSR4DriverProviderVk.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="fsr4\FSR4MotionVectorViewsVk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="low_latency\input\input_antilag2.h">
       <Filter>Header Files</Filter>
     </ClInclude>

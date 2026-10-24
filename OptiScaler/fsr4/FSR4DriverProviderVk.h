@@ -52,6 +52,8 @@ class FSR4DriverProviderVk
 
     static bool IsSupported(VkDevice device, VkPhysicalDevice physicalDevice, PFN_vkGetDeviceProcAddr gdpa);
 
+    static bool CanUseDirectMotionVectors(VkDevice device);
+
     // ML frame generation (FP8 only) and the swapchain it needs, both have to come from the driver
     static bool InitFg();
     static bool IsFgAvailable()

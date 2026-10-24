@@ -546,6 +546,7 @@ class Config
     CustomOptional<FSR4Support> Fsr4GpuSupport { FSR4Support::None };
     CustomOptional<uint32_t, NoDefault> Fsr4Preset;
     CustomOptional<FSR4Model, NoDefault> Fsr4Model;
+    CustomOptional<bool> Fsr4DirectMotionVectorsVk { true };
     CustomOptional<bool> Fsr4EnableWatermark { false };
     CustomOptional<bool, SoftDefault> Fsr4DoNotLoadAmdxc64 { false };
 
