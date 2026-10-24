@@ -292,4 +292,6 @@ class MenuCommon
     // them.
     static void FGOutputPresent();
     static void FGOutputPresents(bool presents);
+    // For outputs presenting out of OptiScaler's sight: the frames a rendered frame became, over its interval
+    static void FGOutputFramesPresented(uint32_t frames);
 };

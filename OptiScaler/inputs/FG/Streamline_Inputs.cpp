@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "Streamline_Inputs.h"
+#include "VkwDx12_Inputs.h"
 #include <Config.h>
 #include <resource_tracking/ResTrack_dx12.h>
 #include <magic_enum.hpp>
@@ -378,8 +379,9 @@ bool Sl_Inputs::reportResource(const sl::ResourceTag& tag, void* cmdBuffer, uint
             frameIndex = fgOutput->GetIndex();
     }
 
-    // Vulkan resources come with their size
-    const bool isVulkan = state.currentFG == nullptr;
+    // Vulkan resources come with their size, also the ones VkwDx12SC shares with the DX12 FG
+    const bool vkwDx12 = VkwDx12Inputs::Active();
+    const bool isVulkan = state.currentFG == nullptr || vkwDx12;
     auto d3dRes = (ID3D12Resource*) tag.resource->native;
     D3D12_RESOURCE_DESC desc {};
 
@@ -426,7 +428,10 @@ bool Sl_Inputs::reportResource(const sl::ResourceTag& tag, void* cmdBuffer, uint
         res.validity = validity;
         res.frameIndex = frameIndex;
 
-        state.currentVkFG->SetResource(&res);
+        if (vkwDx12)
+            VkwDx12Inputs::SetResource(res);
+        else
+            state.currentVkFG->SetResource(&res);
     }
     else
     {

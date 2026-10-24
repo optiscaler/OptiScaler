@@ -1016,10 +1016,19 @@
     <ClInclude Include="with_dx12\dx11_with_dx12_sc.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="with_dx12\vk_with_dx12_sc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="misc\HiddenWindow.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="inputs\FG\Upscaler_Inputs_Dx11wDx12.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inputs\FG\Upscaler_Inputs_VkwDx12.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inputs\FG\VkwDx12_Inputs.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="framegen\nvngx\Nvngx_FFX.h">
@@ -1757,7 +1766,16 @@
     <ClCompile Include="with_dx12\dx11_with_dx12_sc.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="with_dx12\vk_with_dx12_sc.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="inputs\FG\Upscaler_Inputs_Dx11wDx12.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="inputs\FG\Upscaler_Inputs_VkwDx12.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="inputs\FG\VkwDx12_Inputs.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="low_latency\input\input_uell.cpp">
