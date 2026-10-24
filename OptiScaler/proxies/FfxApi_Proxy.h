@@ -1585,8 +1585,8 @@ class FfxApiProxy
 
         spdlog::info("");
 
-        if (module != nullptr)
-            main_vk.dll = module;
+        if (module != nullptr && main_vk_hooked.dll == nullptr)
+            main_vk_hooked.dll = module;
 
         if (main_vk.dll == nullptr)
         {
@@ -1618,6 +1618,9 @@ class FfxApiProxy
             }
         }
 
+        if (main_vk.dll == nullptr && main_vk_hooked.dll != nullptr)
+            main_vk = main_vk_hooked;
+
         if (main_vk.dll != nullptr)
         {
             wchar_t modulePath[MAX_PATH];
@@ -1636,41 +1639,68 @@ class FfxApiProxy
                 (PfnFfxDestroyContext) KernelBaseProxy::GetProcAddress_()(main_vk.dll, "ffxDestroyContext");
             main_vk.Dispatch = (PfnFfxDispatch) KernelBaseProxy::GetProcAddress_()(main_vk.dll, "ffxDispatch");
             main_vk.Query = (PfnFfxQuery) KernelBaseProxy::GetProcAddress_()(main_vk.dll, "ffxQuery");
+        }
 
-            if (Config::Instance()->EnableFfxInputs.value_or_default() && main_vk.CreateContext != nullptr)
+        if (main_vk_hooked.dll != nullptr && main_vk_hooked.Configure == nullptr)
+        {
+            main_vk_hooked.Configure =
+                (PfnFfxConfigure) KernelBaseProxy::GetProcAddress_()(main_vk_hooked.dll, "ffxConfigure");
+            main_vk_hooked.CreateContext =
+                (PfnFfxCreateContext) KernelBaseProxy::GetProcAddress_()(main_vk_hooked.dll, "ffxCreateContext");
+            main_vk_hooked.DestroyContext =
+                (PfnFfxDestroyContext) KernelBaseProxy::GetProcAddress_()(main_vk_hooked.dll, "ffxDestroyContext");
+            main_vk_hooked.Dispatch =
+                (PfnFfxDispatch) KernelBaseProxy::GetProcAddress_()(main_vk_hooked.dll, "ffxDispatch");
+            main_vk_hooked.Query = (PfnFfxQuery) KernelBaseProxy::GetProcAddress_()(main_vk_hooked.dll, "ffxQuery");
+        }
+        else if (main_vk_hooked.Configure == nullptr)
+        {
+            main_vk_hooked = main_vk;
+        }
+
+        if (Config::Instance()->EnableFfxInputs.value_or_default() && main_vk_hooked.dll != nullptr &&
+            main_vk_hooked.CreateContext != nullptr && !main_vk_hooked.hooked)
+        {
+            DetourTransactionBegin();
+            DetourUpdateThread(GetCurrentThread());
+
+            if (main_vk_hooked.Configure != nullptr)
+                DetourAttach(&(PVOID&) main_vk_hooked.Configure, ffxConfigure_Vk);
+
+            if (main_vk_hooked.CreateContext != nullptr)
+                DetourAttach(&(PVOID&) main_vk_hooked.CreateContext, ffxCreateContext_Vk);
+
+            if (main_vk_hooked.DestroyContext != nullptr)
+                DetourAttach(&(PVOID&) main_vk_hooked.DestroyContext, ffxDestroyContext_Vk);
+
+            if (main_vk_hooked.Dispatch != nullptr)
+                DetourAttach(&(PVOID&) main_vk_hooked.Dispatch, ffxDispatch_Vk);
+
+            if (main_vk_hooked.Query != nullptr)
+                DetourAttach(&(PVOID&) main_vk_hooked.Query, ffxQuery_Vk);
+
+            auto detourResult = DetourTransactionCommit();
+            if (detourResult != NO_ERROR)
             {
-                DetourTransactionBegin();
-                DetourUpdateThread(GetCurrentThread());
+                LOG_ERROR("DetourTransactionCommit result: {:X}", detourResult);
+                main_vk_hooked.Configure = nullptr;
+                main_vk_hooked.CreateContext = nullptr;
+                main_vk_hooked.DestroyContext = nullptr;
+                main_vk_hooked.Dispatch = nullptr;
+                main_vk_hooked.Query = nullptr;
+            }
+            else
+            {
+                if (main_vk_hooked.dll == main_vk.dll)
+                    main_vk = main_vk_hooked;
 
-                if (main_vk.Configure != nullptr)
-                    DetourAttach(&(PVOID&) main_vk.Configure, ffxConfigure_Vk);
+                main_vk_hooked.hooked = true;
+                State::Instance().fsrHooks = true;
 
-                if (main_vk.CreateContext != nullptr)
-                    DetourAttach(&(PVOID&) main_vk.CreateContext, ffxCreateContext_Vk);
-
-                if (main_vk.DestroyContext != nullptr)
-                    DetourAttach(&(PVOID&) main_vk.DestroyContext, ffxDestroyContext_Vk);
-
-                if (main_vk.Dispatch != nullptr)
-                    DetourAttach(&(PVOID&) main_vk.Dispatch, ffxDispatch_Vk);
-
-                if (main_vk.Query != nullptr)
-                    DetourAttach(&(PVOID&) main_vk.Query, ffxQuery_Vk);
-
-                auto detourResult = DetourTransactionCommit();
-                if (detourResult != NO_ERROR)
-                {
-                    LOG_ERROR("DetourTransactionCommit result: {:X}", detourResult);
-                    main_vk.Configure = nullptr;
-                    main_vk.CreateContext = nullptr;
-                    main_vk.DestroyContext = nullptr;
-                    main_vk.Dispatch = nullptr;
-                    main_vk.Query = nullptr;
-                }
-                else
-                {
-                    State::Instance().fsrHooks = true;
-                }
+                // Pin the dll so the hooks stay valid if the game unloads it
+                HMODULE pinned = nullptr;
+                GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+                                   (LPCWSTR) main_vk_hooked.dll, &pinned);
             }
         }
 
