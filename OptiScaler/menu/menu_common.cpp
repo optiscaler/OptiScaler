@@ -287,67 +287,171 @@ static const std::pair<const char*, const char*> overlayFonts[] = {
     { "Impact", "impact.ttf" },
 };
 
-// FPS overlay rows, FpsOverlayRowOrder lists their keys
+// FPS overlay rows, FpsOverlayRows lists their keys. A graph row follows its text row.
 enum OverlayRow : int
 {
     OverlayRow_Fps,
     OverlayRow_Upscale,
     OverlayRow_FrameTime,
+    OverlayRow_FrameTimeGraph,
     OverlayRow_UpscalerTime,
+    OverlayRow_UpscalerTimeGraph,
+    OverlayRow_LowLatency,
     OverlayRow_COUNT,
 };
 
-static const char* overlayRowKeys[] = { "fps", "upscale", "frametime", "upscaler" };
-static const char* overlayRowNames[] = { "FPS", "Upscale Ratio", "Frame Time", "Upscaler Time" };
+static const char* overlayRowKeys[] = { "fps",      "upscale",       "frametime", "frametimegraph",
+                                        "upscaler", "upscalergraph", "lowlatency" };
+static const char* overlayRowNames[] = {
+    "FPS",           "Upscale Ratio",       "Frame Time",         "Frame Time Graph",
+    "Upscaler Time", "Upscaler Time Graph", "Low Latency Timings"
+};
+static const char* overlayRowTips[] = {
+    "The FPS, the frame generation and the upscaler, FPS Row below sets what's shown",
+    "Render -> output resolution and upscale ratio, while upscaling",
+    "The last frame time and the average",
+    "The frame times of the last frames",
+    "The upscaler's last time and the average",
+    "The upscaler's times of the last frames",
+    "Timings of the frame from the low latency markers, while there are any",
+};
 
-// The configured order, rows it doesn't list keep their default place after it
-static std::vector<int> OverlayRowOrder()
+struct OverlayRowEntry
 {
-    // Read on every overlay frame, parsed only when it changes
-    static std::string cachedKeys = "-";
-    static std::vector<int> cachedOrder;
+    int row;
+    bool shown;
+};
 
-    const auto& configKeys = Config::Instance()->FpsOverlayRowOrder.value_or("");
+// An overlay type's rows from top to bottom (left to right when horizontal), the hidden ones too so Custom keeps
+// their place
+static std::vector<OverlayRowEntry> OverlayRows(FpsOverlay type)
+{
+    auto config = Config::Instance();
 
-    if (configKeys == cachedKeys)
-        return cachedOrder;
+    if (type != FpsOverlay_Custom)
+    {
+        // The lowest type that shows the row, each type shows more than the one before
+        static constexpr FpsOverlay shownFrom[] = {
+            FpsOverlay_JustFPS, FpsOverlay_Simple,    FpsOverlay_Detailed,         FpsOverlay_DetailedGraph,
+            FpsOverlay_Full,    FpsOverlay_FullGraph, FpsOverlay_LowLatencyTimings
+        };
+        static_assert(std::size(shownFrom) == OverlayRow_COUNT);
 
-    std::vector<int> order;
-    std::stringstream keys(configKeys);
+        std::vector<OverlayRowEntry> rows;
+
+        for (int row = 0; row < OverlayRow_COUNT; row++)
+        {
+            bool shown = type >= shownFrom[row];
+
+            if (row == OverlayRow_Upscale)
+                shown = shown && config->FpsOverlayShowRatio.value_or_default();
+
+            rows.push_back({ row, shown });
+        }
+
+        return rows;
+    }
+
+    if (!config->FpsOverlayRows.has_value())
+        return OverlayRows(FpsOverlay_FullGraph);
+
+    std::vector<OverlayRowEntry> rows;
+    std::stringstream keys(config->FpsOverlayRows.value());
     std::string key;
+
+    auto listed = [&](int row)
+    { return std::any_of(rows.begin(), rows.end(), [row](const OverlayRowEntry& entry) { return entry.row == row; }); };
 
     while (std::getline(keys, key, ','))
     {
+        std::string_view name = key;
+        while (!name.empty() && std::isspace((unsigned char) name.front()))
+            name.remove_prefix(1);
+        while (!name.empty() && std::isspace((unsigned char) name.back()))
+            name.remove_suffix(1);
+
+        const bool shown = !name.starts_with('-');
+        if (!shown)
+            name.remove_prefix(1);
+
         for (int row = 0; row < OverlayRow_COUNT; row++)
         {
-            if (key == overlayRowKeys[row] && std::find(order.begin(), order.end(), row) == order.end())
-                order.push_back(row);
+            if (name == overlayRowKeys[row] && !listed(row))
+                rows.push_back({ row, shown });
         }
     }
 
     for (int row = 0; row < OverlayRow_COUNT; row++)
     {
-        if (std::find(order.begin(), order.end(), row) == order.end())
-            order.push_back(row);
+        if (!listed(row))
+            rows.push_back({ row, false });
     }
 
-    cachedKeys = configKeys;
-    cachedOrder = order;
-
-    return order;
+    return rows;
 }
 
-static void SetOverlayRowOrder(const std::vector<int>& order)
+static void SetOverlayRows(const std::vector<OverlayRowEntry>& rows)
 {
     std::string keys;
 
-    for (auto row : order)
-        keys += (keys.empty() ? "" : ",") + std::string(overlayRowKeys[row]);
+    for (const auto& entry : rows)
+        keys += (keys.empty() ? "" : ",") + std::string(entry.shown ? "" : "-") + overlayRowKeys[entry.row];
 
-    if (std::is_sorted(order.begin(), order.end()))
-        Config::Instance()->FpsOverlayRowOrder.reset();
-    else
-        Config::Instance()->FpsOverlayRowOrder = keys;
+    Config::Instance()->FpsOverlayRows = keys;
+}
+
+static FpsOverlayFpsRow OverlayFpsRow(FpsOverlay type)
+{
+    switch (type)
+    {
+    case FpsOverlay_JustFPS:
+        return FpsOverlayFpsRow_JustFps;
+
+    case FpsOverlay_Simple:
+        return FpsOverlayFpsRow_FrameTime;
+
+    case FpsOverlay_Custom:
+        return Config::Instance()->FpsOverlayFpsRowType.value_or_default();
+
+    default:
+        return FpsOverlayFpsRow_Average;
+    }
+}
+
+// The digits each number of an FPS overlay value needs to keep the most it had this session, so values start as far
+// left as they can and don't move back and forth as they change
+static std::vector<int> OverlayValuePadding(const char* id, std::string_view text)
+{
+    static std::unordered_map<std::string, std::vector<int>> mostDigits;
+    auto& most = mostDigits[id];
+
+    std::vector<int> padding;
+    size_t i = 0;
+
+    while (i < text.size())
+    {
+        if (text[i] < '0' || text[i] > '9')
+        {
+            i++;
+            continue;
+        }
+
+        const size_t start = i;
+        while (i < text.size() && text[i] >= '0' && text[i] <= '9')
+            i++;
+
+        const int digits = static_cast<int>(i - start);
+        const size_t number = padding.size();
+
+        if (number == most.size())
+            most.push_back(digits);
+        else
+            most[number] = std::max(most[number], digits);
+
+        padding.push_back(most[number] - digits);
+    }
+
+    return padding;
 }
 
 // FPS overlay font, loaded between frames when FpsOverlayFont or its rasterizer settings change
@@ -2488,7 +2592,6 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
     if (config->ShowFps.value_or_default())
     {
         bool stylePushed = false;
-        bool overlayFontPushed = false;
 
         const static auto defaultStyle = ImGuiStyle();
 
@@ -2507,10 +2610,7 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             stylePushed = true;
         }
 
-        // Corners, the menu's unless set
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, config->FpsOverlayRounding.has_value()
-                                                              ? config->FpsOverlayRounding.value() * fpsScale
-                                                              : ImGui::GetStyle().WindowRounding);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, config->FpsOverlayRounding.value_or_default() * fpsScale);
 
         // Set overlay position
         ImGui::SetNextWindowPos(overlayPosition, ImGuiCond_Always);
@@ -2636,8 +2736,6 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             else
                 ImGui::PushFontSize(overlayFontPx);
 
-            overlayFontPushed = true;
-
             auto fg = state.CurrentFG();
             auto fgText =
                 (fg != nullptr && fg->IsActive() && !fg->IsPaused()) ? std::string(fg->Name()) : std::string();
@@ -2685,15 +2783,19 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                 std::string text;
                 bool value = false;
                 float width = 0.0f;
+                std::vector<int> padding; // Digits in front of each number of a value
             };
 
             struct OverlayLine
             {
                 std::vector<OverlayPart> parts;
                 ImVec2 size { 0.0f, 0.0f };
+                int row = OverlayRow_Fps;
+                // A graph row has no parts, nor the low latency row
                 const char* graphId = nullptr;
                 RingBuffer<float, plotWidth>* graphData = nullptr;
                 float graphMax = 0.0f;
+                bool lowLatency = false;
 
                 OverlayLine& Label(std::string text)
                 {
@@ -2703,14 +2805,15 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                     return *this;
                 }
 
-                OverlayLine& Value(std::string text)
+                // The id keeps the value's widest width across frames
+                OverlayLine& Value(const char* id, std::string text)
                 {
-                    parts.push_back({ std::move(text), true });
+                    auto padding = OverlayValuePadding(id, text);
+                    parts.push_back({ std::move(text), true, 0.0f, std::move(padding) });
                     return *this;
                 }
             };
 
-            // Compact labels for a narrower overlay
             const bool compact = config->FpsOverlayCompactLabels.value_or_default();
             auto L = [compact](const char* full, const char* shorter) { return std::string(compact ? shorter : full); };
 
@@ -2769,25 +2872,45 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             // With frame generation also the base frame rate
             const std::string fpsValue =
                 interpolatedFrameCount
-                    ? StrFmt("%6.1f/%5.1f", shown.frameRate, shown.frameRate / (double) (interpolatedFrameCount + 1))
-                    : StrFmt("%6.1f", shown.frameRate);
+                    ? StrFmt("%.1f/%.1f", shown.frameRate, shown.frameRate / (double) (interpolatedFrameCount + 1))
+                    : StrFmt("%.1f", shown.frameRate);
+
+            const auto overlayRows = OverlayRows(overlayType);
+            std::array<bool, OverlayRow_COUNT> rowShown {};
+
+            for (const auto& entry : overlayRows)
+                rowShown[entry.row] = entry.shown;
+
+            // Low latency timings, polled while their row is shown
+            constexpr auto delayBetweenPollsMs = 500;
+            static auto previousPoll = 0.0;
+            static bool gotData = false;
+            static TimingData timingData {};
+
+            if (rowShown[OverlayRow_LowLatency] && (previousPoll <= 0.001 || previousPoll + delayBetweenPollsMs < now))
+            {
+                gotData = InputCommon::get_timing_data(timingData);
+                previousPoll = now;
+            }
 
             std::array<std::optional<OverlayLine>, OverlayRow_COUNT> rows;
 
-            // FPS with the frame time (Simple) or the average, the frame generation and the upscaler
-            if (overlayType == FpsOverlay_JustFPS)
+            const auto fpsRow = OverlayFpsRow(overlayType);
+
+            if (fpsRow == FpsOverlayFpsRow_JustFps)
             {
-                rows[OverlayRow_Fps] = OverlayLine().Value(fpsValue).Label(" ");
+                rows[OverlayRow_Fps] = OverlayLine().Value("fps", fpsValue).Label(" ");
             }
             else
             {
                 OverlayLine line;
-                line.Label(api + L(" | FPS: ", " | FPS ")).Value(fpsValue);
+                line.Label(api + L(" | FPS: ", " | FPS ")).Value("fps", fpsValue);
 
-                if (overlayType == FpsOverlay_Simple)
-                    line.Label(", ").Value(StrFmt("%7.2f ms", shown.frameTime));
+                if (fpsRow == FpsOverlayFpsRow_FrameTime)
+                    line.Label(", ").Value("fpsFrameTime", StrFmt("%.2f ms", shown.frameTime));
                 else
-                    line.Label(L(", Avg: ", " Avg ")).Value(StrFmt("%6.1f", 1000.0 / shown.averageFrameTime));
+                    line.Label(L(", Avg: ", " Avg "))
+                        .Value("fpsAverage", StrFmt("%.1f", 1000.0 / shown.averageFrameTime));
 
                 if (!fgText.empty())
                     line.Label(" (" + fgText + ")");
@@ -2798,64 +2921,62 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                 rows[OverlayRow_Fps] = std::move(line);
             }
 
-            if (overlayType >= FpsOverlay_Simple && hasFeature && config->FpsOverlayShowRatio.value_or_default() &&
-                currentFeature->RenderWidth() > 0)
+            if (hasFeature && currentFeature->RenderWidth() > 0)
             {
                 const float ratio = (float) currentFeature->TargetWidth() / (float) currentFeature->RenderWidth();
 
                 OverlayLine line;
                 line.Label(L("Upscale: ", "UPS "))
-                    .Value(StrFmt("%ux%u -> %ux%u (%.2fx)", currentFeature->RenderWidth(),
-                                  currentFeature->RenderHeight(), currentFeature->TargetWidth(),
-                                  currentFeature->TargetHeight(), ratio));
+                    .Value("upscale", StrFmt("%ux%u -> %ux%u (%.2fx)", currentFeature->RenderWidth(),
+                                             currentFeature->RenderHeight(), currentFeature->TargetWidth(),
+                                             currentFeature->TargetHeight(), ratio));
 
                 rows[OverlayRow_Upscale] = std::move(line);
             }
 
-            if (overlayType >= FpsOverlay_Detailed)
+            auto graphRow = [](const char* id, RingBuffer<float, plotWidth>* data, float max)
             {
                 OverlayLine line;
-                line.Label(L("Frame Time: ", "FT "))
-                    .Value(StrFmt("%7.2f ms", shown.lastFrameTime))
+                line.graphId = id;
+                line.graphData = data;
+                line.graphMax = max;
+
+                return line;
+            };
+
+            rows[OverlayRow_FrameTime] = OverlayLine()
+                                             .Label(L("Frame Time: ", "FT "))
+                                             .Value("frameTime", StrFmt("%.2f ms", shown.lastFrameTime))
+                                             .Label(L(", Avg: ", " Avg "))
+                                             .Value("frameTimeAverage", StrFmt("%.2f ms", shown.averageFrameTime));
+
+            rows[OverlayRow_FrameTimeGraph] = graphRow("##FrameTimeGraph", &gFrameTimes, 66.6f);
+
+            rows[OverlayRow_UpscalerTime] =
+                OverlayLine()
+                    .Label(L("Upscaler Time: ", "UT "))
+                    .Value("upscalerTime", StrFmt("%.2f ms", shown.lastUpscalerTime))
                     .Label(L(", Avg: ", " Avg "))
-                    .Value(StrFmt("%7.2f ms", shown.averageFrameTime));
+                    .Value("upscalerTimeAverage", StrFmt("%.2f ms", shown.averageUpscalerTime));
 
-                if (overlayType >= FpsOverlay_DetailedGraph)
-                {
-                    line.graphId = "##FrameTimeGraph";
-                    line.graphData = &gFrameTimes;
-                    line.graphMax = 66.6f;
-                }
+            rows[OverlayRow_UpscalerTimeGraph] = graphRow("##UpscalerFrameTimeGraph", &gUpscalerTimes, 20.0f);
 
-                rows[OverlayRow_FrameTime] = std::move(line);
-            }
-
-            if (overlayType >= FpsOverlay_Full)
+            if (gotData && timingData.timeRange.has_value())
             {
-                OverlayLine line;
-                line.Label(L("Upscaler Time: ", "UT "))
-                    .Value(StrFmt("%7.2f ms", shown.lastUpscalerTime))
-                    .Label(L(", Avg: ", " Avg "))
-                    .Value(StrFmt("%7.2f ms", shown.averageUpscalerTime));
-
-                if (overlayType >= FpsOverlay_FullGraph)
-                {
-                    line.graphId = "##UpscalerFrameTimeGraph";
-                    line.graphData = &gUpscalerTimes;
-                    line.graphMax = 20.0f;
-                }
-
-                rows[OverlayRow_UpscalerTime] = std::move(line);
+                rows[OverlayRow_LowLatency] = OverlayLine();
+                rows[OverlayRow_LowLatency]->lowLatency = true;
             }
 
             std::vector<OverlayLine> lines;
-            for (auto row : OverlayRowOrder())
+            for (const auto& entry : overlayRows)
             {
-                if (rows[row].has_value())
-                    lines.push_back(std::move(rows[row].value()));
+                if (entry.shown && rows[entry.row].has_value())
+                {
+                    lines.push_back(std::move(rows[entry.row].value()));
+                    lines.back().row = entry.row;
+                }
             }
 
-            // Labels and values are scaled from the overlay's font size
             ImFont* font = ImGui::GetFont();
             const float basePx = ImGui::GetFontSize();
             const float labelPx = std::round(basePx * config->FpsOverlayLabelScale.value_or_default());
@@ -2906,13 +3027,15 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                 digitWidth = std::max(digitWidth, font->CalcTextSizeA(valuePx, FLT_MAX, 0.0f, &digit, &digit + 1).x);
 
             // Calls place(begin, end, x) for the part's text, the value's digits one at a time centered in their
-            // width. The part's width.
+            // width and each number after its padding. The part's width.
             auto layoutPart = [&](const OverlayPart& part, auto&& place)
             {
                 const float px = partPx(part);
-                const char* text = part.text.c_str();
+                const char* begin = part.text.c_str();
+                const char* text = begin;
                 const char* end = text + part.text.size();
                 float x = 0.0f;
+                size_t number = 0;
 
                 auto isDigit = [&](const char* c) { return part.value && *c >= '0' && *c <= '9'; };
 
@@ -2920,6 +3043,9 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                 {
                     if (isDigit(text))
                     {
+                        if ((text == begin || !isDigit(text - 1)) && number < part.padding.size())
+                            x += part.padding[number++] * digitWidth;
+
                         const float width = font->CalcTextSizeA(px, FLT_MAX, 0.0f, text, text + 1).x;
                         place(text, text + 1, x + std::round((digitWidth - width) * 0.5f));
                         x += digitWidth;
@@ -2979,15 +3105,25 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                 }
             };
 
+            auto lineAscent = [&](const OverlayLine& line)
+            {
+                float ascent = 0.0f;
+                for (const auto& part : line.parts)
+                    ascent = std::max(ascent, font->GetFontBaked(partPx(part))->Ascent);
+
+                return ascent;
+            };
+
+            // For a horizontal overlay, where the lines side by side share one baseline
+            float sharedAscent = 0.0f;
+
             // Parts of different sizes share the baseline
             auto drawLine = [&](OverlayLine& line)
             {
                 if (line.size.y == 0.0f && !line.parts.empty())
                     measureLine(line);
 
-                float maxAscent = 0.0f;
-                for (const auto& part : line.parts)
-                    maxAscent = std::max(maxAscent, font->GetFontBaked(partPx(part))->Ascent);
+                const float maxAscent = std::max(lineAscent(line), sharedAscent);
 
                 auto drawList = ImGui::GetWindowDrawList();
                 const auto start = ImGui::GetCursorScreenPos();
@@ -3012,7 +3148,7 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                     }
                 }
 
-                ImGui::Dummy(line.size);
+                ImGui::Dummy(ImVec2(line.size.x, line.size.y + maxAscent - lineAscent(line)));
             };
 
             const bool horizontal = config->FpsOverlayHorizontal.value_or_default();
@@ -3039,13 +3175,79 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                                          ? config->FpsOverlayRowSpacing.value() * fpsScale
                                          : itemSpacingY * 2.0f;
 
-            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
+            // The timings as lines of text, as wide as the graphs so their bars fit
+            const ImVec2 itemSpacing = ImGui::GetStyle().ItemSpacing;
+
+            auto drawLowLatency = [&]()
+            {
+                ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, itemSpacing);
+                ImGui::BeginGroup();
+
+                ImDrawList* drawList = ImGui::GetWindowDrawList();
+                constexpr float offsetForText = 155;
+
+                const auto& rangeInNs = timingData.timeRange.value().length;
+
+                UINT64 localFrameCount = 0;
+
+                if (fg != nullptr)
+                    localFrameCount = fg->FrameCount();
+
+                ImGui::Text("FGId: %llu, RfxId: %llu", localFrameCount, state.reflexFrameId);
+                ImGui::Text("Low latency timings, whole frame: %.1fms", rangeInNs / 1000.0);
+
+                const auto maxWidth = horizontal ? fpsScale * 300.0f : plotSize.x;
+
+                const auto drawTiming = [&](const auto& timingOpt, const char* desc, ImVec4 color)
+                {
+                    if (!timingOpt.has_value())
+                        return;
+
+                    auto toneMappedColor = toneMapColor(color);
+
+                    const auto& timing = timingOpt.value();
+                    float duration = static_cast<float>(timing.length * rangeInNs / 1000.0);
+
+                    ImGui::TextColored(toneMappedColor, "%-12s %4.1fms", desc, duration);
+
+                    auto leftLimit = ImGui::GetItemRectMin().x + offsetForText * fpsScale;
+
+                    auto start = static_cast<float>(leftLimit + (ImGui::GetItemRectMin().x + maxWidth - leftLimit) *
+                                                                    timing.position);
+
+                    auto end =
+                        static_cast<float>(start + (ImGui::GetItemRectMin().x + maxWidth - leftLimit) * timing.length);
+
+                    auto pos = ImVec2(start, ImGui::GetItemRectMin().y);
+                    auto size = ImVec2(end, ImGui::GetItemRectMax().y);
+
+                    drawList->AddRectFilled(pos, size, ImGui::ColorConvertFloat4ToU32(toneMappedColor));
+                };
+
+                drawTiming(timingData.simulation, "Simulation", ImVec4(0.768f, 0.169f, 0.169f, 1.0f));
+                drawTiming(timingData.renderSubmit, "RenderSubmit", ImVec4(0.235f, 0.705f, 0.294f, 1.0f));
+                drawTiming(timingData.present, "Present", ImVec4(1.0f, 0.88f, 0.098f, 1.0f));
+                drawTiming(timingData.driver, "Driver", ImVec4(0.263f, 0.388f, 0.847f, 1.0f));
+                drawTiming(timingData.osRenderQueue, "RenderQueue", ImVec4(0.76f, 0.51f, 0.188f, 1.0f));
+                drawTiming(timingData.gpuRender, "GpuRender", ImVec4(0.569f, 0.117f, 0.705f, 1.0f));
+
+                // The bars are drawn without taking space
+                ImGui::Dummy(ImVec2(maxWidth, 0.0f));
+
+                ImGui::EndGroup();
+                ImGui::PopStyleVar();
+            };
+
+            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(itemSpacing.x, 0.0f));
 
             OverlayLine sepLine;
             if (horizontal)
             {
                 sepLine.Label(" | ");
                 measureLine(sepLine);
+
+                for (const auto& line : lines)
+                    sharedAscent = std::max(sharedAscent, lineAscent(line));
             }
 
             // Draw the overlay
@@ -3053,107 +3255,50 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             {
                 auto& line = lines[i];
 
+                // A graph right after its text row stays with it
+                const bool attached = line.graphData != nullptr && i > 0 && lines[i - 1].row == line.row - 1;
+
                 if (i > 0)
                 {
                     if (horizontal)
                     {
                         ImGui::SameLine(0.0f, 0.0f);
-                        drawLine(sepLine);
-                        ImGui::SameLine(0.0f, 0.0f);
+
+                        if (!attached)
+                        {
+                            drawLine(sepLine);
+                            ImGui::SameLine(0.0f, 0.0f);
+                        }
                     }
                     else
                     {
-                        ImGui::Dummy(ImVec2(0.0f, rowSpacing));
+                        ImGui::Dummy(ImVec2(0.0f, attached ? itemSpacingY : rowSpacing));
                     }
                 }
 
-                drawLine(line);
-
                 if (line.graphData != nullptr)
                 {
-                    if (horizontal)
-                        ImGui::SameLine(0.0f, 0.0f);
-                    else
-                        ImGui::Dummy(ImVec2(0.0f, itemSpacingY));
-
                     ImGui::PlotLines(
                         line.graphId, [](void* rb, int idx) -> float
                         { return static_cast<RingBuffer<float, plotWidth>*>(rb)->At(idx); }, line.graphData, plotWidth,
                         0, nullptr, 0.0f, line.graphMax, plotSize);
                 }
+                else if (line.lowLatency)
+                {
+                    drawLowLatency();
+                }
+                else
+                {
+                    drawLine(line);
+                }
             }
 
             ImGui::PopStyleVar();
 
-            if (overlayType >= FpsOverlay_ReflexTimings)
-                ImGui::Spacing();
-
-            if (config->FpsOverlayType.value_or_default() >= FpsOverlay_ReflexTimings)
-            {
-                constexpr auto delayBetweenPollsMs = 500;
-                static auto previousPoll = 0.0;
-                static bool gotData = false;
-
-                static TimingData timingData {};
-
-                if (previousPoll <= 0.001 || previousPoll + delayBetweenPollsMs < now)
-                {
-                    gotData = InputCommon::get_timing_data(timingData);
-                    previousPoll = now;
-                }
-
-                if (gotData && timingData.timeRange.has_value())
-                {
-                    ImDrawList* drawList = ImGui::GetWindowDrawList();
-                    constexpr float offsetForText = 155;
-
-                    const auto& rangeInNs = timingData.timeRange.value().length;
-
-                    UINT64 localFrameCount = 0;
-
-                    if (fg != nullptr)
-                        localFrameCount = fg->FrameCount();
-
-                    ImGui::Text("FGId: %llu, RfxId: %llu", localFrameCount, state.reflexFrameId);
-                    ImGui::Text("Low latency timings, whole frame: %.1fms", rangeInNs / 1000.0);
-
-                    const auto maxWidth =
-                        config->FpsOverlayHorizontal.value_or_default() ? ImGui::GetWindowWidth() : plotSize.x;
-
-                    const auto drawTiming = [&](const auto& timingOpt, const char* desc, ImVec4 color)
-                    {
-                        if (!timingOpt.has_value())
-                            return;
-
-                        auto toneMappedColor = toneMapColor(color);
-
-                        const auto& timing = timingOpt.value();
-                        float duration = static_cast<float>(timing.length * rangeInNs / 1000.0);
-
-                        ImGui::TextColored(toneMappedColor, "%-12s %4.1fms", desc, duration);
-
-                        auto leftLimit = ImGui::GetItemRectMin().x + offsetForText * fpsScale;
-
-                        auto start = static_cast<float>(leftLimit + (ImGui::GetItemRectMin().x + maxWidth - leftLimit) *
-                                                                        timing.position);
-
-                        auto end = static_cast<float>(start + (ImGui::GetItemRectMin().x + maxWidth - leftLimit) *
-                                                                  timing.length);
-
-                        auto pos = ImVec2(start, ImGui::GetItemRectMin().y);
-                        auto size = ImVec2(end, ImGui::GetItemRectMax().y);
-
-                        drawList->AddRectFilled(pos, size, ImGui::ColorConvertFloat4ToU32(toneMappedColor));
-                    };
-
-                    drawTiming(timingData.simulation, "Simulation", ImVec4(0.768f, 0.169f, 0.169f, 1.0f));
-                    drawTiming(timingData.renderSubmit, "RenderSubmit", ImVec4(0.235f, 0.705f, 0.294f, 1.0f));
-                    drawTiming(timingData.present, "Present", ImVec4(1.0f, 0.88f, 0.098f, 1.0f));
-                    drawTiming(timingData.driver, "Driver", ImVec4(0.263f, 0.388f, 0.847f, 1.0f));
-                    drawTiming(timingData.osRenderQueue, "RenderQueue", ImVec4(0.76f, 0.51f, 0.188f, 1.0f));
-                    drawTiming(timingData.gpuRender, "GpuRender", ImVec4(0.569f, 0.117f, 0.705f, 1.0f));
-                }
-            }
+            if (gOverlayFont != nullptr)
+                ImGui::PopFont();
+            else
+                ImGui::PopFontSize();
         }
 
         // Restore the style
@@ -3165,14 +3310,6 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
         // Get size for postioning
         overlaySize = ImGui::GetWindowSize();
 
-        if (overlayFontPushed)
-        {
-            if (gOverlayFont != nullptr)
-                ImGui::PopFont();
-            else
-                ImGui::PopFontSize();
-        }
-
         ImGui::End();
 
         ImGui::PopStyleVar(); // Rounding
@@ -3180,42 +3317,15 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
         if (stylePushed)
             ImGui::PopStyleVar(7);
 
-        // Where the overlay sits in the free space, 0 left/top to 1 right/bottom
-        float alignX = 0.0f;
-        float alignY = 0.0f;
+        // Where the overlay sits in the free space for each FpsOverlayPos, 0 left/top to 1 right/bottom
+        static constexpr ImVec2 alignments[] = { { 0.0f, 0.0f }, { 1.0f, 0.0f }, { 0.0f, 1.0f },
+                                                 { 1.0f, 1.0f }, { 0.5f, 0.0f }, { 0.5f, 1.0f } };
 
-        switch (config->FpsOverlayPosition.value_or_default())
-        {
-        case FpsOverlayPos_TopRight:
-            alignX = 1.0f;
-            break;
-
-        case FpsOverlayPos_BottomLeft:
-            alignY = 1.0f;
-            break;
-
-        case FpsOverlayPos_BottomRight:
-            alignX = 1.0f;
-            alignY = 1.0f;
-            break;
-
-        case FpsOverlayPos_TopCenter:
-            alignX = 0.5f;
-            break;
-
-        case FpsOverlayPos_BottomCenter:
-            alignX = 0.5f;
-            alignY = 1.0f;
-            break;
-
-        case FpsOverlayPos_Custom:
-            alignX = config->FpsOverlayPosX.value_or_default();
-            alignY = config->FpsOverlayPosY.value_or_default();
-            break;
-
-        default:
-            break;
-        }
+        const auto position = config->FpsOverlayPosition.value_or_default();
+        const float alignX =
+            position == FpsOverlayPos_Custom ? config->FpsOverlayPosX.value_or_default() : alignments[position].x;
+        const float alignY =
+            position == FpsOverlayPos_Custom ? config->FpsOverlayPosY.value_or_default() : alignments[position].y;
 
         // Prevent overlapping with splash message at the bottom
         auto freeHeight = io.DisplaySize.y - overlaySize.y;
@@ -7819,7 +7929,7 @@ void MenuCommon::RenderThemeSettings(RenderMenuContext& ctx)
         if (ImGui::SliderFloat("Corner Rounding", &rounding, 0.0f, 16.0f, rounding < 0.5f ? "Square" : "%.0f px"))
         {
             config->MenuRounding = rounding;
-            lastMenuScale = 0.0f; // Rescales the style with the new rounding
+            lastMenuScale = 0.0f; // Rescales the style with this rounding
         }
 
         if (_bgBlurTexture != ImTextureID_Invalid)
@@ -7887,30 +7997,44 @@ void MenuCommon::RenderFpsOverlaySettings(RenderMenuContext& ctx)
 
         if (config->FpsOverlayPosition.value_or_default() == FpsOverlayPos_Custom)
         {
-            // 0.00 is the left or top of the screen, 1.00 the right or bottom
             float posX = config->FpsOverlayPosX.value_or_default();
-            if (ImGui::SliderFloat("Horizontal Position", &posX, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp))
+            if (ImGui::SliderFloat("Horizontal Position", &posX, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp))
                 config->FpsOverlayPosX = posX;
 
             float posY = config->FpsOverlayPosY.value_or_default();
-            if (ImGui::SliderFloat("Vertical Position", &posY, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp))
+            if (ImGui::SliderFloat("Vertical Position", &posY, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp))
                 config->FpsOverlayPosY = posY;
         }
 
-        const char* fpsType[] = { "Just FPS", "Simple",       "Detailed",      "Detailed + Graph",
-                                  "Full",     "Full + Graph", "Reflex timings" };
-        const char* selectedType = fpsType[config->FpsOverlayType.value_or_default()];
+        const char* fpsType[] = {
+            "Just FPS", "Simple", "Detailed", "Detailed + Graph", "Full", "Full + Graph", "Low latency timings",
+            "Custom"
+        };
+        static_assert(std::size(fpsType) == FpsOverlay_COUNT);
+        const auto currentType = config->FpsOverlayType.value_or_default();
 
-        if (ImGui::BeginCombo("Overlay Type", selectedType))
+        if (ImGui::BeginCombo("Overlay Type", fpsType[currentType]))
         {
             for (int n = 0; n < std::size(fpsType); n++)
             {
-                if (ImGui::Selectable(fpsType[n], (config->FpsOverlayType.value_or_default() == n)))
+                if (ImGui::Selectable(fpsType[n], currentType == n))
+                {
+                    // Custom starts from the preset's rows the first time
+                    if (n == FpsOverlay_Custom && currentType != FpsOverlay_Custom &&
+                        !config->FpsOverlayRows.has_value())
+                    {
+                        SetOverlayRows(OverlayRows(currentType));
+                        config->FpsOverlayFpsRowType = OverlayFpsRow(currentType);
+                    }
+
                     config->FpsOverlayType = (FpsOverlay) n;
+                }
             }
 
             ImGui::EndCombo();
         }
+        ShowTooltip("Presets of the rows, Custom shows the ones chosen in Rows.\n"
+                    "The Overlay Cycle key switches between them.");
 
         // 0 is the menu's scale, then 0.5 to 3.0 in 0.1 steps
         int currentIndex = config->FpsScale.has_value()
@@ -7937,7 +8061,6 @@ void MenuCommon::RenderFpsOverlaySettings(RenderMenuContext& ctx)
             ShowTooltip(tip);
         };
 
-        // Results and hints on lines of their own, wrapped to the menu's width
         auto statusText = [](const std::string& text)
         {
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
@@ -7945,98 +8068,31 @@ void MenuCommon::RenderFpsOverlaySettings(RenderMenuContext& ctx)
             ImGui::PopStyleColor();
         };
 
-        // Ready made looks, as the text of a settings code: what a preset doesn't list goes back to the default
-        if (ImGui::TreeNode("Presets"))
-        {
-            struct OverlayPreset
-            {
-                const char* name;
-                const char* tip;
-                const char* settings;
-            };
-
-            static const OverlayPreset presets[] = {
-                { "Opti-Like", "OptiScaler's overlay, refined: Segoe UI Semibold on a rounded panel with a shadow",
-                  "OverlaysUseTheme=false\nType=3\nShowRatio=true\nFont=seguisb.ttf\nAlpha=0.55\nRounding=6\n"
-                  "LabelColor=0xC8C8C8\nValueColor=0xFFFFFF\nGraphColor=0x3CD070\nShadow=1\nShadowStrength=0.6\n"
-                  "UpdateInterval=250\n" },
-                { "Afterburner-Like", "As MSI Afterburner: Unispace Bold, orange labels, outlined, no background",
-                  "OverlaysUseTheme=false\nType=3\nCompactLabels=true\nFont=unispace bd.ttf\nAlpha=0\nRounding=0\n"
-                  "LabelColor=0xFF9C00\nValueColor=0xFFFFFF\nGraphColor=0xFF9C00\nShadow=2\nShadowStrength=0.5\n"
-                  "ShadowColor=0x000000\nUpdateInterval=500\n" },
-                { "Glass Strip", "A strip at the top center: Bahnschrift, cyan values on a dark glass panel",
-                  "OverlaysUseTheme=false\nPos=4\nHorizontal=true\nType=2\nCompactLabels=true\n"
-                  "Font=bahnschrift.ttf\nAlpha=0.35\nBGColor=0x0A0F14\nRounding=10\nLabelColor=0x8A9BA8\n"
-                  "ValueColor=0x00E5FF\nGraphColor=0x00E5FF\nLabelScale=0.85\nValueScale=1.1\nLetterSpacing=0.5\n"
-                  "Shadow=1\nShadowStrength=0.5\nUpdateInterval=250\n" },
-            };
-
-            static std::string presetStatus;
-            const float presetCount = static_cast<float>(std::size(presets));
-            const float buttonWidth =
-                (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x * (presetCount - 1.0f)) /
-                presetCount;
-
-            for (size_t i = 0; i < std::size(presets); i++)
-            {
-                if (i > 0)
-                    ImGui::SameLine();
-
-                if (ImGui::Button(presets[i].name, ImVec2(buttonWidth, 0.0f)))
-                {
-                    if (config->ApplyOverlayPreset(presets[i].settings))
-                        presetStatus = StrFmt("%s applied, Save Settings to keep it", presets[i].name);
-                }
-
-                ShowTooltip(presets[i].tip);
-            }
-
-            statusText(presetStatus.empty()
-                           ? "A preset replaces the overlay's look and rows, Copy Code in Share Settings keeps yours."
-                           : presetStatus);
-
-            ImGui::TreePop();
-        }
-
         // Which rows are shown and their order, from top to bottom (left to right when horizontal)
         if (ImGui::TreeNode("Rows"))
         {
-            const auto overlayType = config->FpsOverlayType.value_or_default();
+            const bool custom = currentType == FpsOverlay_Custom;
+            auto rows = OverlayRows(currentType);
+            bool rowsChanged = false;
 
-            // Rows the overlay type decides on show their state, greyed out
-            auto fixedCheckbox = [&](const char* label, bool shown, const char* tip)
+            if (!custom)
             {
-                ImGui::BeginDisabled();
-                ImGui::Checkbox(label, &shown);
-                ImGui::EndDisabled();
+                statusText(StrFmt("The rows of %s, set Overlay Type to Custom to change them.", fpsType[currentType]));
+            }
 
-                ShowTooltip(tip);
-            };
+            ImGui::BeginDisabled(!custom);
 
-            auto order = OverlayRowOrder();
-            bool orderChanged = false;
-
-            if (ImGui::BeginTable("overlayRows", 3, ImGuiTableFlags_SizingFixedFit))
+            if (ImGui::BeginTable("overlayRows", 2, ImGuiTableFlags_SizingFixedFit))
             {
                 ImGui::TableSetupColumn("Order");
                 ImGui::TableSetupColumn("Row", ImGuiTableColumnFlags_WidthStretch);
-                ImGui::TableSetupColumn("From");
 
-                ImGui::TableNextRow();
-                for (int i = 0; i < 3; i++)
+                // Drawn as they were at the frame's start, a click changes one row
+                const auto shownRows = rows;
+
+                for (size_t i = 0; i < shownRows.size(); i++)
                 {
-                    ImGui::TableSetColumnIndex(i);
-                    ImGui::TextDisabled("%s", ImGui::TableGetColumnName(i));
-                }
-
-                ShowTooltip("The lowest Overlay Type that shows the row");
-
-                // Drawn as they were at the frame's start, a click moves one row
-                const auto shownOrder = order;
-
-                for (size_t i = 0; i < shownOrder.size(); i++)
-                {
-                    const int row = shownOrder[i];
+                    const int row = shownRows[i].row;
                     ScopedID rowId { overlayRowKeys[row] };
 
                     ImGui::TableNextRow();
@@ -8045,61 +8101,55 @@ void MenuCommon::RenderFpsOverlaySettings(RenderMenuContext& ctx)
                     ImGui::BeginDisabled(i == 0);
                     if (ImGui::ArrowButton("##Up", ImGuiDir_Up))
                     {
-                        std::swap(order[i], order[i - 1]);
-                        orderChanged = true;
+                        std::swap(rows[i], rows[i - 1]);
+                        rowsChanged = true;
                     }
                     ImGui::EndDisabled();
 
                     ImGui::SameLine(0.0f, 2.0f);
 
-                    ImGui::BeginDisabled(i + 1 == order.size());
+                    ImGui::BeginDisabled(i + 1 == shownRows.size());
                     if (ImGui::ArrowButton("##Down", ImGuiDir_Down))
                     {
-                        std::swap(order[i], order[i + 1]);
-                        orderChanged = true;
+                        std::swap(rows[i], rows[i + 1]);
+                        rowsChanged = true;
                     }
                     ImGui::EndDisabled();
 
                     ImGui::TableNextColumn();
 
-                    const char* name = overlayRowNames[row];
-                    const char* from = "Simple";
-
-                    switch (row)
+                    // A click here means no row moved this frame
+                    bool rowOn = shownRows[i].shown;
+                    if (ImGui::Checkbox(overlayRowNames[row], &rowOn))
                     {
-                    case OverlayRow_Fps:
-                        fixedCheckbox(name, true, "Always shown");
-                        from = "Just FPS";
-                        break;
-
-                    case OverlayRow_Upscale:
-                        optionCheckbox(name, config->FpsOverlayShowRatio,
-                                       "Render -> output resolution and upscale ratio");
-                        break;
-
-                    case OverlayRow_FrameTime:
-                        fixedCheckbox(name, overlayType >= FpsOverlay_Detailed, "Shown by the Overlay Type");
-                        from = "Detailed";
-                        break;
-
-                    case OverlayRow_UpscalerTime:
-                        fixedCheckbox(name, overlayType >= FpsOverlay_Full, "Shown by the Overlay Type");
-                        from = "Full";
-                        break;
-
-                    default:
-                        break;
+                        rows[i].shown = rowOn;
+                        rowsChanged = true;
                     }
 
-                    ImGui::TableNextColumn();
-                    ImGui::TextDisabled("%s", from);
+                    ShowTooltip(overlayRowTips[row]);
                 }
 
                 ImGui::EndTable();
             }
 
-            if (orderChanged)
-                SetOverlayRowOrder(order);
+            if (rowsChanged)
+                SetOverlayRows(rows);
+
+            const char* fpsRowTypes[] = { "Just FPS", "With Frame Time", "With Average FPS" };
+            static_assert(std::size(fpsRowTypes) == FpsOverlayFpsRow_COUNT);
+
+            int fpsRowType = OverlayFpsRow(currentType);
+            if (ImGui::Combo("FPS Row", &fpsRowType, fpsRowTypes, IM_ARRAYSIZE(fpsRowTypes)))
+                config->FpsOverlayFpsRowType = (FpsOverlayFpsRow) fpsRowType;
+
+            ShowTooltip("Just the number, or with the API, frame time or average FPS, frame generation and upscaler");
+
+            ImGui::EndDisabled();
+
+            ImGui::BeginDisabled(custom);
+            optionCheckbox("Upscale Ratio in Presets", config->FpsOverlayShowRatio,
+                           "The Upscale Ratio row in the presets from Simple on, Custom has it in its rows");
+            ImGui::EndDisabled();
 
             ImGui::Spacing();
 
@@ -8115,34 +8165,72 @@ void MenuCommon::RenderFpsOverlaySettings(RenderMenuContext& ctx)
                     config->FpsOverlayRowSpacing = std::round(std::max(rowSpacing, 0.0f));
             }
 
-            if (ImGui::Button("Reset Order & Spacing"))
+            if (ImGui::Button(custom ? "Reset Rows & Spacing" : "Reset Spacing"))
             {
-                config->FpsOverlayRowOrder.reset();
+                if (custom)
+                {
+                    config->FpsOverlayRows.reset();
+                    config->FpsOverlayFpsRowType.reset();
+                }
+
                 config->FpsOverlayRowSpacing.reset();
             }
+
+            if (custom)
+                ShowTooltip("Custom's rows back to the ones of Full + Graph");
 
             ImGui::TreePop();
         }
 
         if (ImGui::TreeNode("Appearance"))
         {
-            constexpr auto colorFlags = ImGuiColorEditFlags_NoInputs;
-
-            auto colorEdit = [&](const char* label, CustomOptional<uint32_t>& setting)
-            {
-                auto color = RgbToColor(setting.value_or_default());
-                float rgb[3] = { color.x, color.y, color.z };
-
-                if (ImGui::ColorEdit3(label, rgb, colorFlags))
-                    setting = ColorToRgb(rgb);
-            };
-
             auto scaleSlider = [&](const char* label, CustomOptional<float>& setting)
             {
                 float value = setting.value_or_default();
                 if (ImGui::SliderFloat(label, &value, 0.5f, 2.0f, "%.2fx", ImGuiSliderFlags_AlwaysClamp))
                     setting = value;
             };
+
+            // Ready made looks, as the text of a settings code: what a preset doesn't list goes back to the default
+            SectionTitle("Presets");
+
+            struct OverlayPreset
+            {
+                const char* name;
+                const char* tip;
+                const char* settings;
+            };
+
+            static const OverlayPreset presets[] = {
+                { "Default", "OptiScaler's overlay: every row with the graphs, grey labels with a shadow", "" },
+                { "Classic", "OptiScaler's earlier overlay: just the FPS in white, no shadow",
+                  "LabelColor=0xFFFFFF;Shadow=0;Rounding=2" },
+                { "Afterburner-Like", "As MSI Afterburner: Unispace Bold, orange labels, outlined, no background",
+                  "OverlaysUseTheme=false;Type=3;CompactLabels=true;Font=unispace bd.ttf;Alpha=0;Rounding=0;"
+                  "LabelColor=0xFF9C00;ValueColor=0xFFFFFF;GraphColor=0xFF9C00;Shadow=2;ShadowStrength=0.5;"
+                  "ShadowColor=0x000000;UpdateInterval=500" },
+                { "Glass Strip", "A strip at the top center: Bahnschrift, cyan values on a dark glass panel",
+                  "OverlaysUseTheme=false;Pos=4;Horizontal=true;Type=2;CompactLabels=true;"
+                  "Font=bahnschrift.ttf;Alpha=0.35;BGColor=0x0A0F14;Rounding=10;LabelColor=0x8A9BA8;"
+                  "ValueColor=0x00E5FF;GraphColor=0x00E5FF;LabelScale=0.85;ValueScale=1.1;LetterSpacing=0.5;"
+                  "Shadow=1;ShadowStrength=0.5;UpdateInterval=250" },
+            };
+
+            const float presetCount = static_cast<float>(std::size(presets));
+            const float buttonWidth =
+                (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x * (presetCount - 1.0f)) /
+                presetCount;
+
+            for (size_t i = 0; i < std::size(presets); i++)
+            {
+                if (i > 0)
+                    ImGui::SameLine();
+
+                if (ImGui::Button(presets[i].name, ImVec2(buttonWidth, 0.0f)))
+                    config->ApplyOverlaySettings(presets[i].settings);
+
+                ShowTooltip(presets[i].tip);
+            }
 
             SectionTitle("Layout");
 
@@ -8157,23 +8245,16 @@ void MenuCommon::RenderFpsOverlaySettings(RenderMenuContext& ctx)
             if (ImGui::SliderFloat("Graph Height", &graphHeight, 0.5f, 3.0f, "%.1fx", ImGuiSliderFlags_AlwaysClamp))
                 config->FpsOverlayGraphHeight = graphHeight;
 
-            // -1 is the menu's rounding
-            float rounding = config->FpsOverlayRounding.value_or(-1.0f);
-            const char* roundingFormat = !config->FpsOverlayRounding.has_value() ? "Same as menu"
-                                         : rounding < 0.5f                       ? "Square"
-                                                                                 : "%.0f px";
-            if (ImGui::SliderFloat("Corner Rounding", &rounding, -1.0f, 16.0f, roundingFormat,
+            float rounding = config->FpsOverlayRounding.value_or_default();
+            if (ImGui::SliderFloat("Corner Rounding", &rounding, 0.0f, 16.0f, rounding < 0.5f ? "Square" : "%.0f px",
                                    ImGuiSliderFlags_AlwaysClamp))
             {
-                if (rounding < -0.5f)
-                    config->FpsOverlayRounding.reset();
-                else
-                    config->FpsOverlayRounding = std::max(rounding, 0.0f);
+                config->FpsOverlayRounding = std::round(rounding);
             }
 
             SectionTitle("Text");
 
-            // Font, from the Windows fonts folder (cached once to avoid per-frame filesystem checks)
+            // Checked once, not every frame: fonts this Windows doesn't have aren't offered
             static const std::vector<bool> overlayFontExists = []()
             {
                 std::vector<bool> exists;
@@ -8224,7 +8305,7 @@ void MenuCommon::RenderFpsOverlaySettings(RenderMenuContext& ctx)
             }
             ShowTooltip("A file in C:\\Windows\\Fonts or a full path, Enter applies it");
 
-            // 0 is the menu's font size
+            // 7, below the range, is the menu's font size
             float fontSizeValue = config->FpsOverlayFontSize.value_or(7.0f);
             if (ImGui::SliderFloat("Font Size", &fontSizeValue, 7.0f, 48.0f,
                                    config->FpsOverlayFontSize.has_value() ? "%.0f px" : "Menu font size",
@@ -8276,17 +8357,43 @@ void MenuCommon::RenderFpsOverlaySettings(RenderMenuContext& ctx)
 
             SectionTitle("Colors");
 
+            // Side by side, an item that doesn't fit goes to the next line
+            const float rowRight = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+            bool firstColorItem = true;
+
+            auto colorRowItem = [&](const char* label)
+            {
+                const auto& style = ImGui::GetStyle();
+                const float gap = style.ItemSpacing.x * 2.0f;
+                const float width = ImGui::GetFrameHeight() + style.ItemInnerSpacing.x + ImGui::CalcTextSize(label).x;
+
+                if (!firstColorItem && ImGui::GetItemRectMax().x + gap + width <= rowRight)
+                    ImGui::SameLine(0.0f, gap);
+
+                firstColorItem = false;
+            };
+
+            auto colorEdit = [&](const char* label, CustomOptional<uint32_t>& setting)
+            {
+                colorRowItem(label);
+
+                auto color = RgbToColor(setting.value_or_default());
+                float rgb[3] = { color.x, color.y, color.z };
+
+                if (ImGui::ColorEdit3(label, rgb, ImGuiColorEditFlags_NoInputs))
+                    setting = ColorToRgb(rgb);
+            };
+
             bool useTheme = config->OverlaysUseTheme.value_or_default();
-            if (ImGui::Checkbox("Use Theme Colors", &useTheme))
+            if (ImGui::Checkbox("Use Theme", &useTheme))
                 config->OverlaysUseTheme = useTheme;
 
-            // Two by two, the theme's when it's used
+            ShowTooltip("The menu theme's colors for the labels, values, graph and background");
+
             ImGui::BeginDisabled(useTheme);
             colorEdit("Labels", config->FpsOverlayLabelColor);
-            ImGui::SameLine(0.0f, 16.0f);
             colorEdit("Values", config->FpsOverlayValueColor);
             colorEdit("Graph", config->FpsOverlayGraphColor);
-            ImGui::SameLine(0.0f, 16.0f);
             colorEdit("Background", config->FpsOverlayBGColor);
             ImGui::EndDisabled();
 
@@ -10103,23 +10210,6 @@ void MenuCommon::RenderMainMenuWindow(RenderMenuContext& ctx)
     flags |= ImGuiWindowFlags_NoCollapse;
     flags |= ImGuiWindowFlags_AlwaysAutoResize;
 
-    if (lastMenuScale != menuResScale)
-    {
-        lastMenuScale = menuResScale;
-
-        // if UI scale is changed rescale the style
-        ImGuiStyle& style = ImGui::GetStyle();
-        ImGuiStyle styleold = style; // Backup colors
-        style = ImGuiStyle();        // IMPORTANT: ScaleAllSizes will change the original size,
-                                     // so we should reset all style config
-
-        ApplyThemeStyle();
-
-        style.ScaleAllSizes(menuResScale);
-        style.MouseCursorScale = 1.0f;
-        CopyMemory(style.Colors, styleold.Colors, sizeof(style.Colors)); // Restore colors
-    }
-
     // Fixed width, only the tab content scrolls. Keeps the menu from growing or shrinking when tabs change
     // Height can be changed by the user with the resize grip and is stored unscaled in the config
     ImGuiWindowFlags mainFlags = ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse |
@@ -10235,6 +10325,25 @@ bool MenuCommon::RenderMenu()
 
     // 3) Draw lightweight overlay windows first, preserving the original order.
     ctx.menuResScale = MenuResolutionScale(ctx.io);
+
+    // The overlays share the style with the menu, so it's scaled before them even when the menu is closed
+    if (ctx.newFrame && lastMenuScale != ctx.menuResScale)
+    {
+        lastMenuScale = ctx.menuResScale;
+
+        // if UI scale is changed rescale the style
+        ImGuiStyle& style = ImGui::GetStyle();
+        ImGuiStyle styleold = style; // Backup colors
+        style = ImGuiStyle();        // IMPORTANT: ScaleAllSizes will change the original size,
+                                     // so we should reset all style config
+
+        ApplyThemeStyle();
+
+        style.ScaleAllSizes(ctx.menuResScale);
+        style.MouseCursorScale = 1.0f;
+        CopyMemory(style.Colors, styleold.Colors, sizeof(style.Colors)); // Restore colors
+    }
+
     RenderSplashWindow(ctx);
     RenderNotifications(ctx);
     UpdateFrameTimeAverages(ctx);
@@ -10377,7 +10486,7 @@ void MenuCommon::Shutdown()
 
     ImGui::DestroyContext();
 
-    // Went with the context's font atlas
+    // The font was in the destroyed context's atlas
     gOverlayFont = nullptr;
     gOverlayFontName.clear();
     gOverlayLetterSpacing = 0.0f;
