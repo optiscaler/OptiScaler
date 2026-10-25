@@ -1530,6 +1530,10 @@ bool XeFG_Dx12::SetResource(Dx12Resource* inputResource)
         _noDistortionField[fIndex] = false;
     else if (type == FG_ResourceType::HudlessColor)
         _noHudless[fIndex] = false;
+    // Retain the selected resource until it is replaced: the SDK consumes it
+    // during and after this frame's Present stack, past the caller's input
+    // validity window.
+    _presentResources[fIndex][type].Acquire(fResource->GetResource());
 
     if ((type == FG_ResourceType::Depth || type == FG_ResourceType::Velocity) ||
         fResource->validity != FG_ResourceValidity::UntilPresent)
