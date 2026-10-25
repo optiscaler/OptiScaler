@@ -10183,7 +10183,7 @@ void MenuCommon::RenderHudlessResourcesWindow(RenderMenuContext& ctx, ImGuiWindo
     }
 }
 
-// Game name | API | GPU | Input, above the tabs
+// API | GPU | Input, above the tabs
 static void RenderGameInfoRow(State& state, const GpuInformation& primaryGpu)
 {
     // Game name is in the window title
@@ -10193,7 +10193,18 @@ static void RenderGameInfoRow(State& state, const GpuInformation& primaryGpu)
                               : IdentifyGpu::gameUsesVkd3dProton() ? " (VKD3D)"
                                                                    : "",
                               primaryGpu.name.c_str(), ApiUpscalerInputName(state.currentInputApiName).c_str());
-    ImGui::TextWrapped("%s", line.c_str());
+
+    const float avail = ImGui::GetContentRegionAvail().x;
+    const float textWidth = ImGui::CalcTextSize(line.c_str()).x;
+    if (textWidth < avail)
+    {
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (avail - textWidth) * 0.5f);
+        ImGui::TextUnformatted(line.c_str());
+    }
+    else
+    {
+        ImGui::TextWrapped("%s", line.c_str());
+    }
 }
 
 void MenuCommon::RenderMainMenuWindow(RenderMenuContext& ctx)
