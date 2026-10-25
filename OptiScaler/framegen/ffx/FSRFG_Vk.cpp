@@ -691,9 +691,14 @@ void FSRFG_Vk::EvaluateState(FG_Constants& fgConstants)
                 DestroyFGContext();
         }
     }
-    else if (IsActive())
+    else
     {
-        Deactivate();
+        if (IsActive())
+            Deactivate();
+
+        // The change flags are cleared below, so a pending recreation (e.g. FFX FG version) must happen now
+        if (state.scChanged)
+            DestroyFGContext();
     }
 
     if (state.fgChanged)
