@@ -1,9 +1,9 @@
 #pragma once
 
 #include <algorithm>
-#include <array>
-#include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <deque>
 #include <mutex>
 
 // Measures output-present cadence independently of the render/menu cadence.
@@ -15,33 +15,22 @@ class PresentRateMeter final
     static constexpr double WindowMs = 125.0;
     static constexpr double MinimumSpanMs = 50.0;
 
+    struct Sample
+    {
+        double ms;
+        std::uint64_t presents;
+    };
+
     std::mutex _mutex;
-    std::array<double, Capacity> _timestamps {};
-    std::size_t _head = 0;
-    std::size_t _count = 0;
     bool _enabled = false;
+    std::uint64_t _presents = 0;
+    double _lastPresentMs = 0.0;
 
-    double At(std::size_t index) const { return _timestamps[(_head + index) % Capacity]; }
+    // Recent FrameTime calls, which happen at the same point of every game frame
+    std::deque<Sample> _samples;
 
-    void Clear()
-    {
-        _head = 0;
-        _count = 0;
-    }
-
-    void DropOldest()
-    {
-        _head = (_head + 1) % Capacity;
-        --_count;
-        if (_count == 0)
-            _head = 0;
-    }
-
-    void Prune(double nowMs)
-    {
-        while (_count > 0 && nowMs - At(0) > WindowMs)
-            DropOldest();
-    }
+    // Unfiltered intervals between the output presents, for the frame time graph
+    std::deque<double> _intervals;
 
   public:
     // Called from the game's Vulkan present thread. Repeated 'true' calls are
@@ -49,62 +38,73 @@ class PresentRateMeter final
     void SetEnabled(bool enabled)
     {
         std::lock_guard lock(_mutex);
-        if (_enabled != enabled)
-        {
-            _enabled = enabled;
-            Clear();
-        }
+        if (_enabled == enabled)
+            return;
+
+        _enabled = enabled;
+        _samples.clear();
+        _intervals.clear();
+        _lastPresentMs = 0.0;
     }
 
     // Called on each actual FG output present, not on each menu frame.
     void Present(double nowMs)
     {
-        if (!std::isfinite(nowMs))
-            return;
-
         std::lock_guard lock(_mutex);
         if (!_enabled)
             return;
 
-        if (_count > 0)
+        ++_presents;
+
+        // The timestamp is acquired before the lock. Concurrent callers
+        // can reach the lock in a different order, keep the intervals non-negative.
+        nowMs = std::max(nowMs, _lastPresentMs);
+
+        if (_lastPresentMs > 0.0)
         {
-            // The timestamp is acquired before the lock. Concurrent callers
-            // can reach the lock in a different order, so keep the ring sorted.
-            nowMs = std::max(nowMs, At(_count - 1));
+            if (_intervals.size() == Capacity)
+                _intervals.pop_front();
+
+            _intervals.push_back(nowMs - _lastPresentMs);
         }
 
-        Prune(nowMs);
-
-        // Bounded memory even if a game produces thousands of presents/s.
-        if (_count == Capacity)
-            DropOldest();
-
-        _timestamps[(_head + _count) % Capacity] = nowMs;
-        ++_count;
+        _lastPresentMs = nowMs;
     }
 
     // Called from the menu thread. Zero means there are not enough recent
     // output presents; the ordinary game-present timing remains the fallback.
     double FrameTime(double nowMs)
     {
-        if (!std::isfinite(nowMs))
-            return 0.0;
-
         std::lock_guard lock(_mutex);
-        if (!_enabled || _count == 0)
+        if (!_enabled)
             return 0.0;
 
-        nowMs = std::max(nowMs, At(_count - 1));
-        Prune(nowMs);
-        if (_count < 2)
+        while (!_samples.empty() && nowMs - _samples.front().ms > WindowMs)
+            _samples.pop_front();
+
+        _samples.push_back({ nowMs, _presents });
+
+        // The window starts at an earlier call, so it spans whole game frames. Measuring between the first
+        // and last present instead overcounts when the generated and real frames aren't evenly spaced,
+        // the window then often catches one extra present.
+        const double spanMs = nowMs - _samples.front().ms;
+        const auto presents = _presents - _samples.front().presents;
+        if (spanMs < MinimumSpanMs || presents < 2)
             return 0.0;
 
-        const double spanMs = At(_count - 1) - At(0);
-        if (spanMs < MinimumSpanMs)
-            return 0.0;
+        return spanMs / static_cast<double>(presents);
+    }
 
-        // N actual present events contain N-1 measured intervals. This
-        // produces the true event rate, unaffected by menu-frame batching.
-        return spanMs / static_cast<double>(_count - 1);
+    // Called from the menu thread. Hands over the intervals collected since the last call, returns false
+    // when the FG output presents aren't measured.
+    template <typename F> bool TakeIntervals(F&& callback)
+    {
+        std::lock_guard lock(_mutex);
+
+        for (double ms : _intervals)
+            callback(ms);
+
+        _intervals.clear();
+        return _enabled;
     }
 };
