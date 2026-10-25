@@ -1,8 +1,14 @@
 #include "pch.h"
 #include "input_reflex_vk.h"
 
+#include "input_reflex.h"
+
 #include <hooks/Vulkan_Hooks.h>
 #include <low_latency/low_latency_tech/ll_reflex_vk.h>
+
+#include <intrin.h>
+
+#pragma intrinsic(_ReturnAddress)
 
 static void LogResult(InputResult result, const char* call)
 {
@@ -11,6 +17,11 @@ static void LogResult(InputResult result, const char* call)
     {
         LOG_ERROR("{} result: {}", call, magic_enum::enum_name(result));
     }
+}
+
+const InputContext& InputReflexVk::Context(void* returnAddress)
+{
+    return InputReflex::FromOptiScaler(returnAddress) ? optiScalerContext : inputContext;
 }
 
 VkResult VKAPI_CALL InputReflexVk::SetLatencySleepMode(VkDevice device, VkSwapchainKHR swapchain,
@@ -33,7 +44,14 @@ VkResult VKAPI_CALL InputReflexVk::SetLatencySleepMode(VkDevice device, VkSwapch
         sleepMode.minimum_interval_us = pSleepModeInfo->minimumIntervalUs;
     }
 
-    LogResult(InputCommon::set_sleep_mode(inputContext, (IUnknown*) device, &sleepMode), "set_sleep_mode");
+    auto& context = Context(_ReturnAddress());
+
+    // OptiScaler's Streamline always asks for low latency with DLSSG. With only its present markers the driver's low
+    // latency sleep costs a lot of frames, its sleep still limits. Force State can enable it.
+    if (&context == &optiScalerContext)
+        sleepMode.low_latency_enabled = false;
+
+    LogResult(InputCommon::set_sleep_mode(context, (IUnknown*) device, &sleepMode), "set_sleep_mode");
     return VK_SUCCESS;
 }
 
@@ -45,7 +63,7 @@ VkResult VKAPI_CALL InputReflexVk::LatencySleep(VkDevice device, VkSwapchainKHR 
 
     VulkanHooks::SetLowLatencySwapchain(swapchain);
 
-    LogResult(InputCommon::sleep(inputContext, (IUnknown*) device), "sleep");
+    LogResult(InputCommon::sleep(Context(_ReturnAddress()), (IUnknown*) device), "sleep");
 
     // The game waits for it whatever the output did, the Reflex output's sleep has its own
     VkSemaphoreSignalInfo signalInfo {};
@@ -64,12 +82,12 @@ void VKAPI_CALL InputReflexVk::SetLatencyMarker(VkDevice device, VkSwapchainKHR 
 
     VulkanHooks::SetLowLatencySwapchain(swapchain);
 
-    // Out of band markers are ordinary markers here, OptiScaler has no Vulkan frame generation that sends its own
+    // Out of band markers are ordinary markers here
     MarkerParams markerParams {};
     markerParams.frame_id = pLatencyMarkerInfo->presentID;
     markerParams.marker_type = FromVkLatencyMarker(pLatencyMarkerInfo->marker);
 
-    LogResult(InputCommon::set_marker(inputContext, (IUnknown*) device, markerParams), "set_marker");
+    LogResult(InputCommon::set_marker(Context(_ReturnAddress()), (IUnknown*) device, markerParams), "set_marker");
 }
 
 void VKAPI_CALL InputReflexVk::GetLatencyTimings(VkDevice device, VkSwapchainKHR swapchain,
@@ -87,7 +105,7 @@ void VKAPI_CALL InputReflexVk::GetLatencyTimings(VkDevice device, VkSwapchainKHR
     }
 
     FrameReport reports[NVAPI_BUFFER_SIZE] {};
-    auto result = InputCommon::get_frame_reports(inputContext, (IUnknown*) device, reports);
+    auto result = InputCommon::get_frame_reports(Context(_ReturnAddress()), (IUnknown*) device, reports);
     LogResult(result, "get_frame_reports");
 
     // Oldest first, the empty ones are at the start

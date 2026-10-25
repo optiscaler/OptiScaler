@@ -50,6 +50,9 @@ class DLSSG_Vk : public virtual IFGFeature_Vk, public DLSSG_Common
     // IFGFeature_Vk
     void PrepareDevice(VkPhysicalDevice physicalDevice, VkDeviceCreateInfo& createInfo) override final;
 
+    // Streamline's sl.reflex sets the sleep mode on it
+    bool HasDriverSwapchain() const override final { return true; }
+
     bool CreateSwapchain(VkDevice device, const VkSwapchainCreateInfoKHR* pCreateInfo,
                          const VkAllocationCallbacks* pAllocator, VkSwapchainKHR* pSwapchain) override final;
     bool DestroySwapchain(VkDevice device, VkSwapchainKHR swapchain,

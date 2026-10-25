@@ -58,6 +58,9 @@ class ReflexVk : public LowLatencyTech
 
     bool is_enabled() override;
 
+    // FSR-FG's swapchain isn't a driver one, without one the sleep and the FPS limit do nothing
+    bool has_swapchain() { return swapchain() != VK_NULL_HANDLE; }
+
     void get_sleep_status(SleepParams* sleep_params) override;
     void set_sleep_mode(SleepMode* sleep_mode) override;
     void sleep(std::optional<uint32_t> frame_id) override;

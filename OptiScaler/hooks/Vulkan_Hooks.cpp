@@ -850,9 +850,9 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
     if (!dxgiBacked)
         DeferredRelease::Process();
 
-    // Unsure about Vulkan Reflex fps limit and if that could be causing an issue here
+    // The limit counts presented frames, the FG output presents its generated frames from the game's present
     if (!State::Instance().reflexLimitsFps && !InputCommon::can_limit_fps())
-        FrameLimit::sleep(false);
+        FrameLimit::sleep(fgPresent && fg->IsActive() && !fg->IsPaused());
 
     LOG_FUNC_RESULT(result);
     return result;
@@ -1188,9 +1188,12 @@ PFN_vkVoidFunction hkvkGetDeviceProcAddr(VkDevice device, const char* pName)
 
 void VulkanHooks::SetLowLatencySwapchain(VkSwapchainKHR swapchain)
 {
-    // The game's handle of the FG swapchain isn't a driver one, and FFX's real one has no low latency mode
-    if (auto fg = State::Instance().currentVkFG; fg != nullptr && fg->OwnsSwapchain(swapchain))
+    // FFX's handle of the FG swapchain isn't a driver one, and its real one has no low latency mode
+    if (auto fg = State::Instance().currentVkFG;
+        fg != nullptr && fg->OwnsSwapchain(swapchain) && !fg->HasDriverSwapchain())
+    {
         swapchain = VK_NULL_HANDLE;
+    }
 
     lowLatencySwapchain = swapchain;
 }

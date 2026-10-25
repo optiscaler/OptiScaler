@@ -50,6 +50,9 @@ bool DLSSG_Dx12::CreateSwapchainInternal(IDXGIFactory* factory, ID3D12CommandQue
 
     desc->Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
 
+    if (State::Instance().gameQuirks & GameQuirk::DLSSGFrameLatencyWaitable)
+        desc->Flags |= DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+
     auto result = S_FALSE;
 
     {
@@ -115,6 +118,10 @@ bool DLSSG_Dx12::CreateSwapchain1Internal(IDXGIFactory* factory, ID3D12CommandQu
         StreamlineProxy::SetFeatureLoaded()(sl::kFeatureDLSS_G, true);
 
         desc->Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+
+        if (State::Instance().gameQuirks & GameQuirk::DLSSGFrameLatencyWaitable)
+            desc->Flags |= DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+
         auto result = factory2->CreateSwapChainForHwnd(cmdQueue, hwnd, desc, pFullscreenDesc, nullptr, swapChain);
 
         factory2->Release();

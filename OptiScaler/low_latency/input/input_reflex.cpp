@@ -10,7 +10,7 @@
 
 // OptiScaler's own Streamline (DLSSG output): its calls marked as OptiScaler's, and the ones its modules make on
 // Streamline's own threads (the async markers of the generated frames' presents)
-static bool FromOptiScaler(void* returnAddress)
+bool InputReflex::FromOptiScaler(void* returnAddress)
 {
     if (ReflexHooks::optiScalerCall)
         return true;

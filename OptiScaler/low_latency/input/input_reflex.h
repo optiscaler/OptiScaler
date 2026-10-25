@@ -38,6 +38,9 @@ class InputReflex
     static NvAPI_Status SendGameMarker(IUnknown* pDev, NV_LATENCY_MARKER_PARAMS* params, bool toStreamline);
 
   public:
+    // The call comes from OptiScaler's own Streamline (DLSSG output)
+    static bool FromOptiScaler(void* returnAddress);
+
     static NvAPI_Status D3D_SetSleepMode(IUnknown* pDev, NV_SET_SLEEP_MODE_PARAMS* pSetSleepModeParams);
     static NvAPI_Status D3D_GetSleepStatus(IUnknown* pDevice, NV_GET_SLEEP_STATUS_PARAMS* pGetSleepStatusParams);
     static NvAPI_Status D3D_Sleep(IUnknown* pDev);

@@ -513,12 +513,25 @@ const std::vector<GameConfig> gameConfigs = {
     },
 
     // Metro Exodus Enhanced Edition
-    // ForceBorderless required to avoid black screen with XeFG, Manual Input polling for fixing invisible Opti Overlay,
+    // ForceBorderless required to avoid black screen with XeFG
     // Hudfix incompatible
     {
         .exes = { "metroexodus.exe" },
         .defaults = { DxgiSpoofing = false, WithXeFG(FGXeFGForceBorderless = true), AutoExposure = true,
                       WithUpscalerFGInput(FGDisableHUDFix = true) },
+    },
+
+    // METRO 2033 Redux, METRO Last Light Redux
+    {
+        .exes = { "metro.exe" },
+        .defaults = { DxgiSpoofing = false },
+    },
+
+    // Kingdom Come: Deliverance II
+    // Streamline stalls its flip queue when it also waits on the game's frame latency waitable
+    {
+        .exes = { "kingdomcome.exe" },
+        .quirks = { DLSSGFrameLatencyWaitable },
     },
 
     // Star Wars: Outlaws
@@ -559,14 +572,14 @@ const std::vector<GameConfig> gameConfigs = {
     },
 
     // S.T.A.L.K.E.R.: Legends of the Zone Trilogy - Enhanced Editions
-    // Manual input polling for fixing invisible Opti Overlay, no spoof needed for DLSS inputs
+    // No spoof needed for DLSS inputs
     {
         .exes = { "xrengine.exe" },
         .defaults = { DxgiSpoofing = false },
     },
 
     // Dying Light 2: Reloaded Edition
-    // SL spoof enough to unlock everything DLSS, manual input polling for fixing unclickable Opti Overlay,
+    // SL spoof enough to unlock everything DLSS
     // Hudfix incompatible
     {
         .exes = { "dyinglightgame_x64_rwdi.exe" },
@@ -574,7 +587,7 @@ const std::vector<GameConfig> gameConfigs = {
     },
 
     // Dying Light: The Beast
-    // SL spoof enough to unlock everything DLSS, manual input polling for fixing unclickable Opti Overlay
+    // SL spoof enough to unlock everything DLSS
     {
         .exes = { "dyinglightgame_thebeast_x64_rwdi.exe" },
         .defaults = { DxgiSpoofing = false },

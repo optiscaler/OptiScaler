@@ -145,16 +145,9 @@ class XeLLProxy
 
     inline static std::filesystem::path DllPath(HMODULE module)
     {
-        static std::filesystem::path dll;
-
-        if (dll.empty())
-        {
-            wchar_t dllPath[MAX_PATH];
-            GetModuleFileNameW(module, dllPath, MAX_PATH);
-            dll = std::filesystem::path(dllPath);
-        }
-
-        return dll;
+        wchar_t dllPath[MAX_PATH];
+        GetModuleFileNameW(module, dllPath, MAX_PATH);
+        return std::filesystem::path(dllPath);
     }
 
     static bool InitXeLLProper()
@@ -241,8 +234,9 @@ class XeLLProxy
 
   public:
     // Every libxell's calls go to OptiScaler's XeLL exports, also the ones from libraries that import it or got it
-    // before OptiScaler, so the game's XeLL is the low latency input. The first one becomes the real XeLL, reached
-    // through the trampolines, any other one goes to OptiScaler's entirely.
+    // before OptiScaler, so the game's XeLL is the low latency input. The real XeLL is OptiScaler's own libxell when
+    // it has one, as the game's might be too old for OptiScaler's XeFG, otherwise the first one. The real XeLL is
+    // reached through the trampolines, any other one goes to OptiScaler's entirely.
     static void RedirectToInput(HMODULE module)
     {
         if (module == nullptr || module == dllModule)
@@ -255,8 +249,8 @@ class XeLLProxy
 
         _redirected.push_back(module);
 
-        // The game loaded the only libxell
-        if (_dll == nullptr && HookXeLL(module))
+        // No libxell OptiScaler could load, the game's is the only one
+        if (_dll == nullptr && !InitXeLL() && HookXeLL(module))
             _dllPath = DllPath(module).wstring();
 
         auto path = wstring_to_string(DllPath(module).wstring());

@@ -503,6 +503,49 @@ bool Util::GetFileVersion(std::wstring dllPath, version_t* fileVersionOut, versi
     return true;
 }
 
+// ProductVersion string from the version resource, falling back to FileVersion
+std::string Util::GetFileVersionString(std::wstring dllPath)
+{
+    DWORD handle = 0;
+    DWORD versionSize = GetFileVersionInfoSizeW(dllPath.c_str(), &handle);
+    if (versionSize == 0)
+        return {};
+
+    std::vector<BYTE> versionInfo(versionSize);
+    if (!GetFileVersionInfoW(dllPath.c_str(), handle, versionSize, versionInfo.data()))
+        return {};
+
+    struct LANGANDCODEPAGE
+    {
+        WORD wLanguage;
+        WORD wCodePage;
+    }* lpTranslate = nullptr;
+
+    UINT cbTranslate = 0;
+    if (!VerQueryValueW(versionInfo.data(), L"\\VarFileInfo\\Translation", (LPVOID*) &lpTranslate, &cbTranslate) ||
+        cbTranslate < sizeof(LANGANDCODEPAGE))
+    {
+        return {};
+    }
+
+    for (const wchar_t* name : { L"ProductVersion", L"FileVersion" })
+    {
+        std::wstring query = std::format(L"\\StringFileInfo\\{:04x}{:04x}\\{}", lpTranslate[0].wLanguage,
+                                         lpTranslate[0].wCodePage, name);
+
+        LPWSTR value = nullptr;
+        UINT size = 0;
+
+        if (VerQueryValueW(versionInfo.data(), query.c_str(), reinterpret_cast<LPVOID*>(&value), &size) && value &&
+            size > 1)
+        {
+            return wstring_to_string(value);
+        }
+    }
+
+    return {};
+}
+
 bool Util::IsSubpath(const std::filesystem::path& path, const std::filesystem::path& base)
 {
     auto lowerPath = path.lexically_normal().wstring();
