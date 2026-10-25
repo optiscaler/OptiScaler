@@ -103,11 +103,16 @@ static inline FfxApiResourceDescription ffxApiGetImageResourceDescriptionVKLocal
     if (vkResource->ReadWrite)
         resourceDescription.usage |= FFX_API_RESOURCE_USAGE_UAV;
 
-    // depth use
-    if ((vkResource->Resource.ImageViewInfo.SubresourceRange.aspectMask & VK_IMAGE_ASPECT_DEPTH_BIT) > 0)
+    // Some games pass depth with a color aspect, FFX picks the view format from these flags
+    const auto format = vkResource->Resource.ImageViewInfo.Format;
+    const auto aspectMask = vkResource->Resource.ImageViewInfo.SubresourceRange.aspectMask;
+    const bool stencilFormat = format == VK_FORMAT_D16_UNORM_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT ||
+                               format == VK_FORMAT_D32_SFLOAT_S8_UINT;
+
+    if ((aspectMask & VK_IMAGE_ASPECT_DEPTH_BIT) > 0 || ffxApiIsDepthFormat(format))
         resourceDescription.usage |= FFX_API_RESOURCE_USAGE_DEPTHTARGET;
 
-    if ((vkResource->Resource.ImageViewInfo.SubresourceRange.aspectMask & VK_IMAGE_ASPECT_STENCIL_BIT) > 0)
+    if ((aspectMask & VK_IMAGE_ASPECT_STENCIL_BIT) > 0 || stencilFormat)
         resourceDescription.usage |= FFX_API_RESOURCE_USAGE_STENCILTARGET;
 
     resourceDescription.type = FFX_API_RESOURCE_TYPE_TEXTURE2D;
