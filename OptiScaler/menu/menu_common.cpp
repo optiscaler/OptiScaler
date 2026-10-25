@@ -3193,8 +3193,28 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                 if (fg != nullptr)
                     localFrameCount = fg->FrameCount();
 
-                ImGui::Text("FGId: %llu, RfxId: %llu", localFrameCount, state.reflexFrameId);
-                ImGui::Text("Low latency timings, whole frame: %.1fms", rangeInNs / 1000.0);
+                // Text lines with the overlay's shadow or outline under them
+                auto shadowedText = [&](ImU32 color, const std::string& text)
+                {
+                    const char* begin = text.c_str();
+                    const char* end = begin + text.size();
+                    drawText(drawList, ImGui::GetFontSize(), ImGui::GetCursorScreenPos(), color, begin, end, true);
+
+                    ImGui::PushStyleColor(ImGuiCol_Text, color);
+                    ImGui::TextUnformatted(begin, end);
+                    ImGui::PopStyleColor();
+                };
+
+                // OverlayLine frameIds;
+                // frameIds.Label("FGId: ")
+                //     .Value("lowLatencyFgId", StrFmt("%llu", localFrameCount))
+                //     .Label(", RfxId: ")
+                //     .Value("lowLatencyRfxId", StrFmt("%llu", state.reflexFrameId));
+                // drawLine(frameIds);
+                OverlayLine wholeFrame;
+                wholeFrame.Label("Low latency timings, whole frame: ")
+                    .Value("lowLatencyFrame", StrFmt("%.1fms", rangeInNs / 1000.0));
+                drawLine(wholeFrame);
 
                 const auto maxWidth = horizontal ? fpsScale * 300.0f : plotSize.x;
 
@@ -3208,7 +3228,8 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                     const auto& timing = timingOpt.value();
                     float duration = static_cast<float>(timing.length * rangeInNs / 1000.0);
 
-                    ImGui::TextColored(toneMappedColor, "%-12s %4.1fms", desc, duration);
+                    shadowedText(ImGui::ColorConvertFloat4ToU32(toneMappedColor),
+                                 StrFmt("%-12s %4.1fms", desc, duration));
 
                     auto leftLimit = ImGui::GetItemRectMin().x + offsetForText * fpsScale;
 
