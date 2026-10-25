@@ -176,10 +176,11 @@ HMODULE FSR4DriverDll::Load()
                            {
                                LOG_WARN(L"Couldn't patch GetModuleHandleW of {}", _name);
                            }
+                       if (!Config::Instance()->Fsr4DisableDriverHooks.value_or(false))
+                       {
+                           FSR4Presets::Hook(module);
+                           FSR4Models::Hook(module);
                        }
-
-                       FSR4Presets::Hook(module);
-                       FSR4Models::Hook(module);
 
                        _module = module;
                    });

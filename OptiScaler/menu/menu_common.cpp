@@ -3764,6 +3764,15 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                         "Non-Linear / sRGB: Might improve FSR4 upscaling quality, might increase ghosting.\n"
                         "PQ: Rarest, might increase ghosting and break lights.");
 
+            bool fsr4DisableDriverHooks = config->Fsr4DisableDriverHooks.value_or_default();
+            if (ImGui::Checkbox("Disable FSR4 driver preset/model hooks", &fsr4DisableDriverHooks))
+                config->Fsr4DisableDriverHooks = fsr4DisableDriverHooks;
+
+            ShowTooltip("Skip hooking the driver module's FSR4 preset and model selection.\n"
+                        "Opting out also skips the automatic model selection and preset\n"
+                        "correction these hooks apply to the driver module.\n"
+                        "Changing this requires a restart to take effect.");
+
             // FSR 4 Presets
             const char* presets[] = {
                 "Default", "Preset 0", "Preset 1", "Preset 2", "Preset 3", "Preset 4", "Preset 5"
@@ -3772,6 +3781,8 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
 
             if (currentPresetIdx < 0 || currentPresetIdx >= IM_ARRAYSIZE(presets))
                 currentPresetIdx = 0;
+            if (fsr4DisableDriverHooks)
+                ImGui::BeginDisabled();
 
             ImGui::SetNextItemWidth(150.0f * menuResScale);
             if (ImGui::Combo("FSR4 Preset", &currentPresetIdx, presets, IM_ARRAYSIZE(presets)))
@@ -3784,6 +3795,10 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                 state.newBackend = currentBackend;
                 MARK_ALL_BACKENDS_CHANGED();
             }
+
+            if (fsr4DisableDriverHooks)
+                ImGui::EndDisabled();
+
             ShowTooltip("Each internal FSR4 preset is tuned for a specific resolution.\n"
                         "Selecting an FSR4 preset won't change the in-game\nupscaler preset!!!\n\n"
                         "Preset 0 is meant for FSR Native AA\n"
@@ -3795,7 +3810,9 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
 
             // Display the active preset right next to the combo box instead of using a table
             ImGui::SameLine();
-            if (state.currentFsr4Preset.has_value())
+            if (fsr4DisableDriverHooks)
+                ImGui::TextDisabled("(driver hooks disabled)");
+            else if (state.currentFsr4Preset.has_value())
                 ImGui::TextDisabled("(Active: %d)", state.currentFsr4Preset.value());
             else if (FSR4Presets::IsAnyModuleHooked())
                 ImGui::TextColored(StatusWarn(), "(Potential FSR3 fallback)");
@@ -3823,7 +3840,9 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                 auto selectedName = selectedModel.has_value() ? FSR4Models::Name(selectedModel.value()) : "Auto";
                 bool modelChanged = false;
 
-                ImGui::SetNextItemWidth(150.0f * menuResScale);
+                if (fsr4DisableDriverHooks)
+                    ImGui::BeginDisabled();
+
                 if (ImGui::BeginCombo("FSR4 Model", selectedName))
                 {
                     if (ImGui::Selectable("Auto", !selectedModel.has_value()) && selectedModel.has_value())
@@ -3845,6 +3864,9 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                     ImGui::EndCombo();
                 }
 
+                if (fsr4DisableDriverHooks)
+                    ImGui::EndDisabled();
+
                 if (modelChanged)
                 {
                     state.newBackend = currentBackend;
@@ -3855,7 +3877,9 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                             "Auto lets FFX pick the best one the GPU supports.");
 
                 ImGui::SameLine();
-                if (auto activeModel = FSR4Models::ActiveModel(upscalerModule))
+                if (fsr4DisableDriverHooks)
+                    ImGui::TextDisabled("(driver hooks disabled)");
+                else if (auto activeModel = FSR4Models::ActiveModel(upscalerModule))
                     ImGui::TextDisabled("(Active: %s)", FSR4Models::Name(*activeModel));
                 else
                     ImGui::TextColored(StatusWarn(), "(Potential FSR3 fallback)");

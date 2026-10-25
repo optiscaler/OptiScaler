@@ -289,6 +289,7 @@ bool Config::Reload(std::filesystem::path iniPath)
                 Fsr4Preset.set_from_config(setting);
 
             Fsr4Model.set_from_config(readEnum<FSR4Model>("FSR", "Fsr4Model"));
+            Fsr4DisableDriverHooks.set_from_config(readBool("FSR", "Fsr4DisableDriverHooks"));
 
             FsrNonLinearColorSpace.set_from_config(readBool("FSR", "FsrNonLinearColorSpace"));
             FsrNonLinearPQ.set_from_config(readBool("FSR", "FsrNonLinearPQ"));
@@ -1549,6 +1550,8 @@ bool Config::SaveIni()
         ini.SetValue("FSR", "FsrNonLinearColorSpace",
                      GetBoolValue(Instance()->FsrNonLinearColorSpace.value_for_config()).c_str());
         ini.SetValue("FSR", "FsrNonLinearPQ", GetBoolValue(Instance()->FsrNonLinearPQ.value_for_config()).c_str());
+        ini.SetValue("FSR", "Fsr4DisableDriverHooks",
+                     GetBoolValue(Instance()->Fsr4DisableDriverHooks.value_for_config()).c_str());
         ini.SetValue("FSR", "FsrNonLinearSRGB", GetBoolValue(Instance()->FsrNonLinearSRGB.value_for_config()).c_str());
         ini.SetValue("FSR", "FsrAgilitySDKUpgrade",
                      GetBoolValue(Instance()->FsrAgilitySDKUpgrade.value_for_config()).c_str());

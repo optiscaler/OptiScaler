@@ -547,6 +547,8 @@ class Config
     CustomOptional<uint32_t, NoDefault> Fsr4Preset;
     CustomOptional<FSR4Model, NoDefault> Fsr4Model;
     CustomOptional<bool> Fsr4EnableWatermark { false };
+    // Skip the driver module's preset and model hooks; restart required
+    CustomOptional<bool> Fsr4DisableDriverHooks { false };
     CustomOptional<bool, SoftDefault> Fsr4DoNotLoadAmdxc64 { false };
 
     // FSR Common
