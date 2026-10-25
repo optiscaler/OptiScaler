@@ -910,6 +910,7 @@ static const OverlayIniKey overlayIniKeys[] = {
     { "FpsOverlayGraphColor", OverlayValueType::Color },  { "FpsOverlayBGColor", OverlayValueType::Color },
     { "FpsOverlayShadow", OverlayValueType::Index },      { "FpsOverlayShadowStrength", OverlayValueType::Float },
     { "FpsOverlayShadowColor", OverlayValueType::Color }, { "FpsOverlayRounding", OverlayValueType::Float },
+    { "FpsOverlayHideAverages", OverlayValueType::Bool },
 };
 
 void Config::ReadOverlaySettings(bool assign)
@@ -940,6 +941,7 @@ void Config::ReadOverlaySettings(bool assign)
     apply(FpsOverlayHorizontal, readBool("Menu", "FpsOverlayHorizontal"));
     apply(FpsOverlayShowRatio, readBool("Menu", "FpsOverlayShowRatio"));
     apply(FpsOverlayCompactLabels, readBool("Menu", "FpsOverlayCompactLabels"));
+    apply(FpsOverlayHideAverages, readBool("Menu", "FpsOverlayHideAverages"));
     apply(FpsOverlayRows, readString("Menu", "FpsOverlayRows", true));
     apply(FpsOverlayFpsRowType, readIndex("FpsOverlayFpsRow", FpsOverlayFpsRow_COUNT)
                                     .transform([](uint32_t value) { return (FpsOverlayFpsRow) value; }));
@@ -974,6 +976,7 @@ void Config::WriteOverlaySettings()
     ini.SetValue("Menu", "FpsOverlayHorizontal", GetBoolValue(FpsOverlayHorizontal.value_for_config()).c_str());
     ini.SetValue("Menu", "FpsOverlayShowRatio", GetBoolValue(FpsOverlayShowRatio.value_for_config()).c_str());
     ini.SetValue("Menu", "FpsOverlayCompactLabels", GetBoolValue(FpsOverlayCompactLabels.value_for_config()).c_str());
+    ini.SetValue("Menu", "FpsOverlayHideAverages", GetBoolValue(FpsOverlayHideAverages.value_for_config()).c_str());
     ini.SetValue("Menu", "FpsOverlayRows", FpsOverlayRows.value_for_config_or("auto").c_str());
     ini.SetValue("Menu", "FpsOverlayFpsRow", GetIntValue(FpsOverlayFpsRowType.value_for_config()).c_str());
     ini.SetValue("Menu", "FpsOverlayRowSpacing", GetFloatValue(FpsOverlayRowSpacing.value_for_config()).c_str());

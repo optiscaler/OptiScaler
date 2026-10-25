@@ -391,6 +391,7 @@ class Config
     CustomOptional<bool> FpsOverlayHorizontal { false };
     CustomOptional<bool> FpsOverlayShowRatio { false };
     CustomOptional<bool> FpsOverlayCompactLabels { false };
+    CustomOptional<bool> FpsOverlayHideAverages { false };
     // Rows of the Custom overlay type in their order, comma separated keys, hidden ones start with -.
     // No value means the default overlay type's rows
     CustomOptional<std::string, NoDefault> FpsOverlayRows;
