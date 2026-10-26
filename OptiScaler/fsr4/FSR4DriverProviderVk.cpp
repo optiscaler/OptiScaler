@@ -4,6 +4,7 @@
 #include "FSR4PipelineLayouts.h"
 
 #include <misc/IdentifyGpu.h>
+#include <proxies/D3D12_Proxy.h>
 
 #include <mutex>
 #include <optional>
@@ -383,7 +384,12 @@ bool FSR4DriverProviderVk::InitFg()
     initTried = true;
 
     // Real FP8 support comes from the D3D12 checks, the game's Vulkan device can be created before anything ran them
-    IdentifyGpu::updateD3d12Capabilities();
+    // or even loaded d3d12.dll, which the checks need
+    if (IdentifyGpu::getPrimaryGpu().vendorId == VendorId::AMD)
+    {
+        D3d12Proxy::Init();
+        IdentifyGpu::updateD3d12Capabilities();
+    }
 
     if (IdentifyGpu::getPrimaryGpu().realFsr4Support != FSR4Support::FP8)
     {
