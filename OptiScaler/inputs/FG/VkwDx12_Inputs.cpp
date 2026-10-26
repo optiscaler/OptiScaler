@@ -46,6 +46,15 @@ std::unique_ptr<ResourceCopy_Vk> _copies[ResourceTypeCOUNT];
 std::unique_ptr<DepthTransfer_Vk> _depthTransfer;
 VkFormat _depthTransferFormat = VK_FORMAT_UNDEFINED;
 
+thread_local bool _recording = false;
+
+struct ScopedRecording
+{
+    bool previous = _recording;
+    ScopedRecording() { _recording = true; }
+    ~ScopedRecording() { _recording = previous; }
+};
+
 VkImageAspectFlags AspectMask(VkFormat format)
 {
     switch (format)
@@ -209,6 +218,9 @@ bool PrepareShared(VkwDx12Image& shared, VkFormat format, uint32_t width, uint32
 // back, the upscaler's come without one and are read as they are.
 bool CopyToShared(VkCommandBuffer cmdBuffer, const VkFGResource& input, const CopyTarget& target, VkwDx12Image& shared)
 {
+    // HUDFix would take the shared texture the copy shader writes for a hudless candidate
+    ScopedRecording recording {};
+
     const bool transfer = target.method == CopyMethod::Transfer;
     const auto readLayout = transfer ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     const auto writeLayout = transfer ? VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL;
@@ -412,6 +424,8 @@ void VkwDx12Inputs::RecordPresentCopies(VkCommandBuffer cmdBuffer, uint32_t queu
         pending.reset();
     }
 }
+
+bool VkwDx12Inputs::Recording() { return _recording; }
 
 void VkwDx12Inputs::Shutdown()
 {

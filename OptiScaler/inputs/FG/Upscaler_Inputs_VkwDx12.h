@@ -10,5 +10,7 @@ class UpscalerInputsVkwDx12
 {
   public:
     static void UpscaleStart(VkCommandBuffer cmdBuffer, NVSDK_NGX_Parameter* parameters, IFeature_Vk* feature);
+    // Starts HUDFix's search for the frame's hudless, the upscaled image is its first candidate
+    static void UpscaleEnd(VkCommandBuffer cmdBuffer, const NVSDK_NGX_Resource_VK* output);
     static void Shutdown();
 };

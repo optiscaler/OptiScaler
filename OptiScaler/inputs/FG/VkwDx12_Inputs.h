@@ -18,5 +18,8 @@ class VkwDx12Inputs
     // Records the copies the present's frame still needs, the command buffer runs after the game's frame
     static void RecordPresentCopies(VkCommandBuffer cmdBuffer, uint32_t queueFamily);
 
+    // The thread records a copy, HUDFix leaves its dispatches alone
+    static bool Recording();
+
     static void Shutdown();
 };

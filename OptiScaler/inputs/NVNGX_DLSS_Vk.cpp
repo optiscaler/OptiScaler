@@ -1095,7 +1095,10 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_EvaluateFeature(VkCommandBuffer 
     auto upscaleResult = deviceContext->Evaluate(InCmdList, InParameters);
 
     if (upscaleResult)
+    {
         UpscalerInputsVk::UpscaleEnd(InCmdList, output);
+        UpscalerInputsVkwDx12::UpscaleEnd(InCmdList, output);
+    }
     else
         ImGui::InsertNotification({ ImGuiToastType::Error, 10000, "Upscaler failed to run!" });
 

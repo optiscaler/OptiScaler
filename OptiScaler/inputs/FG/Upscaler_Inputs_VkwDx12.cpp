@@ -7,6 +7,8 @@
 #include <Config.h>
 
 #include <framegen/IFGFeature_Dx12.h>
+#include <hooks/VulkanwDx12_Hooks.h>
+#include <hudfix/Hudfix_Vk.h>
 #include <with_dx12/vk_with_dx12_sc.h>
 
 // Tags the upscaler's input, copied to the frame's shared texture with the upscaler's command buffer. Upscalers read
@@ -106,6 +108,31 @@ void UpscalerInputsVkwDx12::UpscaleStart(VkCommandBuffer cmdBuffer, NVSDK_NGX_Pa
              feature->RenderHeight());
 
     LOG_DEBUG("(FG VkwDx12) inputs copied to slot {}, frame: {}", fg->GetIndex(), fg->FrameCount());
+}
+
+void UpscalerInputsVkwDx12::UpscaleEnd(VkCommandBuffer cmdBuffer, const NVSDK_NGX_Resource_VK* output)
+{
+    auto& state = State::Instance();
+
+    if (state.currentFG == nullptr || state.activeFgInput != FGInput::Upscaler ||
+        state.swapchainInteropApi != SwapchainInteropApi::VkwDx12)
+    {
+        return;
+    }
+
+    Hudfix_Vk::UpscaleEnd(cmdBuffer);
+
+    // NGX outputs are storage images
+    if (output != nullptr)
+    {
+        // Upscaling through DX12 continues the game's recording in a command buffer submitted after the upscale
+        if (auto virtualCmdBuffer = Vulkan_wDx12::GetVirtualCommandBuffer(cmdBuffer);
+            virtualCmdBuffer != VK_NULL_HANDLE)
+            cmdBuffer = virtualCmdBuffer;
+
+        auto& info = output->Resource.ImageViewInfo;
+        Hudfix_Vk::CheckImage(cmdBuffer, info.Image, info.Format, { info.Width, info.Height }, VK_IMAGE_LAYOUT_GENERAL);
+    }
 }
 
 void UpscalerInputsVkwDx12::Shutdown() { VkwDx12Inputs::Shutdown(); }

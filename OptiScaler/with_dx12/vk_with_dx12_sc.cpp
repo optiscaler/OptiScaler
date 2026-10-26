@@ -6,6 +6,7 @@
 
 #include <hooks/FG_Hooks.h>
 #include <hooks/DxgiFactory_Hooks.h>
+#include <hudfix/Hudfix_Vk.h>
 #include <hooks/Vulkan_Hooks.h>
 #include <proxies/DXGI_Proxy.h>
 #include <misc/HiddenWindow.h>
@@ -323,6 +324,7 @@ bool VkwDx12SC::CreateSwapchain(VkDevice device, VkPhysicalDevice physicalDevice
         }
 
         result = _current->Recreate(pCreateInfo, pAllocator);
+        SetInfo(_current->_swapchainFormat, _current->_extent);
 
         if (result == VK_SUCCESS)
             *pSwapchain = _current->_swapchain;
@@ -348,6 +350,7 @@ bool VkwDx12SC::CreateSwapchain(VkDevice device, VkPhysicalDevice physicalDevice
     _current = sc;
     *pSwapchain = sc->_swapchain;
     result = VK_SUCCESS;
+    SetInfo(sc->_swapchainFormat, sc->_extent);
 
     LOG_INFO("Created VkwDx12SC: swapchain {:X}, {}x{}, {} images, fg12 {:X}", (size_t) sc->_swapchain,
              sc->_extent.width, sc->_extent.height, sc->_swapchainImages.size(), (size_t) sc->_fgSwapChain);
@@ -375,6 +378,7 @@ bool VkwDx12SC::DestroySwapchain(VkDevice device, VkSwapchainKHR swapchain, cons
     if (swapchain != _current->_swapchain)
         return false;
 
+    SetInfo(VK_FORMAT_UNDEFINED, {});
     _current->Destroy(pAllocator);
     delete _current;
     _current = nullptr;
@@ -442,6 +446,24 @@ bool VkwDx12SC::InteropDevices(VkDevice& device, VkPhysicalDevice& physicalDevic
     dx12Device = _current->_dx12Device;
 
     return true;
+}
+
+bool VkwDx12SC::SwapchainInfo(VkFormat& format, VkExtent2D& extent)
+{
+    std::scoped_lock lock(_infoMutex);
+
+    format = _infoFormat;
+    extent = _infoExtent;
+
+    return format != VK_FORMAT_UNDEFINED;
+}
+
+void VkwDx12SC::SetInfo(VkFormat format, VkExtent2D extent)
+{
+    std::scoped_lock lock(_infoMutex);
+
+    _infoFormat = format;
+    _infoExtent = extent;
 }
 
 bool VkwDx12SC::CreateSharedImage(VkDevice device, VkPhysicalDevice physicalDevice, ID3D12Device* dx12Device,
@@ -852,6 +874,9 @@ VkResult VkwDx12SC::CreateRealSwapchain(const VkSwapchainCreateInfoKHR* pCreateI
     _functions.GetSwapchainImages(_device, swapchain, &count, nullptr);
     _swapchainImages.resize(count);
     _functions.GetSwapchainImages(_device, swapchain, &count, _swapchainImages.data());
+
+    // HUDFix tracks the images the game renders to
+    Hudfix_Vk::AddSwapchainImages(_swapchainImages.data(), count, pCreateInfo->imageFormat, pCreateInfo->imageExtent);
 
     _swapchain = swapchain;
     _swapchainFormat = pCreateInfo->imageFormat;

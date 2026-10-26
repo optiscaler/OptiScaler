@@ -18,4 +18,6 @@ class Hudfix_Vk
     static void CheckImage(VkCommandBuffer cmdBuffer, VkImage image, VkFormat format, VkExtent2D extent,
                            VkImageLayout layout);
     static void AddSwapchainImages(const VkImage* images, uint32_t count);
+    // The images of a swapchain no Vulkan FG output owns, VkwDx12SC's
+    static void AddSwapchainImages(const VkImage* images, uint32_t count, VkFormat format, VkExtent2D extent);
 };

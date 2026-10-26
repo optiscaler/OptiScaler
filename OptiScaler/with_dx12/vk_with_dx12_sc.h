@@ -59,6 +59,9 @@ class VkwDx12SC
     // The devices the FG inputs are shared between, false without an FG swapchain
     static bool InteropDevices(VkDevice& device, VkPhysicalDevice& physicalDevice, ID3D12Device*& dx12Device);
 
+    // The game's swapchain format and size, false without one. Doesn't wait for a present.
+    static bool SwapchainInfo(VkFormat& format, VkExtent2D& extent);
+
     // Formats the FG inputs can be shared in
     static bool CanShare(VkFormat format);
 
@@ -86,6 +89,12 @@ class VkwDx12SC
 
     inline static std::mutex _mutex;
     inline static VkwDx12SC* _current = nullptr;
+
+    // _current's format and size, HUDFix reads them while recording, presents hold _mutex
+    inline static std::mutex _infoMutex;
+    inline static VkFormat _infoFormat = VK_FORMAT_UNDEFINED;
+    inline static VkExtent2D _infoExtent {};
+    static void SetInfo(VkFormat format, VkExtent2D extent);
 
     Functions _functions;
     VkDevice _device = VK_NULL_HANDLE;

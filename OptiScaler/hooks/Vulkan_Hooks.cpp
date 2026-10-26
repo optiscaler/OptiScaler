@@ -697,6 +697,7 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
             physicalDeviceInstance != VK_NULL_HANDLE ? physicalDeviceInstance : State::Instance().VulkanInstance;
         VkwDx12SC::DeviceCreated(*pDevice, &localCreateInfo);
         HookDevice(*pDevice);
+        Hudfix_Vk::HookDevice(*pDevice);
     }
 
     if (result == VK_SUCCESS && Config::Instance()->OverlayMenu.value_or_default())
