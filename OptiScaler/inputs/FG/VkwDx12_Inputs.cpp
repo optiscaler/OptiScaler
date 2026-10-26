@@ -427,6 +427,17 @@ void VkwDx12Inputs::RecordPresentCopies(VkCommandBuffer cmdBuffer, uint32_t queu
 
 bool VkwDx12Inputs::Recording() { return _recording; }
 
+void VkwDx12Inputs::ClearPending()
+{
+    std::scoped_lock lock(inputsMutex);
+
+    for (auto& slot : _pending)
+    {
+        for (auto& pending : slot)
+            pending.reset();
+    }
+}
+
 void VkwDx12Inputs::Shutdown()
 {
     std::scoped_lock lock(inputsMutex);

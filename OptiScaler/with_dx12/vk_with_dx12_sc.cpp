@@ -351,6 +351,7 @@ bool VkwDx12SC::CreateSwapchain(VkDevice device, VkPhysicalDevice physicalDevice
     *pSwapchain = sc->_swapchain;
     result = VK_SUCCESS;
     SetInfo(sc->_swapchainFormat, sc->_extent);
+    _vulkanGame = true;
 
     LOG_INFO("Created VkwDx12SC: swapchain {:X}, {}x{}, {} images, fg12 {:X}", (size_t) sc->_swapchain,
              sc->_extent.width, sc->_extent.height, sc->_swapchainImages.size(), (size_t) sc->_fgSwapChain);
@@ -366,12 +367,17 @@ bool VkwDx12SC::DestroySwapchain(VkDevice device, VkSwapchainKHR swapchain, cons
         return false;
 
     // The game destroys the old swapchain after creating the new one
-    if (auto it = std::find(_current->_retired.begin(), _current->_retired.end(), swapchain);
-        it != _current->_retired.end())
+    auto& retired = _current->_retired;
+
+    if (auto it = std::ranges::find(retired, swapchain, &Retired::swapchain); it != retired.end())
     {
         _current->WaitForIdle();
         _current->_functions.DestroySwapchain(device, swapchain, pAllocator);
-        _current->_retired.erase(it);
+
+        for (auto semaphore : it->presentSemaphores)
+            vkDestroySemaphore(device, semaphore, nullptr);
+
+        retired.erase(it);
         return true;
     }
 
@@ -385,6 +391,8 @@ bool VkwDx12SC::DestroySwapchain(VkDevice device, VkSwapchainKHR swapchain, cons
 
     return true;
 }
+
+bool VkwDx12SC::VulkanGame() { return _vulkanGame; }
 
 bool VkwDx12SC::OwnsSwapchain(VkSwapchainKHR swapchain)
 {
@@ -987,7 +995,18 @@ VkResult VkwDx12SC::Recreate(const VkSwapchainCreateInfoKHR* pCreateInfo, const 
     }
 
     WaitForIdle();
+
+    // The hidden window's presents may still wait for their semaphores, they go with the old swapchain
+    for (auto& presentImage : _images)
+    {
+        if (presentImage.presentSemaphore != VK_NULL_HANDLE)
+            _swapchainSemaphores.push_back(std::exchange(presentImage.presentSemaphore, VK_NULL_HANDLE));
+    }
+
     DestroyPresentImages();
+
+    // Inputs waiting for the present can be gone with the game's resized images
+    VkwDx12Inputs::ClearPending();
 
     auto oldSwapchain = _swapchain;
     auto result = CreateRealSwapchain(pCreateInfo, pAllocator, oldSwapchain);
@@ -995,7 +1014,7 @@ VkResult VkwDx12SC::Recreate(const VkSwapchainCreateInfoKHR* pCreateInfo, const 
     if (result != VK_SUCCESS)
         return result;
 
-    _retired.push_back(oldSwapchain);
+    _retired.push_back({ oldSwapchain, std::exchange(_swapchainSemaphores, {}) });
     _sharedFormat = sharedFormat;
     _dxgiFormat = dxgiFormat;
 
@@ -1160,12 +1179,20 @@ void VkwDx12SC::WaitForIdle()
 void VkwDx12SC::Destroy(const VkAllocationCallbacks* pAllocator)
 {
     WaitForIdle();
-    DestroyPresentImages();
 
+    // The semaphores of the presents after their swapchain
     if (_swapchain != VK_NULL_HANDLE)
         _functions.DestroySwapchain(_device, _swapchain, pAllocator);
 
     _swapchain = VK_NULL_HANDLE;
+
+    DestroyPresentImages();
+
+    for (auto semaphore : _swapchainSemaphores)
+        vkDestroySemaphore(_device, semaphore, nullptr);
+
+    _swapchainSemaphores.clear();
+    VkwDx12Inputs::ClearPending();
 
     if (_hiddenSurface != VK_NULL_HANDLE)
         vkDestroySurfaceKHR(_instance, _hiddenSurface, nullptr);
@@ -1288,6 +1315,19 @@ VkResult VkwDx12SC::Present(VkQueue queue, const VkPresentInfoKHR* pPresentInfo)
     // D3D12 takes the frame once Vulkan copied it
     if (FAILED(_dx12Queue->Wait(_vkDoneFence, _vkDoneValue)) || !CopyToFGBackBuffer(presentImage))
         return VK_ERROR_DEVICE_LOST;
+
+    // With swapchain maintenance1 games switch V-Sync with the present's mode, it stays for the next presents
+    for (auto it = (const VkBaseInStructure*) pPresentInfo->pNext; it != nullptr; it = it->pNext)
+    {
+        if (it->sType != VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_EXT)
+            continue;
+
+        if (auto modeInfo = (const VkSwapchainPresentModeInfoEXT*) it;
+            modeInfo->swapchainCount == 1 && modeInfo->pPresentModes != nullptr)
+        {
+            _gamePresentMode = modeInfo->pPresentModes[0];
+        }
+    }
 
     auto result = _fgSwapChain->Present(SyncInterval(), PresentFlags());
 

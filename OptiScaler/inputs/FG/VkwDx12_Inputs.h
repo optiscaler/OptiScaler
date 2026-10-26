@@ -21,5 +21,8 @@ class VkwDx12Inputs
     // The thread records a copy, HUDFix leaves its dispatches alone
     static bool Recording();
 
+    // Forgets the inputs waiting for the present, the game's swapchain changed
+    static void ClearPending();
+
     static void Shutdown();
 };

@@ -6,6 +6,7 @@
 #include <dxgi1_6.h>
 #include <vulkan/vulkan.h>
 
+#include <atomic>
 #include <mutex>
 #include <vector>
 
@@ -62,6 +63,10 @@ class VkwDx12SC
     // The game's swapchain format and size, false without one. Doesn't wait for a present.
     static bool SwapchainInfo(VkFormat& format, VkExtent2D& extent);
 
+    // The game is a Vulkan one presenting through DX12, its FG inputs stay Vulkan resources while its swapchain is
+    // recreated
+    static bool VulkanGame();
+
     // Formats the FG inputs can be shared in
     static bool CanShare(VkFormat format);
 
@@ -89,6 +94,7 @@ class VkwDx12SC
 
     inline static std::mutex _mutex;
     inline static VkwDx12SC* _current = nullptr;
+    inline static std::atomic<bool> _vulkanGame = false;
 
     // _current's format and size, HUDFix reads them while recording, presents hold _mutex
     inline static std::mutex _infoMutex;
@@ -104,9 +110,17 @@ class VkwDx12SC
     HWND _hiddenHwnd = nullptr;
     VkSurfaceKHR _hiddenSurface = VK_NULL_HANDLE;
 
+    // A swapchain the game recreated, the presents to it may still wait for their semaphores until it's destroyed
+    struct Retired
+    {
+        VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+        std::vector<VkSemaphore> presentSemaphores;
+    };
+
     // The game's handle, a real swapchain on the hidden window
     VkSwapchainKHR _swapchain = VK_NULL_HANDLE;
-    std::vector<VkSwapchainKHR> _retired;
+    std::vector<Retired> _retired;
+    std::vector<VkSemaphore> _swapchainSemaphores; // Of presents to _swapchain, beyond its images' current ones
     std::vector<VkImage> _swapchainImages;
     VkFormat _swapchainFormat = VK_FORMAT_UNDEFINED;
     VkFormat _sharedFormat = VK_FORMAT_UNDEFINED;
