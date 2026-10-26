@@ -1784,6 +1784,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         spdlog::info("");
         CheckQuirks(possibleNvidia);
 
+        VulkanHooks::PrepareAmdImageReadRtNt();
+
         // Check for working mode and attach hooks
         spdlog::info("");
         CheckWorkingMode();

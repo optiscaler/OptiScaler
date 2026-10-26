@@ -5,6 +5,7 @@
 #include <Util.h>
 #include <Config.h>
 #include <SysUtils.h>
+#include <fstream>
 
 #include <menu/menu_overlay_vk.h>
 #include <menu/menu_common.h>
@@ -239,6 +240,52 @@ static bool EnableRadvCooperativeMatrix2()
 
     const auto setUnixEnv = reinterpret_cast<PFN_wine_set_unix_env>(getProcAddress(ntdll, "__wine_set_unix_env"));
     return setUnixEnv && setUnixEnv("radv_cooperative_matrix2_nv", "true") >= 0;
+}
+
+// AMD reads these settings during physical device initialization, before vkCreateDevice.
+// The opt in profile affects image reads in all compute shaders in the process.
+bool VulkanHooks::PrepareAmdImageReadRtNt()
+{
+    if (State::Instance().isRunningOnLinux || !Config::Instance()->VulkanAmdImageReadRtNt.value_or_default())
+        return false;
+
+    static const bool prepared = []
+    {
+        try
+        {
+            const auto directory = std::filesystem::temp_directory_path() /
+                                   (L"OptiScaler-amd-rtnt-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
+                                    std::to_wstring(GetTickCount64()));
+            std::filesystem::create_directories(directory);
+
+            std::ofstream config(directory / L"amdVulkanSettings.cfg", std::ios::binary);
+            config << "OverrideShaderParams,1\n"
+                      "OverrideShaderStage,7\n"            // Compute
+                      "OverrideTemporalHintImageRead,6\n"; // TH_RT_NT
+            config.close();
+            if (!config)
+            {
+                LOG_WARN("AMD image-read RT_NT setup failed: settings file could not be written");
+                return false;
+            }
+
+            if (_wputenv_s(L"AMD_CONFIG_DIR", directory.c_str()) != 0)
+            {
+                LOG_WARN("AMD image-read RT_NT setup failed: environment could not be updated");
+                return false;
+            }
+
+            LOG_INFO("Prepared AMD compute image-read RT_NT profile at {} (requires early Vulkan initialization)",
+                     wstring_to_string(directory.wstring()));
+            return true;
+        }
+        catch (const std::exception& error)
+        {
+            LOG_WARN("AMD image-read RT_NT setup failed: {}", error.what());
+            return false;
+        }
+    }();
+    return prepared;
 }
 
 static void HookDevice(VkDevice InDevice)
@@ -496,6 +543,8 @@ static VkResult hkvkCreateInstance(const VkInstanceCreateInfo* pCreateInfo, cons
                                    VkInstance* pInstance)
 {
     LOG_FUNC();
+
+    VulkanHooks::PrepareAmdImageReadRtNt();
 
     VkInstanceCreateInfo localCreateInfo {};
     memcpy(&localCreateInfo, pCreateInfo, sizeof(VkInstanceCreateInfo));

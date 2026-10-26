@@ -654,6 +654,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             PreferDedicatedGpu.set_from_config(readBool("Hotfix", "PreferDedicatedGpu"));
             PreferFirstDedicatedGpu.set_from_config(readBool("Hotfix", "PreferFirstDedicatedGpu"));
             SkipFirstFrames.set_from_config(readInt("Hotfix", "SkipFirstFrames"));
+            VulkanAmdImageReadRtNt.set_from_config(readBool("Hotfix", "VulkanAmdImageReadRtNt"));
             UsePrecompiledShaders.set_from_config(readBool("Hotfix", "UsePrecompiledShaders"));
             ColorResourceBarrier.set_from_config(readInt("Hotfix", "ColorResourceBarrier"));
             MVResourceBarrier.set_from_config(readInt("Hotfix", "MotionVectorResourceBarrier"));
@@ -1821,6 +1822,8 @@ bool Config::SaveIni()
                      GetBoolValue(Instance()->ExtendedStateRestore.value_for_config()).c_str());
         ini.SetValue("Hotfix", "SkipFirstFrames", GetIntValue(Instance()->SkipFirstFrames.value_for_config()).c_str());
 
+        ini.SetValue("Hotfix", "VulkanAmdImageReadRtNt",
+                     GetBoolValue(Instance()->VulkanAmdImageReadRtNt.value_for_config()).c_str());
         ini.SetValue("Hotfix", "UsePrecompiledShaders",
                      GetBoolValue(Instance()->UsePrecompiledShaders.value_for_config()).c_str());
         ini.SetValue("Hotfix", "PreferDedicatedGpu",

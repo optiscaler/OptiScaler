@@ -9,6 +9,8 @@ class VulkanHooks
     static PFN_vkCreateSemaphore o_vkCreateSemaphore;
     static PFN_vkAntiLagUpdateAMD o_vkAntiLagUpdateAMD;
 
+    static bool PrepareAmdImageReadRtNt();
+
     // The device's vkSignalSemaphore, or vkSignalSemaphoreKHR on devices with only VK_KHR_timeline_semaphore.
     // VK_ERROR_FEATURE_NOT_PRESENT when the device has neither.
     static VkResult SignalSemaphore(VkDevice device, const VkSemaphoreSignalInfo* pSignalInfo);
