@@ -2068,20 +2068,6 @@ void MenuCommon::FGOutputPresent() { fgOutputPresentRate.Present(Util::Milliseco
 
 void MenuCommon::FGOutputPresents(bool presents) { fgOutputPresentRate.SetEnabled(presents); }
 
-void MenuCommon::FGOutputFramesPresented(uint32_t frames)
-{
-    static double lastMs = 0.0;
-    const auto nowMs = Util::MillisecondsNow();
-
-    if (lastMs > 0.0 && nowMs - lastMs < 250.0)
-    {
-        for (uint32_t i = 1; i <= frames; i++)
-            fgOutputPresentRate.Present(lastMs + (nowMs - lastMs) * i / frames);
-    }
-
-    lastMs = nowMs;
-}
-
 struct VersionCheckStatus
 {
     bool completed = false;
