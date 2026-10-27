@@ -12,6 +12,7 @@
 #include <misc/HiddenWindow.h>
 
 #include <Config.h>
+#include <menu/menu_common.h>
 
 #include <vulkan/vulkan_win32.h>
 
@@ -1330,6 +1331,9 @@ VkResult VkwDx12SC::Present(VkQueue queue, const VkPresentInfoKHR* pPresentInfo)
     }
 
     auto result = _fgSwapChain->Present(SyncInterval(), PresentFlags());
+
+    if (auto fg = State::Instance().currentFG; SUCCEEDED(result) && fg != nullptr && fg->IsActive() && !fg->IsPaused())
+        MenuCommon::FGOutputFramesPresented(fg->GetInterpolatedFrameCount() + 1);
 
     // Covers the FG's copies of the frame's inputs
     if (SUCCEEDED(_dx12Queue->Signal(_dxDoneFence, ++_dxDoneValue)))

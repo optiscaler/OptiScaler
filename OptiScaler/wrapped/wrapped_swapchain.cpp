@@ -10,7 +10,6 @@
 #include <with_dx12/dx11_with_dx12_sync.h>
 
 #include <menu/menu_overlay_dx.h>
-#include <menu/menu_common.h>
 
 #include <misc/FrameLimit.h>
 #include <misc/DeferredRelease.h>
@@ -295,9 +294,6 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
 
     auto willPresent = (Flags & DXGI_PRESENT_TEST) == 0;
 
-    // XeFG presents a Vulkan game's frames, real and generated, on this swapchain
-    const bool vkwDx12 = State::Instance().swapchainInteropApi == SwapchainInteropApi::VkwDx12;
-
     if (willPresent)
     {
         double ftDelta = 0.0;
@@ -350,9 +346,7 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         if (Util::CheckForRealObject(__FUNCTION__, cq, (IUnknown**) &realQueue))
             cq = realQueue;
 
-        // A Vulkan game's frames only reach this swapchain through VkwDx12SC, its swapchain stays Vulkan
-        if (!vkwDx12)
-            State::Instance().swapchainApi = DX12;
+        State::Instance().swapchainApi = DX12;
 
         if (State::Instance().currentCommandQueue == nullptr)
             State::Instance().currentCommandQueue = cq;
@@ -372,17 +366,12 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
     }
 
     auto fg = State::Instance().currentFG;
+    if (willPresent && fg != nullptr)
+        ReflexHooks::update(fg->IsActive(), false);
+    else
+        ReflexHooks::update(false, false);
 
-    // The Vulkan present hook updates them for VkwDx12SC's frames, on the game's thread with its low latency calls
-    if (!vkwDx12)
-    {
-        if (willPresent && fg != nullptr)
-            ReflexHooks::update(fg->IsActive(), false);
-        else
-            ReflexHooks::update(false, false);
-
-        InputCommon::update();
-    }
+    InputCommon::update();
 
     // Upscaler GPU time computation
     if (willPresent && (fg == nullptr || !fg->IsActive() || fg->IsPaused()))
@@ -526,10 +515,6 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         InputCommon::fg_output_present(fgPresentQueue, true, fgFrameMultiplier);
         fgPresentQueue->Release();
     }
-
-    // Outside the Vulkan present hook, which says whether these are FG output presents (FGOutputPresents)
-    if (willPresent && vkwDx12 && SUCCEEDED(presentResult))
-        MenuCommon::FGOutputPresent();
 
     if (presentResult == S_OK)
     {
