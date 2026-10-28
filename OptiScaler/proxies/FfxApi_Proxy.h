@@ -109,6 +109,36 @@ class FfxApiProxy
         return it != customContexts.end() ? it->second : nullptr;
     }
 
+    // Custom upscaler dlls can have the names of the SDK dlls, so looking one up by name can find them instead
+    static bool IsCustomModule(HMODULE module)
+    {
+        if (module == nullptr)
+            return false;
+
+        std::scoped_lock lock(customMutex);
+        auto matches = [module](const auto& custom) { return custom.second.module.dll == module; };
+        return std::ranges::any_of(custom_dx12, matches) || std::ranges::any_of(custom_vk, matches);
+    }
+
+    // Util::LoadProxyLibrary that never returns a custom upscaler dll, those can't be hooked for inputs
+    static void LoadSdkLibrary(const std::wstring& name, const std::wstring& optiPath, const std::wstring& overridePath,
+                               HMODULE* memoryModule, HMODULE* loadedModule)
+    {
+        Util::LoadProxyLibrary(name, optiPath, overridePath, memoryModule, loadedModule);
+
+        if (IsCustomModule(*memoryModule))
+        {
+            LOG_DEBUG("Ignoring {} in memory, it's a custom upscaler", wstring_to_string(name));
+            *memoryModule = nullptr;
+        }
+
+        if (IsCustomModule(*loadedModule))
+        {
+            LOG_DEBUG("Ignoring loaded {}, it's a custom upscaler", wstring_to_string(name));
+            *loadedModule = nullptr;
+        }
+    }
+
     inline static bool _skipDestroyCalls = false;
 
     static bool IsLoader(const std::wstring& filePath)
@@ -256,7 +286,7 @@ class FfxApiProxy
         spdlog::info("");
 
         // This is module loaded by game, need to hook it to use inputs
-        if (module != nullptr && main_dx12_hooked.dll == nullptr)
+        if (module != nullptr && main_dx12_hooked.dll == nullptr && !IsCustomModule(module))
         {
             main_dx12_hooked.dll = module;
         }
@@ -276,12 +306,12 @@ class FfxApiProxy
 
                 if (main_dx12_hooked.dll == nullptr)
                 {
-                    Util::LoadProxyLibrary(dllNames[i], optiPath, overridePath, &main_dx12_hooked.dll, &main_dx12.dll);
+                    LoadSdkLibrary(dllNames[i], optiPath, overridePath, &main_dx12_hooked.dll, &main_dx12.dll);
                 }
                 else
                 {
                     HMODULE memModule = nullptr;
-                    Util::LoadProxyLibrary(dllNames[i], optiPath, overridePath, &memModule, &main_dx12.dll);
+                    LoadSdkLibrary(dllNames[i], optiPath, overridePath, &memModule, &main_dx12.dll);
                 }
 
                 if (main_dx12.dll != nullptr)
@@ -414,7 +444,7 @@ class FfxApiProxy
         spdlog::info("");
 
         // This is module loaded by game, need to hook it to use inputs
-        if (module != nullptr && upscaling_dx12_hooked.dll == nullptr)
+        if (module != nullptr && upscaling_dx12_hooked.dll == nullptr && !IsCustomModule(module))
         {
             upscaling_dx12_hooked.dll = module;
         }
@@ -434,13 +464,13 @@ class FfxApiProxy
 
                 if (upscaling_dx12_hooked.dll == nullptr)
                 {
-                    Util::LoadProxyLibrary(dllNames[i], optiPath, overridePath, &upscaling_dx12_hooked.dll,
-                                           &upscaling_dx12.dll);
+                    LoadSdkLibrary(dllNames[i], optiPath, overridePath, &upscaling_dx12_hooked.dll,
+                                   &upscaling_dx12.dll);
                 }
                 else
                 {
                     HMODULE memModule = nullptr;
-                    Util::LoadProxyLibrary(dllNames[i], optiPath, overridePath, &memModule, &upscaling_dx12.dll);
+                    LoadSdkLibrary(dllNames[i], optiPath, overridePath, &memModule, &upscaling_dx12.dll);
                 }
 
                 if (upscaling_dx12.dll != nullptr)
@@ -559,7 +589,7 @@ class FfxApiProxy
         spdlog::info("");
 
         // This is module loaded by game, need to hook it to use inputs
-        if (module != nullptr && fg_dx12_hooked.dll == nullptr)
+        if (module != nullptr && fg_dx12_hooked.dll == nullptr && !IsCustomModule(module))
         {
             fg_dx12_hooked.dll = module;
         }
@@ -579,12 +609,12 @@ class FfxApiProxy
 
                 if (fg_dx12_hooked.dll == nullptr)
                 {
-                    Util::LoadProxyLibrary(dllNames[i], optiPath, overridePath, &fg_dx12_hooked.dll, &fg_dx12.dll);
+                    LoadSdkLibrary(dllNames[i], optiPath, overridePath, &fg_dx12_hooked.dll, &fg_dx12.dll);
                 }
                 else
                 {
                     HMODULE memModule = nullptr;
-                    Util::LoadProxyLibrary(dllNames[i], optiPath, overridePath, &memModule, &fg_dx12.dll);
+                    LoadSdkLibrary(dllNames[i], optiPath, overridePath, &memModule, &fg_dx12.dll);
                 }
 
                 if (fg_dx12.dll != nullptr)
@@ -697,7 +727,7 @@ class FfxApiProxy
         spdlog::info("");
 
         // This is module loaded by game, need to hook it to use inputs
-        if (module != nullptr && denoiser_dx12_hooked.dll == nullptr)
+        if (module != nullptr && denoiser_dx12_hooked.dll == nullptr && !IsCustomModule(module))
         {
             denoiser_dx12_hooked.dll = module;
         }
@@ -717,13 +747,12 @@ class FfxApiProxy
 
                 if (denoiser_dx12_hooked.dll == nullptr)
                 {
-                    Util::LoadProxyLibrary(dllNames[i], optiPath, overridePath, &denoiser_dx12_hooked.dll,
-                                           &denoiser_dx12.dll);
+                    LoadSdkLibrary(dllNames[i], optiPath, overridePath, &denoiser_dx12_hooked.dll, &denoiser_dx12.dll);
                 }
                 else
                 {
                     HMODULE memModule = nullptr;
-                    Util::LoadProxyLibrary(dllNames[i], optiPath, overridePath, &memModule, &denoiser_dx12.dll);
+                    LoadSdkLibrary(dllNames[i], optiPath, overridePath, &memModule, &denoiser_dx12.dll);
                 }
 
                 if (denoiser_dx12.dll != nullptr)
@@ -839,7 +868,7 @@ class FfxApiProxy
         spdlog::info("");
 
         // This is module loaded by game, need to hook it to use inputs
-        if (module != nullptr && radiance_dx12_hooked.dll == nullptr)
+        if (module != nullptr && radiance_dx12_hooked.dll == nullptr && !IsCustomModule(module))
         {
             radiance_dx12.dll = module;
         }
@@ -859,13 +888,12 @@ class FfxApiProxy
 
                 if (radiance_dx12_hooked.dll == nullptr)
                 {
-                    Util::LoadProxyLibrary(dllNames[i], optiPath, overridePath, &radiance_dx12_hooked.dll,
-                                           &radiance_dx12.dll);
+                    LoadSdkLibrary(dllNames[i], optiPath, overridePath, &radiance_dx12_hooked.dll, &radiance_dx12.dll);
                 }
                 else
                 {
                     HMODULE memModule = nullptr;
-                    Util::LoadProxyLibrary(dllNames[i], optiPath, overridePath, &memModule, &radiance_dx12.dll);
+                    LoadSdkLibrary(dllNames[i], optiPath, overridePath, &memModule, &radiance_dx12.dll);
                 }
 
                 if (radiance_dx12.dll != nullptr)
@@ -2187,7 +2215,7 @@ class FfxApiProxy
         spdlog::info("");
 
         // This is module loaded by game, need to hook it to use inputs
-        if (gameModule != nullptr && hooked.dll == nullptr)
+        if (gameModule != nullptr && hooked.dll == nullptr && !IsCustomModule(gameModule))
             hooked.dll = gameModule;
 
         // Try loading Opti's dlls first
@@ -2201,12 +2229,12 @@ class FfxApiProxy
 
                 if (hooked.dll == nullptr)
                 {
-                    Util::LoadProxyLibrary(dllName, optiPath, overridePath, &hooked.dll, &module.dll);
+                    LoadSdkLibrary(dllName, optiPath, overridePath, &hooked.dll, &module.dll);
                 }
                 else
                 {
                     HMODULE memModule = nullptr;
-                    Util::LoadProxyLibrary(dllName, optiPath, overridePath, &memModule, &module.dll);
+                    LoadSdkLibrary(dllName, optiPath, overridePath, &memModule, &module.dll);
                 }
 
                 if (module.dll != nullptr)
@@ -2347,8 +2375,8 @@ class FfxApiProxy
         LOG_DEBUG("Trying to load amd_fidelityfx_vk.dll for the missing FFX SDK 2.x dlls");
 
         HMODULE memModule = nullptr;
-        Util::LoadProxyLibrary(L"amd_fidelityfx_vk.dll", Config::Instance()->MainDllPath.value(),
-                               Config::Instance()->FfxVkPath.value_or(L""), &memModule, &legacy_vk.dll);
+        LoadSdkLibrary(L"amd_fidelityfx_vk.dll", Config::Instance()->MainDllPath.value(),
+                       Config::Instance()->FfxVkPath.value_or(L""), &memModule, &legacy_vk.dll);
 
         if (legacy_vk.dll == nullptr)
             return;
