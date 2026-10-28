@@ -1614,6 +1614,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         spdlog::info("LogLevel: {}", Config::Instance()->LogLevel.value_or_default());
 
         CustomUpscalers::ResolveDx12Upscaler();
+        CustomUpscalers::ResolveVulkanUpscaler();
 
         spdlog::info("");
         if (Util::GetRealWindowsVersion(winVer))

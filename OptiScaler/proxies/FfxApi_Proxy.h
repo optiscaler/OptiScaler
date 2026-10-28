@@ -55,7 +55,7 @@ enum class FFXStructType
     Unknown,
 };
 
-// Upscaler dll from custom/<name>/ffx, only used by Opti and never hooked for inputs
+// Upscaler dll from custom/<name>/ffx or ffx_vk, only used by Opti and never hooked for inputs
 struct CustomFfxModule
 {
     std::string name;
@@ -95,6 +95,7 @@ class FfxApiProxy
 
     // std::map so the pointers handed out stay valid
     inline static std::map<std::string, CustomFfxModule> custom_dx12;
+    inline static std::map<std::string, CustomFfxModule> custom_vk;
     inline static std::recursive_mutex customMutex;
     inline static ankerl::unordered_dense::map<ffxContext, FfxModule*> customContexts;
 
@@ -974,43 +975,23 @@ class FfxApiProxy
     // Loading is only tried once per name, nullptr if it failed
     static CustomFfxModule* LoadCustomUpscalerDx12(const std::string& name)
     {
-        std::scoped_lock lock(customMutex);
+        return LoadCustomUpscaler(custom_dx12, name, CustomUpscalers::FfxDllPath(name));
+    }
 
-        auto [it, inserted] = custom_dx12.try_emplace(name);
-        auto& module = it->second.module;
-
-        if (inserted)
-        {
-            it->second.name = name;
-            auto path = CustomUpscalers::FfxDllPath(name);
-            module.dll = CustomUpscalers::LoadDll(name, path);
-
-            if (module.dll == nullptr)
-                return nullptr;
-
-            module.filePath = path.wstring();
-            FSR4Presets::Hook(module.dll);
-            FSR4Models::Hook(module.dll);
-
-            module.Configure = (PfnFfxConfigure) KernelBaseProxy::GetProcAddress_()(module.dll, "ffxConfigure");
-            module.CreateContext =
-                (PfnFfxCreateContext) KernelBaseProxy::GetProcAddress_()(module.dll, "ffxCreateContext");
-            module.DestroyContext =
-                (PfnFfxDestroyContext) KernelBaseProxy::GetProcAddress_()(module.dll, "ffxDestroyContext");
-            module.Dispatch = (PfnFfxDispatch) KernelBaseProxy::GetProcAddress_()(module.dll, "ffxDispatch");
-            module.Query = (PfnFfxQuery) KernelBaseProxy::GetProcAddress_()(module.dll, "ffxQuery");
-        }
-
-        return module.CreateContext != nullptr && module.Query != nullptr ? &it->second : nullptr;
+    static CustomFfxModule* LoadCustomUpscalerVk(const std::string& name)
+    {
+        return LoadCustomUpscaler(custom_vk, name, CustomUpscalers::FfxVkDllPath(name));
     }
 
     // Already loaded custom upscaler, doesn't try loading it
     static CustomFfxModule* FindCustomUpscalerDx12(const std::string& name)
     {
-        std::scoped_lock lock(customMutex);
+        return FindCustomUpscaler(custom_dx12, name);
+    }
 
-        auto it = custom_dx12.find(name);
-        return it != custom_dx12.end() && it->second.module.CreateContext != nullptr ? &it->second : nullptr;
+    static CustomFfxModule* FindCustomUpscalerVk(const std::string& name)
+    {
+        return FindCustomUpscaler(custom_vk, name);
     }
 
     // Context made by the given module, later calls with it go to the same module
@@ -2337,6 +2318,40 @@ class FfxApiProxy
         HMODULE pinned = nullptr;
         GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
                            (LPCWSTR) legacy_vk.dll, &pinned);
+    }
+
+    static CustomFfxModule* LoadCustomUpscaler(std::map<std::string, CustomFfxModule>& customs, const std::string& name,
+                                               const std::filesystem::path& path)
+    {
+        std::scoped_lock lock(customMutex);
+
+        auto [it, inserted] = customs.try_emplace(name);
+        auto& module = it->second.module;
+
+        if (inserted)
+        {
+            it->second.name = name;
+            module.dll = CustomUpscalers::LoadDll(name, path);
+
+            if (module.dll == nullptr)
+                return nullptr;
+
+            module.filePath = path.wstring();
+            module.vkBackendV2 = !CustomUpscalers::IsLegacyFfxVkDll(path);
+            FSR4Presets::Hook(module.dll);
+            FSR4Models::Hook(module.dll);
+            GetMethods(module);
+        }
+
+        return module.CreateContext != nullptr && module.Query != nullptr ? &it->second : nullptr;
+    }
+
+    static CustomFfxModule* FindCustomUpscaler(std::map<std::string, CustomFfxModule>& customs, const std::string& name)
+    {
+        std::scoped_lock lock(customMutex);
+
+        auto it = customs.find(name);
+        return it != customs.end() && it->second.module.CreateContext != nullptr ? &it->second : nullptr;
     }
 
     static void GetMethods(FfxModule& module)

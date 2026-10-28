@@ -532,6 +532,8 @@ class Config
     CustomOptional<int> FfxUpscalerIndex { 0 };
     // Folder name in custom used by FFX or DLSS, stored in Dx12Upscaler, empty for the regular upscalers
     CustomOptional<std::string, NoDefault> CustomUpscaler;
+    // Folder name in custom used by Vulkan FFX, stored in VulkanUpscaler, empty for the regular upscalers
+    CustomOptional<std::string, NoDefault> CustomUpscalerVk;
 
     // UpscalerIndex of [FSR] for the regular FFX upscaler, of [<name>] for a custom one
     CustomOptional<int>& FfxUpscalerIndexFor(const std::string& custom)

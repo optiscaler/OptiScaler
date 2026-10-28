@@ -67,8 +67,14 @@ bool Config::Reload(std::filesystem::path iniPath)
                 CustomUpscaler.set_from_config(std::string(ini.GetValue("Upscalers", "Dx12Upscaler")));
             else
                 Dx12Upscaler.set_from_config(dx12Upscaler);
-            VulkanUpscaler.set_from_config(
-                readString("Upscalers", "VulkanUpscaler", true).transform(CodeToUpscalerFfx));
+
+            // Same for Vulkan, checked by CustomUpscalers::ResolveVulkanUpscaler
+            auto vulkanUpscaler = readString("Upscalers", "VulkanUpscaler", true).transform(CodeToUpscalerFfx);
+
+            if (vulkanUpscaler == Upscaler::Reset)
+                CustomUpscalerVk.set_from_config(std::string(ini.GetValue("Upscalers", "VulkanUpscaler")));
+            else
+                VulkanUpscaler.set_from_config(vulkanUpscaler);
         }
 
         // Frame Generation
@@ -1305,7 +1311,11 @@ bool Config::SaveIni()
             ini.SetValue("Upscalers", "Dx12Upscaler", custom.c_str());
         else
             SaveUpscaler("Dx12Upscaler", Instance()->Dx12Upscaler);
-        SaveUpscaler("VulkanUpscaler", Instance()->VulkanUpscaler);
+        if (auto custom = Instance()->CustomUpscalerVk.value_or("");
+            !custom.empty() && Instance()->VulkanUpscaler.value_for_config() == Upscaler::FFX)
+            ini.SetValue("Upscalers", "VulkanUpscaler", custom.c_str());
+        else
+            SaveUpscaler("VulkanUpscaler", Instance()->VulkanUpscaler);
     }
 
     // Frame Generation

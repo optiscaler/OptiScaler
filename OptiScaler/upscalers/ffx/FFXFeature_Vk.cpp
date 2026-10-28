@@ -126,10 +126,27 @@ static inline FfxApiResourceDescription ffxApiGetImageResourceDescriptionVKLocal
     return resourceDescription;
 }
 
-FFXFeatureVk::FFXFeatureVk(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters)
+FFXFeatureVk::FFXFeatureVk(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters,
+                           const std::string& customUpscaler)
     : FFXFeature(InHandleId, InParameters), IFeature_Vk(InHandleId, InParameters), IFeature(InHandleId, InParameters)
 {
+    // Regular dlls go first, so their name lookups don't find the custom dll
     FfxApiProxy::InitFfxVk();
+
+    if (!customUpscaler.empty())
+    {
+        _customUpscaler = FfxApiProxy::LoadCustomUpscalerVk(customUpscaler);
+        _moduleLoaded = _customUpscaler != nullptr;
+
+        if (_moduleLoaded)
+            LOG_INFO("Custom FFX Vulkan upscaler {} methods loaded!", customUpscaler);
+        else
+            ImGui::InsertNotification(
+                { ImGuiToastType::Error, 10000, "Can't load custom upscaler %s", customUpscaler.c_str() });
+
+        return;
+    }
+
     _moduleLoaded = FfxApiProxy::IsSRReadyVk();
 
     if (_moduleLoaded)
@@ -172,7 +189,10 @@ bool FFXFeatureVk::InitFFX(const NVSDK_NGX_Parameter* InParameters)
 
         // The device is used for filtering out unsupported upscalers (FSR4), the fields after the header are
         // VkDeviceContext of FFX SDK 2.x
-        if (!QueryVersionsVulkan(&backendDesc.vkDevice) || State::Instance().ffxUpscalerVersionsVk.ids.empty())
+        auto& versions =
+            _customUpscaler != nullptr ? _customUpscaler->versions : State::Instance().ffxUpscalerVersionsVk;
+
+        if (!QueryVersionsVulkan(&backendDesc.vkDevice, _customUpscaler) || versions.ids.empty())
         {
             LOG_ERROR("No FFX upscalers reported!");
             return false;
@@ -182,21 +202,26 @@ bool FFXFeatureVk::InitFFX(const NVSDK_NGX_Parameter* InParameters)
 
         _contextDesc.header.pNext = &backendDesc.header;
 
-        if (Config::Instance()->FfxUpscalerIndex.value_or_default() < 0 ||
-            Config::Instance()->FfxUpscalerIndex.value_or_default() >=
-                State::Instance().ffxUpscalerVersionsVk.ids.size())
-            Config::Instance()->FfxUpscalerIndex.set_volatile_value(0);
+        auto& upscalerIndex =
+            Config::Instance()->FfxUpscalerIndexFor(_customUpscaler != nullptr ? _customUpscaler->name : "");
+
+        if (upscalerIndex.value_or_default() < 0 || upscalerIndex.value_or_default() >= versions.ids.size())
+            upscalerIndex.set_volatile_value(0);
 
         ffxOverrideVersion ov = { 0 };
         ov.header.type = FFX_API_DESC_TYPE_OVERRIDE_VERSION;
-        ov.versionId =
-            State::Instance().ffxUpscalerVersionsVk.ids[Config::Instance()->FfxUpscalerIndex.value_or_default()];
+        ov.versionId = versions.ids[upscalerIndex.value_or_default()];
 
         ffxCreateContextDescUpscaleVersionV2 upscaleVersion {};
         upscaleVersion.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE_VERSION_V2;
         upscaleVersion.version = FFX_UPSCALER_VERSION_V2;
 
-        if (FSR4DriverProviderVk::IsAvailable() && ov.versionId == FSR4DriverProviderVk::VersionId())
+        if (_customUpscaler != nullptr)
+        {
+            backendDesc.header.pNext = &ov.header;
+            _ffx = &_customUpscaler->module;
+        }
+        else if (FSR4DriverProviderVk::IsAvailable() && ov.versionId == FSR4DriverProviderVk::VersionId())
         {
             if (!FSR4DriverProviderVk::IsSupported(Device, PhysicalDevice, backendDesc.vkDeviceProcAddr))
             {
@@ -234,10 +259,11 @@ bool FFXFeatureVk::InitFFX(const NVSDK_NGX_Parameter* InParameters)
         }
     }
 
-    auto version =
-        State::Instance().ffxUpscalerVersionsVk.names[Config::Instance()->FfxUpscalerIndex.value_or_default()];
+    auto& versions = _customUpscaler != nullptr ? _customUpscaler->versions : State::Instance().ffxUpscalerVersionsVk;
+    auto& upscalerIndex =
+        Config::Instance()->FfxUpscalerIndexFor(_customUpscaler != nullptr ? _customUpscaler->name : "");
     _name = "FSR";
-    parse_version(version);
+    parse_version(versions.names[upscalerIndex.value_or_default()]);
 
     SetInit(true);
 

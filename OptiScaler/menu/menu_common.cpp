@@ -988,15 +988,47 @@ void MenuCommon::GetCurrentBackendInfo(const API api, Upscaler& upscaler, std::s
     *name = UpscalerDisplayName(upscaler, api);
 }
 
-// Custom upscaler picked for native DX12 FFX or DLSS, empty for the regular ones
+// Custom upscaler setting of the API, nullptr when it has none
+static CustomOptional<std::string, NoDefault>* CustomUpscalerSetting(API api)
+{
+    if (api == API::DX12)
+        return &Config::Instance()->CustomUpscaler;
+
+    if (api == API::Vulkan)
+        return &Config::Instance()->CustomUpscalerVk;
+
+    return nullptr;
+}
+
+// Custom upscaler picked for native DX12 FFX or DLSS, or native Vulkan FFX, empty for the regular ones
 static std::string SelectedCustom(Upscaler upscaler, API api)
 {
-    auto custom = Config::Instance()->CustomUpscaler.value_or("");
+    if (api == API::DX12)
+    {
+        auto custom = Config::Instance()->CustomUpscaler.value_or("");
 
-    return api == API::DX12 && ((upscaler == Upscaler::FFX && CustomUpscalers::IsFfx(custom)) ||
-                                (upscaler == Upscaler::DLSS && CustomUpscalers::IsDlss(custom)))
-               ? custom
-               : "";
+        return (upscaler == Upscaler::FFX && CustomUpscalers::IsFfx(custom)) ||
+                       (upscaler == Upscaler::DLSS && CustomUpscalers::IsDlss(custom))
+                   ? custom
+                   : "";
+    }
+
+    if (api == API::Vulkan)
+    {
+        auto custom = Config::Instance()->CustomUpscalerVk.value_or("");
+        return upscaler == Upscaler::FFX && CustomUpscalers::IsFfxVk(custom) ? custom : "";
+    }
+
+    return "";
+}
+
+// Loaded custom FFX upscaler picked for the API, nullptr for the regular ones
+static CustomFfxModule* SelectedCustomFfx(const std::string& name, API api)
+{
+    if (name.empty())
+        return nullptr;
+
+    return api == API::Vulkan ? FfxApiProxy::FindCustomUpscalerVk(name) : FfxApiProxy::FindCustomUpscalerDx12(name);
 }
 
 // List of upscalers reported by FFX for a given backend, nullptr if the backend doesn't use FFX
@@ -1168,6 +1200,11 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
         for (auto& name : CustomUpscalers::Scan().dlss)
             entries.push_back({ Upscaler::DLSS, -1, {}, name });
     }
+    else if (api == API::Vulkan)
+    {
+        for (auto& name : CustomUpscalers::Scan().ffxVk)
+            entries.push_back({ Upscaler::FFX, config->FfxUpscalerIndexFor(name).value_or_default(), {}, name });
+    }
 
     // Upscaler of the GPU vendor goes first, FSRs are sorted by version, newest first
     // Stable sort keeps native ahead of w/Dx12
@@ -1210,13 +1247,14 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
 
             // Regular and custom entries share an upscaler type, which the backend change check compares,
             // so a switch between them is marked here
-            if (!selected && (entry.upscaler == Upscaler::FFX || entry.upscaler == Upscaler::DLSS) &&
-                api == API::DX12 && entry.custom != config->CustomUpscaler.value_or(""))
+            if (auto customSetting = CustomUpscalerSetting(api);
+                !selected && (entry.upscaler == Upscaler::FFX || entry.upscaler == Upscaler::DLSS) &&
+                customSetting != nullptr && entry.custom != customSetting->value_or(""))
             {
                 if (entry.custom.empty())
-                    config->CustomUpscaler.reset();
+                    customSetting->reset();
                 else
-                    config->CustomUpscaler = entry.custom;
+                    *customSetting = entry.custom;
 
                 MARK_ALL_BACKENDS_CHANGED();
             }
@@ -3740,7 +3778,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
     if (!usesDlssd && (currentBackend == Upscaler::FFX || currentBackend == Upscaler::FFX_on12))
     {
         const auto customName = SelectedCustom(currentBackend, state.api);
-        const auto customUpscaler = customName.empty() ? nullptr : FfxApiProxy::FindCustomUpscalerDx12(customName);
+        const auto customUpscaler = SelectedCustomFfx(customName, state.api);
         auto& upscalerIndex = config->FfxUpscalerIndexFor(customName);
 
         // A custom upscaler only has a list once it got loaded

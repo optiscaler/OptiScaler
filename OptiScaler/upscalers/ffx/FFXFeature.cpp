@@ -54,9 +54,9 @@ bool FFXFeature::QueryVersionsDx12(ID3D12Device* device, CustomFfxModule* custom
     return query() == FFX_API_RETURN_OK;
 }
 
-bool FFXFeature::QueryVersionsVulkan(void* deviceContext)
+bool FFXFeature::QueryVersionsVulkan(void* deviceContext, CustomFfxModule* custom)
 {
-    auto& versions = State::Instance().ffxUpscalerVersionsVk;
+    auto& versions = custom != nullptr ? custom->versions : State::Instance().ffxUpscalerVersionsVk;
 
     // Get number of versions for allocation
     ffxQueryDescGetVersions versionQuery {};
@@ -69,7 +69,13 @@ bool FFXFeature::QueryVersionsVulkan(void* deviceContext)
     // The driver upscaler is always offered in the menu, even when the FFX SDK has a newer one
     constexpr auto driverListing = DriverListing::Always;
 
-    if (FfxApiProxy::VULKAN_QueryUpscalerVersions(&versionQuery, driverListing) != FFX_API_RETURN_OK)
+    auto query = [&]
+    {
+        return custom != nullptr ? custom->module.Query(nullptr, &versionQuery.header)
+                                 : FfxApiProxy::VULKAN_QueryUpscalerVersions(&versionQuery, driverListing);
+    };
+
+    if (query() != FFX_API_RETURN_OK)
     {
         versions.ids.clear();
         versions.names.clear();
@@ -82,7 +88,7 @@ bool FFXFeature::QueryVersionsVulkan(void* deviceContext)
     versionQuery.versionIds = versions.ids.data();
     versionQuery.versionNames = versions.names.data();
 
-    return FfxApiProxy::VULKAN_QueryUpscalerVersions(&versionQuery, driverListing) == FFX_API_RETURN_OK;
+    return query() == FFX_API_RETURN_OK;
 }
 
 void FFXFeature::EnsureVersionsDx12()
