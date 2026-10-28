@@ -170,6 +170,10 @@ void FSR4Presets::Hook(HMODULE module)
     if (module == nullptr)
         return;
 
+    // FSR 4.1.2 changes model creation arguments; only touch model creation when a preset override is requested.
+    if (!Config::Instance()->Fsr4Preset.has_value())
+        return;
+
     std::scoped_lock lock(hookMutex);
 
     if (std::ranges::any_of(hookedModules, [module](const HookedModule& hooked) { return hooked.module == module; }))

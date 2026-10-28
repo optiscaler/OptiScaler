@@ -184,6 +184,17 @@ std::vector<GpuInformation> IdentifyGpu::checkGpuInfo()
                 if (State::Instance().activeFgOutput == FGOutput::DLSSG)
                     State::Instance().activeFgNvngx = FGNvngxReplacement::None;
             }
+
+            // Minimal Pascal/Pre-Ampere FSR 4 support: these GPUs can run all INT8 (full and 2) models.
+            // Keep it automatic and forced only when the user has not explicitly selected a different mode.
+            if (Config::Instance()->Fsr4GpuSupport.value_or_default() == FSR4Support::None &&
+                gpuInfo.nvidiaArchInfo.architecture_id != 0 &&
+                gpuInfo.nvidiaArchInfo.architecture_id < NV_GPU_ARCHITECTURE_GA100 &&
+                gpuInfo.fsr4Support == FSR4Support::None)
+            {
+                gpuInfo.fsr4Support = FSR4Support::INT8;
+                gpuInfo.fsr4ForcedSupport = true;
+            }
         }
     }
 

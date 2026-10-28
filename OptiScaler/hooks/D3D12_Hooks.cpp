@@ -2208,9 +2208,74 @@ static HRESULT hkD3D12GetInterface(REFCLSID rclsid, REFIID riid, void** ppvDebug
     return result;
 }
 
+static void SpoofNative16BitShaderOps(ID3D12Device* device)
+{
+    if (device == nullptr)
+        return;
+
+    auto isSpoofed = [device]()
+    {
+        D3D12_FEATURE_DATA_D3D12_OPTIONS4 o = {};
+        return SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS4, &o, sizeof(o))) &&
+               o.Native16BitShaderOpsSupported;
+    };
+
+    if (isSpoofed())
+        return;
+
+    bool isNvidia = false;
+    LUID adapterLuid = device->GetAdapterLuid();
+    IDXGIFactory1* factory = nullptr;
+    if (SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))
+    {
+        for (UINT i = 0;; i++)
+        {
+            IDXGIAdapter* adapter = nullptr;
+            if (factory->EnumAdapters(i, &adapter) != S_OK)
+                break;
+            DXGI_ADAPTER_DESC desc = {};
+            if (SUCCEEDED(adapter->GetDesc(&desc)) && desc.AdapterLuid.LowPart == adapterLuid.LowPart &&
+                desc.AdapterLuid.HighPart == adapterLuid.HighPart)
+            {
+                isNvidia = (desc.VendorId == 0x10DE);
+                adapter->Release();
+                break;
+            }
+            adapter->Release();
+        }
+        factory->Release();
+    }
+
+    if (!isNvidia)
+        return;
+
+    auto base = reinterpret_cast<uint8_t*>(device);
+    constexpr size_t knownOffset = 0x188;
+    if ((base[knownOffset] & 1) == 0)
+    {
+        base[knownOffset] |= 1;
+        if (isSpoofed())
+            return;
+        base[knownOffset] &= ~1;
+    }
+
+    for (size_t offset = 0x80; offset < 0x800; offset++)
+        for (uint8_t bit = 1; bit != 0; bit <<= 1)
+        {
+            if ((base[offset] & bit) != 0)
+                continue;
+            base[offset] |= bit;
+            if (isSpoofed())
+                return;
+            base[offset] &= (uint8_t) ~bit;
+        }
+}
+
 static void HookToDevice(ID3D12Device* InDevice)
 {
-    if (o_CreateSampler != nullptr || InDevice == nullptr)
+    SpoofNative16BitShaderOps(InDevice);
+
+    if (InDevice == nullptr || o_CreateSampler != nullptr)
         return;
 
     LOG_DEBUG("Dx12");
