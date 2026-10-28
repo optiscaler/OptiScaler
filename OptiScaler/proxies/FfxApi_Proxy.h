@@ -75,6 +75,9 @@ class FfxApiProxy
     inline static FfxModule upscaling_vk;
     inline static FfxModule fg_vk;
 
+    // amd_fidelityfx_vk.dll next to the loader, for the effects whose SDK 2.x dll is missing
+    inline static FfxModule legacy_vk;
+
     inline static FfxModule main_dx12_hooked;
     inline static FfxModule upscaling_dx12_hooked;
     inline static FfxModule fg_dx12_hooked;
@@ -1681,10 +1684,18 @@ class FfxApiProxy
     static bool VkModule_BackendV2() { return main_vk.vkBackendV2; }
 
     // Module that Opti runs its Vulkan upscaler with, the upscaler dll of SDK 2.x when it's loaded
-    static FfxModule* VkFfxModule_SR() { return upscaling_vk.dll != nullptr ? &upscaling_vk : &main_vk; }
+    static FfxModule* VkFfxModule_SR()
+    {
+        auto module = VkEffectModule(upscaling_vk);
+        return module != nullptr ? module : &main_vk;
+    }
 
     // Module that Opti runs its Vulkan frame generation and swapchain with
-    static FfxModule* VkFfxModule_FG() { return fg_vk.dll != nullptr ? &fg_vk : &main_vk; }
+    static FfxModule* VkFfxModule_FG()
+    {
+        auto module = VkEffectModule(fg_vk);
+        return module != nullptr ? module : &main_vk;
+    }
 
     // Module that runs the Vulkan upscaler with this version id
     static HMODULE UpscalerModuleVk(uint64_t versionId)
@@ -1695,8 +1706,15 @@ class FfxApiProxy
         return VkFfxModule_SR()->dll;
     }
 
-    static bool IsSRReadyVk() { return (main_vk.dll != nullptr && !main_vk.isLoader) || upscaling_vk.dll != nullptr; }
-    static bool IsFGReadyVk() { return (main_vk.dll != nullptr && !main_vk.isLoader) || fg_vk.dll != nullptr; }
+    static bool IsSRReadyVk()
+    {
+        return (main_vk.dll != nullptr && !main_vk.isLoader) || VkEffectModule(upscaling_vk) != nullptr;
+    }
+
+    static bool IsFGReadyVk()
+    {
+        return (main_vk.dll != nullptr && !main_vk.isLoader) || VkEffectModule(fg_vk) != nullptr;
+    }
 
     static bool InitFfxVk(HMODULE module = nullptr)
     {
@@ -1706,8 +1724,11 @@ class FfxApiProxy
         InitFfxVk_SR();
         InitFfxVk_FG();
 
-        bool loadResult =
-            main_vk.CreateContext != nullptr || upscaling_vk.CreateContext != nullptr || fg_vk.CreateContext != nullptr;
+        if (main_vk.isLoader && (upscaling_vk.dll == nullptr || fg_vk.dll == nullptr))
+            InitFfxVkLegacy();
+
+        bool loadResult = main_vk.CreateContext != nullptr || upscaling_vk.CreateContext != nullptr ||
+                          fg_vk.CreateContext != nullptr || legacy_vk.CreateContext != nullptr;
 
         LOG_INFO("LoadResult: {}", loadResult);
 
@@ -1746,10 +1767,10 @@ class FfxApiProxy
         if (main_vk.version.major == 0)
             QueryVersionVk(main_vk, FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE, "");
 
-        if (main_vk.version.major == 0 && upscaling_vk.Query != nullptr)
+        if (main_vk.version.major == 0 && VkEffectModule(upscaling_vk) != nullptr)
             main_vk.version = VersionVk_SR();
 
-        if (main_vk.version.major == 0 && fg_vk.Query != nullptr)
+        if (main_vk.version.major == 0 && VkEffectModule(fg_vk) != nullptr)
             main_vk.version = VersionVk_FG();
 
         return main_vk.version;
@@ -1757,18 +1778,20 @@ class FfxApiProxy
 
     static feature_version VersionVk_SR()
     {
-        if (upscaling_vk.Query == nullptr)
+        auto module = VkEffectModule(upscaling_vk);
+        if (module == nullptr)
             return VersionVk();
 
-        return QueryVersionVk(upscaling_vk, FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE, "SR ");
+        return QueryVersionVk(*module, FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE, "SR ");
     }
 
     static feature_version VersionVk_FG()
     {
-        if (fg_vk.Query == nullptr)
+        auto module = VkEffectModule(fg_vk);
+        if (module == nullptr)
             return VersionVk();
 
-        return QueryVersionVk(fg_vk, FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION, "FG ");
+        return QueryVersionVk(*module, FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION, "FG ");
     }
 
     static ffxReturnCode_t VULKAN_CreateContext(ffxContext* context, ffxCreateContextDescHeader* desc,
@@ -1796,20 +1819,21 @@ class FfxApiProxy
 
         ffxReturnCode_t result = FFX_API_RETURN_ERROR;
 
-        if (isFg && fg_vk.dll != nullptr)
+        if (auto fg = VkEffectModule(fg_vk); isFg && fg != nullptr)
         {
-            LOG_DEBUG("Creating with fg_vk");
-            result = CreateContextVk(&fg_vk, context, desc, memCb);
+            LOG_DEBUG("Creating with {}", VkModuleName(fg));
+            result = CreateContextVk(fg, context, desc, memCb);
             contextToType[*context] = type;
-            LOG_DEBUG("Created with fg_vk: {:X}", (size_t) *context);
+            LOG_DEBUG("Created with {}: {:X}", VkModuleName(fg), (size_t) *context);
             return result;
         }
-        else if (type == FFXStructType::Upscaling && upscaling_vk.dll != nullptr)
+        else if (auto upscaling = VkEffectModule(upscaling_vk);
+                 type == FFXStructType::Upscaling && upscaling != nullptr)
         {
-            LOG_DEBUG("Creating with upscaling_vk");
-            result = CreateContextVk(&upscaling_vk, context, desc, memCb);
+            LOG_DEBUG("Creating with {}", VkModuleName(upscaling));
+            result = CreateContextVk(upscaling, context, desc, memCb);
             contextToType[*context] = type;
-            LOG_DEBUG("Created with upscaling_vk: {:X}", (size_t) *context);
+            LOG_DEBUG("Created with {}: {:X}", VkModuleName(upscaling), (size_t) *context);
             return result;
         }
 
@@ -1860,23 +1884,27 @@ class FfxApiProxy
             contextToType.erase(*context);
         }
 
+        FfxModule* mapped = nullptr;
+
         switch (type)
         {
         case FFXStructType::Upscaling:
-            LOG_DEBUG("Destroying with upscaling_vk");
-            if (upscaling_vk.dll != nullptr)
-                result = upscaling_vk.DestroyContext(context, memCb);
+            mapped = VkEffectModule(upscaling_vk);
             break;
 
         case FFXStructType::FG:
         case FFXStructType::SwapchainVulkan:
-            LOG_DEBUG("Destroying with fg_vk");
-            if (fg_vk.dll != nullptr)
-                result = fg_vk.DestroyContext(context, memCb);
+            mapped = VkEffectModule(fg_vk);
             break;
 
         default:
             break;
+        }
+
+        if (mapped != nullptr)
+        {
+            LOG_DEBUG("Destroying with {}", VkModuleName(mapped));
+            result = mapped->DestroyContext(context, memCb);
         }
 
         if (result == FFX_API_RETURN_OK)
@@ -1911,6 +1939,15 @@ class FfxApiProxy
         if (result == FFX_API_RETURN_OK)
             return result;
 
+        if (legacy_vk.dll != nullptr)
+        {
+            LOG_DEBUG("Destroying with legacy_vk");
+            result = legacy_vk.DestroyContext(context, memCb);
+        }
+
+        if (result == FFX_API_RETURN_OK)
+            return result;
+
         LOG_ERROR("Failed to destroy context in any module");
         return FFX_API_RETURN_NO_PROVIDER;
     }
@@ -1927,10 +1964,11 @@ class FfxApiProxy
 
         auto isFg = type == FFXStructType::FG || type == FFXStructType::SwapchainVulkan;
 
-        if (isFg && fg_vk.dll != nullptr)
-            return fg_vk.Configure(context, desc);
-        else if (type == FFXStructType::Upscaling && upscaling_vk.dll != nullptr)
-            return upscaling_vk.Configure(context, desc);
+        if (auto fg = VkEffectModule(fg_vk); isFg && fg != nullptr)
+            return fg->Configure(context, desc);
+        else if (auto upscaling = VkEffectModule(upscaling_vk);
+                 type == FFXStructType::Upscaling && upscaling != nullptr)
+            return upscaling->Configure(context, desc);
 
         const auto skipFG = isFg && fg_vk.skipConfigureCalls;
         const auto skipUpscaling = type == FFXStructType::Upscaling && upscaling_vk.skipConfigureCalls;
@@ -2066,10 +2104,11 @@ class FfxApiProxy
         auto type = GetType(desc->type);
         auto isFg = type == FFXStructType::FG || type == FFXStructType::SwapchainVulkan;
 
-        if (isFg && fg_vk.dll != nullptr)
-            return fg_vk.Dispatch(context, desc);
-        else if (type == FFXStructType::Upscaling && upscaling_vk.dll != nullptr)
-            return upscaling_vk.Dispatch(context, desc);
+        if (auto fg = VkEffectModule(fg_vk); isFg && fg != nullptr)
+            return fg->Dispatch(context, desc);
+        else if (auto upscaling = VkEffectModule(upscaling_vk);
+                 type == FFXStructType::Upscaling && upscaling != nullptr)
+            return upscaling->Dispatch(context, desc);
 
         const auto skipFG = isFg && fg_vk.skipDispatchCalls;
         const auto skipUpscaling = type == FFXStructType::Upscaling && upscaling_vk.skipDispatchCalls;
@@ -2237,6 +2276,69 @@ class FfxApiProxy
         return loadResult;
     }
 
+    // Module of an effect, amd_fidelityfx_vk.dll stands in for its SDK 2.x dll when the main module is the loader,
+    // which can only forward to the SDK 2.x dlls
+    static FfxModule* VkEffectModule(FfxModule& module)
+    {
+        if (module.dll != nullptr)
+            return &module;
+
+        if (main_vk.isLoader && legacy_vk.dll != nullptr)
+            return &legacy_vk;
+
+        return nullptr;
+    }
+
+    static std::string VkModuleName(const FfxModule* module)
+    {
+        if (module == &upscaling_vk)
+            return "upscaling_vk";
+
+        if (module == &fg_vk)
+            return "fg_vk";
+
+        if (module == &legacy_vk)
+            return "legacy_vk";
+
+        return "main_vk";
+    }
+
+    // Only used by Opti, the game's amd_fidelityfx_vk.dll gets the loader through the LoadLibrary hooks
+    static void InitFfxVkLegacy()
+    {
+        if (legacy_vk.dll != nullptr)
+            return;
+
+        LOG_DEBUG("Trying to load amd_fidelityfx_vk.dll for the missing FFX SDK 2.x dlls");
+
+        HMODULE memModule = nullptr;
+        Util::LoadProxyLibrary(L"amd_fidelityfx_vk.dll", Config::Instance()->MainDllPath.value(),
+                               Config::Instance()->FfxVkPath.value_or(L""), &memModule, &legacy_vk.dll);
+
+        if (legacy_vk.dll == nullptr)
+            return;
+
+        auto modulePath = Util::ModulePath(legacy_vk.dll);
+        legacy_vk.filePath = modulePath.wstring();
+        legacy_vk.isLoader = IsLoader(legacy_vk.filePath);
+        legacy_vk.vkBackendV2 = _wcsicmp(modulePath.filename().c_str(), L"amd_fidelityfx_vk.dll") != 0;
+        GetMethods(legacy_vk);
+
+        if (legacy_vk.isLoader || legacy_vk.CreateContext == nullptr)
+        {
+            LOG_WARN("{} can't stand in for the FFX SDK 2.x dlls", wstring_to_string(legacy_vk.filePath));
+            legacy_vk = {};
+            return;
+        }
+
+        LOG_INFO("Loaded from {}", wstring_to_string(legacy_vk.filePath));
+
+        // Pin the dll so the method pointers stay valid if the game unloads it
+        HMODULE pinned = nullptr;
+        GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+                           (LPCWSTR) legacy_vk.dll, &pinned);
+    }
+
     static void GetMethods(FfxModule& module)
     {
         module.Configure = (PfnFfxConfigure) KernelBaseProxy::GetProcAddress_()(module.dll, "ffxConfigure");
@@ -2330,10 +2432,11 @@ class FfxApiProxy
         auto type = GetIndirectType(desc);
         auto isFg = type == FFXStructType::FG || type == FFXStructType::SwapchainVulkan;
 
-        if (isFg && fg_vk.dll != nullptr)
-            return fg_vk.Query(context, desc);
-        else if (type == FFXStructType::Upscaling && upscaling_vk.dll != nullptr)
-            return upscaling_vk.Query(context, desc);
+        if (auto fg = VkEffectModule(fg_vk); isFg && fg != nullptr)
+            return fg->Query(context, desc);
+        else if (auto upscaling = VkEffectModule(upscaling_vk);
+                 type == FFXStructType::Upscaling && upscaling != nullptr)
+            return upscaling->Query(context, desc);
 
         const auto skipFG = isFg && fg_vk.skipQueryCalls;
         const auto skipUpscaling = type == FFXStructType::Upscaling && upscaling_vk.skipQueryCalls;
