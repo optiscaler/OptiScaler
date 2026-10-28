@@ -988,6 +988,49 @@ void MenuCommon::GetCurrentBackendInfo(const API api, Upscaler& upscaler, std::s
     *name = UpscalerDisplayName(upscaler, api);
 }
 
+// Custom upscaler setting of the API, nullptr when it has none
+static CustomOptional<std::string, NoDefault>* CustomUpscalerSetting(API api)
+{
+    if (api == API::DX12)
+        return &Config::Instance()->CustomUpscaler;
+
+    if (api == API::Vulkan)
+        return &Config::Instance()->CustomUpscalerVk;
+
+    return nullptr;
+}
+
+// Custom upscaler picked for native DX12 FFX or DLSS, or native Vulkan FFX, empty for the regular ones
+static std::string SelectedCustom(Upscaler upscaler, API api)
+{
+    if (api == API::DX12)
+    {
+        auto custom = Config::Instance()->CustomUpscaler.value_or("");
+
+        return (upscaler == Upscaler::FFX && CustomUpscalers::IsFfx(custom)) ||
+                       (upscaler == Upscaler::DLSS && CustomUpscalers::IsDlss(custom))
+                   ? custom
+                   : "";
+    }
+
+    if (api == API::Vulkan)
+    {
+        auto custom = Config::Instance()->CustomUpscalerVk.value_or("");
+        return upscaler == Upscaler::FFX && CustomUpscalers::IsFfxVk(custom) ? custom : "";
+    }
+
+    return "";
+}
+
+// Loaded custom FFX upscaler picked for the API, nullptr for the regular ones
+static CustomFfxModule* SelectedCustomFfx(const std::string& name, API api)
+{
+    if (name.empty())
+        return nullptr;
+
+    return api == API::Vulkan ? FfxApiProxy::FindCustomUpscalerVk(name) : FfxApiProxy::FindCustomUpscalerDx12(name);
+}
+
 // List of upscalers reported by FFX for a given backend, nullptr if the backend doesn't use FFX
 static State::FfxVersionList* GetFfxVersionList(Upscaler upscaler, API api)
 {
@@ -1092,9 +1135,13 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
         return ShortUpscalerName(upscaler, api, index);
     };
 
+    const auto currentCustom = SelectedCustom(currentUpscaler, api);
+
     // Interop is only shown here, the list uses a tag for it
     auto selectedName = upscalerName(targetBackend, ffxIndex);
-    if (IsOn12(targetBackend))
+    if (auto custom = SelectedCustom(targetBackend, api); !custom.empty())
+        selectedName = custom;
+    else if (IsOn12(targetBackend))
         selectedName += " (Dx12)";
 
     if (!ImGui::BeginCombo("##UpscalerCombo", selectedName.c_str(), ImGuiComboFlags_HeightLargest))
@@ -1105,6 +1152,7 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
         Upscaler upscaler;
         int ffxIndex; // Newest upscaler reported by FFX, -1 when not using FFX
         feature_version version;
+        std::string custom; // Custom FFX or DLSS upscaler name
     };
 
     std::vector<Entry> entries;
@@ -1130,13 +1178,32 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
             // Fall back to a generic entry if FFX couldn't be queried
             if (!versions->names.empty())
             {
+                // Labelled with the remembered upscaler, sorted by the newest one so picking another FFX version
+                // doesn't move the entry
                 auto newest = FfxVersionsNewestFirst(*versions)[0];
-                entries.push_back({ opt, newest, feature_version(versions->names[newest]) });
+                auto index = ffxIndex >= 0 && ffxIndex < versions->names.size() ? ffxIndex : newest;
+                entries.push_back({ opt, index, feature_version(versions->names[newest]) });
                 continue;
             }
         }
 
         entries.push_back({ opt, -1, UpscalerSortVersion(opt) });
+    }
+
+    // Custom ones are sorted after the regular ones, their names don't need versions
+    // DLSS ones don't need a DLSS capable GPU
+    if (api == API::DX12)
+    {
+        for (auto& name : CustomUpscalers::Scan().ffx)
+            entries.push_back({ Upscaler::FFX, config->FfxUpscalerIndexFor(name).value_or_default(), {}, name });
+
+        for (auto& name : CustomUpscalers::Scan().dlss)
+            entries.push_back({ Upscaler::DLSS, -1, {}, name });
+    }
+    else if (api == API::Vulkan)
+    {
+        for (auto& name : CustomUpscalers::Scan().ffxVk)
+            entries.push_back({ Upscaler::FFX, config->FfxUpscalerIndexFor(name).value_or_default(), {}, name });
     }
 
     // Upscaler of the GPU vendor goes first, FSRs are sorted by version, newest first
@@ -1168,15 +1235,29 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
         if (i > 0 && group(entry.upscaler) != group(entries[i - 1].upscaler))
             ImGui::Separator();
 
-        auto label = StrFmt("%s##%d", upscalerName(entry.upscaler, entry.ffxIndex).c_str(), (int) entry.upscaler);
+        auto name = entry.custom.empty() ? upscalerName(entry.upscaler, entry.ffxIndex) : entry.custom;
+        auto label = StrFmt("%s##%d%s", name.c_str(), (int) entry.upscaler, entry.custom.c_str());
+        // Folder names in Dx12Upscaler aren't case sensitive
+        const bool selected =
+            currentUpscaler == entry.upscaler && _stricmp(currentCustom.c_str(), entry.custom.c_str()) == 0;
 
-        if (ImGui::Selectable(label.c_str(), currentUpscaler == entry.upscaler))
+        if (ImGui::Selectable(label.c_str(), selected))
         {
             State::Instance().newBackend = entry.upscaler;
 
-            // Switching to FFX starts with the newest one
-            if (entry.ffxIndex >= 0 && currentUpscaler != entry.upscaler)
-                config->FfxUpscalerIndex = entry.ffxIndex;
+            // Regular and custom entries share an upscaler type, which the backend change check compares,
+            // so a switch between them is marked here
+            if (auto customSetting = CustomUpscalerSetting(api);
+                !selected && (entry.upscaler == Upscaler::FFX || entry.upscaler == Upscaler::DLSS) &&
+                customSetting != nullptr && entry.custom != customSetting->value_or(""))
+            {
+                if (entry.custom.empty())
+                    customSetting->reset();
+                else
+                    *customSetting = entry.custom;
+
+                MARK_ALL_BACKENDS_CHANGED();
+            }
         }
 
         // Dimmed tags aligned to the right
@@ -1188,6 +1269,8 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
             tag = "FFX";
         else if (IsOn12(entry.upscaler))
             tag = "Dx12";
+        else if (!entry.custom.empty())
+            tag = "DLSS";
 
         if (tag != nullptr)
         {
@@ -3694,12 +3777,19 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
     // FFX -----------------
     if (!usesDlssd && (currentBackend == Upscaler::FFX || currentBackend == Upscaler::FFX_on12))
     {
-        if (auto versions = GetFfxVersionList(currentBackend, state.api);
+        const auto customName = SelectedCustom(currentBackend, state.api);
+        const auto customUpscaler = SelectedCustomFfx(customName, state.api);
+        auto& upscalerIndex = config->FfxUpscalerIndexFor(customName);
+
+        // A custom upscaler only has a list once it got loaded
+        if (auto versions = customName.empty()          ? GetFfxVersionList(currentBackend, state.api)
+                            : customUpscaler != nullptr ? &customUpscaler->versions
+                                                        : nullptr;
             versions != nullptr && !versions->names.empty())
         {
             ImGui::Spacing();
 
-            const int ffxIndex = config->FfxUpscalerIndex.value_or_default();
+            const int ffxIndex = upscalerIndex.value_or_default();
             auto currentName =
                 ffxIndex >= 0 && ffxIndex < versions->names.size() ? StrFmt("FSR %s", versions->names[ffxIndex]) : "";
 
@@ -3712,7 +3802,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                     if (ImGui::Selectable(StrFmt("FSR %s##%d", versions->names[n], n).c_str(), ffxIndex == n) &&
                         ffxIndex != n)
                     {
-                        config->FfxUpscalerIndex = n;
+                        upscalerIndex = n;
                         state.newBackend = currentBackend;
                         MARK_ALL_BACKENDS_CHANGED();
                     }
@@ -3801,8 +3891,11 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                         "Preset 5 is meant for Ultra Performance");
 
             // Display the active preset right next to the combo box instead of using a table
+            // The active preset can be left over from another module, so a custom one checks its own hook
             ImGui::SameLine();
-            if (state.currentFsr4Preset.has_value())
+            if (customUpscaler != nullptr && !FSR4Presets::IsModuleHooked(customUpscaler->module.dll))
+                ImGui::TextDisabled("(Failed to hook)");
+            else if (state.currentFsr4Preset.has_value())
                 ImGui::TextDisabled("(Active: %d)", state.currentFsr4Preset.value());
             else if (FSR4Presets::IsAnyModuleHooked())
                 ImGui::TextColored(StatusWarn(), "(Potential FSR3 fallback)");
@@ -3811,17 +3904,18 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
 
             // FSR 4 Models of the module running the selected upscaler, only listed when the GPU can run more than one
             HMODULE upscalerModule = nullptr;
-            if (auto versions = GetFfxVersionList(currentBackend, state.api);
-                versions != nullptr && config->FfxUpscalerIndex.value_or_default() >= 0 &&
-                config->FfxUpscalerIndex.value_or_default() < versions->ids.size())
+            if (customUpscaler != nullptr)
+                upscalerModule = customUpscaler->module.dll;
+            else if (auto versions = GetFfxVersionList(currentBackend, state.api);
+                     versions != nullptr && config->FfxUpscalerIndex.value_or_default() >= 0 &&
+                     config->FfxUpscalerIndex.value_or_default() < versions->ids.size())
             {
                 auto versionId = versions->ids[config->FfxUpscalerIndex.value_or_default()];
 
                 if (versions == &state.ffxUpscalerVersionsDx12)
                     upscalerModule = FfxApiProxy::UpscalerModule(versionId);
-                else if (versions == &state.ffxUpscalerVersionsVk && FSR4DriverProviderVk::IsAvailable() &&
-                         versionId == FSR4DriverProviderVk::VersionId())
-                    upscalerModule = FSR4DriverProviderVk::Module()->dll;
+                else if (versions == &state.ffxUpscalerVersionsVk)
+                    upscalerModule = FfxApiProxy::UpscalerModuleVk(versionId);
             }
 
             if (auto models = FSR4Models::SelectableModels(upscalerModule); !models.empty())
@@ -9013,6 +9107,9 @@ void MenuCommon::RenderDetectedInfo(RenderMenuContext& ctx)
         StatusFlag("FFX 3.1", FfxApiProxy::Dx12Module() != nullptr);
         StatusFlag("FFX SR", FfxApiProxy::Dx12Module_SR() != nullptr);
         StatusFlag("FFX FG", FfxApiProxy::Dx12Module_FG() != nullptr);
+        StatusFlag("FFX Vk", FfxApiProxy::VkModule() != nullptr);
+        StatusFlag("FFX Vk SR", FfxApiProxy::VkModule_SR() != nullptr);
+        StatusFlag("FFX Vk FG", FfxApiProxy::VkModule_FG() != nullptr);
         StatusFlag("OptiPatcher", state.isOptiPatcherSucceed);
         StatusFlag("Linux", state.isRunningOnLinux);
         StatusFlag("DLSS capable GPU", primaryGpu.dlssCapable);

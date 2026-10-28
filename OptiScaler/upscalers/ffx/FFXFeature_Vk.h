@@ -9,8 +9,11 @@
 class FFXFeatureVk : public FFXFeature, public IFeature_Vk
 {
   private:
-    // amd_fidelityfx_vk.dll or the driver provided upscaler
+    // FFX SDK dll, the driver provided upscaler or the custom upscaler's dll
     FfxModule* _ffx = nullptr;
+
+    // Custom upscaler dll, nullptr for the regular FFX ones
+    CustomFfxModule* _customUpscaler = nullptr;
 
     std::unique_ptr<VelocityConvert_Vk> _velocityConvert = nullptr;
 
@@ -25,7 +28,7 @@ class FFXFeatureVk : public FFXFeature, public IFeature_Vk
     bool EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters) override;
 
   public:
-    FFXFeatureVk(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters);
+    FFXFeatureVk(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters, const std::string& customUpscaler = "");
 
     feature_version Version() override { return FFXFeature::Version(); }
     Upscaler GetUpscalerType() const final { return Upscaler::FFX; }

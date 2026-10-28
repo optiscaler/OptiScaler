@@ -305,6 +305,8 @@ ULONG STDMETHODCALLTYPE Amdxc64Hooks::hkFlipMeterRelease(IAmdExtFlipMeter* This)
     std::scoped_lock lock(flipMeterMutex);
 
     auto refCount = o_FlipMeterRelease(This);
+    LOG_DEBUG("IAmdExtFlipMeter {:X} refs left: {}, caller: {}", (size_t) This, refCount,
+              Util::WhoIsTheCaller(_ReturnAddress()));
 
     if (refCount == 0 && This == flipMeter)
     {
@@ -325,7 +327,8 @@ HRESULT STDMETHODCALLTYPE Amdxc64Hooks::hkFactoryCreateInterface(IAmdExtD3DFacto
 
     if (riid == __uuidof(IAmdExtFlipMeter))
     {
-        LOG_INFO("IAmdExtFlipMeter created for swapchain: {:X}, result: {:X}", (size_t) pOuter, (UINT) result);
+        LOG_INFO("IAmdExtFlipMeter created for swapchain: {:X}, result: {:X}, caller: {}", (size_t) pOuter,
+                 (UINT) result, Util::WhoIsTheCaller(_ReturnAddress()));
 
         if (SUCCEEDED(result) && *ppvObject != nullptr)
         {

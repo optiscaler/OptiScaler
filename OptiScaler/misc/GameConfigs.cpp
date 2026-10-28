@@ -141,6 +141,7 @@ const std::vector<GameConfig> gameConfigs = {
     {
         .exes = { "beamng.drive.x64.exe" },
         .defaults = { DxgiSpoofing = false },
+        .quirks = { HideFsr4 },
     },
 
     // Red Dead Redemption 2

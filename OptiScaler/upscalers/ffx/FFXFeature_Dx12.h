@@ -12,13 +12,16 @@ class FFXFeatureDx12 : public FFXFeature, public IFeature_Dx12
     std::unique_ptr<AE_Dx12> _autoExposure;
     bool _customAutoExposure = false;
 
+    // Custom upscaler dll, nullptr for the regular FFX ones
+    CustomFfxModule* _customUpscaler = nullptr;
+
     NVSDK_NGX_Parameter* SetParameters(NVSDK_NGX_Parameter* InParameters);
 
   protected:
     bool InitFFX(const NVSDK_NGX_Parameter* InParameters);
 
   public:
-    FFXFeatureDx12(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters);
+    FFXFeatureDx12(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters, const std::string& customUpscaler = "");
 
     bool InitInternal(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters) override;
     bool EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters) override;

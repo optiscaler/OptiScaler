@@ -59,9 +59,22 @@ bool Config::Reload(std::filesystem::path iniPath)
         {
             // transform converts only when optional has a value
             Dx11Upscaler.set_from_config(readString("Upscalers", "Dx11Upscaler", true).transform(CodeToUpscaler));
-            Dx12Upscaler.set_from_config(readString("Upscalers", "Dx12Upscaler", true).transform(CodeToUpscalerFfx));
-            VulkanUpscaler.set_from_config(
-                readString("Upscalers", "VulkanUpscaler", true).transform(CodeToUpscalerFfx));
+            auto dx12Upscaler = readString("Upscalers", "Dx12Upscaler", true).transform(CodeToUpscalerFfx);
+
+            // Any other value is the folder name of a custom upscaler, its kind is set by
+            // CustomUpscalers::ResolveDx12Upscaler once the Opti folder is known
+            if (dx12Upscaler == Upscaler::Reset)
+                CustomUpscaler.set_from_config(std::string(ini.GetValue("Upscalers", "Dx12Upscaler")));
+            else
+                Dx12Upscaler.set_from_config(dx12Upscaler);
+
+            // Same for Vulkan, checked by CustomUpscalers::ResolveVulkanUpscaler
+            auto vulkanUpscaler = readString("Upscalers", "VulkanUpscaler", true).transform(CodeToUpscalerFfx);
+
+            if (vulkanUpscaler == Upscaler::Reset)
+                CustomUpscalerVk.set_from_config(std::string(ini.GetValue("Upscalers", "VulkanUpscaler")));
+            else
+                VulkanUpscaler.set_from_config(vulkanUpscaler);
         }
 
         // Frame Generation
@@ -273,6 +286,16 @@ bool Config::Reload(std::filesystem::path iniPath)
             FsrMinDisOccAcc.set_from_config(readFloat("FSR", "MinDisOccAcc"));
             FsrDebugView.set_from_config(readBool("FSR", "DebugView"));
             FfxUpscalerIndex.set_from_config(readInt("FSR", "UpscalerIndex"));
+
+            // Custom upscalers have a section named after their folder
+            CSimpleIniA::TNamesDepend sections;
+            ini.GetAllSections(sections);
+
+            for (auto& section : sections)
+            {
+                if (_stricmp(section.pItem, "FSR") != 0 && ini.GetValue(section.pItem, "UpscalerIndex") != nullptr)
+                    FfxUpscalerIndexFor(section.pItem).set_from_config(readInt(section.pItem, "UpscalerIndex"));
+            }
             FfxFGIndex.set_from_config(readInt("FSR", "FGIndex"));
             FsrUseMaskForTransparency.set_from_config(readBool("FSR", "UseReactiveMaskForTransparency"));
             DlssReactiveMaskBias.set_from_config(readFloat("FSR", "DlssReactiveMaskBias"));
@@ -799,6 +822,8 @@ bool Config::Reload(std::filesystem::path iniPath)
             FfxDx12RRPath.set_from_config(readWString("Libraries", "FfxDx12RRPath"));
             FfxDx12RCPath.set_from_config(readWString("Libraries", "FfxDx12RCPath"));
             FfxVkPath.set_from_config(readWString("Libraries", "FfxVkPath"));
+            FfxVkSRPath.set_from_config(readWString("Libraries", "FfxVkSRPath"));
+            FfxVkFGPath.set_from_config(readWString("Libraries", "FfxVkFGPath"));
 
             XeSSLibrary.set_from_config(readWString("Libraries", "XeSSPath"));
             XeSSLibrary.set_from_config(readWString("Libraries", "XeFGPath"));
@@ -1280,8 +1305,17 @@ bool Config::SaveIni()
         };
 
         SaveUpscaler("Dx11Upscaler", Instance()->Dx11Upscaler);
-        SaveUpscaler("Dx12Upscaler", Instance()->Dx12Upscaler);
-        SaveUpscaler("VulkanUpscaler", Instance()->VulkanUpscaler);
+        if (auto custom = Instance()->CustomUpscaler.value_or("");
+            !custom.empty() && (Instance()->Dx12Upscaler.value_for_config() == Upscaler::FFX ||
+                                Instance()->Dx12Upscaler.value_for_config() == Upscaler::DLSS))
+            ini.SetValue("Upscalers", "Dx12Upscaler", custom.c_str());
+        else
+            SaveUpscaler("Dx12Upscaler", Instance()->Dx12Upscaler);
+        if (auto custom = Instance()->CustomUpscalerVk.value_or("");
+            !custom.empty() && Instance()->VulkanUpscaler.value_for_config() == Upscaler::FFX)
+            ini.SetValue("Upscalers", "VulkanUpscaler", custom.c_str());
+        else
+            SaveUpscaler("VulkanUpscaler", Instance()->VulkanUpscaler);
     }
 
     // Frame Generation
@@ -1537,6 +1571,13 @@ bool Config::SaveIni()
         ini.SetValue("FSR", "MinDisOccAcc", GetFloatValue(Instance()->FsrMinDisOccAcc.value_for_config()).c_str());
         ini.SetValue("FSR", "DebugView", GetBoolValue(Instance()->FsrDebugView.value_for_config()).c_str());
         ini.SetValue("FSR", "UpscalerIndex", GetIntValue(Instance()->FfxUpscalerIndex.value_for_config()).c_str());
+
+        {
+            std::scoped_lock lock(Instance()->_customIndexMutex);
+
+            for (auto& [name, index] : Instance()->_ffxCustomUpscalerIndex)
+                ini.SetValue(name.c_str(), "UpscalerIndex", GetIntValue(index.value_for_config()).c_str());
+        }
         ini.SetValue("FSR", "FGIndex", GetIntValue(Instance()->FfxFGIndex.value_for_config()).c_str());
         ini.SetValue("FSR", "UseReactiveMaskForTransparency",
                      GetBoolValue(Instance()->FsrUseMaskForTransparency.value_for_config()).c_str());
@@ -2004,6 +2045,10 @@ bool Config::SaveIni()
                      wstring_to_string(Instance()->FfxDx12RCPath.value_for_config_or(L"auto")).c_str());
         ini.SetValue("Libraries", "FfxVkPath",
                      wstring_to_string(Instance()->FfxVkPath.value_for_config_or(L"auto")).c_str());
+        ini.SetValue("Libraries", "FfxVkSRPath",
+                     wstring_to_string(Instance()->FfxVkSRPath.value_for_config_or(L"auto")).c_str());
+        ini.SetValue("Libraries", "FfxVkFGPath",
+                     wstring_to_string(Instance()->FfxVkFGPath.value_for_config_or(L"auto")).c_str());
 
         ini.SetValue("Libraries", "XeSSPath",
                      wstring_to_string(Instance()->XeSSLibrary.value_for_config_or(L"auto")).c_str());

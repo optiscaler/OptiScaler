@@ -5,6 +5,7 @@
 
 #include <misc/IdentifyGpu.h>
 #include <proxies/D3D12_Proxy.h>
+#include <proxies/FfxApi_Proxy.h>
 
 #include <mutex>
 #include <optional>
@@ -333,6 +334,7 @@ static void FillModule(FfxModule& module, const DriverProvider& provider)
     module.Query = provider.functions.query;
     module.Dispatch = provider.functions.dispatch;
     module.version.parse_version(provider.versionName.c_str());
+    module.vkBackendV2 = true;
 }
 
 static bool CallIsSupported(const DriverProvider& provider, VkDevice device, VkPhysicalDevice physicalDevice,
@@ -372,6 +374,13 @@ bool FSR4DriverProviderVk::Init()
 bool FSR4DriverProviderVk::IsSupported(VkDevice device, VkPhysicalDevice physicalDevice, PFN_vkGetDeviceProcAddr gdpa)
 {
     return IsAvailable() && CallIsSupported(_upscaler, device, physicalDevice, gdpa);
+}
+
+void FSR4DriverProviderVk::AddToVersionList(std::vector<uint64_t>& ids, std::vector<const char*>& names,
+                                            DriverListing listing)
+{
+    if (Init())
+        AddDriverToVersionList(ids, names, VersionId(), VersionName(), listing);
 }
 
 bool FSR4DriverProviderVk::InitFg()
@@ -420,4 +429,14 @@ bool FSR4DriverProviderVk::InitFg()
 bool FSR4DriverProviderVk::IsFgSupported(VkDevice device, VkPhysicalDevice physicalDevice, PFN_vkGetDeviceProcAddr gdpa)
 {
     return IsFgAvailable() && CallIsSupported(_fg, device, physicalDevice, gdpa);
+}
+
+void FSR4DriverProviderVk::AddFgToVersionList(std::vector<uint64_t>& ids, std::vector<const char*>& names)
+{
+    // FFX SDK modules can get the driver FG on their own
+    if (!InitFg() || std::ranges::find(ids, FgVersionId()) != ids.end())
+        return;
+
+    ids.push_back(FgVersionId());
+    names.push_back(FgVersionName());
 }

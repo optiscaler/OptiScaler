@@ -15,6 +15,8 @@ static void fgLogCallback(uint32_t type, const wchar_t* message)
         spdlog::error("FFX FG Callback: {}", message_str);
     else if (type == FFX_API_MESSAGE_TYPE_WARNING)
         spdlog::warn("FFX FG Callback: {}", message_str);
+    else
+        spdlog::debug("FFX FG Callback: {}", message_str);
 }
 
 static FfxApiResource GetFfxResource(const VkFGResource& resource, uint32_t state)
@@ -240,8 +242,8 @@ bool FSRFG_Vk::CreateSwapchain(VkDevice device, const VkSwapchainCreateInfoKHR* 
     QueryVersions();
     _swapchainOutdated = false;
 
-    // ML FG only works with the driver's swapchain, the version can't be switched without recreating it
-    _ffxSwapchain = FfxApiProxy::VkFfxModule();
+    // ML FG only works with the swapchain of the same module, the version can't be switched without recreating it
+    _ffxSwapchain = FfxApiProxy::VkFfxModule_FG();
 
     if (IsDriverVersionSelected())
     {
@@ -257,7 +259,8 @@ bool FSRFG_Vk::CreateSwapchain(VkDevice device, const VkSwapchainCreateInfoKHR* 
         return false;
     }
 
-    LOG_INFO("Using {} FG swapchain", UsesDriver() ? "driver" : "SDK");
+    LOG_INFO("Using {} FG swapchain from {}", UsesDriver() ? "driver" : "SDK",
+             Util::ModulePath(_ffxSwapchain->dll).filename().string());
 
     ffxCreateContextDescFrameGenerationSwapChainVersionVKV2 swapchainVersion {};
     swapchainVersion.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FGSWAPCHAIN_VERSION_VK_V2;
@@ -266,7 +269,7 @@ bool FSRFG_Vk::CreateSwapchain(VkDevice device, const VkSwapchainCreateInfoKHR* 
     ffxCreateContextDescFrameGenerationSwapChainVK desc {};
     desc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FGSWAPCHAIN_VK;
 
-    if (UsesDriver())
+    if (_ffxSwapchain->vkBackendV2)
         desc.header.pNext = &swapchainVersion.header;
 
     desc.physicalDevice = _physicalDevice;
@@ -280,7 +283,19 @@ bool FSRFG_Vk::CreateSwapchain(VkDevice device, const VkSwapchainCreateInfoKHR* 
     desc.imageAcquireQueue = queueInfo(acquireQueue);
 
     if (!UsesDriver())
-        BypassOverlayHooks(FfxApiProxy::VkModule());
+    {
+        BypassOverlayHooks(_ffxSwapchain->dll);
+
+        // Logs why the swapchain can't be created, SDK 2.x takes it without a context
+        if (_ffxSwapchain->vkBackendV2)
+        {
+            ffxConfigureDescGlobalDebug1 fgLogging {};
+            fgLogging.header.type = FFX_API_CONFIGURE_DESC_TYPE_GLOBALDEBUG1;
+            fgLogging.fpMessage = &fgLogCallback;
+            fgLogging.debugLevel = FFX_API_CONFIGURE_GLOBALDEBUG_LEVEL_VERBOSE;
+            _ffxSwapchain->Configure(nullptr, &fgLogging.header);
+        }
+    }
 
     auto result = _ffxSwapchain->CreateContext(&_swapChainContext, &desc.header, nullptr);
     LOG_INFO("Swapchain context creation result: {}", FfxApiProxy::ReturnCodeToString(result));
@@ -297,6 +312,7 @@ bool FSRFG_Vk::CreateSwapchain(VkDevice device, const VkSwapchainCreateInfoKHR* 
     _ffxSwapchain->Query(&_swapChainContext, &_functions.header);
 
     _surface = pCreateInfo->surface;
+    _swapchainAllocator = pAllocator;
     _swapchainFormat = pCreateInfo->imageFormat;
     _swapchainExtent = pCreateInfo->imageExtent;
     *pSwapchain = _swapchain;
@@ -365,9 +381,28 @@ void FSRFG_Vk::ReleaseSwapchainContext()
 
     if (_swapChainContext != nullptr)
     {
+        // Presents still in flight would use the swapchain after it's destroyed
+        ffxDispatchDescFrameGenerationSwapChainWaitForPresentsVK waitDesc {};
+        waitDesc.header.type = FFX_API_DISPATCH_DESC_TYPE_FGSWAPCHAIN_WAIT_FOR_PRESENTS_VK;
+        auto waitResult = _ffxSwapchain->Dispatch(&_swapChainContext, &waitDesc.header);
+        LOG_DEBUG("Wait for presents result: {}", FfxApiProxy::ReturnCodeToString(waitResult));
+
         auto result = _ffxSwapchain->DestroyContext(&_swapChainContext, nullptr);
         LOG_INFO("Destroy swapchain context result: {}", FfxApiProxy::ReturnCodeToString(result));
         _swapChainContext = nullptr;
+
+        // SDK 2.x leaves the swapchain alive after its context, with it the window it presents to.
+        // SDK 1.x and the driver destroy it with the context
+        if (!UsesDriver() && _ffxSwapchain->vkBackendV2 && _swapchain != VK_NULL_HANDLE &&
+            _functions.pOutDestroySwapchainFFXAPI != nullptr)
+        {
+            _functions.pOutDestroySwapchainFFXAPI(_device, _swapchain, _swapchainAllocator, _swapchain);
+            LOG_INFO("Destroyed the FG swapchain");
+        }
+
+        // It holds the DXGI swapchain under the Vulkan one
+        if (State::Instance().amdFlipMeterCreated)
+            LOG_WARN("The swapchain's IAmdExtFlipMeter is still alive, its window may stay in use");
     }
 
     for (auto& [image, view] : _presentViews)
@@ -414,10 +449,10 @@ void FSRFG_Vk::CreateContext()
         _swapchainOutdated = true;
     }
 
-    _ffx = driver ? FSR4DriverProviderVk::FgModule() : FfxApiProxy::VkFfxModule();
+    _ffx = driver ? FSR4DriverProviderVk::FgModule() : FfxApiProxy::VkFfxModule_FG();
 
     ffxCreateBackendVKDesc backendDesc {};
-    backendDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK;
+    backendDesc.header.type = FfxApiProxy::VkBackendType(_ffx);
     backendDesc.vkDevice = _device;
     backendDesc.vkPhysicalDevice = _physicalDevice;
     backendDesc.vkDeviceProcAddr = &VulkanHooks::GetDeviceProcAddr;
@@ -467,8 +502,7 @@ void FSRFG_Vk::CreateContext()
     {
         LOG_INFO("Using driver provided FG {}", FSR4DriverProviderVk::FgVersionName());
 
-        // Driver only recognizes the SDK 2.x backend type, version override is not needed
-        backendDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK_V2;
+        // Version override is not needed
         backendDesc.header.pNext = &fgVersion.header;
         _version.parse_version(FSR4DriverProviderVk::FgVersionName());
     }
@@ -551,30 +585,7 @@ void FSRFG_Vk::ConfigureFramePaceTuning()
 void FSRFG_Vk::QueryVersions()
 {
     auto& state = State::Instance();
-    state.ffxFGVersionIds.clear();
-    state.ffxFGVersionNames.clear();
-
-    if (FfxApiProxy::VULKAN_Query() != nullptr)
-    {
-        ffxQueryDescGetVersions versionQuery {};
-        versionQuery.header.type = FFX_API_QUERY_DESC_TYPE_GET_VERSIONS;
-        versionQuery.createDescType = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION;
-        uint64_t versionCount = 0;
-        versionQuery.outputCount = &versionCount;
-        FfxApiProxy::VULKAN_Query()(nullptr, &versionQuery.header);
-
-        state.ffxFGVersionIds.resize(versionCount);
-        state.ffxFGVersionNames.resize(versionCount);
-        versionQuery.versionIds = state.ffxFGVersionIds.data();
-        versionQuery.versionNames = state.ffxFGVersionNames.data();
-        FfxApiProxy::VULKAN_Query()(nullptr, &versionQuery.header);
-    }
-
-    if (FSR4DriverProviderVk::InitFg())
-    {
-        state.ffxFGVersionIds.push_back(FSR4DriverProviderVk::FgVersionId());
-        state.ffxFGVersionNames.push_back(FSR4DriverProviderVk::FgVersionName());
-    }
+    FfxApiProxy::VULKAN_QueryFgVersions(state.ffxFGVersionIds, state.ffxFGVersionNames);
 
     auto config = Config::Instance();
 

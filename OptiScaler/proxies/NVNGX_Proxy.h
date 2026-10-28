@@ -9,6 +9,7 @@
 #include <proxies/KernelBase_Proxy.h>
 
 #include "nvapi/NvApiHooks.h"
+#include <upscalers/CustomUpscalers.h>
 
 #include "detours/detours.h"
 
@@ -492,10 +493,80 @@ struct NvngxModule
     PFN_UpdateFeature UpdateFeature = nullptr;
 };
 
+// NGX runtime from custom/<name>/dlss, only used by Opti's DLSS upscaler and never hooked
+struct CustomNgxModule
+{
+    NvngxModule module;
+    bool dx12Inited = false;
+};
+
 class NVNGXProxy
 {
   private:
     inline static NvngxModule _module;
+
+    // std::map so the pointers handed out stay valid
+    inline static std::map<std::string, CustomNgxModule> _customModules;
+    inline static std::mutex _customMutex;
+
+    static void GetDx12Functions(NvngxModule& module)
+    {
+        module.D3D12_Init = (PFN_D3D12_Init) KernelBaseProxy::GetProcAddress_()(module.dll, "NVSDK_NGX_D3D12_Init");
+        module.D3D12_Init_ProjectID =
+            (PFN_D3D12_Init_ProjectID) KernelBaseProxy::GetProcAddress_()(module.dll, "NVSDK_NGX_D3D12_Init_ProjectID");
+        module.D3D12_Init_Ext =
+            (PFN_D3D12_Init_Ext) KernelBaseProxy::GetProcAddress_()(module.dll, "NVSDK_NGX_D3D12_Init_Ext");
+        module.D3D12_Shutdown =
+            (PFN_D3D12_Shutdown) KernelBaseProxy::GetProcAddress_()(module.dll, "NVSDK_NGX_D3D12_Shutdown");
+        module.D3D12_Shutdown1 =
+            (PFN_D3D12_Shutdown1) KernelBaseProxy::GetProcAddress_()(module.dll, "NVSDK_NGX_D3D12_Shutdown1");
+        module.D3D12_GetParameters =
+            (PFN_D3D12_GetParameters) KernelBaseProxy::GetProcAddress_()(module.dll, "NVSDK_NGX_D3D12_GetParameters");
+        module.D3D12_AllocateParameters = (PFN_D3D12_AllocateParameters) KernelBaseProxy::GetProcAddress_()(
+            module.dll, "NVSDK_NGX_D3D12_AllocateParameters");
+        module.D3D12_GetCapabilityParameters = (PFN_D3D12_GetCapabilityParameters) KernelBaseProxy::GetProcAddress_()(
+            module.dll, "NVSDK_NGX_D3D12_GetCapabilityParameters");
+        module.D3D12_DestroyParameters = (PFN_D3D12_DestroyParameters) KernelBaseProxy::GetProcAddress_()(
+            module.dll, "NVSDK_NGX_D3D12_DestroyParameters");
+        module.D3D12_GetScratchBufferSize = (PFN_D3D12_GetScratchBufferSize) KernelBaseProxy::GetProcAddress_()(
+            module.dll, "NVSDK_NGX_D3D12_GetScratchBufferSize");
+        module.D3D12_CreateFeature =
+            (PFN_D3D12_CreateFeature) KernelBaseProxy::GetProcAddress_()(module.dll, "NVSDK_NGX_D3D12_CreateFeature");
+        module.D3D12_ReleaseFeature =
+            (PFN_D3D12_ReleaseFeature) KernelBaseProxy::GetProcAddress_()(module.dll, "NVSDK_NGX_D3D12_ReleaseFeature");
+        module.D3D12_GetFeatureRequirements = (PFN_D3D12_GetFeatureRequirements) KernelBaseProxy::GetProcAddress_()(
+            module.dll, "NVSDK_NGX_D3D12_GetFeatureRequirements");
+        module.D3D12_EvaluateFeature = (PFN_D3D12_EvaluateFeature) KernelBaseProxy::GetProcAddress_()(
+            module.dll, "NVSDK_NGX_D3D12_EvaluateFeature");
+    }
+
+    static NVSDK_NGX_Result InitDx12Module(const NvngxModule& module, ID3D12Device* InDevice)
+    {
+        NVSDK_NGX_FeatureCommonInfo fcInfo {};
+        GetFeatureCommonInfo(&fcInfo);
+        NVSDK_NGX_Result nvResult = NVSDK_NGX_Result_Fail;
+
+        if (State::Instance().NVNGX_ProjectId != "" && module.D3D12_Init_ProjectID != nullptr)
+        {
+            LOG_INFO("module.D3D12_Init_ProjectID!");
+
+            nvResult = module.D3D12_Init_ProjectID(
+                State::Instance().NVNGX_ProjectId.c_str(), State::Instance().NVNGX_Engine,
+                State::Instance().NVNGX_EngineVersion.c_str(), State::Instance().NVNGX_ApplicationDataPath.c_str(),
+                InDevice, State::Instance().NVNGX_Version, &fcInfo);
+        }
+        else if (module.D3D12_Init_Ext != nullptr)
+        {
+            LOG_INFO("module.D3D12_Init_Ext!");
+            nvResult = module.D3D12_Init_Ext(State::Instance().NVNGX_ApplicationId,
+                                             State::Instance().NVNGX_ApplicationDataPath.c_str(), InDevice,
+                                             State::Instance().NVNGX_Version, &fcInfo);
+        }
+
+        LOG_INFO("result: {0:X}", (UINT) nvResult);
+
+        return nvResult;
+    }
 
     inline static bool _cudaInited = false;
     inline static bool _dx11Inited = false;
@@ -614,36 +685,7 @@ class NVNGXProxy
             _module.D3D11_EvaluateFeature = (PFN_D3D11_EvaluateFeature) KernelBaseProxy::GetProcAddress_()(
                 _module.dll, "NVSDK_NGX_D3D11_EvaluateFeature");
 
-            _module.D3D12_Init =
-                (PFN_D3D12_Init) KernelBaseProxy::GetProcAddress_()(_module.dll, "NVSDK_NGX_D3D12_Init");
-            _module.D3D12_Init_ProjectID = (PFN_D3D12_Init_ProjectID) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_D3D12_Init_ProjectID");
-            _module.D3D12_Init_Ext =
-                (PFN_D3D12_Init_Ext) KernelBaseProxy::GetProcAddress_()(_module.dll, "NVSDK_NGX_D3D12_Init_Ext");
-            _module.D3D12_Shutdown =
-                (PFN_D3D12_Shutdown) KernelBaseProxy::GetProcAddress_()(_module.dll, "NVSDK_NGX_D3D12_Shutdown");
-            _module.D3D12_Shutdown1 =
-                (PFN_D3D12_Shutdown1) KernelBaseProxy::GetProcAddress_()(_module.dll, "NVSDK_NGX_D3D12_Shutdown1");
-            _module.D3D12_GetParameters = (PFN_D3D12_GetParameters) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_D3D12_GetParameters");
-            _module.D3D12_AllocateParameters = (PFN_D3D12_AllocateParameters) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_D3D12_AllocateParameters");
-            _module.D3D12_GetCapabilityParameters =
-                (PFN_D3D12_GetCapabilityParameters) KernelBaseProxy::GetProcAddress_()(
-                    _module.dll, "NVSDK_NGX_D3D12_GetCapabilityParameters");
-            _module.D3D12_DestroyParameters = (PFN_D3D12_DestroyParameters) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_D3D12_DestroyParameters");
-            _module.D3D12_GetScratchBufferSize = (PFN_D3D12_GetScratchBufferSize) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_D3D12_GetScratchBufferSize");
-            _module.D3D12_CreateFeature = (PFN_D3D12_CreateFeature) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_D3D12_CreateFeature");
-            _module.D3D12_ReleaseFeature = (PFN_D3D12_ReleaseFeature) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_D3D12_ReleaseFeature");
-            _module.D3D12_GetFeatureRequirements =
-                (PFN_D3D12_GetFeatureRequirements) KernelBaseProxy::GetProcAddress_()(
-                    _module.dll, "NVSDK_NGX_D3D12_GetFeatureRequirements");
-            _module.D3D12_EvaluateFeature = (PFN_D3D12_EvaluateFeature) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_D3D12_EvaluateFeature");
+            GetDx12Functions(_module);
 
             _module.VULKAN_RequiredExtensions = (PFN_VULKAN_RequiredExtensions) KernelBaseProxy::GetProcAddress_()(
                 _module.dll, "NVSDK_NGX_VULKAN_RequiredExtensions");
@@ -853,31 +895,58 @@ class NVNGXProxy
         if (_module.dll == nullptr)
             return false;
 
-        NVSDK_NGX_FeatureCommonInfo fcInfo {};
-        GetFeatureCommonInfo(&fcInfo);
-        NVSDK_NGX_Result nvResult = NVSDK_NGX_Result_Fail;
-
-        if (State::Instance().NVNGX_ProjectId != "" && _module.D3D12_Init_ProjectID != nullptr)
-        {
-            LOG_INFO("_module.D3D12_Init_ProjectID!");
-
-            nvResult = _module.D3D12_Init_ProjectID(
-                State::Instance().NVNGX_ProjectId.c_str(), State::Instance().NVNGX_Engine,
-                State::Instance().NVNGX_EngineVersion.c_str(), State::Instance().NVNGX_ApplicationDataPath.c_str(),
-                InDevice, State::Instance().NVNGX_Version, &fcInfo);
-        }
-        else if (_module.D3D12_Init_Ext != nullptr)
-        {
-            LOG_INFO("_module.D3D12_Init_Ext!");
-            nvResult = _module.D3D12_Init_Ext(State::Instance().NVNGX_ApplicationId,
-                                              State::Instance().NVNGX_ApplicationDataPath.c_str(), InDevice,
-                                              State::Instance().NVNGX_Version, &fcInfo);
-        }
-
-        LOG_INFO("result: {0:X}", (UINT) nvResult);
-
-        _dx12Inited = (nvResult == NVSDK_NGX_Result_Success);
+        _dx12Inited = InitDx12Module(_module, InDevice) == NVSDK_NGX_Result_Success;
         return _dx12Inited;
+    }
+
+    // Loading is only tried once per name, nullptr if it failed
+    static CustomNgxModule* LoadCustomDx12(const std::string& name)
+    {
+        std::scoped_lock lock(_customMutex);
+
+        auto [it, inserted] = _customModules.try_emplace(name);
+        auto& custom = it->second;
+        auto& module = custom.module;
+
+        if (inserted)
+        {
+            auto path = CustomUpscalers::NgxDllPath(name);
+            module.dll = CustomUpscalers::LoadDll(name, path);
+
+            if (module.dll == nullptr)
+                return nullptr;
+
+            module.filePath = path.wstring();
+            GetDx12Functions(module);
+        }
+
+        auto usable = (module.D3D12_Init_ProjectID != nullptr || module.D3D12_Init_Ext != nullptr) &&
+                      module.D3D12_CreateFeature != nullptr && module.D3D12_EvaluateFeature != nullptr &&
+                      module.D3D12_ReleaseFeature != nullptr;
+
+        return usable ? &custom : nullptr;
+    }
+
+    // Inited once until ShutdownCustomDx12
+    static bool InitCustomDx12(CustomNgxModule& custom, ID3D12Device* InDevice)
+    {
+        if (!custom.dx12Inited)
+            custom.dx12Inited = InitDx12Module(custom.module, InDevice) == NVSDK_NGX_Result_Success;
+
+        return custom.dx12Inited;
+    }
+
+    static void ShutdownCustomDx12(CustomNgxModule& custom, ID3D12Device* InDevice)
+    {
+        if (!custom.dx12Inited)
+            return;
+
+        if (custom.module.D3D12_Shutdown != nullptr)
+            custom.module.D3D12_Shutdown();
+        else if (custom.module.D3D12_Shutdown1 != nullptr)
+            custom.module.D3D12_Shutdown1(InDevice);
+
+        custom.dx12Inited = false;
     }
 
     static void SetDx12Inited(bool value) { _dx12Inited = value; }

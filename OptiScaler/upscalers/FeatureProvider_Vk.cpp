@@ -16,6 +16,7 @@
 #include "upscalers/xess/XeSSFeature_Vk.h"
 #include "upscalers/ffx/FFXFeature_VkOn12.h"
 #include <misc/IdentifyGpu.h>
+#include "CustomUpscalers.h"
 
 bool FeatureProvider_Vk::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NGX_Parameter* parameters,
                                     std::unique_ptr<IFeature_Vk>* feature)
@@ -23,6 +24,8 @@ bool FeatureProvider_Vk::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NGX_
     State& state = State::Instance();
     Config& cfg = *Config::Instance();
     auto primaryGpu = IdentifyGpu::getPrimaryGpu();
+
+    const auto custom = cfg.CustomUpscalerVk.value_or("");
 
     switch (upscaler)
     {
@@ -43,7 +46,7 @@ bool FeatureProvider_Vk::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NGX_
         break;
 
     case Upscaler::FFX:
-        *feature = std::make_unique<FFXFeatureVk>(handleId, parameters);
+        *feature = std::make_unique<FFXFeatureVk>(handleId, parameters, CustomUpscalers::IsFfxVk(custom) ? custom : "");
         break;
 
     case Upscaler::FFX_on12:
