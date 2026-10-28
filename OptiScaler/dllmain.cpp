@@ -1377,6 +1377,9 @@ static void printQuirks(flag_set<GameQuirk>& quirks)
     if (quirks & GameQuirk::SimulateWaitableObject)
         stringQuirks.push_back("Simulating waitable object event signals for FG swapchain");
 
+    if (quirks & GameQuirk::HideFsr4)
+        stringQuirks.push_back("Hide FSR 4 from the game's FFX version list");
+
     state->detectedQuirks.append_range(stringQuirks);
     for (auto& stringQuirk : stringQuirks)
         spdlog::info("Quirk: {}", stringQuirk);

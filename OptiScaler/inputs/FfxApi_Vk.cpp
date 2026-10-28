@@ -523,6 +523,14 @@ ffxReturnCode_t ffxQuery_Vk(ffxContext* context, ffxQueryDescHeader* desc)
     auto type = FfxApiProxy::GetIndirectType(desc);
     LOG_DEBUG("Header type: {}, Indirect type: {}", FfxApiProxy::GetTypeName(desc->type), magic_enum::enum_name(type));
 
+    if (desc->type == FFX_API_QUERY_DESC_TYPE_GET_VERSIONS && type == FFXStructType::Upscaling &&
+        State::Instance().gameQuirks & GameQuirk::HideFsr4)
+    {
+        return FfxApiProxy::QueryUpscalerVersionsWithoutFsr4(reinterpret_cast<ffxQueryDescGetVersions*>(desc),
+                                                             [context](ffxQueryDescHeader* query)
+                                                             { return FfxApiProxy::VULKAN_Query(context, query); });
+    }
+
     if (desc->type == FFX_API_QUERY_DESC_TYPE_UPSCALE_GETRENDERRESOLUTIONFROMQUALITYMODE)
     {
         auto ratioDesc = (ffxQueryDescUpscaleGetRenderResolutionFromQualityMode*) desc;

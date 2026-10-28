@@ -66,6 +66,7 @@ enum class GameQuirk : uint64_t
     IgnoreValidUntilEvaluateForFG,
     IgnoreTagsWithoutHudlessForFG,
     ForceFGRenderSizeMVs,
+    HideFsr4,
     // Don't forget to add the new entry to printQuirks
     _
 };
@@ -452,8 +453,9 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("goweday.exe", GameQuirk::AlwaysCaptureFSRFGSwapchain),
 
     // BeamNG.drive
-    // Auto Exposure required for XeSS
-    QUIRK_ENTRY("beamng.drive.x64.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceAutoExposure),
+    // Auto Exposure required for XeSS, HideFsr4 fixes broken settings menu in DX12
+    QUIRK_ENTRY("beamng.drive.x64.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceAutoExposure,
+                GameQuirk::HideFsr4),
 
     // METRO 2033 Redux, METRO Last Light Redux
     // Manual Input polling for fixing invisible Opti Overlay
