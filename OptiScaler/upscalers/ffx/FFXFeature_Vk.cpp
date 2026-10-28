@@ -129,14 +129,15 @@ static inline FfxApiResourceDescription ffxApiGetImageResourceDescriptionVKLocal
 FFXFeatureVk::FFXFeatureVk(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters)
     : FFXFeature(InHandleId, InParameters), IFeature_Vk(InHandleId, InParameters), IFeature(InHandleId, InParameters)
 {
-    _moduleLoaded = FfxApiProxy::InitFfxVk();
+    FfxApiProxy::InitFfxVk();
+    _moduleLoaded = FfxApiProxy::IsSRReadyVk();
 
     if (_moduleLoaded)
-        LOG_INFO("amd_fidelityfx_vk.dll methods loaded!");
+        LOG_INFO("FFX Vulkan upscaler methods loaded!");
     else
-        LOG_ERROR("Can't load amd_fidelityfx_vk.dll methods!");
+        LOG_ERROR("Can't load FFX Vulkan upscaler methods!");
 
-    // Driver provided FSR 4 works without amd_fidelityfx_vk.dll
+    // Driver provided FSR 4 works without the FFX SDK
     if (FSR4DriverProviderVk::Init())
         _moduleLoaded = true;
 }
@@ -160,16 +161,7 @@ bool FFXFeatureVk::InitFFX(const NVSDK_NGX_Parameter* InParameters)
     {
         ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 
-        if (!QueryVersionsVulkan() || State::Instance().ffxUpscalerVersionsVk.ids.empty())
-        {
-            LOG_ERROR("No FFX upscalers reported!");
-            return false;
-        }
-
-        InitFlags();
-
         ffxCreateBackendVKDesc backendDesc = { 0 };
-        backendDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK;
         backendDesc.vkDevice = Device;
         backendDesc.vkPhysicalDevice = PhysicalDevice;
 
@@ -177,6 +169,16 @@ bool FFXFeatureVk::InitFFX(const NVSDK_NGX_Parameter* InParameters)
             backendDesc.vkDeviceProcAddr = vkGetDeviceProcAddr;
         else
             backendDesc.vkDeviceProcAddr = GDPA;
+
+        // The device is used for filtering out unsupported upscalers (FSR4), the fields after the header are
+        // VkDeviceContext of FFX SDK 2.x
+        if (!QueryVersionsVulkan(&backendDesc.vkDevice) || State::Instance().ffxUpscalerVersionsVk.ids.empty())
+        {
+            LOG_ERROR("No FFX upscalers reported!");
+            return false;
+        }
+
+        InitFlags();
 
         _contextDesc.header.pNext = &backendDesc.header;
 
@@ -204,20 +206,21 @@ bool FFXFeatureVk::InitFFX(const NVSDK_NGX_Parameter* InParameters)
 
             LOG_INFO("Using driver provided FSR {}", FSR4DriverProviderVk::VersionName());
 
-            // Driver only recognizes the SDK 2.x backend type, version override is not needed
-            backendDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK_V2;
+            // Version override is not needed
             backendDesc.header.pNext = &upscaleVersion.header;
             _ffx = FSR4DriverProviderVk::Module();
         }
         else
         {
             backendDesc.header.pNext = &ov.header;
-            _ffx = FfxApiProxy::VkFfxModule();
+            _ffx = FfxApiProxy::VkFfxModule_SR();
         }
+
+        backendDesc.header.type = FfxApiProxy::VkBackendType(_ffx);
 
         if (_ffx->CreateContext == nullptr)
         {
-            LOG_ERROR("amd_fidelityfx_vk.dll is not loaded!");
+            LOG_ERROR("FFX Vulkan upscaler is not loaded!");
             return false;
         }
 

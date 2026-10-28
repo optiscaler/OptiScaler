@@ -3876,9 +3876,8 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
 
                 if (versions == &state.ffxUpscalerVersionsDx12)
                     upscalerModule = FfxApiProxy::UpscalerModule(versionId);
-                else if (versions == &state.ffxUpscalerVersionsVk && FSR4DriverProviderVk::IsAvailable() &&
-                         versionId == FSR4DriverProviderVk::VersionId())
-                    upscalerModule = FSR4DriverProviderVk::Module()->dll;
+                else if (versions == &state.ffxUpscalerVersionsVk)
+                    upscalerModule = FfxApiProxy::UpscalerModuleVk(versionId);
             }
 
             if (auto models = FSR4Models::SelectableModels(upscalerModule); !models.empty())
@@ -9070,6 +9069,9 @@ void MenuCommon::RenderDetectedInfo(RenderMenuContext& ctx)
         StatusFlag("FFX 3.1", FfxApiProxy::Dx12Module() != nullptr);
         StatusFlag("FFX SR", FfxApiProxy::Dx12Module_SR() != nullptr);
         StatusFlag("FFX FG", FfxApiProxy::Dx12Module_FG() != nullptr);
+        StatusFlag("FFX Vk", FfxApiProxy::VkModule() != nullptr);
+        StatusFlag("FFX Vk SR", FfxApiProxy::VkModule_SR() != nullptr);
+        StatusFlag("FFX Vk FG", FfxApiProxy::VkModule_FG() != nullptr);
         StatusFlag("OptiPatcher", state.isOptiPatcherSucceed);
         StatusFlag("Linux", state.isRunningOnLinux);
         StatusFlag("DLSS capable GPU", primaryGpu.dlssCapable);

@@ -816,6 +816,8 @@ bool Config::Reload(std::filesystem::path iniPath)
             FfxDx12RRPath.set_from_config(readWString("Libraries", "FfxDx12RRPath"));
             FfxDx12RCPath.set_from_config(readWString("Libraries", "FfxDx12RCPath"));
             FfxVkPath.set_from_config(readWString("Libraries", "FfxVkPath"));
+            FfxVkSRPath.set_from_config(readWString("Libraries", "FfxVkSRPath"));
+            FfxVkFGPath.set_from_config(readWString("Libraries", "FfxVkFGPath"));
 
             XeSSLibrary.set_from_config(readWString("Libraries", "XeSSPath"));
             XeSSLibrary.set_from_config(readWString("Libraries", "XeFGPath"));
@@ -2033,6 +2035,10 @@ bool Config::SaveIni()
                      wstring_to_string(Instance()->FfxDx12RCPath.value_for_config_or(L"auto")).c_str());
         ini.SetValue("Libraries", "FfxVkPath",
                      wstring_to_string(Instance()->FfxVkPath.value_for_config_or(L"auto")).c_str());
+        ini.SetValue("Libraries", "FfxVkSRPath",
+                     wstring_to_string(Instance()->FfxVkSRPath.value_for_config_or(L"auto")).c_str());
+        ini.SetValue("Libraries", "FfxVkFGPath",
+                     wstring_to_string(Instance()->FfxVkFGPath.value_for_config_or(L"auto")).c_str());
 
         ini.SetValue("Libraries", "XeSSPath",
                      wstring_to_string(Instance()->XeSSLibrary.value_for_config_or(L"auto")).c_str());

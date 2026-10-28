@@ -332,6 +332,8 @@ class Config
     CustomOptional<std::wstring, NoDefault> FfxDx12RRPath;
     CustomOptional<std::wstring, NoDefault> FfxDx12RCPath;
     CustomOptional<std::wstring, NoDefault> FfxVkPath;
+    CustomOptional<std::wstring, NoDefault> FfxVkSRPath;
+    CustomOptional<std::wstring, NoDefault> FfxVkFGPath;
     CustomOptional<std::wstring, NoDefault> XeSSLibrary;
     CustomOptional<std::wstring, NoDefault> XeFGLibrary;
     CustomOptional<std::wstring, NoDefault> XeLLLibrary;

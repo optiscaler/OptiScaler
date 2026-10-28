@@ -579,7 +579,11 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
     if (CheckDllNameW(&libName, &ffxVkNamesW))
     {
-        if (FfxApiProxy::VkModule() != nullptr)
+        // FFX SDK 2.x and the legacy dll take different backend types, only the input hooks convert between them
+        const bool sameBackend = CheckDllNameW(&libName, &ffxVkLegacyNamesW) != FfxApiProxy::VkModule_BackendV2();
+
+        if (FfxApiProxy::VkModule() != nullptr &&
+            (sameBackend || Config::Instance()->EnableFfxInputs.value_or_default()))
         {
             auto module = NtdllProxy::LoadLibraryExW_Ldr(FfxApiProxy::VkModule_Path().c_str(), NULL, NULL);
             return module;
@@ -589,6 +593,38 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
         if (module != nullptr)
             FfxApiProxy::InitFfxVk(module);
+
+        return module;
+    }
+
+    if (CheckDllNameW(&libName, &ffxVkUpscalerNamesW))
+    {
+        if (FfxApiProxy::VkModule_SR() != nullptr)
+        {
+            auto module = NtdllProxy::LoadLibraryExW_Ldr(FfxApiProxy::VkModule_SR_Path().c_str(), NULL, NULL);
+            return module;
+        }
+
+        auto module = NtdllProxy::LoadLibraryExW_Ldr(libName.c_str(), NULL, NULL);
+
+        if (module != nullptr)
+            FfxApiProxy::InitFfxVk_SR(module);
+
+        return module;
+    }
+
+    if (CheckDllNameW(&libName, &ffxVkFGNamesW))
+    {
+        if (FfxApiProxy::VkModule_FG() != nullptr)
+        {
+            auto module = NtdllProxy::LoadLibraryExW_Ldr(FfxApiProxy::VkModule_FG_Path().c_str(), NULL, NULL);
+            return module;
+        }
+
+        auto module = NtdllProxy::LoadLibraryExW_Ldr(libName.c_str(), NULL, NULL);
+
+        if (module != nullptr)
+            FfxApiProxy::InitFfxVk_FG(module);
 
         return module;
     }
@@ -664,6 +700,20 @@ std::optional<NTSTATUS> LibraryLoadHooks::FreeLibrary(PVOID lpLibrary)
     {
 #ifdef LOG_LIB_OPERATIONS
         LOG_WARN("Call for FFX Vulkan, caller: {}", Util::WhoIsTheCaller(_ReturnAddress()));
+#endif
+        result = TRUE;
+    }
+    else if (lpLibrary == FfxApiProxy::VkModule_SR())
+    {
+#ifdef LOG_LIB_OPERATIONS
+        LOG_WARN("Call for FFX Vulkan SR, caller: {}", Util::WhoIsTheCaller(_ReturnAddress()));
+#endif
+        result = TRUE;
+    }
+    else if (lpLibrary == FfxApiProxy::VkModule_FG())
+    {
+#ifdef LOG_LIB_OPERATIONS
+        LOG_WARN("Call for FFX Vulkan FG, caller: {}", Util::WhoIsTheCaller(_ReturnAddress()));
 #endif
         result = TRUE;
     }

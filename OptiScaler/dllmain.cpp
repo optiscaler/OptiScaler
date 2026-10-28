@@ -1147,6 +1147,22 @@ static void CheckWorkingMode()
         FfxApiProxy::InitFfxVk(ffxVkModule);
     }
 
+    HMODULE ffxVkSRModule = nullptr;
+    ffxVkSRModule = GetDllNameWModule(&ffxVkUpscalerNamesW);
+    if (ffxVkSRModule != nullptr)
+    {
+        LOG_DEBUG("amd_fidelityfx_upscaler_vk.dll already in memory");
+        FfxApiProxy::InitFfxVk_SR(ffxVkSRModule);
+    }
+
+    HMODULE ffxVkFGModule = nullptr;
+    ffxVkFGModule = GetDllNameWModule(&ffxVkFGNamesW);
+    if (ffxVkFGModule != nullptr)
+    {
+        LOG_DEBUG("amd_fidelityfx_framegeneration_vk.dll already in memory");
+        FfxApiProxy::InitFfxVk_FG(ffxVkFGModule);
+    }
+
     // Hook kernel32 methods
     if (!Config::Instance()->EarlyHooking.value_or_default())
     {

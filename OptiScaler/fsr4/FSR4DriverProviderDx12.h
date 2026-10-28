@@ -11,11 +11,7 @@
 class FSR4DriverProviderDx12
 {
   public:
-    enum class Listing
-    {
-        Always,             // Opti's menu
-        WhenNewestUpscaler, // Version queries of the game
-    };
+    using Listing = DriverListing;
 
     static FSR4DriverDll& Dll();
 

@@ -35,6 +35,9 @@ class FSRFG_Vk : public virtual IFGFeature_Vk
     // Game destroys its old swapchain after creating the new one, the context took it with it already
     VkSwapchainKHR _retiredSwapchain = VK_NULL_HANDLE;
 
+    // FFX SDK 2.x swapchains outlive their context, they get destroyed with it here
+    const VkAllocationCallbacks* _swapchainAllocator = nullptr;
+
     // FFX takes these at context creation
     flag_set<FG_Flags> _contextFlags;
 

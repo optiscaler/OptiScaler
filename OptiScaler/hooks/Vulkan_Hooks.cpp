@@ -322,14 +322,15 @@ static IFGFeature_Vk* CreateFGFeature()
 
     if (state.activeFgOutput == FGOutput::FSRFG)
     {
-        // Driver provided ML FG works without amd_fidelityfx_vk.dll
-        bool sdkLoaded = FfxApiProxy::InitFfxVk();
+        // Driver provided ML FG works without the FFX SDK
+        FfxApiProxy::InitFfxVk();
+        bool sdkLoaded = FfxApiProxy::IsFGReadyVk();
         bool driverLoaded = FSR4DriverProviderVk::InitFg();
 
         if (sdkLoaded || driverLoaded)
             state.currentVkFG = new FSRFG_Vk();
         else
-            LOG_ERROR("Can't load amd_fidelityfx_vk.dll, FSR FG won't be available");
+            LOG_ERROR("Can't load FFX Vulkan frame generation, FSR FG won't be available");
     }
     else if (state.activeFgOutput == FGOutput::DLSSG)
     {

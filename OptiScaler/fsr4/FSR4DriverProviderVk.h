@@ -2,10 +2,14 @@
 
 #include "FSR4DriverProvider.h"
 
-#include <proxies/FfxApi_Proxy.h>
+#include <proxies/FfxModule.h>
 
-// Vulkan FFX backend description type used by the driver side providers (SDK 2.x id)
-// Layout is the same as ffxCreateBackendVKDesc
+#include <vulkan/vulkan.h>
+
+// Descriptors of FFX SDK 2.x for Vulkan, used with the driver and the SDK 2.x dlls
+
+// Backend description type of SDK 2.x, layout is the same as ffxCreateBackendVKDesc. The type of older SDKs
+// (FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK) is still accepted by SDK 2.x but no backend gets created with it
 #define FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK_V2 0x01000003u
 
 // From SDK 2.x ffx_upscale.h, the driver complains without it and accepts versions 4.0.0 - 4.1.2
@@ -52,6 +56,9 @@ class FSR4DriverProviderVk
 
     static bool IsSupported(VkDevice device, VkPhysicalDevice physicalDevice, PFN_vkGetDeviceProcAddr gdpa);
 
+    // Adds the driver upscaler to a version list from the FFX SDK, keeping it sorted newest first
+    static void AddToVersionList(std::vector<uint64_t>& ids, std::vector<const char*>& names, DriverListing listing);
+
     // ML frame generation (FP8 only) and the swapchain it needs, both have to come from the driver
     static bool InitFg();
     static bool IsFgAvailable()
@@ -65,6 +72,9 @@ class FSR4DriverProviderVk
     static const char* FgVersionName() { return _fg.versionName.c_str(); }
 
     static bool IsFgSupported(VkDevice device, VkPhysicalDevice physicalDevice, PFN_vkGetDeviceProcAddr gdpa);
+
+    // Adds the driver FG to the end of a version list from the FFX SDK
+    static void AddFgToVersionList(std::vector<uint64_t>& ids, std::vector<const char*>& names);
 
   private:
     inline static DriverProvider _upscaler {};

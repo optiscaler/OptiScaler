@@ -22,13 +22,6 @@ std::once_flag initOnce;
 std::unordered_set<ffxContext> contexts;
 std::mutex contextsMutex;
 
-// FFX packs provider versions into the low bits of their ids, external providers also set bit 31
-feature_version ProviderVersion(uint64_t versionId)
-{
-    auto packed = static_cast<uint32_t>(versionId) & 0x7FFFFFFF;
-    return feature_version(packed >> 22, (packed >> 12) & 0x3FF, packed & 0xFFF);
-}
-
 bool QueryUpscaler()
 {
     // FFX SDK 2.0+ sends version 2, the first drivers with FSR 4 only fill in version 1.
@@ -108,21 +101,7 @@ void FSR4DriverProviderDx12::AddToVersionList(std::vector<uint64_t>& ids, std::v
         return;
 
     // FFX modules that Opti doesn't own still get the driver upscaler from IAmdExtFfxApi
-    if (std::ranges::find(ids, upscaler.functions.versionId) != ids.end())
-        return;
-
-    auto driverVersion = ProviderVersion(upscaler.functions.versionId);
-    auto isOlder = [driverVersion](uint64_t id) { return ProviderVersion(id) < driverVersion; };
-
-    if (listing == Listing::WhenNewestUpscaler && !std::ranges::all_of(ids, isOlder))
-    {
-        LOG_DEBUG("Not listing driver upscaler {}, the FFX SDK has a newer or equal one", upscaler.versionName);
-        return;
-    }
-
-    auto index = std::distance(ids.begin(), std::ranges::find_if(ids, isOlder));
-    ids.insert(ids.begin() + index, upscaler.functions.versionId);
-    names.insert(names.begin() + index, upscaler.versionName.c_str());
+    AddDriverToVersionList(ids, names, upscaler.functions.versionId, upscaler.versionName.c_str(), listing);
 }
 
 bool FSR4DriverProviderDx12::OwnsContext(ffxContext* context)
