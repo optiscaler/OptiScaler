@@ -7,6 +7,14 @@
 class DLSSFeatureDx12 : public DLSSFeature, public IFeature_Dx12
 {
   private:
+    // Custom NGX runtime, nullptr for NVIDIA's
+    CustomNgxModule* _custom = nullptr;
+
+    // Functions of the NGX runtime this runs on
+    PFN_D3D12_CreateFeature CreateFeature() const;
+    PFN_D3D12_EvaluateFeature EvaluateFeature() const;
+    PFN_D3D12_ReleaseFeature ReleaseFeature() const;
+
   protected:
     bool InitDLSS(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters);
 
@@ -31,6 +39,6 @@ class DLSSFeatureDx12 : public DLSSFeature, public IFeature_Dx12
 
     bool IsWithDx12() override { return false; }
 
-    DLSSFeatureDx12(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters);
+    DLSSFeatureDx12(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters, const std::string& customUpscaler = "");
     ~DLSSFeatureDx12();
 };

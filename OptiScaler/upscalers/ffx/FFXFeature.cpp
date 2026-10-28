@@ -21,9 +21,9 @@ double FFXFeature::GetDeltaTime()
     return deltaTime;
 }
 
-bool FFXFeature::QueryVersionsDx12(ID3D12Device* device)
+bool FFXFeature::QueryVersionsDx12(ID3D12Device* device, CustomFfxModule* custom)
 {
-    auto& versions = State::Instance().ffxUpscalerVersionsDx12;
+    auto& versions = custom != nullptr ? custom->versions : State::Instance().ffxUpscalerVersionsDx12;
 
     // Get number of versions for allocation
     ffxQueryDescGetVersions versionQuery {};
@@ -36,7 +36,13 @@ bool FFXFeature::QueryVersionsDx12(ID3D12Device* device)
     // The driver upscaler is always offered in the menu, even when the FFX SDK has a newer one
     constexpr auto driverListing = FSR4DriverProviderDx12::Listing::Always;
 
-    if (FfxApiProxy::D3D12_QueryUpscalerVersions(&versionQuery, driverListing) != FFX_API_RETURN_OK)
+    auto query = [&]
+    {
+        return custom != nullptr ? custom->module.Query(nullptr, &versionQuery.header)
+                                 : FfxApiProxy::D3D12_QueryUpscalerVersions(&versionQuery, driverListing);
+    };
+
+    if (query() != FFX_API_RETURN_OK)
         return false;
 
     // Fill version ids and names arrays
@@ -45,7 +51,7 @@ bool FFXFeature::QueryVersionsDx12(ID3D12Device* device)
     versionQuery.versionIds = versions.ids.data();
     versionQuery.versionNames = versions.names.data();
 
-    return FfxApiProxy::D3D12_QueryUpscalerVersions(&versionQuery, driverListing) == FFX_API_RETURN_OK;
+    return query() == FFX_API_RETURN_OK;
 }
 
 bool FFXFeature::QueryVersionsVulkan()

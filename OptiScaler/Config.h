@@ -528,6 +528,19 @@ class Config
     // FSR
     CustomOptional<bool> FsrDebugView { false };
     CustomOptional<int> FfxUpscalerIndex { 0 };
+    // Folder name in custom used by FFX or DLSS, stored in Dx12Upscaler, empty for the regular upscalers
+    CustomOptional<std::string, NoDefault> CustomUpscaler;
+
+    // UpscalerIndex of [FSR] for the regular FFX upscaler, of [<name>] for a custom one
+    CustomOptional<int>& FfxUpscalerIndexFor(const std::string& custom)
+    {
+        if (custom.empty())
+            return FfxUpscalerIndex;
+
+        // Entries never move, the reference stays valid outside the lock
+        std::scoped_lock lock(_customIndexMutex);
+        return _ffxCustomUpscalerIndex.try_emplace(custom, 0).first->second;
+    }
     CustomOptional<int> FfxFGIndex { 0 };
     CustomOptional<bool> FsrUseMaskForTransparency { true };
     CustomOptional<bool> FsrNonLinearColorSpace { false };
@@ -796,6 +809,15 @@ class Config
 
     std::filesystem::path absoluteFileName;
     std::wstring fileName = L"OptiScaler.ini";
+
+    // Ini sections aren't case sensitive, the folder names neither
+    struct NoCaseLess
+    {
+        bool operator()(const std::string& a, const std::string& b) const { return _stricmp(a.c_str(), b.c_str()) < 0; }
+    };
+
+    std::map<std::string, CustomOptional<int>, NoCaseLess> _ffxCustomUpscalerIndex;
+    std::mutex _customIndexMutex;
 
     bool Reload(std::filesystem::path iniPath);
 

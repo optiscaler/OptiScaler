@@ -14,13 +14,27 @@ NVSDK_NGX_Parameter* FFXFeatureDx12::SetParameters(NVSDK_NGX_Parameter* InParame
     return InParameters;
 }
 
-FFXFeatureDx12::FFXFeatureDx12(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters)
+FFXFeatureDx12::FFXFeatureDx12(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters,
+                               const std::string& customUpscaler)
     : FFXFeature(InHandleId, InParameters), IFeature_Dx12(InHandleId, InParameters),
       IFeature(InHandleId, SetParameters(InParameters))
 {
+    // Regular dlls go first, so their name lookups don't find the custom dll
     FfxApiProxy::InitFfxDx12();
 
-    _moduleLoaded = FfxApiProxy::IsSRReady();
+    if (customUpscaler.empty())
+    {
+        _moduleLoaded = FfxApiProxy::IsSRReady();
+    }
+    else
+    {
+        _customUpscaler = FfxApiProxy::LoadCustomUpscalerDx12(customUpscaler);
+        _moduleLoaded = _customUpscaler != nullptr;
+
+        if (!_moduleLoaded)
+            ImGui::InsertNotification(
+                { ImGuiToastType::Error, 10000, "Can't load custom upscaler %s", customUpscaler.c_str() });
+    }
 
     if (_moduleLoaded)
         LOG_INFO("amd_fidelityfx_dx12.dll methods loaded!");
@@ -542,7 +556,10 @@ bool FFXFeatureDx12::InitFFX(const NVSDK_NGX_Parameter* InParameters)
     {
         ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 
-        if (!QueryVersionsDx12(Device) || State::Instance().ffxUpscalerVersionsDx12.ids.empty())
+        auto& versions =
+            _customUpscaler != nullptr ? _customUpscaler->versions : State::Instance().ffxUpscalerVersionsDx12;
+
+        if (!QueryVersionsDx12(Device, _customUpscaler) || versions.ids.empty())
         {
             LOG_ERROR("No FFX upscalers reported!");
             return false;
@@ -556,18 +573,17 @@ bool FFXFeatureDx12::InitFFX(const NVSDK_NGX_Parameter* InParameters)
 
         _contextDesc.header.pNext = &backendDesc.header;
 
-        if (Config::Instance()->FfxUpscalerIndex.value_or_default() < 0 ||
-            Config::Instance()->FfxUpscalerIndex.value_or_default() >=
-                State::Instance().ffxUpscalerVersionsDx12.ids.size())
-            Config::Instance()->FfxUpscalerIndex.set_volatile_value(0);
+        auto& upscalerIndex =
+            Config::Instance()->FfxUpscalerIndexFor(_customUpscaler != nullptr ? _customUpscaler->name : "");
 
-        parse_version(
-            State::Instance().ffxUpscalerVersionsDx12.names[Config::Instance()->FfxUpscalerIndex.value_or_default()]);
+        if (upscalerIndex.value_or_default() < 0 || upscalerIndex.value_or_default() >= versions.ids.size())
+            upscalerIndex.set_volatile_value(0);
+
+        parse_version(versions.names[upscalerIndex.value_or_default()]);
 
         ffxOverrideVersion override = { 0 };
         override.header.type = FFX_API_DESC_TYPE_OVERRIDE_VERSION;
-        override.versionId =
-            State::Instance().ffxUpscalerVersionsDx12.ids[Config::Instance()->FfxUpscalerIndex.value_or_default()];
+        override.versionId = versions.ids[upscalerIndex.value_or_default()];
         backendDesc.header.pNext = &override.header;
 
         // FSR4's own auto exposure reads the whole color texture instead of just renderSize. On UE the padding
@@ -596,7 +612,10 @@ bool FFXFeatureDx12::InitFFX(const NVSDK_NGX_Parameter* InParameters)
         {
             ScopedSkipHeapCapture skipHeapCapture {};
 
-            auto ret = FfxApiProxy::D3D12_CreateContext(&_context, &_contextDesc.header, NULL);
+            auto ret =
+                _customUpscaler != nullptr
+                    ? FfxApiProxy::D3D12_CreateContext(&_customUpscaler->module, &_context, &_contextDesc.header, NULL)
+                    : FfxApiProxy::D3D12_CreateContext(&_context, &_contextDesc.header, NULL);
 
             if (ret != FFX_API_RETURN_OK)
             {

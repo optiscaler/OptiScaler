@@ -461,6 +461,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="upscalers\dlss\DLSSFeature_Dx12.h" />
     <ClInclude Include="upscalers\dlss\DLSSFeature_Vk.h" />
     <ClInclude Include="upscalers\FeatureProvider_Dx11.h" />
+    <ClInclude Include="upscalers\CustomUpscalers.h" />
     <ClInclude Include="upscalers\FeatureProvider_Dx12.h" />
     <ClInclude Include="upscalers\FeatureProvider_Vk.h" />
     <ClInclude Include="upscalers\ffx\FFXFeature.h" />

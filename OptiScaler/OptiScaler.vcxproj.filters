@@ -596,6 +596,9 @@
     <ClInclude Include="upscalers\FeatureProvider_Dx11.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="upscalers\CustomUpscalers.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="upscalers\FeatureProvider_Dx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>

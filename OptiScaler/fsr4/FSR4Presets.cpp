@@ -17,8 +17,8 @@ struct HookedModule
 };
 
 // Each hooked module needs a detour of its own to know which original to call,
-// one for the driver dll and the rest for FFX SDK dlls the game and Opti load
-std::array<HookedModule, 4> hookedModules {};
+// one for the driver dll and the rest for FFX SDK dlls the game and Opti load, custom upscalers included
+std::array<HookedModule, 8> hookedModules {};
 std::mutex hookMutex;
 
 uint32_t CorrectedPreset(uint32_t preset)
@@ -214,4 +214,10 @@ bool FSR4Presets::IsAnyModuleHooked()
 {
     std::scoped_lock lock(hookMutex);
     return std::ranges::any_of(hookedModules, [](const HookedModule& hooked) { return hooked.module != nullptr; });
+}
+
+bool FSR4Presets::IsModuleHooked(HMODULE module)
+{
+    std::scoped_lock lock(hookMutex);
+    return module != nullptr && std::ranges::find(hookedModules, module, &HookedModule::module) != hookedModules.end();
 }

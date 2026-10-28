@@ -4,6 +4,8 @@
 
 #include <upscalers/IFeature.h>
 
+struct CustomFfxModule;
+
 class FFXFeature : public virtual IFeature
 {
   private:
@@ -88,7 +90,8 @@ class FFXFeature : public virtual IFeature
   public:
     feature_version Version() override { return _version; }
 
-    static bool QueryVersionsDx12(ID3D12Device* device);
+    // Fills the custom upscaler's list when given, the regular one otherwise
+    static bool QueryVersionsDx12(ID3D12Device* device, CustomFfxModule* custom = nullptr);
     static bool QueryVersionsVulkan();
 
     // Fill the version lists without an active FFX feature, loads FFX and creates a temp device if needed
