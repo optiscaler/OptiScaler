@@ -1297,6 +1297,9 @@ static void printQuirks(flag_set<GameQuirk>& quirks)
     if (quirks & GameQuirk::DLSSGFrameLatencyWaitable)
         stringQuirks.push_back("Request frame latency waitable swapchain for DLSSG");
 
+    if (quirks & GameQuirk::HideFsr4)
+        stringQuirks.push_back("Hide FSR 4 from the game's FFX version list");
+
     state->detectedQuirks.append_range(stringQuirks);
     for (auto& stringQuirk : stringQuirks)
         spdlog::info("Quirk: {}", stringQuirk);

@@ -1561,6 +1561,60 @@ class FfxApiProxy
         return FFX_API_RETURN_OK;
     }
 
+    template <typename QueryFn>
+    static ffxReturnCode_t QueryUpscalerVersionsWithoutFsr4(ffxQueryDescGetVersions* desc, QueryFn query)
+    {
+        if (desc->outputCount == nullptr)
+            return FFX_API_RETURN_ERROR_PARAMETER;
+
+        ffxQueryDescGetVersions fullQuery = *desc;
+        uint64_t fullCount = 0;
+        fullQuery.outputCount = &fullCount;
+        fullQuery.versionIds = nullptr;
+        fullQuery.versionNames = nullptr;
+
+        if (auto result = query(&fullQuery.header); result != FFX_API_RETURN_OK)
+            return result;
+
+        std::vector<uint64_t> ids(fullCount);
+        std::vector<const char*> names(fullCount);
+        fullQuery.versionIds = ids.data();
+        fullQuery.versionNames = names.data();
+
+        if (auto result = query(&fullQuery.header); result != FFX_API_RETURN_OK)
+            return result;
+
+        // Same contract as FFX, a non-zero count is the capacity of the arrays
+        auto capacity = *desc->outputCount;
+        uint64_t count = 0;
+
+        for (size_t i = 0; i < fullCount && i < ids.size(); i++)
+        {
+            if (names[i] != nullptr && std::atoi(names[i]) >= 4)
+            {
+                LOG_DEBUG("Hiding upscaler version {} from the game", names[i]);
+                continue;
+            }
+
+            if (capacity != 0)
+            {
+                if (count >= capacity)
+                    break;
+
+                if (desc->versionIds != nullptr)
+                    desc->versionIds[count] = ids[i];
+
+                if (desc->versionNames != nullptr)
+                    desc->versionNames[count] = names[i];
+            }
+
+            count++;
+        }
+
+        *desc->outputCount = count;
+        return FFX_API_RETURN_OK;
+    }
+
   private:
     static std::optional<uint64_t> FindOverrideVersion(const ffxApiHeader* desc)
     {
