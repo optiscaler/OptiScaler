@@ -5,6 +5,7 @@
 #include "vk/ffx_api_vk.h"
 #include <proxies/FfxApi_Proxy.h>
 #include <shaders/velocity_convert/VC_Vk.h>
+#include <fsr4/FSR4MotionVectorViewsVk.h>
 
 class FFXFeatureVk : public FFXFeature, public IFeature_Vk
 {
@@ -16,6 +17,9 @@ class FFXFeatureVk : public FFXFeature, public IFeature_Vk
     CustomFfxModule* _customUpscaler = nullptr;
 
     std::unique_ptr<VelocityConvert_Vk> _velocityConvert = nullptr;
+
+    std::unique_ptr<FSR4MotionVectorViewsVk::SdkDevice> _sdkMotionVectorDevice;
+    bool _directMotionVectorsActive = false;
 
     // Last logged inputs of the driver provided FSR 4
     std::string _lastFsr4Inputs;
