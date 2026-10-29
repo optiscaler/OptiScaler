@@ -236,6 +236,10 @@ class State
     std::vector<uint64_t> ffxFGVersionIds {};
     std::optional<uint32_t> currentFsr4Preset {};
 
+    // AMD driver flip metering
+    bool amdFlipMeterCreated = false;
+    uint32_t amdFlipMeterMode = 0;
+
     // Linux checks
     bool isRunningOnLinux = false;
     bool isRunningOnDXVK = false;

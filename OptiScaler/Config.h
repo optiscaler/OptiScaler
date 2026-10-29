@@ -537,6 +537,7 @@ class Config
     CustomOptional<bool> FGDebugPacingLines { false };
     CustomOptional<bool> FGAsync { false };
     CustomOptional<bool> FGFramePacingTuning { true };
+    CustomOptional<bool> FSRFGDisableFlipMetering { false };
     CustomOptional<float> FGFPTSafetyMarginInMs { 0.01f };
     CustomOptional<float> FGFPTVarianceFactor { 0.3f };
     CustomOptional<bool> FGFPTAllowHybridSpin { false };

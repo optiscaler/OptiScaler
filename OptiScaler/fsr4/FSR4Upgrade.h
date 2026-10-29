@@ -135,3 +135,36 @@ IAmdExtFfxApi : public IUnknown
   public:
     virtual HRESULT UpdateFfxApiProvider(void* pData, uint32_t dataSizeInBytes) = 0;
 };
+
+// Driver side present pacing the FSR FG swapchain 4.0 requests (Driver-Assisted Frame Pacing)
+struct AmdExtFlipMeterCaps
+{
+    uint32_t supportedModesMask; // bit (mode - 1)
+    uint32_t supported;
+    uint32_t unknown;
+    uint32_t status;
+};
+
+struct AmdExtFlipMeterConfig
+{
+    uint32_t mode; // 0 = off, FSR requests 2
+    uint32_t reserved;
+    uint32_t valid;
+    uint32_t flags;
+    uint32_t unknown10;
+    uint32_t status;
+    uint8_t unknown18[0x28];
+};
+static_assert(sizeof(AmdExtFlipMeterConfig) == 0x40);
+
+MIDL_INTERFACE("543820DD-06C9-4F7E-A3D0-CA260D794ADD")
+IAmdExtFlipMeter : public IUnknown
+{
+  public:
+    virtual HRESULT GetCaps(uint32_t index, AmdExtFlipMeterCaps* caps, uint32_t capsSize) = 0;
+    virtual HRESULT SetConfig(AmdExtFlipMeterConfig * config) = 0;
+    virtual HRESULT GetConfig(AmdExtFlipMeterConfig * config) = 0;
+};
+
+// Re-sends the last flip meter config FSR requested, with FSRFGDisableFlipMetering applied
+void ApplyFlipMeterOverride();

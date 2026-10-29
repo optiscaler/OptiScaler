@@ -4196,6 +4196,29 @@ bool MenuCommon::RenderMenu()
                                            "It will be applied on next launch.");
                         }
 
+                        // Only exists after the FSR FG swapchain asked the driver for it (RDNA4, FG swapchain 4.0+)
+                        if (state.amdFlipMeterCreated)
+                        {
+                            bool disableFlipMetering = config->FSRFGDisableFlipMetering.value_or_default();
+                            if (ImGui::Checkbox("Disable HW Flip Metering", &disableFlipMetering))
+                            {
+                                config->FSRFGDisableFlipMetering = disableFlipMetering;
+                                ApplyFlipMeterOverride();
+                            }
+                            ShowHelpMarker("Overrides the AMD hardware flip metering requested by FSR\n"
+                                           "(Driver-Assisted Frame Pacing)");
+
+                            ImGui::SameLine(0.0f, 16.0f);
+
+                            if (state.amdFlipMeterMode != 0)
+                                ImGui::TextDisabled("(Mode %u)", state.amdFlipMeterMode);
+                            else
+                                ImGui::TextDisabled("(Off)");
+
+                            ShowHelpMarker("Flip metering mode applied in the driver\nFSR only requests it in exclusive "
+                                           "or borderless fullscreen");
+                        }
+
                         ImGui::Spacing();
                         ImGui::Spacing();
                         if (auto ch = ScopedCollapsingHeader("Extended FSR FG Settings"); ch.IsHeaderOpen())

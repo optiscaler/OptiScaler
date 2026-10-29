@@ -139,6 +139,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             FGAsync.set_from_config(readBool("FSRFG", "AllowAsync"));
             FGUseMutexForSwapchain.set_from_config(readBool("FSRFG", "UseMutexForSwapchain"));
             FGFramePacingTuning.set_from_config(readBool("FSRFG", "FramePacingTuning"));
+            FSRFGDisableFlipMetering.set_from_config(readBool("FSRFG", "DisableFlipMetering"));
             FGFPTSafetyMarginInMs.set_from_config(readFloat("FSRFG", "FPTSafetyMarginInMs"));
             FGFPTVarianceFactor.set_from_config(readFloat("FSRFG", "FPTVarianceFactor"));
             FGFPTAllowHybridSpin.set_from_config(readBool("FSRFG", "FPTHybridSpin"));
@@ -841,6 +842,8 @@ bool Config::SaveIni()
                      GetBoolValue(Instance()->FGUseMutexForSwapchain.value_for_config()).c_str());
         ini.SetValue("FSRFG", "FramePacingTuning",
                      GetBoolValue(Instance()->FGFramePacingTuning.value_for_config()).c_str());
+        ini.SetValue("FSRFG", "DisableFlipMetering",
+                     GetBoolValue(Instance()->FSRFGDisableFlipMetering.value_for_config()).c_str());
         ini.SetValue("FSRFG", "FPTSafetyMarginInMs",
                      GetFloatValue(Instance()->FGFPTSafetyMarginInMs.value_for_config()).c_str());
         ini.SetValue("FSRFG", "FPTVarianceFactor",
