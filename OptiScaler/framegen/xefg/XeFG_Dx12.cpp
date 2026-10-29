@@ -55,7 +55,7 @@ bool XeFG_Dx12::CreateSwapchainContext(ID3D12Device* device)
         if (result != XEFG_SWAPCHAIN_RESULT_SUCCESS)
         {
             LOG_ERROR("D3D12CreateContext error: {} ({})", magic_enum::enum_name(result), (UINT) result);
-            return result;
+            return false;
         }
 
         LOG_INFO("XeFG context created");
@@ -81,7 +81,7 @@ bool XeFG_Dx12::CreateSwapchainContext(ID3D12Device* device)
             if (xellResult != XELL_RESULT_SUCCESS)
             {
                 LOG_ERROR("SetSleepMode error: {} ({})", magic_enum::enum_name(xellResult), (UINT) xellResult);
-                return result;
+                return false;
             }
 
             auto fnaResult = fakenvapi::setModeAndContext(XeLLProxy::Context(), Mode::XeLL);
@@ -92,7 +92,7 @@ bool XeFG_Dx12::CreateSwapchainContext(ID3D12Device* device)
             if (result != XEFG_SWAPCHAIN_RESULT_SUCCESS)
             {
                 LOG_ERROR("SetLatencyReduction error: {} ({})", magic_enum::enum_name(result), (UINT) result);
-                return result;
+                return false;
             }
         };
 
@@ -606,19 +606,7 @@ void XeFG_Dx12::Deactivate()
 
     if (_isActive)
     {
-        auto fIndex = GetIndex();
-        if (_uiCommandListResetted[fIndex])
-        {
-            LOG_DEBUG("Executing _uiCommandList[fIndex][{}]: {:X}", fIndex, (size_t) _uiCommandList[fIndex]);
-            auto closeResult = _uiCommandList[fIndex]->Close();
-
-            if (closeResult == S_OK)
-                _gameCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList**) &_uiCommandList[fIndex]);
-            else
-                LOG_ERROR("_uiCommandList[{}]->Close() error: {:X}", fIndex, (UINT) closeResult);
-
-            _uiCommandListResetted[fIndex] = false;
-        }
+        ExecuteUICommandList(GetIndex());
 
         xefg_swapchain_result_t result = XEFG_SWAPCHAIN_RESULT_SUCCESS;
 
@@ -781,25 +769,27 @@ bool XeFG_Dx12::Dispatch()
         }
     }
 
+    // Work on copies, operator[] would insert empty entries without the lock and
+    // SetResource could see the map cleared under a pointer into it
     if (!_noHudless[fIndex])
     {
-        auto res = &_frameResources[fIndex][FG_ResourceType::HudlessColor];
-        if (res->validity != FG_ResourceValidity::ValidNow)
+        auto res = GetResource(FG_ResourceType::HudlessColor, fIndex);
+        if (res && res->validity != FG_ResourceValidity::ValidNow)
         {
             res->validity = FG_ResourceValidity::UntilPresentFromDispatch;
             res->frameIndex = fIndex;
-            SetResource(res);
+            SetResource(&*res);
         }
     }
 
     if (!_noDistortionField[fIndex])
     {
-        auto res = &_frameResources[fIndex][FG_ResourceType::Distortion];
-        if (res->validity != FG_ResourceValidity::ValidNow)
+        auto res = GetResource(FG_ResourceType::Distortion, fIndex);
+        if (res && res->validity != FG_ResourceValidity::ValidNow)
         {
             res->validity = FG_ResourceValidity::UntilPresentFromDispatch;
             res->frameIndex = fIndex;
-            SetResource(res);
+            SetResource(&*res);
         }
     }
 
@@ -977,6 +967,8 @@ void XeFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
 {
     LOG_FUNC();
 
+    OwnedLockGuard lock(Mutex, 555);
+
     auto& state = State::Instance();
 
     // If needed hooks are missing or XeFG proxy is not inited or FG swapchain is not created
@@ -1075,8 +1067,13 @@ void XeFG_Dx12::ReleaseObjects()
             _scCommandList[i]->Release();
             _scCommandList[i] = nullptr;
         }
+
+        // Recreated lists start closed, a stale flag would skip their Reset
+        _scCommandListResetted[i] = false;
+        _uiCommandListResetted[i] = false;
     }
 
+    ReleaseUIFence();
     _renderUI.reset();
     _hudlessCompare.reset();
     _mvFlip.reset();
@@ -1173,7 +1170,7 @@ bool XeFG_Dx12::Present()
     if (Config::Instance()->FGDrawUIOverFG.value_or_default())
     {
         auto ui = GetResource(FG_ResourceType::UIColor, fIndex);
-        if (ui != nullptr && (ui->validity == FG_ResourceValidity::UntilPresent ||
+        if (ui && (ui->validity == FG_ResourceValidity::UntilPresent ||
                               ui->validity == FG_ResourceValidity::JustTrackCmdlist ||
                               ui->validity == FG_ResourceValidity::UntilPresentFromDispatch))
         {
@@ -1198,7 +1195,7 @@ bool XeFG_Dx12::Present()
                 }
             }
         }
-        else if (ui == nullptr)
+        else if (!ui)
         {
             LOG_WARN("UI resource is nullptr");
         }
@@ -1209,7 +1206,7 @@ bool XeFG_Dx12::Present()
         if (State::Instance().FGHudlessCompare)
         {
             auto hudless = GetResource(FG_ResourceType::HudlessColor, fIndex);
-            if (hudless != nullptr && (hudless->validity == FG_ResourceValidity::UntilPresent ||
+            if (hudless && (hudless->validity == FG_ResourceValidity::UntilPresent ||
                                        hudless->validity == FG_ResourceValidity::JustTrackCmdlist ||
                                        hudless->validity == FG_ResourceValidity::UntilPresentFromDispatch))
             {
@@ -1229,7 +1226,7 @@ bool XeFG_Dx12::Present()
                     }
                 }
             }
-            else if (hudless == nullptr)
+            else if (!hudless)
             {
                 LOG_WARN("Hudless resource is nullptr");
             }
@@ -1240,18 +1237,7 @@ bool XeFG_Dx12::Present()
 
     // if (IsActive() && !IsPaused())
     {
-        if (_uiCommandListResetted[fIndex])
-        {
-            LOG_DEBUG("Executing _uiCommandList[{}]: {:X}", fIndex, (size_t) _uiCommandList[fIndex]);
-            auto closeResult = _uiCommandList[fIndex]->Close();
-
-            if (closeResult == S_OK)
-                _gameCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList**) &_uiCommandList[fIndex]);
-            else
-                LOG_ERROR("_uiCommandList[{}]->Close() error: {:X}", fIndex, (UINT) closeResult);
-
-            _uiCommandListResetted[fIndex] = false;
-        }
+        ExecuteUICommandList(fIndex);
 
         if (_scCommandListResetted[fIndex])
         {

@@ -356,7 +356,7 @@ bool FSRFG_Dx12::Dispatch()
     distortionFieldDesc.header.type = FFX_API_CONFIGURE_DESC_TYPE_FRAMEGENERATION_REGISTERDISTORTIONRESOURCE;
 
     auto distortion = GetResource(FG_ResourceType::Distortion, fIndex);
-    if (distortion != nullptr && IsResourceReady(FG_ResourceType::Distortion, fIndex))
+    if (distortion && IsResourceReady(FG_ResourceType::Distortion, fIndex))
     {
         LOG_TRACE("Using Distortion Field: {:X}", (size_t) distortion->GetResource());
 
@@ -373,7 +373,7 @@ bool FSRFG_Dx12::Dispatch()
 
     auto hudless = GetResource(FG_ResourceType::HudlessColor, fIndex);
 
-    if (hudless != nullptr && IsResourceReady(FG_ResourceType::HudlessColor, fIndex))
+    if (hudless && IsResourceReady(FG_ResourceType::HudlessColor, fIndex))
     {
         LOG_TRACE("Using hudless: {:X}", (size_t) hudless->GetResource());
 
@@ -531,7 +531,7 @@ bool FSRFG_Dx12::Dispatch()
         auto velocity = GetResource(FG_ResourceType::Velocity, fIndex);
         auto depth = GetResource(FG_ResourceType::Depth, fIndex);
 
-        if (velocity != nullptr && IsResourceReady(FG_ResourceType::Velocity, fIndex))
+        if (velocity && IsResourceReady(FG_ResourceType::Velocity, fIndex))
         {
             LOG_DEBUG("Velocity resource: {:X}", (size_t) velocity->GetResource());
             dfgPrepare.motionVectors = ffxApiGetResourceDX12(velocity->GetResource(), GetFfxApiState(velocity->state));
@@ -543,7 +543,7 @@ bool FSRFG_Dx12::Dispatch()
             return false;
         }
 
-        if (depth != nullptr && IsResourceReady(FG_ResourceType::Depth, fIndex))
+        if (depth && IsResourceReady(FG_ResourceType::Depth, fIndex))
         {
             LOG_DEBUG("Depth resource: {:X}", (size_t) depth->GetResource());
             dfgPrepare.depth = ffxApiGetResourceDX12(depth->GetResource(), GetFfxApiState(depth->state));
@@ -557,7 +557,7 @@ bool FSRFG_Dx12::Dispatch()
 
         if (state.currentFeature && state.activeFgInput == FGInput::Upscaler)
             dfgPrepare.renderSize = { state.currentFeature->RenderWidth(), state.currentFeature->RenderHeight() };
-        else if (depth != nullptr)
+        else if (depth)
             dfgPrepare.renderSize = { static_cast<uint32_t>(depth->width), depth->height };
         else
             dfgPrepare.renderSize = { dfgPrepare.depth.description.width, dfgPrepare.depth.description.height };
@@ -678,30 +678,52 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
     if (State::Instance().gameQuirks & GameQuirk::FSRFGHudlessMismatchFixup && !lastFGDisableHudless)
     {
         auto presentWithHud = (ID3D12Resource*) params->presentColor.resource;
-        auto hudlessResource = _resourceCopy[fIndex][FG_ResourceType::HudlessColor];
+        ID3D12Resource* hudlessResource = nullptr;
         auto hudlessState = D3D12_RESOURCE_STATE_COPY_DEST;
+
+        // find, operator[] would insert empty entries into maps that are only written under the lock
+        {
+            std::shared_lock<std::shared_mutex> lock(_resourceMutex[fIndex]);
+
+            if (auto it = _resourceCopy[fIndex].find(FG_ResourceType::HudlessColor); it != _resourceCopy[fIndex].end())
+                hudlessResource = it->second;
+        }
 
         if (hudlessResource == nullptr)
         {
-            auto hudless = _frameResources[fIndex][FG_ResourceType::HudlessColor];
-            if (hudless.validity == FG_ResourceValidity::UntilPresent)
-                hudlessResource = hudless.GetResource();
+            if (auto hudless = GetResource(FG_ResourceType::HudlessColor, fIndex))
+            {
+                if (hudless->validity == FG_ResourceValidity::UntilPresent)
+                    hudlessResource = hudless->GetResource();
 
-            // hudless.state only holds the state for the original resource, not the copy that we could get here
-            if (hudlessResource && hudlessResource == hudless.resource)
-                hudlessState = hudless.state;
+                // hudless.state only holds the state for the original resource, not the copy that we could get here
+                if (hudlessResource && hudlessResource == hudless->resource)
+                    hudlessState = hudless->state;
+            }
         }
 
         if (presentWithHud && hudlessResource)
         {
             auto cmdList = (ID3D12GraphicsCommandList*) params->commandList;
 
-            if (_hudCopy[fIndex].get() == nullptr)
+            // Do not blindly trust the cached _device for callback helper creation
+            ID3D12Device* callbackDevice = nullptr;
+
+            if (cmdList != nullptr)
+                cmdList->GetDevice(IID_PPV_ARGS(&callbackDevice));
+
+            if (callbackDevice == nullptr)
+                presentWithHud->GetDevice(IID_PPV_ARGS(&callbackDevice));
+
+            if (callbackDevice == nullptr)
+                LOG_ERROR("FSRFG HUD helper failed to resolve callback D3D12 device");
+
+            if (_hudCopy[fIndex].get() == nullptr && callbackDevice != nullptr)
             {
-                _hudCopy[fIndex] = std::make_unique<HudCopy_Dx12>("HudCopy", _device);
+                _hudCopy[fIndex] = std::make_unique<HudCopy_Dx12>("HudCopy", callbackDevice);
             }
 
-            if (auto hudCopy = _hudCopy[fIndex].get(); hudCopy && hudCopy->IsInit())
+            if (auto hudCopy = _hudCopy[fIndex].get(); hudCopy && hudCopy->IsInit() && callbackDevice != nullptr)
             {
                 // In Cyberprank - DLSSG has noise issues, FSR FG has noise + vignetting
                 // In Death Stranding 2 - DLSSG has wrong colormapping it seems, FSR FG is fine
@@ -711,10 +733,13 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
                 if (isCyberpunk && State::Instance().activeFgInput != FGInput::FSRFG)
                     hudDetectionThreshold = 0.01f;
 
-                hudCopy->Dispatch(_device, cmdList, hudlessResource, presentWithHud, hudlessState,
+                hudCopy->Dispatch(callbackDevice, cmdList, hudlessResource, presentWithHud, hudlessState,
                                   GetD3D12State((FfxApiResourceState) params->presentColor.state),
                                   hudDetectionThreshold);
             }
+
+            if (callbackDevice != nullptr)
+                callbackDevice->Release();
         }
     }
 
@@ -1142,19 +1167,7 @@ void FSRFG_Dx12::Deactivate()
 {
     if (_isActive)
     {
-        auto fIndex = GetIndex();
-        if (_uiCommandListResetted[fIndex])
-        {
-            LOG_DEBUG("Executing _uiCommandList[fIndex][{}]: {:X}", fIndex, (size_t) _uiCommandList[fIndex]);
-            auto closeResult = _uiCommandList[fIndex]->Close();
-
-            if (closeResult == S_OK)
-                _gameCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList**) &_uiCommandList[fIndex]);
-            else
-                LOG_ERROR("_uiCommandList[{}]->Close() error: {:X}", fIndex, (UINT) closeResult);
-
-            _uiCommandListResetted[fIndex] = false;
-        }
+        ExecuteUICommandList(GetIndex());
 
         ffxReturnCode_t result = FFX_API_RETURN_ERROR;
 
@@ -1188,6 +1201,8 @@ void FSRFG_Dx12::Deactivate()
 void FSRFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
 {
     LOG_FUNC();
+
+    OwnedLockGuard lock(Mutex, 555);
 
     _constants = fgConstants;
 
@@ -1253,13 +1268,20 @@ void FSRFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
         if (_fgContext != nullptr && State::Instance().activeFgInput == FGInput::Upscaler && !IsPaused() && !IsActive())
             Activate();
     }
-    else if (IsActive())
+    else
     {
-        LOG_DEBUG("!IsActive");
-        Deactivate();
+        if (IsActive())
+        {
+            LOG_DEBUG("!IsActive");
+            Deactivate();
 
-        State::Instance().ClearCapturedHudlesses = true;
-        Hudfix_Dx12::ResetCounters();
+            State::Instance().ClearCapturedHudlesses = true;
+            Hudfix_Dx12::ResetCounters();
+        }
+
+        // The change flags are cleared below, so a pending recreation (e.g. FFX FG version) must happen now
+        if (State::Instance().SCchanged)
+            DestroyFGContext();
     }
 
     if (State::Instance().FGchanged)
@@ -1320,8 +1342,15 @@ void FSRFG_Dx12::ReleaseObjects()
             _scCommandList[i]->Release();
             _scCommandList[i] = nullptr;
         }
+
+        // Recreated lists start closed, a stale flag would skip their Reset
+        _scCommandListResetted[i] = false;
+        _uiCommandListResetted[i] = false;
+
+        _hudCopy[i].reset();
     }
 
+    ReleaseUIFence();
     _renderUI.reset();
     _hudlessCompare.reset();
     _mvFlip.reset();
@@ -1627,7 +1656,7 @@ bool FSRFG_Dx12::Present()
     if (Config::Instance()->FGDrawUIOverFG.value_or_default())
     {
         auto ui = GetResource(FG_ResourceType::UIColor, fIndex);
-        if (ui != nullptr)
+        if (ui)
         {
             LOG_DEBUG("UI[{}] resource: {:X}, copy: {}", fIndex, (size_t) ui->resource, (size_t) ui->copy);
             if (_renderUI.get() == nullptr)
@@ -1650,7 +1679,7 @@ bool FSRFG_Dx12::Present()
                 }
             }
         }
-        else if (ui == nullptr)
+        else if (!ui)
         {
             LOG_WARN("UI resource is nullptr");
         }
@@ -1659,7 +1688,7 @@ bool FSRFG_Dx12::Present()
     if (IsActive() && !IsPaused() && State::Instance().FGHudlessCompare)
     {
         auto hudless = GetResource(FG_ResourceType::HudlessColor, fIndex);
-        if (hudless != nullptr)
+        if (hudless)
         {
             if (_hudlessCompare.get() == nullptr)
             {
@@ -1681,18 +1710,7 @@ bool FSRFG_Dx12::Present()
 
     // if (IsActive() && !IsPaused())
     {
-        if (_uiCommandListResetted[fIndex])
-        {
-            LOG_DEBUG("Executing _uiCommandList[{}]: {:X}", fIndex, (size_t) _uiCommandList[fIndex]);
-            auto closeResult = _uiCommandList[fIndex]->Close();
-
-            if (closeResult == S_OK)
-                _gameCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList**) &_uiCommandList[fIndex]);
-            else
-                LOG_ERROR("_uiCommandList[{}]->Close() error: {:X}", fIndex, (UINT) closeResult);
-
-            _uiCommandListResetted[fIndex] = false;
-        }
+        ExecuteUICommandList(fIndex);
 
         if (_scCommandListResetted[fIndex])
         {

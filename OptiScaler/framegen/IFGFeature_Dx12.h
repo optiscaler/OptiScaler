@@ -11,6 +11,8 @@
 #include <dxgi1_6.h>
 #include <d3d12.h>
 
+#include <optional>
+
 struct Dx12Resource
 {
     FG_ResourceType type;
@@ -58,6 +60,16 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     ID3D12CommandAllocator* _uiCommandAllocator[BUFFER_COUNT] {};
     bool _uiCommandListResetted[BUFFER_COUNT] { false, false, false, false };
 
+    // Fence value of the last execution of each UI allocator, an allocator can't be reset before the GPU is done
+    UINT64 _uiAllocatorFenceValues[BUFFER_COUNT] {};
+    UINT64 _uiFenceValue = 0;
+    ID3D12Fence* _uiFence = nullptr;
+    HANDLE _uiFenceEvent = nullptr;
+
+    void ExecuteUICommandList(int index);
+    void WaitForUIAllocator(int index);
+    void ReleaseUIFence();
+
     std::unordered_map<FG_ResourceType, Dx12Resource> _frameResources[BUFFER_COUNT] {};
     std::unordered_map<FG_ResourceType, ID3D12Resource*> _resourceCopy[BUFFER_COUNT] {};
     std::shared_mutex _resourceMutex[BUFFER_COUNT];
@@ -103,12 +115,17 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     ID3D12GraphicsCommandList* GetUICommandList(int index = -1);
     ID3D12GraphicsCommandList* GetSCCommandList(int index = -1);
 
-    Dx12Resource* GetResource(FG_ResourceType type, int index = -1);
+    // Returns a copy, NewFrame can clear the map once the lock is released
+    std::optional<Dx12Resource> GetResource(FG_ResourceType type, int index = -1);
     bool GetResourceCopy(FG_ResourceType type, D3D12_RESOURCE_STATES bufferState, ID3D12Resource* output);
     ID3D12CommandQueue* GetCommandQueue();
 
     bool HasResource(FG_ResourceType type, int index = -1) override final;
 
     IFGFeature_Dx12() = default;
-    virtual ~IFGFeature_Dx12() { DestroyCopyCmdList(); }
+    virtual ~IFGFeature_Dx12()
+    {
+        DestroyCopyCmdList();
+        ReleaseUIFence();
+    }
 };

@@ -12,7 +12,7 @@ bool IFGFeature_Dx12::GetResourceCopy(FG_ResourceType type, D3D12_RESOURCE_STATE
 
     auto resource = GetResource(type);
 
-    if (resource == nullptr || (resource->copy == nullptr && resource->validity == FG_ResourceValidity::ValidNow))
+    if (!resource || (resource->copy == nullptr && resource->validity == FG_ResourceValidity::ValidNow))
     {
         LOG_WARN("No resource copy of type {} to use", magic_enum::enum_name(type));
         return false;
@@ -43,6 +43,7 @@ bool IFGFeature_Dx12::HasResource(FG_ResourceType type, int index)
     if (index < 0)
         index = GetIndex();
 
+    std::shared_lock<std::shared_mutex> lock(_resourceMutex[index]);
     return _frameResources[index].contains(type);
 }
 
@@ -67,9 +68,10 @@ ID3D12GraphicsCommandList* IFGFeature_Dx12::GetUICommandList(int index)
     {
         auto i = (index + j) % BUFFER_COUNT;
 
+        // The next slot is the oldest frame, it won't be dispatched anymore so its work is dropped
         if (i != index && _uiCommandListResetted[i])
         {
-            LOG_DEBUG("Executing _uiCommandList[{}]: {:X}", i, (size_t) _uiCommandList[i]);
+            LOG_DEBUG("Dropping not executed _uiCommandList[{}]: {:X}", i, (size_t) _uiCommandList[i]);
             auto closeResult = _uiCommandList[i]->Close();
 
             if (closeResult != S_OK)
@@ -81,6 +83,8 @@ ID3D12GraphicsCommandList* IFGFeature_Dx12::GetUICommandList(int index)
 
     if (!_uiCommandListResetted[index])
     {
+        WaitForUIAllocator(index);
+
         auto result = _uiCommandAllocator[index]->Reset();
 
         if (result == S_OK)
@@ -99,6 +103,82 @@ ID3D12GraphicsCommandList* IFGFeature_Dx12::GetUICommandList(int index)
     }
 
     return _uiCommandList[index];
+}
+
+void IFGFeature_Dx12::ExecuteUICommandList(int index)
+{
+    if (!_uiCommandListResetted[index])
+        return;
+
+    LOG_DEBUG("Executing _uiCommandList[{}]: {:X}", index, (size_t) _uiCommandList[index]);
+
+    _uiCommandListResetted[index] = false;
+
+    auto closeResult = _uiCommandList[index]->Close();
+    if (closeResult != S_OK)
+    {
+        LOG_ERROR("_uiCommandList[{}]->Close() error: {:X}", index, (UINT) closeResult);
+        return;
+    }
+
+    _gameCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList**) &_uiCommandList[index]);
+
+    // Created from the queue's device, Signal needs the fence on the same device
+    if (_uiFence == nullptr)
+    {
+        ID3D12Device* device = nullptr;
+
+        if (_gameCommandQueue->GetDevice(IID_PPV_ARGS(&device)) == S_OK)
+        {
+            if (device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&_uiFence)) != S_OK)
+                _uiFence = nullptr;
+
+            device->Release();
+        }
+
+        if (_uiFence != nullptr && _uiFenceEvent == nullptr)
+            _uiFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    }
+
+    if (_uiFence != nullptr && _gameCommandQueue->Signal(_uiFence, _uiFenceValue + 1) == S_OK)
+        _uiAllocatorFenceValues[index] = ++_uiFenceValue;
+}
+
+void IFGFeature_Dx12::WaitForUIAllocator(int index)
+{
+    auto fenceValue = _uiAllocatorFenceValues[index];
+
+    if (_uiFence == nullptr || _uiFenceEvent == nullptr || fenceValue == 0 ||
+        _uiFence->GetCompletedValue() >= fenceValue)
+    {
+        return;
+    }
+
+    // Timeout keeps a lost device from hanging the game, the reset then fails like it did without the wait
+    if (_uiFence->SetEventOnCompletion(fenceValue, _uiFenceEvent) != S_OK ||
+        WaitForSingleObject(_uiFenceEvent, 5000) != WAIT_OBJECT_0)
+    {
+        LOG_ERROR("Waiting for _uiCommandAllocator[{}] failed, fence: {}, completed: {}", index, fenceValue,
+                  _uiFence->GetCompletedValue());
+    }
+}
+
+void IFGFeature_Dx12::ReleaseUIFence()
+{
+    if (_uiFence != nullptr)
+    {
+        _uiFence->Release();
+        _uiFence = nullptr;
+    }
+
+    if (_uiFenceEvent != nullptr)
+    {
+        CloseHandle(_uiFenceEvent);
+        _uiFenceEvent = nullptr;
+    }
+
+    _uiFenceValue = 0;
+    memset(_uiAllocatorFenceValues, 0, sizeof(_uiAllocatorFenceValues));
 }
 
 ID3D12GraphicsCommandList* IFGFeature_Dx12::GetSCCommandList(int index)
@@ -156,21 +236,18 @@ ID3D12GraphicsCommandList* IFGFeature_Dx12::GetSCCommandList(int index)
     return _scCommandList[index];
 }
 
-Dx12Resource* IFGFeature_Dx12::GetResource(FG_ResourceType type, int index)
+std::optional<Dx12Resource> IFGFeature_Dx12::GetResource(FG_ResourceType type, int index)
 {
     if (index < 0)
         index = GetIndex();
 
     std::shared_lock<std::shared_mutex> lock(_resourceMutex[index]);
 
-    if (!_frameResources[index].contains(type))
-        return nullptr;
-
     auto& currentIndex = _frameResources[index];
     if (auto it = currentIndex.find(type); it != currentIndex.end())
-        return &it->second;
+        return it->second;
 
-    return nullptr;
+    return std::nullopt;
 }
 
 void IFGFeature_Dx12::NewFrame()
@@ -190,7 +267,20 @@ void IFGFeature_Dx12::NewFrame()
     LOG_DEBUG("_frameCount: {}, fIndex: {}", _frameCount, fIndex);
 
     _frameResources[fIndex].clear();
-    _uiCommandListResetted[fIndex] = false;
+
+    // A list of this slot that was never executed is still recording. Only clearing the flag left it open,
+    // so its allocator could never be reset again and everything recorded into it was lost
+    if (_uiCommandListResetted[fIndex])
+    {
+        LOG_DEBUG("Dropping not executed _uiCommandList[{}]: {:X}", fIndex, (size_t) _uiCommandList[fIndex]);
+
+        auto closeResult = _uiCommandList[fIndex]->Close();
+        if (closeResult != S_OK)
+            LOG_ERROR("_uiCommandList[{}]->Close() error: {:X}", fIndex, (UINT) closeResult);
+
+        _uiCommandListResetted[fIndex] = false;
+    }
+
     _lastFGFramePresentId = _fgFramePresentId;
 }
 

@@ -1005,7 +1005,7 @@ ffxReturnCode_t ffxDispatch_Dx12FG(ffxContext* context, ffxDispatchDescHeader* d
 
                 if (cdDesc->presentColor.resource != nullptr &&
                     !Config::Instance()->FSRFGSkipDispatchForHudless.value_or_default() &&
-                    fg->GetResource(FG_ResourceType::HudlessColor) == nullptr)
+                    !fg->GetResource(FG_ResourceType::HudlessColor))
                 {
                     UINT width = cdDesc->generationRect.width;
                     UINT height = cdDesc->generationRect.height;
@@ -1347,7 +1347,7 @@ void ffxPresentCallback()
 
         if (result == FFX_API_RETURN_OK)
         {
-            if (fg->GetResource(FG_ResourceType::HudlessColor, fIndex) == nullptr)
+            if (!fg->GetResource(FG_ResourceType::HudlessColor, fIndex))
             {
                 auto hDesc = _hudless[fIndex]->GetDesc();
                 Dx12Resource hudless {};
@@ -1445,7 +1445,7 @@ void ffxPresentCallback()
 
         if (result == FFX_API_RETURN_OK)
         {
-            if (fg->GetResource(FG_ResourceType::HudlessColor, fIndex) == nullptr)
+            if (!fg->GetResource(FG_ResourceType::HudlessColor, fIndex))
             {
                 auto hDesc = _hudless[fIndex]->GetDesc();
                 Dx12Resource hudless {};

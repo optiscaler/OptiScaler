@@ -4101,21 +4101,29 @@ bool MenuCommon::RenderMenu()
                     {
                         ImGui::SeparatorText("Frame Generation (FSR FG)");
 
-                        if (_ffxFGIndex < 0)
+                        // CreateContext resets an out of range index, the cached one has to follow it
+                        if (_ffxFGIndex < 0 || _ffxFGIndex >= (int) state.ffxFGVersionNames.size())
                             _ffxFGIndex = config->FfxFGIndex.value_or_default();
 
-                        if (state.ffxFGVersionNames.size() > 0)
+                        // The list is filled on the game thread, the config index can be ahead of it for a moment
+                        if (_ffxFGIndex >= 0 && _ffxFGIndex < (int) state.ffxFGVersionNames.size())
                         {
                             ImGui::PushItemWidth(135.0f * menuResScale);
 
                             auto currentName = StrFmt("FSR %s", state.ffxFGVersionNames[_ffxFGIndex]);
-                            if (ImGui::BeginCombo("FFX FG", currentName.c_str()))
+                            if (ImGui::BeginCombo("FFX FG Version", currentName.c_str()))
                             {
                                 for (int n = 0; n < state.ffxFGVersionIds.size(); n++)
                                 {
                                     auto name = StrFmt("FSR %s", state.ffxFGVersionNames[n]);
-                                    if (ImGui::Selectable(name.c_str(), config->FfxFGIndex.value_or_default() == n))
+                                    if (ImGui::Selectable(name.c_str(), config->FfxFGIndex.value_or_default() == n) &&
+                                        n != config->FfxFGIndex.value_or_default())
+                                    {
                                         _ffxFGIndex = n;
+                                        config->FfxFGIndex = _ffxFGIndex;
+                                        state.FGchanged = true;
+                                        state.SCchanged = true;
+                                    }
                                 }
 
                                 ImGui::EndCombo();
@@ -4123,15 +4131,6 @@ bool MenuCommon::RenderMenu()
                             ImGui::PopItemWidth();
 
                             ShowHelpMarker("List of FGs reported by FFX SDK");
-
-                            ImGui::SameLine(0.0f, 6.0f);
-
-                            if (ImGui::Button("Change FG") && _ffxFGIndex != config->FfxFGIndex.value_or_default())
-                            {
-                                config->FfxFGIndex = _ffxFGIndex;
-                                state.FGchanged = true;
-                                state.SCchanged = true;
-                            }
                         }
 
                         bool fgActive = config->FGEnabled.value_or_default();
