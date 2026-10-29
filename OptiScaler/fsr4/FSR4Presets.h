@@ -14,4 +14,5 @@ class FSR4Presets
     static void Hook(HMODULE module);
 
     static bool IsAnyModuleHooked();
+    static bool IsModuleHooked(HMODULE module);
 };

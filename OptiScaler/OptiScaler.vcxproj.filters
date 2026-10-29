@@ -152,6 +152,9 @@
     <ClInclude Include="proxies\FfxApi_Proxy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="proxies\FfxModule.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="hooks\Vulkan_Hooks.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -539,6 +542,9 @@
     <ClInclude Include="framegen\xefg\XeFG_Dx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="framegen\xefg\XeFG_DynamicMFG.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="hooks\Ntdll_Hooks.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -591,6 +597,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="upscalers\FeatureProvider_Dx11.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="upscalers\CustomUpscalers.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="upscalers\FeatureProvider_Dx12.h">
@@ -1470,6 +1479,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="framegen\xefg\XeFG_Dx12.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="framegen\xefg\XeFG_DynamicMFG.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="shaders\hudless_compare\HC_Dx12.cpp">

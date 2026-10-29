@@ -490,9 +490,20 @@ VkResult VulkanSpoofing::hkvkCreateInstance(VkInstanceCreateInfo* pCreateInfo, c
         next = (VkDummyProps*) next->pNext;
     }
 
-    next->pNext = &debugCreateInfo;
+    // Driver provided FG calls into the ICD directly, it can't resolve handles wrapped by the layer
+    static const VkValidationFeatureDisableEXT disabledFeatures[] = {
+        VK_VALIDATION_FEATURE_DISABLE_UNIQUE_HANDLES_EXT
+    };
+
+    static VkValidationFeaturesEXT validationFeatures { VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT };
+    validationFeatures.disabledValidationFeatureCount = 1;
+    validationFeatures.pDisabledValidationFeatures = disabledFeatures;
+
+    validationFeatures.pNext = &debugCreateInfo;
+    next->pNext = &validationFeatures;
 
     newExtensionList.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    newExtensionList.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
 #endif
 
     pCreateInfo->enabledExtensionCount = static_cast<uint32_t>(newExtensionList.size());

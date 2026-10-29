@@ -413,6 +413,31 @@ xess_result_t hk_xessSetExposureMultiplier(xess_context_handle_t hContext, float
     return XESS_RESULT_SUCCESS;
 }
 
+xess_result_t hk_xessSetMaxResponsiveMaskValue(xess_context_handle_t hContext, float value)
+{
+    LOG_DEBUG("hContext: {}, value: {}", (size_t) hContext, value);
+
+    if (!_nvParams.contains(hContext))
+        return XESS_RESULT_ERROR_INVALID_CONTEXT;
+
+    _nvParams[hContext]->Set("XeSS.MaxResponsiveMaskValue", value);
+
+    return XESS_RESULT_SUCCESS;
+}
+
+xess_result_t hk_xessGetMaxResponsiveMaskValue(xess_context_handle_t hContext, float* pValue)
+{
+    LOG_DEBUG("hContext: {}", (size_t) hContext);
+
+    if (!_nvParams.contains(hContext))
+        return XESS_RESULT_ERROR_INVALID_CONTEXT;
+
+    if (_nvParams[hContext]->Get("XeSS.MaxResponsiveMaskValue", pValue) != NVSDK_NGX_Result_Success)
+        *pValue = 0.0f;
+
+    return XESS_RESULT_SUCCESS;
+}
+
 xess_result_t hk_xessSetContextParameterF()
 {
     LOG_DEBUG("");

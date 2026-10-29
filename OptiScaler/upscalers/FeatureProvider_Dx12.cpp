@@ -14,6 +14,7 @@
 #include "upscalers/xess/XeSSFeature_Dx12.h"
 #include "FeatureProvider_Dx11.h"
 #include <misc/IdentifyGpu.h>
+#include "CustomUpscalers.h"
 
 bool FeatureProvider_Dx12::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NGX_Parameter* parameters,
                                       std::unique_ptr<IFeature_Dx12>* feature)
@@ -22,6 +23,8 @@ bool FeatureProvider_Dx12::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NG
     Config& cfg = *Config::Instance();
     auto primaryGpu = IdentifyGpu::getPrimaryGpu();
     ScopedSkipHeapCapture skipHeapCapture {};
+
+    const auto custom = cfg.CustomUpscaler.value_or("");
 
     switch (upscaler)
     {
@@ -38,11 +41,16 @@ bool FeatureProvider_Dx12::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NG
         break;
 
     case Upscaler::FFX:
-        *feature = std::make_unique<FFXFeatureDx12>(handleId, parameters);
+        *feature = std::make_unique<FFXFeatureDx12>(handleId, parameters, CustomUpscalers::IsFfx(custom) ? custom : "");
         break;
 
     case Upscaler::DLSS:
-        if (primaryGpu.dlssCapable && state.NVNGX_DLSS_Path.has_value())
+        if (CustomUpscalers::IsDlss(custom))
+        {
+            *feature = std::make_unique<DLSSFeatureDx12>(handleId, parameters, custom);
+            break;
+        }
+        else if (primaryGpu.dlssCapable && state.NVNGX_DLSS_Path.has_value())
         {
             *feature = std::make_unique<DLSSFeatureDx12>(handleId, parameters);
             break;
@@ -103,7 +111,8 @@ bool FeatureProvider_Dx12::ChangeFeature(Upscaler upscaler, ID3D12Device* device
     if (!state.changeBackend[handleId])
         return false;
 
-    const bool dlssOnNonCapable = !IdentifyGpu::getPrimaryGpu().dlssCapable && state.newBackend == Upscaler::DLSS;
+    const bool dlssOnNonCapable = !IdentifyGpu::getPrimaryGpu().dlssCapable && state.newBackend == Upscaler::DLSS &&
+                                  !CustomUpscalers::IsDlss(cfg.CustomUpscaler.value_or(""));
     if (state.newBackend == Upscaler::Reset || dlssOnNonCapable)
         state.newBackend = cfg.Dx12Upscaler.value_or_default();
 
@@ -129,6 +138,7 @@ bool FeatureProvider_Dx12::ChangeFeature(Upscaler upscaler, ID3D12Device* device
             const bool isPassthrough = state.newBackend == Upscaler::DLSSD || state.newBackend == Upscaler::DLSS;
 
             contextData->createParams = isPassthrough ? parameters : GetNGXParameters(API::DX12, false);
+            contextData->createParamsFromGame = isPassthrough;
             contextData->createParams->Set(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags, dc->GetFeatureFlags());
             contextData->createParams->Set(NVSDK_NGX_Parameter_Width, dc->RenderWidth());
             contextData->createParams->Set(NVSDK_NGX_Parameter_Height, dc->RenderHeight());
@@ -227,9 +237,11 @@ bool FeatureProvider_Dx12::ChangeFeature(Upscaler upscaler, ID3D12Device* device
         }
 
         // If this is an OptiScaler fake NVNGX param table, delete it
+        // Not the game's own one (DLSS passthrough), which is also Opti's without NVIDIA's NGX and still in use
         int optiParam = 0;
 
-        if (contextData->createParams->Get("OptiScaler", &optiParam) == NVSDK_NGX_Result_Success && optiParam == 1)
+        if (!contextData->createParamsFromGame &&
+            contextData->createParams->Get("OptiScaler", &optiParam) == NVSDK_NGX_Result_Success && optiParam == 1)
         {
             TryDestroyNGXParameters(contextData->createParams, NVNGXProxy::D3D12_DestroyParameters());
             contextData->createParams = nullptr;

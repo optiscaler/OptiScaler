@@ -28,6 +28,8 @@ xess_result_t hk_xessGetOptimalInputResolution(xess_context_handle_t hContext, c
 xess_result_t hk_xessGetVelocityScale(xess_context_handle_t hContext, float* pX, float* pY);
 xess_result_t hk_xessSetJitterScale(xess_context_handle_t hContext, float x, float y);
 xess_result_t hk_xessSetExposureMultiplier(xess_context_handle_t hContext, float scale);
+xess_result_t hk_xessSetMaxResponsiveMaskValue(xess_context_handle_t hContext, float value);
+xess_result_t hk_xessGetMaxResponsiveMaskValue(xess_context_handle_t hContext, float* pValue);
 xess_result_t hk_xessSetContextParameterF();
 xess_result_t hk_xessAILGetDecision();
 xess_result_t hk_xessAILGetVersion();

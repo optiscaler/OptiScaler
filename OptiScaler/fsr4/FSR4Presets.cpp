@@ -17,8 +17,8 @@ struct HookedModule
 };
 
 // Each hooked module needs a detour of its own to know which original to call,
-// one for the driver dll and the rest for FFX SDK dlls the game and Opti load
-std::array<HookedModule, 4> hookedModules {};
+// one for the driver dll and the rest for FFX SDK dlls the game and Opti load, custom upscalers included
+std::array<HookedModule, 8> hookedModules {};
 std::mutex hookMutex;
 
 uint32_t CorrectedPreset(uint32_t preset)
@@ -88,14 +88,46 @@ std::vector<Instruction> Disassemble(std::span<const uint8_t> code)
     return instructions;
 }
 
+uint8_t Rex(const Instruction& instruction) { return (instruction.bytes[0] & 0xF0) == 0x40 ? instruction.bytes[0] : 0; }
+
 // cmp r/m32, 4 - opcode 83 with 7 in the ModRM reg field, optionally after a REX prefix
 bool IsCompareWith4(const Instruction& instruction)
 {
     auto bytes = instruction.bytes;
-    size_t opcode = (bytes[0] & 0xF0) == 0x40 ? 1 : 0;
+    size_t opcode = Rex(instruction) != 0 ? 1 : 0;
 
     return instruction.length > opcode + 2 && bytes[opcode] == 0x83 && ((bytes[opcode + 1] >> 3) & 7) == 7 &&
            bytes[instruction.length - 1] == 4;
+}
+
+// mov r32, imm32 - opcode B8+r, REX.B extends the register number
+bool IsMoveImmediate(const Instruction& instruction, uint8_t& reg, uint32_t& value)
+{
+    auto rex = Rex(instruction);
+    auto opcode = instruction.bytes + (rex != 0 ? 1 : 0);
+
+    if (instruction.length != (rex != 0 ? 6 : 5) || (opcode[0] & 0xF8) != 0xB8)
+        return false;
+
+    reg = (opcode[0] & 7) | ((rex & 1) << 3);
+    memcpy(&value, opcode + 1, sizeof(value));
+    return true;
+}
+
+// cmp r/m32, r32 or cmp r32, r/m32 (opcodes 39 and 3B) where either register is in the mask
+bool IsCompareWithRegister(const Instruction& instruction, uint16_t registers)
+{
+    auto rex = Rex(instruction);
+    auto opcode = instruction.bytes + (rex != 0 ? 1 : 0);
+
+    if (instruction.length < (rex != 0 ? 3 : 2) || (opcode[0] != 0x39 && opcode[0] != 0x3B))
+        return false;
+
+    auto modRM = opcode[1];
+    auto reg = ((modRM >> 3) & 7) | ((rex & 4) << 1);
+    auto rm = (modRM & 7) | ((rex & 1) << 3);
+
+    return (registers >> reg) & 1 || ((modRM >> 6) == 3 && (registers >> rm) & 1);
 }
 
 bool IsJumpIfEqual(const Instruction& instruction)
@@ -105,6 +137,16 @@ bool IsJumpIfEqual(const Instruction& instruction)
 }
 
 bool IsDirectCall(const Instruction& instruction) { return instruction.length == 5 && instruction.bytes[0] == 0xE8; }
+
+// call rel32 or call r/m64 (FF with 2 in the ModRM reg field)
+bool IsCall(const Instruction& instruction)
+{
+    auto opcode = instruction.bytes + (Rex(instruction) != 0 ? 1 : 0);
+    return IsDirectCall(instruction) || (instruction.length >= 2 && opcode[0] == 0xFF && ((opcode[1] >> 3) & 7) == 2);
+}
+
+// rax, rcx, rdx, r8-r11, a call can change any of them
+constexpr uint16_t VolatileRegisters = 0x0F07;
 
 void* CallTarget(const Instruction& call)
 {
@@ -118,7 +160,8 @@ void* CallTarget(const Instruction& call)
 //     if (!created || flagsChanged || (preset != context->preset && context->preset != 4))
 //         CreateModel(context, preset, ...);
 //
-// Every version so far compiles the last check into `cmp reg, 4` + `jz`, then sets up the arguments and calls it
+// Every version so far compiles the last check into `cmp reg, 4` + `jz`, then sets up the arguments and calls it.
+// Newer ones (SDK 4.1.2) keep the 4 in a register instead, `mov r15d, 4` ... `cmp eax, r15d` + `jz`
 void* FindCreateModel(HMODULE module)
 {
     constexpr size_t MaxArgumentSetupInstructions = 6;
@@ -137,13 +180,38 @@ void* FindCreateModel(HMODULE module)
 
     std::vector<void*> candidates;
 
+    // Bit per register last loaded with 4
+    uint16_t registersWith4 = 0;
+
     for (auto chunk : scanner::GetFunctionChunks(module, dispatch))
     {
         auto instructions = Disassemble(chunk);
 
         for (size_t i = 0; i + 2 < instructions.size(); i++)
         {
-            if (!IsCompareWith4(instructions[i]) || !IsJumpIfEqual(instructions[i + 1]))
+            uint8_t reg;
+            uint32_t value;
+
+            if (IsMoveImmediate(instructions[i], reg, value))
+            {
+                if (value == 4)
+                    registersWith4 |= 1 << reg;
+                else
+                    registersWith4 &= ~(1 << reg);
+
+                continue;
+            }
+
+            if (IsCall(instructions[i]))
+            {
+                registersWith4 &= ~VolatileRegisters;
+                continue;
+            }
+
+            auto isCompareWith4 =
+                IsCompareWith4(instructions[i]) || IsCompareWithRegister(instructions[i], registersWith4);
+
+            if (!isCompareWith4 || !IsJumpIfEqual(instructions[i + 1]))
                 continue;
 
             auto last = std::min(i + 2 + MaxArgumentSetupInstructions, instructions.size());
@@ -214,4 +282,10 @@ bool FSR4Presets::IsAnyModuleHooked()
 {
     std::scoped_lock lock(hookMutex);
     return std::ranges::any_of(hookedModules, [](const HookedModule& hooked) { return hooked.module != nullptr; });
+}
+
+bool FSR4Presets::IsModuleHooked(HMODULE module)
+{
+    std::scoped_lock lock(hookMutex);
+    return module != nullptr && std::ranges::find(hookedModules, module, &HookedModule::module) != hookedModules.end();
 }

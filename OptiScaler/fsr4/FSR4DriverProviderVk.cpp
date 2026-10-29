@@ -5,6 +5,8 @@
 #include "FSR4MotionVectorViewsVk.h"
 
 #include <misc/IdentifyGpu.h>
+#include <proxies/D3D12_Proxy.h>
+#include <proxies/FfxApi_Proxy.h>
 
 #include <mutex>
 #include <optional>
@@ -349,6 +351,7 @@ static void FillModule(FfxModule& module, const DriverProvider& provider)
     module.Query = provider.functions.query;
     module.Dispatch = provider.functions.dispatch;
     module.version.parse_version(provider.versionName.c_str());
+    module.vkBackendV2 = true;
 }
 
 static bool CallIsSupported(const DriverProvider& provider, VkDevice device, VkPhysicalDevice physicalDevice,
@@ -390,6 +393,13 @@ bool FSR4DriverProviderVk::IsSupported(VkDevice device, VkPhysicalDevice physica
     return IsAvailable() && CallIsSupported(_upscaler, device, physicalDevice, gdpa);
 }
 
+void FSR4DriverProviderVk::AddToVersionList(std::vector<uint64_t>& ids, std::vector<const char*>& names,
+                                            DriverListing listing)
+{
+    if (Init())
+        AddDriverToVersionList(ids, names, VersionId(), VersionName(), listing);
+}
+
 bool FSR4DriverProviderVk::InitFg()
 {
     static bool initTried = false;
@@ -400,7 +410,12 @@ bool FSR4DriverProviderVk::InitFg()
     initTried = true;
 
     // Real FP8 support comes from the D3D12 checks, the game's Vulkan device can be created before anything ran them
-    IdentifyGpu::updateD3d12Capabilities();
+    // or even loaded d3d12.dll, which the checks need
+    if (IdentifyGpu::getPrimaryGpu().vendorId == VendorId::AMD)
+    {
+        D3d12Proxy::Init();
+        IdentifyGpu::updateD3d12Capabilities();
+    }
 
     if (IdentifyGpu::getPrimaryGpu().realFsr4Support != FSR4Support::FP8)
     {
@@ -431,4 +446,14 @@ bool FSR4DriverProviderVk::InitFg()
 bool FSR4DriverProviderVk::IsFgSupported(VkDevice device, VkPhysicalDevice physicalDevice, PFN_vkGetDeviceProcAddr gdpa)
 {
     return IsFgAvailable() && CallIsSupported(_fg, device, physicalDevice, gdpa);
+}
+
+void FSR4DriverProviderVk::AddFgToVersionList(std::vector<uint64_t>& ids, std::vector<const char*>& names)
+{
+    // FFX SDK modules can get the driver FG on their own
+    if (!InitFg() || std::ranges::find(ids, FgVersionId()) != ids.end())
+        return;
+
+    ids.push_back(FgVersionId());
+    names.push_back(FgVersionName());
 }

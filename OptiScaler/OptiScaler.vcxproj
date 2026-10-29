@@ -140,10 +140,12 @@ copy $(SolutionDir)external\xess\LICENSE.txt $(SolutionDir)x64\Release\a\License
 md $(SolutionDir)x64\Release\a\OptiScaler
 copy $(SolutionDir)external\xess\bin\*.dll $(SolutionDir)x64\Release\a\OptiScaler\ /Y
 copy $(SolutionDir)external\FidelityFX-SDK\docs\license.md $(SolutionDir)x64\Release\a\OptiScaler\Licenses\FidelityFX_v1_LICENSE.md /Y
-copy $(SolutionDir)external\FidelityFX-SDK\PrebuiltSignedDLL\amd_fidelityfx_vk.dll $(SolutionDir)x64\Release\a\OptiScaler\ /Y
 copy $(SolutionDir)external\FidelityFX-SDK-v2\Kits\FidelityFX\signedbin\amd_fidelityfx_loader_dx12.dll $(SolutionDir)x64\Release\a\OptiScaler\ /Y
 copy $(SolutionDir)external\FidelityFX-SDK-v2\Kits\FidelityFX\signedbin\amd_fidelityfx_upscaler_dx12.dll $(SolutionDir)x64\Release\a\OptiScaler\ /Y
 copy $(SolutionDir)external\FidelityFX-SDK-v2\Kits\FidelityFX\signedbin\amd_fidelityfx_framegeneration_dx12.dll $(SolutionDir)x64\Release\a\OptiScaler\ /Y
+copy $(SolutionDir)external\FidelityFX-SDK-v2\Kits\FidelityFX\signedbin\amd_fidelityfx_loader_vk.dll $(SolutionDir)x64\Release\a\OptiScaler\ /Y
+copy $(SolutionDir)external\FidelityFX-SDK-v2\Kits\FidelityFX\signedbin\amd_fidelityfx_upscaler_vk.dll $(SolutionDir)x64\Release\a\OptiScaler\ /Y
+copy $(SolutionDir)external\FidelityFX-SDK-v2\Kits\FidelityFX\signedbin\amd_fidelityfx_framegeneration_vk.dll $(SolutionDir)x64\Release\a\OptiScaler\ /Y
 copy $(SolutionDir)external\FidelityFX-SDK-v2\docs\license.md $(SolutionDir)x64\Release\a\Licenses\FidelityFX_v2_LICENSE.md /Y
 copy $(SolutionDir)OptiScaler.ini $(SolutionDir)x64\Release\a\ /Y
 copy $(SolutionDir)setup_windows.bat $(SolutionDir)x64\Release\a\ /Y
@@ -388,6 +390,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="inputs\FG\FSR3_Dx12_FG.h" />
     <ClInclude Include="inputs\FG\Streamline_Inputs.h" />
     <ClInclude Include="framegen\xefg\XeFG_Dx12.h" />
+    <ClInclude Include="framegen\xefg\XeFG_DynamicMFG.h" />
     <ClInclude Include="hooks\Advapi32_Hooks.h" />
     <ClInclude Include="hooks\Crypt32_Hooks.h" />
     <ClInclude Include="hooks\Gdi32_Hooks.h" />
@@ -461,6 +464,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="upscalers\dlss\DLSSFeature_Dx12.h" />
     <ClInclude Include="upscalers\dlss\DLSSFeature_Vk.h" />
     <ClInclude Include="upscalers\FeatureProvider_Dx11.h" />
+    <ClInclude Include="upscalers\CustomUpscalers.h" />
     <ClInclude Include="upscalers\FeatureProvider_Dx12.h" />
     <ClInclude Include="upscalers\FeatureProvider_Vk.h" />
     <ClInclude Include="upscalers\ffx\FFXFeature.h" />
@@ -480,6 +484,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="include\imgui\misc\freetype\imgui_freetype.h" />
     <ClInclude Include="nvapi\fakenvapi.h" />
     <ClInclude Include="proxies\FfxApi_Proxy.h" />
+    <ClInclude Include="proxies\FfxModule.h" />
     <ClInclude Include="hooks\D3D11_Hooks.h" />
     <ClInclude Include="hooks\Vulkan_Hooks.h" />
     <ClInclude Include="nvapi\NvApiHooks.h" />
@@ -681,6 +686,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="inputs\FG\FSR3_Dx12_FG.cpp" />
     <ClCompile Include="inputs\FG\Streamline_Inputs.cpp" />
     <ClCompile Include="framegen\xefg\XeFG_Dx12.cpp" />
+    <ClCompile Include="framegen\xefg\XeFG_DynamicMFG.cpp" />
     <ClCompile Include="hooks\Streamline_Hooks.cpp" />
     <ClCompile Include="hudfix\Hudfix_Dx11.cpp" />
     <ClCompile Include="hudfix\Hudfix_Dx12.cpp" />

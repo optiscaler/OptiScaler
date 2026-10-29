@@ -374,8 +374,10 @@ ffxReturnCode_t ffxCreateContext_Vk(ffxContext* context, ffxCreateContextDescHea
             upscaleContext = true;
             createDesc = (ffxCreateContextDescUpscale*) header;
         }
-        else if (header->type == FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK)
+        else if (header->type == FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK ||
+                 header->type == FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK_V2)
         {
+            // Same layout for FFX SDK 1.x and 2.x
             auto backendDesc = (ffxCreateBackendVKDesc*) header;
             _vkDevice = backendDesc->vkDevice;
             _vkPhysicalDevice = backendDesc->vkPhysicalDevice;
@@ -388,7 +390,7 @@ ffxReturnCode_t ffxCreateContext_Vk(ffxContext* context, ffxCreateContextDescHea
 
     if (!upscaleContext || Config::Instance()->EnableHotSwapping.value_or_default())
     {
-        auto ffxApiResult = FfxApiProxy::VULKAN_CreateContext()(context, desc, memCb);
+        auto ffxApiResult = FfxApiProxy::VULKAN_CreateContext(context, desc, memCb);
 
         LOG_DEBUG("Vulkan_CreateContext result: {:X} ({}), context: {:X}", (UINT) ffxApiResult,
                   FfxApiProxy::ReturnCodeToString(ffxApiResult), (size_t) *context);
@@ -462,12 +464,12 @@ ffxReturnCode_t ffxDestroyContext_Vk(ffxContext* context, const ffxAllocationCal
     if (!State::Instance().isShuttingDown && upscalerContext &&
         Config::Instance()->EnableHotSwapping.value_or_default())
     {
-        auto cdResult = FfxApiProxy::VULKAN_DestroyContext()(context, memCb);
+        auto cdResult = FfxApiProxy::VULKAN_DestroyContext(context, memCb);
         LOG_INFO("result: {:X}", (UINT) cdResult);
         return FFX_API_RETURN_OK;
     }
 
-    auto cdResult = FfxApiProxy::VULKAN_DestroyContext()(context, memCb);
+    auto cdResult = FfxApiProxy::VULKAN_DestroyContext(context, memCb);
     LOG_INFO("result: {:X}", (UINT) cdResult);
     return cdResult;
 }
@@ -493,11 +495,11 @@ ffxReturnCode_t ffxConfigure_Vk(ffxContext* context, const ffxConfigureDescHeade
     if (desc->type > FFX_API_EFFECT_ID_FRAMEGENERATION && desc->type < 0x00050000u)
     {
         LOG_DEBUG("FG dispatch, redirecting to real FfxApi");
-        return FfxApiProxy::VULKAN_Configure()(context, desc);
+        return FfxApiProxy::VULKAN_Configure(context, desc);
     }
 
     if (Config::Instance()->EnableHotSwapping.value_or_default())
-        return FfxApiProxy::VULKAN_Configure()(context, desc);
+        return FfxApiProxy::VULKAN_Configure(context, desc);
 
     return FFX_API_RETURN_OK;
 }
@@ -515,7 +517,15 @@ ffxReturnCode_t ffxQuery_Vk(ffxContext* context, ffxQueryDescHeader* desc)
     if (type == FFXStructType::SwapchainVulkan || type == FFXStructType::FG)
     {
         LOG_DEBUG("FG dispatch, redirecting to real FfxApi");
-        return FfxApiProxy::VULKAN_Query()(context, desc);
+        return FfxApiProxy::VULKAN_Query(context, desc);
+    }
+
+    if (desc->type == FFX_API_QUERY_DESC_TYPE_GET_VERSIONS && type == FFXStructType::Upscaling &&
+        State::Instance().gameQuirks & GameQuirk::HideFsr4)
+    {
+        return FfxApiProxy::QueryUpscalerVersionsWithoutFsr4(reinterpret_cast<ffxQueryDescGetVersions*>(desc),
+                                                             [context](ffxQueryDescHeader* query)
+                                                             { return FfxApiProxy::VULKAN_Query(context, query); });
     }
 
     if (desc->type == FFX_API_QUERY_DESC_TYPE_UPSCALE_GETRENDERRESOLUTIONFROMQUALITYMODE)
@@ -576,14 +586,14 @@ ffxReturnCode_t ffxQuery_Vk(ffxContext* context, ffxQueryDescHeader* desc)
 
         if (type == FFXStructType::SwapchainVulkan || type == FFXStructType::FG)
         {
-            ver = FfxApiProxy::VersionVk();
+            ver = FfxApiProxy::VersionVk_FG();
 
             providerDesc->versionId =
                 0xF600'0000ui64 << 32u << 32 | (((ver.major << 22) | (ver.minor << 12) | ver.patch) & 0xFFFFFFFF);
         }
         else if (type == FFXStructType::Upscaling)
         {
-            ver = FfxApiProxy::VersionVk();
+            ver = FfxApiProxy::VersionVk_SR();
 
             providerDesc->versionId =
                 0xF5A5'CA1Eui64 << 32 | (((ver.major << 22) | (ver.minor << 12) | ver.patch) & 0xFFFFFFFF);
@@ -631,7 +641,7 @@ ffxReturnCode_t ffxQuery_Vk(ffxContext* context, ffxQueryDescHeader* desc)
     if (Config::Instance()->EnableHotSwapping.value_or_default() ||
         FfxApiProxy::GetType(desc->type) == FFXStructType::General)
     {
-        return FfxApiProxy::VULKAN_Query()(context, desc);
+        return FfxApiProxy::VULKAN_Query(context, desc);
     }
 
     return FFX_API_RETURN_OK;
@@ -648,18 +658,18 @@ ffxReturnCode_t ffxDispatch_Vk(ffxContext* context, ffxDispatchDescHeader* desc)
     if (type == FFXStructType::SwapchainVulkan || type == FFXStructType::FG)
     {
         LOG_DEBUG("FG dispatch, redirecting to real FfxApi");
-        return FfxApiProxy::VULKAN_Dispatch()(context, desc);
+        return FfxApiProxy::VULKAN_Dispatch(context, desc);
     }
 
     // Skip OptiScaler stuff
     if (Config::Instance()->EnableHotSwapping.value_or_default() &&
         !Config::Instance()->UseFfxInputs.value_or_default())
-        return FfxApiProxy::VULKAN_Dispatch()(context, desc);
+        return FfxApiProxy::VULKAN_Dispatch(context, desc);
 
     if (context == nullptr || !_initParams.contains(*context))
     {
         LOG_INFO("Not in _contexts");
-        return FfxApiProxy::VULKAN_Dispatch()(context, desc);
+        return FfxApiProxy::VULKAN_Dispatch(context, desc);
     }
 
     ffxApiHeader* header = desc;
@@ -681,13 +691,13 @@ ffxReturnCode_t ffxDispatch_Vk(ffxContext* context, ffxDispatchDescHeader* desc)
     if (dispatchDesc == nullptr)
     {
         LOG_INFO("dispatchDesc == nullptr, desc type: {:X}", desc->type);
-        return FfxApiProxy::VULKAN_Dispatch()(context, desc);
+        return FfxApiProxy::VULKAN_Dispatch(context, desc);
     }
 
     if (dispatchDesc->commandList == nullptr)
     {
         LOG_ERROR("dispatchDesc->commandList == nullptr !!!");
-        return FfxApiProxy::VULKAN_Dispatch()(context, desc);
+        return FfxApiProxy::VULKAN_Dispatch(context, desc);
     }
 
     // If not in contexts list create and add context

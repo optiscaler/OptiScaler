@@ -438,6 +438,17 @@ bool XeSSFeature_Vk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Par
     else
         LOG_WARN("Can't get motion vector scales!");
 
+    float maxResponsiveMaskValue = 1.0f;
+
+    if (InParameters->Get("XeSS.MaxResponsiveMaskValue", &maxResponsiveMaskValue) == NVSDK_NGX_Result_Success &&
+        XeSSProxy::SetMaxResponsiveMaskValue() != nullptr)
+    {
+        xessResult = XeSSProxy::SetMaxResponsiveMaskValue()(_xessContext, maxResponsiveMaskValue);
+
+        if (xessResult != XESS_RESULT_SUCCESS)
+            LOG_ERROR("xessSetMaxResponsiveMaskValue: {0}", ResultToString(xessResult));
+    }
+
     InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Color_Subrect_Base_X, &params.inputColorBase.x);
     InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Color_Subrect_Base_Y, &params.inputColorBase.y);
     InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Depth_Subrect_Base_X, &params.inputDepthBase.x);
