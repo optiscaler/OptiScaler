@@ -608,8 +608,7 @@ static Fsr3::FfxErrorCode hkffxFrameInterpolationDispatch(FfxFrameInterpolationC
     fg->SetFrameTimeDelta(params->frameTimeDelta);
     fg->SetReset(params->reset ? 1 : 0);
 
-    if (params->currentBackBuffer_HUDLess.resource != nullptr &&
-        !fg->GetResource(FG_ResourceType::HudlessColor))
+    if (params->currentBackBuffer_HUDLess.resource != nullptr && !fg->GetResource(FG_ResourceType::HudlessColor))
     {
         UINT width = params->interpolationRect.width;
         UINT height = params->interpolationRect.height;
