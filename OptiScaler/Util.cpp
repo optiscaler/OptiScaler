@@ -830,3 +830,59 @@ void Util::LoadProxyLibrary(const std::wstring& name, const std::wstring& optiPa
     if (*loadedModule == nullptr)
         LOG_WARN("Can't find {}, returning nullptr!", wstring_to_string(name));
 }
+
+void** Util::FindVTableByRtti(HMODULE module, const char* mangledName)
+{
+    if (module == nullptr || mangledName == nullptr)
+        return nullptr;
+
+    auto base = reinterpret_cast<uint8_t*>(module);
+    auto nt = reinterpret_cast<IMAGE_NT_HEADERS*>(base + reinterpret_cast<IMAGE_DOS_HEADER*>(base)->e_lfanew);
+    auto sections = IMAGE_FIRST_SECTION(nt);
+    auto count = nt->FileHeader.NumberOfSections;
+    auto nameLen = strlen(mangledName) + 1;
+
+    for (WORD n = 0; n < count; n++)
+    {
+        auto nBeg = base + sections[n].VirtualAddress;
+        auto nEnd = nBeg + sections[n].Misc.VirtualSize;
+
+        for (auto name = nBeg; name + nameLen <= nEnd; name++)
+        {
+            if (memcmp(name, mangledName, nameLen) != 0)
+                continue;
+
+            // TypeDescriptor = { void* vftable; void* spare; char name[]; }
+            auto tdRva = static_cast<uint32_t>(name - base - 16);
+
+            for (WORD c = 0; c < count; c++)
+            {
+                auto cBeg = base + sections[c].VirtualAddress;
+                auto cEnd = cBeg + sections[c].Misc.VirtualSize;
+
+                // CompleteObjectLocator = { signature(1), offset, cdOffset, pTypeDescriptor, pClassDescriptor, pSelf }
+                for (auto col = cBeg; col + 24 <= cEnd; col += 4)
+                {
+                    auto f = reinterpret_cast<uint32_t*>(col);
+                    if (f[0] != 1 || f[1] != 0 || f[3] != tdRva || f[5] != static_cast<uint32_t>(col - base))
+                        continue;
+
+                    // vtable[-1] points at the COL
+                    for (WORD v = 0; v < count; v++)
+                    {
+                        auto vBeg = base + sections[v].VirtualAddress;
+                        auto vEnd = vBeg + sections[v].Misc.VirtualSize;
+
+                        for (auto p = vBeg; p + 16 <= vEnd; p += 8)
+                        {
+                            if (*reinterpret_cast<uint8_t**>(p) == col)
+                                return reinterpret_cast<void**>(p + 8);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return nullptr;
+}

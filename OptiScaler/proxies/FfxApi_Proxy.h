@@ -22,23 +22,6 @@
 
 #include <magic_enum.hpp>
 
-// A mess to be able to import both
-#define FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_WAITCALLBACK FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_WAITCALLBACK_DX12
-#define FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_FRAMEPACINGTUNING FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_FRAMEPACINGTUNING_DX12
-
-#include <dx12/ffx_api_dx12.h>
-
-#undef FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_WAITCALLBACK
-#undef FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_FRAMEPACINGTUNING
-
-#define FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_WAITCALLBACK FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_WAITCALLBACK_VK
-#define FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_FRAMEPACINGTUNING FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_FRAMEPACINGTUNING_VK
-
-#include <vk/ffx_api_vk.h>
-
-#undef FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_WAITCALLBACK
-#undef FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_FRAMEPACINGTUNING
-
 enum class FFXStructType
 {
     General,
@@ -72,7 +55,7 @@ struct FfxModule
     PfnFfxDispatch Dispatch = nullptr;
 };
 
-using AmdInt8Check = uint8_t(__fastcall*)(void* a1, ID3D12Device* device);
+using AmdInt8Check = uint8_t(__fastcall*)(void* a1, void* device);
 
 class FfxApiProxy
 {
@@ -83,6 +66,7 @@ class FfxApiProxy
     inline static FfxModule denoiser_dx12;
     inline static FfxModule radiance_dx12;
     inline static FfxModule main_vk;
+    inline static FfxModule upscaling_vk;
 
     inline static FfxModule main_dx12_hooked;
     inline static FfxModule upscaling_dx12_hooked;
@@ -90,13 +74,14 @@ class FfxApiProxy
     inline static FfxModule denoiser_dx12_hooked;
     inline static FfxModule radiance_dx12_hooked;
     inline static FfxModule main_vk_hooked;
+    inline static FfxModule upscaling_vk_hooked;
 
     inline static ankerl::unordered_dense::map<ffxContext, FFXStructType> contextToType;
 
     inline static bool _skipDestroyCalls = false;
 
-    inline static AmdInt8Check o_amdInt8Check = nullptr;
-    inline static uint8_t hkAmdInt8Check(void* a1, ID3D12Device* device)
+    inline static AmdInt8Check o_amdInt8Check_Dx12 = nullptr;
+    inline static uint8_t hkAmdInt8Check(void* a1, void* device)
     {
         LOG_DEBUG("Called with a1: {:X}, device: {:X}", (uintptr_t) a1, (uintptr_t) device);
         return 1;
@@ -159,10 +144,10 @@ class FfxApiProxy
         case FFX_API_EFFECT_ID_FRAMEGENERATION:
             return FFXStructType::FG;
 
-        case FFX_API_EFFECT_ID_FRAMEGENERATIONSWAPCHAIN_DX12:
+        case FFX_API_EFFECT_ID_FRAMEGENERATIONSWAPCHAIN:
             return FFXStructType::SwapchainDX12;
 
-        case FFX_API_EFFECT_ID_FGSC_VK:
+        case FFX_API_EFFECT_ID_FRAMEGENERATIONSWAPCHAIN_VK:
             return FFXStructType::SwapchainVulkan;
 
         case 0x00050000u:
@@ -254,7 +239,7 @@ class FfxApiProxy
 
             if (!main_dx12.isLoader)
             {
-                FSR4ModelSelection::Hook(main_dx12.dll, FSR4Source::SDK);
+                FSR4ModelSelection::Hook(main_dx12.dll, FSR4Source::SDK, API::DX12);
             }
         }
 
@@ -401,7 +386,7 @@ class FfxApiProxy
 
         if (upscaling_dx12.dll != nullptr)
         {
-            FSR4ModelSelection::Hook(upscaling_dx12.dll, FSR4Source::SDK);
+            FSR4ModelSelection::Hook(upscaling_dx12.dll, FSR4Source::SDK, API::DX12);
 
             wchar_t modulePath[MAX_PATH];
             DWORD len = GetModuleFileNameW(upscaling_dx12.dll, modulePath, MAX_PATH);
@@ -489,30 +474,46 @@ class FfxApiProxy
         if (!loadResult)
             upscaling_dx12.dll = nullptr;
 
-        if (Config::Instance()->Fsr4ForceEnableInt8.value_or_default())
+        AmdInt8Check o_amdInt8Check_Dx12 = nullptr;
+        auto forceInt8 = Config::Instance()->Fsr4ForceEnableInt8.value_or_default();
+        void** vtable = nullptr;
+
+        switch (forceInt8)
         {
-            const char* pattern =
-                "48 83 EC 48 48 8B C2 48 85 D2 74 54 48 8D 54 24 20 48 8B C8 E8 ? ? ? ? 81 7C 24 34 91 00 00 00 44 0F "
-                "B6 C0 75 23 8B 54 24 30 8D 4A FF 83 F9 0E 76 13 8D 4A E0 81 F9 DE 00 00 00 76 08 8D 4A F0 83 F9 0F";
+        case 1:
+            vtable = Util::FindVTableByRtti(upscaling_dx12.dll, ".?AVffxProvider_FSR4_Int8@@");
+            break;
 
-            auto o_amdInt8Check = (AmdInt8Check) scanner::GetAddress(upscaling_dx12.dll, pattern);
+        case 2:
+            vtable = Util::FindVTableByRtti(upscaling_dx12.dll, ".?AVffxProvider_FSR4_Int8_Navi2@@");
+            break;
 
-            if (o_amdInt8Check != nullptr)
+        case 3:
+            vtable = Util::FindVTableByRtti(upscaling_dx12.dll, ".?AVffxProvider_FSR4Lite_Int8@@");
+            break;
+
+        default:
+            break;
+        }
+
+        if (vtable != nullptr)
+            o_amdInt8Check_Dx12 = (AmdInt8Check) vtable[2];
+
+        if (o_amdInt8Check_Dx12 != nullptr)
+        {
+            LOG_INFO("Found AmdInt8Check at {:X}", (size_t) o_amdInt8Check_Dx12);
+
+            DetourTransactionBegin();
+            DetourUpdateThread(GetCurrentThread());
+
+            if (o_amdInt8Check_Dx12 != nullptr)
+                DetourAttach(&(PVOID&) o_amdInt8Check_Dx12, hkAmdInt8Check);
+
+            auto detourResult = DetourTransactionCommit();
+            if (detourResult != NO_ERROR)
             {
-                LOG_INFO("Found AmdInt8Check at {:X}", (size_t) o_amdInt8Check);
-
-                DetourTransactionBegin();
-                DetourUpdateThread(GetCurrentThread());
-
-                if (o_amdInt8Check != nullptr)
-                    DetourAttach(&(PVOID&) o_amdInt8Check, hkAmdInt8Check);
-
-                auto detourResult = DetourTransactionCommit();
-                if (detourResult != NO_ERROR)
-                {
-                    LOG_ERROR("DetourTransactionCommit result: {:X}", detourResult);
-                    o_amdInt8Check = nullptr;
-                }
+                LOG_ERROR("DetourTransactionCommit result: {:X}", detourResult);
+                o_amdInt8Check_Dx12 = nullptr;
             }
         }
 
@@ -1478,7 +1479,12 @@ class FfxApiProxy
     }
 
     static HMODULE VkModule() { return main_vk.dll; }
+    static HMODULE VkModule_SR() { return upscaling_vk.dll; }
+
     static std::wstring VkModule_Path() { return main_vk.filePath; }
+    static std::wstring VkModule_SR_Path() { return upscaling_vk.filePath; }
+
+    static bool IsSRReady_Vk() { return (main_vk.dll && !main_vk.isLoader) || upscaling_vk.dll != nullptr; }
 
     static bool InitFfxVk(HMODULE module = nullptr)
     {
@@ -1489,7 +1495,7 @@ class FfxApiProxy
         spdlog::info("");
 
         // This is module loaded by game, need to hook it to use inputs
-        if (module != nullptr && main_vk.dll == nullptr)
+        if (module != nullptr && main_vk_hooked.dll == nullptr)
         {
             main_vk_hooked.dll = module;
         }
@@ -1497,8 +1503,7 @@ class FfxApiProxy
         // Try loading Opti's dlls first
         if (main_vk.dll == nullptr)
         {
-            // Try new api first
-            std::vector<std::wstring> dllNames = { L"amd_fidelityfx_vk.dll" };
+            std::vector<std::wstring> dllNames = { L"amd_fidelityfx_loader_vk.dll", L"amd_fidelityfx_vk.dll" };
 
             auto optiPath = Config::Instance()->MainDllPath.value();
 
@@ -1506,7 +1511,7 @@ class FfxApiProxy
             {
                 LOG_DEBUG("Trying to load {}", wstring_to_string(dllNames[i]));
 
-                auto overridePath = Config::Instance()->FfxVkPath.value_or(L"");
+                auto overridePath = Config::Instance()->FfxDx12Path.value_or(L"");
 
                 if (main_vk_hooked.dll == nullptr)
                 {
@@ -1538,9 +1543,18 @@ class FfxApiProxy
             main_vk.filePath = std::wstring(modulePath);
 
             LOG_INFO("Loaded from {}", wstring_to_string(main_vk.filePath));
+
+            // hacky but works for now
+            main_vk.isLoader = IsLoader(main_vk.filePath);
+
+            if (!main_vk.isLoader)
+            {
+                FSR4ModelSelection::Hook(main_vk.dll, FSR4Source::SDK, API::Vulkan);
+            }
         }
 
-        if (main_vk.dll != nullptr && main_vk.CreateContext == nullptr)
+        // Get methods of Opti's dlls
+        if (main_vk.dll != nullptr && main_vk.Configure == nullptr)
         {
             main_vk.Configure = (PfnFfxConfigure) KernelBaseProxy::GetProcAddress_()(main_vk.dll, "ffxConfigure");
             main_vk.CreateContext =
@@ -1549,53 +1563,264 @@ class FfxApiProxy
                 (PfnFfxDestroyContext) KernelBaseProxy::GetProcAddress_()(main_vk.dll, "ffxDestroyContext");
             main_vk.Dispatch = (PfnFfxDispatch) KernelBaseProxy::GetProcAddress_()(main_vk.dll, "ffxDispatch");
             main_vk.Query = (PfnFfxQuery) KernelBaseProxy::GetProcAddress_()(main_vk.dll, "ffxQuery");
+        }
 
-            if (Config::Instance()->EnableFfxInputs.value_or_default() && main_vk.CreateContext != nullptr)
+        // Get methods of game's dlls
+        if (main_vk_hooked.dll != nullptr && main_vk_hooked.Configure == nullptr)
+        {
+            main_vk_hooked.Configure =
+                (PfnFfxConfigure) KernelBaseProxy::GetProcAddress_()(main_vk_hooked.dll, "ffxConfigure");
+            main_vk_hooked.CreateContext =
+                (PfnFfxCreateContext) KernelBaseProxy::GetProcAddress_()(main_vk_hooked.dll, "ffxCreateContext");
+            main_vk_hooked.DestroyContext =
+                (PfnFfxDestroyContext) KernelBaseProxy::GetProcAddress_()(main_vk_hooked.dll, "ffxDestroyContext");
+            main_vk_hooked.Dispatch =
+                (PfnFfxDispatch) KernelBaseProxy::GetProcAddress_()(main_vk_hooked.dll, "ffxDispatch");
+            main_vk_hooked.Query = (PfnFfxQuery) KernelBaseProxy::GetProcAddress_()(main_vk_hooked.dll, "ffxQuery");
+        }
+        else if (main_vk_hooked.Configure == nullptr)
+        {
+            main_vk_hooked = main_vk;
+        }
+
+        // Hook game's dlls
+        if (Config::Instance()->EnableFfxInputs.value_or_default() && main_vk_hooked.dll != nullptr &&
+            main_vk_hooked.CreateContext != nullptr && !main_vk_hooked.hooked)
+        {
+            DetourTransactionBegin();
+            DetourUpdateThread(GetCurrentThread());
+
+            if (main_vk_hooked.Configure != nullptr)
+                DetourAttach(&(PVOID&) main_vk_hooked.Configure, ffxConfigure_Vk);
+
+            if (main_vk_hooked.CreateContext != nullptr)
+                DetourAttach(&(PVOID&) main_vk_hooked.CreateContext, ffxCreateContext_Vk);
+
+            if (main_vk_hooked.DestroyContext != nullptr)
+                DetourAttach(&(PVOID&) main_vk_hooked.DestroyContext, ffxDestroyContext_Vk);
+
+            if (main_vk_hooked.Dispatch != nullptr)
+                DetourAttach(&(PVOID&) main_vk_hooked.Dispatch, ffxDispatch_Vk);
+
+            if (main_vk_hooked.Query != nullptr)
+                DetourAttach(&(PVOID&) main_vk_hooked.Query, ffxQuery_Vk);
+
+            auto detourResult = DetourTransactionCommit();
+            if (detourResult != NO_ERROR)
             {
-                DetourTransactionBegin();
-                DetourUpdateThread(GetCurrentThread());
+                LOG_ERROR("DetourTransactionCommit result: {:X}", detourResult);
+                main_vk_hooked.Configure = nullptr;
+                main_vk_hooked.CreateContext = nullptr;
+                main_vk_hooked.DestroyContext = nullptr;
+                main_vk_hooked.Dispatch = nullptr;
+                main_vk_hooked.Query = nullptr;
+            }
+            else
+            {
+                // If we are hooking Opti's dlls then we need to use original method ptrs
+                if (main_vk_hooked.dll == main_vk.dll)
+                    main_vk = main_vk_hooked;
 
-                if (main_vk.Configure != nullptr)
-                    DetourAttach(&(PVOID&) main_vk.Configure, ffxConfigure_Vk);
+                main_vk_hooked.hooked = true;
+                State::Instance().fsrHooks = true;
+            }
+        }
 
-                if (main_vk.CreateContext != nullptr)
-                    DetourAttach(&(PVOID&) main_vk.CreateContext, ffxCreateContext_Vk);
+        InitFfxVk_SR();
 
-                if (main_vk.DestroyContext != nullptr)
-                    DetourAttach(&(PVOID&) main_vk.DestroyContext, ffxDestroyContext_Vk);
+        bool loadResult = main_vk.CreateContext != nullptr || upscaling_vk.CreateContext != nullptr;
 
-                if (main_vk.Dispatch != nullptr)
-                    DetourAttach(&(PVOID&) main_vk.Dispatch, ffxDispatch_Vk);
+        LOG_INFO("LoadResult: {}", loadResult);
 
-                if (main_vk.Query != nullptr)
-                    DetourAttach(&(PVOID&) main_vk.Query, ffxQuery_Vk);
+        if (!loadResult)
+            main_vk.dll = nullptr;
 
-                auto detourResult = DetourTransactionCommit();
-                if (detourResult != NO_ERROR)
+        return loadResult;
+    }
+
+    static bool InitFfxVk_SR(HMODULE module = nullptr)
+    {
+        // if dll already loaded
+        if (upscaling_vk.dll != nullptr && upscaling_vk.CreateContext != nullptr)
+            return true;
+
+        spdlog::info("");
+
+        // This is module loaded by game, need to hook it to use inputs
+        if (module != nullptr && upscaling_vk_hooked.dll == nullptr)
+        {
+            upscaling_vk_hooked.dll = module;
+        }
+
+        if (upscaling_vk.dll == nullptr)
+        {
+            // Try new api first
+            std::vector<std::wstring> dllNames = { L"amd_fidelityfx_upscaler_vk.dll" };
+
+            auto optiPath = Config::Instance()->MainDllPath.value();
+
+            for (size_t i = 0; i < dllNames.size(); i++)
+            {
+                LOG_DEBUG("Trying to load {}", wstring_to_string(dllNames[i]));
+
+                auto overridePath = Config::Instance()->FfxDx12SRPath.value_or(L"");
+
+                if (upscaling_vk_hooked.dll == nullptr)
                 {
-                    LOG_ERROR("DetourTransactionCommit result: {:X}", detourResult);
-                    main_vk.Configure = nullptr;
-                    main_vk.CreateContext = nullptr;
-                    main_vk.DestroyContext = nullptr;
-                    main_vk.Dispatch = nullptr;
-                    main_vk.Query = nullptr;
+                    Util::LoadProxyLibrary(dllNames[i], optiPath, overridePath, &upscaling_vk_hooked.dll,
+                                           &upscaling_vk.dll);
                 }
                 else
                 {
-                    State::Instance().fsrHooks = true;
+                    HMODULE memModule = nullptr;
+                    Util::LoadProxyLibrary(dllNames[i], optiPath, overridePath, &memModule, &upscaling_vk.dll);
+                }
+
+                if (upscaling_vk.dll != nullptr)
+                {
+                    break;
                 }
             }
         }
 
-        bool loadResult = main_vk.CreateContext != nullptr;
+        // Can't find Opti dlls, use just module loaded by game
+        if (upscaling_vk.dll == nullptr && upscaling_vk_hooked.dll != nullptr)
+        {
+            upscaling_vk = upscaling_vk_hooked;
+        }
+
+        if (upscaling_vk.dll != nullptr)
+        {
+            FSR4ModelSelection::Hook(upscaling_vk.dll, FSR4Source::SDK, API::Vulkan);
+
+            wchar_t modulePath[MAX_PATH];
+            DWORD len = GetModuleFileNameW(upscaling_vk.dll, modulePath, MAX_PATH);
+            upscaling_vk.filePath = std::wstring(modulePath);
+
+            LOG_INFO("Loaded from {}", wstring_to_string(upscaling_vk.filePath));
+        }
+
+        if (upscaling_vk.dll != nullptr && upscaling_vk.Configure == nullptr)
+        {
+            upscaling_vk.Configure =
+                (PfnFfxConfigure) KernelBaseProxy::GetProcAddress_()(upscaling_vk.dll, "ffxConfigure");
+            upscaling_vk.CreateContext =
+                (PfnFfxCreateContext) KernelBaseProxy::GetProcAddress_()(upscaling_vk.dll, "ffxCreateContext");
+            upscaling_vk.DestroyContext =
+                (PfnFfxDestroyContext) KernelBaseProxy::GetProcAddress_()(upscaling_vk.dll, "ffxDestroyContext");
+            upscaling_vk.Dispatch =
+                (PfnFfxDispatch) KernelBaseProxy::GetProcAddress_()(upscaling_vk.dll, "ffxDispatch");
+            upscaling_vk.Query = (PfnFfxQuery) KernelBaseProxy::GetProcAddress_()(upscaling_vk.dll, "ffxQuery");
+        }
+
+        if (upscaling_vk_hooked.dll != nullptr && upscaling_vk_hooked.Configure == nullptr)
+        {
+            upscaling_vk_hooked.Configure =
+                (PfnFfxConfigure) KernelBaseProxy::GetProcAddress_()(upscaling_vk_hooked.dll, "ffxConfigure");
+            upscaling_vk_hooked.CreateContext =
+                (PfnFfxCreateContext) KernelBaseProxy::GetProcAddress_()(upscaling_vk_hooked.dll, "ffxCreateContext");
+            upscaling_vk_hooked.DestroyContext =
+                (PfnFfxDestroyContext) KernelBaseProxy::GetProcAddress_()(upscaling_vk_hooked.dll, "ffxDestroyContext");
+            upscaling_vk_hooked.Dispatch =
+                (PfnFfxDispatch) KernelBaseProxy::GetProcAddress_()(upscaling_vk_hooked.dll, "ffxDispatch");
+            upscaling_vk_hooked.Query =
+                (PfnFfxQuery) KernelBaseProxy::GetProcAddress_()(upscaling_vk_hooked.dll, "ffxQuery");
+        }
+        else if (upscaling_vk_hooked.Configure == nullptr)
+        {
+            upscaling_vk_hooked = upscaling_vk;
+        }
+
+        if (Config::Instance()->EnableFfxInputs.value_or_default() && upscaling_vk_hooked.dll != nullptr &&
+            upscaling_vk_hooked.CreateContext != nullptr && !upscaling_vk_hooked.hooked)
+        {
+            DetourTransactionBegin();
+            DetourUpdateThread(GetCurrentThread());
+
+            if (upscaling_vk_hooked.Configure != nullptr)
+                DetourAttach(&(PVOID&) upscaling_vk_hooked.Configure, ffxConfigure_Vk);
+
+            if (upscaling_vk_hooked.CreateContext != nullptr)
+                DetourAttach(&(PVOID&) upscaling_vk_hooked.CreateContext, ffxCreateContext_Vk);
+
+            if (upscaling_vk_hooked.DestroyContext != nullptr)
+                DetourAttach(&(PVOID&) upscaling_vk_hooked.DestroyContext, ffxDestroyContext_Vk);
+
+            if (upscaling_vk_hooked.Dispatch != nullptr)
+                DetourAttach(&(PVOID&) upscaling_vk_hooked.Dispatch, ffxDispatch_Vk);
+
+            if (upscaling_vk_hooked.Query != nullptr)
+                DetourAttach(&(PVOID&) upscaling_vk_hooked.Query, ffxQuery_Vk);
+
+            auto detourResult = DetourTransactionCommit();
+            if (detourResult != NO_ERROR)
+            {
+                LOG_ERROR("DetourTransactionCommit result: {:X}", detourResult);
+                upscaling_vk_hooked.Configure = nullptr;
+                upscaling_vk_hooked.CreateContext = nullptr;
+                upscaling_vk_hooked.DestroyContext = nullptr;
+                upscaling_vk_hooked.Dispatch = nullptr;
+                upscaling_vk_hooked.Query = nullptr;
+            }
+            else
+            {
+                if (upscaling_vk.dll == upscaling_vk_hooked.dll)
+                    upscaling_vk = upscaling_vk_hooked;
+
+                upscaling_vk_hooked.hooked = true;
+                State::Instance().fsrHooks = true;
+            }
+        }
+
+        bool loadResult = upscaling_vk.CreateContext != nullptr;
 
         LOG_INFO("LoadResult: {}", loadResult);
 
-        if (loadResult)
-            VersionVk();
-        else
-            main_vk.dll = nullptr;
+        if (!loadResult)
+            upscaling_vk.dll = nullptr;
 
+        AmdInt8Check o_amdInt8Check_Dx12 = nullptr;
+        auto forceInt8 = Config::Instance()->Fsr4ForceEnableInt8.value_or_default();
+        void** vtable = nullptr;
+
+        switch (forceInt8)
+        {
+        case 1:
+            vtable = Util::FindVTableByRtti(upscaling_vk.dll, ".?AVffxProvider_FSR4_Int8@@");
+            break;
+
+        case 2:
+            vtable = Util::FindVTableByRtti(upscaling_vk.dll, ".?AVffxProvider_FSR4_Int8_Navi2@@");
+            break;
+
+        case 3:
+            vtable = Util::FindVTableByRtti(upscaling_vk.dll, ".?AVffxProvider_FSR4Lite_Int8@@");
+            break;
+
+        default:
+            break;
+        }
+
+        if (vtable != nullptr)
+            o_amdInt8Check_Dx12 = (AmdInt8Check) vtable[2];
+
+        if (o_amdInt8Check_Dx12 != nullptr)
+        {
+            LOG_INFO("Found AmdInt8Check at {:X}", (size_t) o_amdInt8Check_Dx12);
+
+            DetourTransactionBegin();
+            DetourUpdateThread(GetCurrentThread());
+
+            if (o_amdInt8Check_Dx12 != nullptr)
+                DetourAttach(&(PVOID&) o_amdInt8Check_Dx12, hkAmdInt8Check);
+
+            auto detourResult = DetourTransactionCommit();
+            if (detourResult != NO_ERROR)
+            {
+                LOG_ERROR("DetourTransactionCommit result: {:X}", detourResult);
+                o_amdInt8Check_Dx12 = nullptr;
+            }
+        }
         return loadResult;
     }
 
@@ -1644,11 +1869,222 @@ class FfxApiProxy
         return main_vk.version;
     }
 
-    static PfnFfxCreateContext VULKAN_CreateContext() { return main_vk.CreateContext; }
-    static PfnFfxDestroyContext VULKAN_DestroyContext() { return main_vk.DestroyContext; }
-    static PfnFfxConfigure VULKAN_Configure() { return main_vk.Configure; }
-    static PfnFfxQuery VULKAN_Query() { return main_vk.Query; }
-    static PfnFfxDispatch VULKAN_Dispatch() { return main_vk.Dispatch; }
+    static feature_version VersionVk_SR()
+    {
+        if (upscaling_vk.Query == nullptr)
+            return VersionVk();
+
+        if (upscaling_vk.version.major == 0)
+        {
+            ffxQueryDescGetVersions versionQuery {};
+            versionQuery.header.type = FFX_API_QUERY_DESC_TYPE_GET_VERSIONS;
+            versionQuery.createDescType = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE;
+            uint64_t versionCount = 0;
+            versionQuery.outputCount = &versionCount;
+
+            auto queryResult = upscaling_vk.Query(nullptr, &versionQuery.header);
+
+            // get number of versions for allocation
+            if (versionCount > 0 && queryResult == FFX_API_RETURN_OK)
+            {
+
+                std::vector<uint64_t> versionIds;
+                std::vector<const char*> versionNames;
+                versionIds.resize(versionCount);
+                versionNames.resize(versionCount);
+                versionQuery.versionIds = versionIds.data();
+                versionQuery.versionNames = versionNames.data();
+
+                // fill version ids and names arrays.
+                queryResult = upscaling_vk.Query(nullptr, &versionQuery.header);
+
+                if (queryResult == FFX_API_RETURN_OK)
+                {
+                    parse_version(versionNames[0], &upscaling_vk.version);
+                    LOG_INFO("FfxApi Vulkan SR version: {}.{}.{}", upscaling_vk.version.major,
+                             upscaling_vk.version.minor, upscaling_vk.version.patch);
+                }
+                else
+                {
+                    LOG_WARN("main_vk.Query 2 result: {}", (UINT) queryResult);
+                }
+            }
+            else
+            {
+                LOG_WARN("main_vk.Query result: {}", (UINT) queryResult);
+            }
+        }
+
+        return upscaling_vk.version;
+    }
+
+    static ffxReturnCode_t VULKAN_CreateContext(ffxContext* context, ffxCreateContextDescHeader* desc,
+                                                const ffxAllocationCallbacks* memCb)
+    {
+        auto type = GetType(desc->type);
+
+        ffxReturnCode_t result = FFX_API_RETURN_ERROR;
+
+        if (type == FFXStructType::Upscaling && upscaling_vk.dll != nullptr)
+        {
+            LOG_DEBUG("Creating with upscaling_vk");
+            result = upscaling_vk.CreateContext(context, desc, memCb);
+            contextToType[*context] = type;
+            LOG_DEBUG("Created with upscaling_vk: {:X}", (size_t) *context);
+            return result;
+        }
+
+        const auto skipUpscaling = type == FFXStructType::Upscaling && upscaling_vk.skipQueryCalls;
+
+        if (main_vk.dll != nullptr && !skipUpscaling)
+        {
+            LOG_DEBUG("Creating with main_vk");
+
+            upscaling_vk.skipCreateCalls = true;
+            result = main_vk.CreateContext(context, desc, memCb);
+            upscaling_vk.skipCreateCalls = false;
+
+            return result;
+        }
+
+        return FFX_API_RETURN_NO_PROVIDER;
+    }
+
+    static ffxReturnCode_t VULKAN_DestroyContext(ffxContext* context, const ffxAllocationCallbacks* memCb)
+    {
+        ffxReturnCode_t result = FFX_API_RETURN_ERROR;
+        auto type = FFXStructType::Unknown;
+
+        if (contextToType.contains(*context))
+        {
+            type = contextToType[*context];
+            LOG_DEBUG("Found context type mapping: {}", magic_enum::enum_name(type));
+            contextToType.erase(*context);
+        }
+        else
+        {
+            LOG_DEBUG("No context type mapping found, defaulting to Unknown");
+        }
+
+        switch (type)
+        {
+        case FFXStructType::General:
+            LOG_DEBUG("Destroying with main_vk");
+            if (main_vk.dll != nullptr)
+                result = main_vk.DestroyContext(context, memCb);
+            break;
+
+        case FFXStructType::Upscaling:
+            LOG_DEBUG("Destroying with upscaling_vk");
+            if (upscaling_vk.dll != nullptr)
+                result = upscaling_vk.DestroyContext(context, memCb);
+            break;
+
+        default:
+            break;
+        }
+
+        if (result == FFX_API_RETURN_OK)
+        {
+            LOG_DEBUG("Destroyed with mapped module");
+            return result;
+        }
+
+        if (main_vk.dll != nullptr && !_skipDestroyCalls)
+        {
+            LOG_DEBUG("Destroying with main_vk");
+            _skipDestroyCalls = true;
+            result = main_vk.DestroyContext(context, memCb);
+            _skipDestroyCalls = false;
+        }
+
+        if (result == FFX_API_RETURN_OK)
+        {
+            LOG_DEBUG("Destroyed with main_vk");
+            return result;
+        }
+
+        if (upscaling_vk.dll != nullptr)
+        {
+            LOG_DEBUG("Destroying with upscaling_vk");
+            result = upscaling_vk.DestroyContext(context, memCb);
+        }
+
+        if (result == FFX_API_RETURN_OK)
+        {
+            LOG_DEBUG("Destroyed with upscaling_vk");
+            return result;
+        }
+
+        LOG_ERROR("Failed to destroy context in any module");
+        return FFX_API_RETURN_NO_PROVIDER;
+    }
+
+    static ffxReturnCode_t VULKAN_Configure(ffxContext* context, const ffxConfigureDescHeader* desc)
+    {
+        auto type = GetType(desc->type);
+
+        if (type == FFXStructType::General && contextToType.contains(*context))
+            type = contextToType[*context];
+
+        if (type == FFXStructType::Upscaling && upscaling_vk.dll != nullptr)
+            return upscaling_vk.Configure(context, desc);
+
+        const auto skipUpscaling = type == FFXStructType::Upscaling && upscaling_vk.skipQueryCalls;
+
+        if (main_vk.dll != nullptr && !skipUpscaling)
+        {
+            upscaling_vk.skipConfigureCalls = true;
+            auto result = main_vk.Configure(context, desc);
+            upscaling_vk.skipConfigureCalls = false;
+
+            return result;
+        }
+
+        return FFX_API_RETURN_NO_PROVIDER;
+    }
+
+    static ffxReturnCode_t VULKAN_Query(ffxContext* context, ffxQueryDescHeader* desc)
+    {
+        auto type = GetIndirectType(desc);
+
+        if (type == FFXStructType::Upscaling && upscaling_vk.dll != nullptr)
+            return upscaling_vk.Query(context, desc);
+
+        const auto skipUpscaling = type == FFXStructType::Upscaling && upscaling_vk.skipQueryCalls;
+
+        if (main_vk.dll != nullptr && !skipUpscaling)
+        {
+            upscaling_vk.skipQueryCalls = true;
+            auto result = main_vk.Query(context, desc);
+            upscaling_vk.skipQueryCalls = false;
+
+            return result;
+        }
+
+        return FFX_API_RETURN_NO_PROVIDER;
+    }
+
+    static ffxReturnCode_t VULKAN_Dispatch(ffxContext* context, const ffxDispatchDescHeader* desc)
+    {
+        auto type = GetType(desc->type);
+
+        if (type == FFXStructType::Upscaling && upscaling_vk.dll != nullptr)
+            return upscaling_vk.Dispatch(context, desc);
+
+        const auto skipUpscaling = type == FFXStructType::Upscaling && upscaling_vk.skipQueryCalls;
+
+        if (main_vk.dll != nullptr && !skipUpscaling)
+        {
+            upscaling_vk.skipDispatchCalls = true;
+            auto result = main_vk.Dispatch(context, desc);
+            upscaling_vk.skipDispatchCalls = false;
+
+            return result;
+        }
+
+        return FFX_API_RETURN_NO_PROVIDER;
+    }
 
     static std::string ReturnCodeToString(ffxReturnCode_t result)
     {

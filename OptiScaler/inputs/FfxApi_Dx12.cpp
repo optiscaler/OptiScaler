@@ -12,6 +12,7 @@
 
 #include "ffx_upscale.h"
 #include "dx12/ffx_api_dx12.h"
+#include "dx12/ffx_api_framegeneration_dx12.h"
 
 #include <magic_enum.hpp>
 
@@ -528,6 +529,36 @@ ffxReturnCode_t ffxQuery_Dx12(ffxContext* context, ffxQueryDescHeader* desc)
             *joDesc->pOutY = 0.0f;
 
         LOG_DEBUG("Jitter offset: (0.0, 0.0)");
+
+        return FFX_API_RETURN_OK;
+    }
+    else if (desc->type == FFX_API_QUERY_DESC_TYPE_UPSCALE_GPU_MEMORY_USAGE)
+    {
+        auto muDesc = (ffxQueryDescUpscaleGetGPUMemoryUsage*) desc;
+
+        muDesc->gpuMemoryUsageUpscaler->totalUsageInBytes = 10485760;    // 10 MB for example
+        muDesc->gpuMemoryUsageUpscaler->aliasableUsageInBytes = 1048576; // 1 MB for example
+
+        return FFX_API_RETURN_OK;
+    }
+    else if (desc->type == FFX_API_QUERY_DESC_TYPE_UPSCALE_GPU_MEMORY_USAGE_V2)
+    {
+        auto muDesc = (ffxQueryDescUpscaleGetGPUMemoryUsageV2*) desc;
+
+        muDesc->gpuMemoryUsageUpscaler->totalUsageInBytes = 10485760;    // 10 MB for example
+        muDesc->gpuMemoryUsageUpscaler->aliasableUsageInBytes = 1048576; // 1 MB for example
+
+        return FFX_API_RETURN_OK;
+    }
+    else if (desc->type == FFX_API_QUERY_DESC_TYPE_UPSCALE_GET_RESOURCE_REQUIREMENTS)
+    {
+        auto rrDesc = (ffxQueryDescUpscaleGetResourceRequirements*) desc;
+
+        rrDesc->required_resources =
+            FFX_API_QUERY_RESOURCE_INPUT_COLOR | FFX_API_QUERY_RESOURCE_INPUT_DEPTH | FFX_API_QUERY_RESOURCE_INPUT_MV;
+
+        rrDesc->optional_resources = FFX_API_QUERY_RESOURCE_INPUT_EXPOSURE | FFX_API_QUERY_RESOURCE_INPUT_REACTIVEMASK |
+                                     FFX_API_QUERY_RESOURCE_INPUT_TRANSPARENCYCOMPOSITION;
 
         return FFX_API_RETURN_OK;
     }

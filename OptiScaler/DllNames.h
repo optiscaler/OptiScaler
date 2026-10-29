@@ -153,7 +153,8 @@ DEFINE_NAME_VECTORS(ffxDx12Upscaler, "amd_fidelityfx_upscaler_dx12");
 DEFINE_NAME_VECTORS(ffxDx12FG, "amd_fidelityfx_framegeneration_dx12");
 DEFINE_NAME_VECTORS(ffxDx12Denoiser, "amd_fidelityfx_denoiser_dx12");
 DEFINE_NAME_VECTORS(ffxDx12Radiance, "amd_fidelityfx_radiancecache_dx12");
-DEFINE_NAME_VECTORS(ffxVk, "amd_fidelityfx_vk");
+DEFINE_NAME_VECTORS(ffxVk, "amd_fidelityfx_vk", "amd_fidelityfx_loader_vk");
+DEFINE_NAME_VECTORS(ffxVkUpscaler, "amd_fidelityfx_upscaler_vk");
 
 inline static bool CompareFileName(std::string* first, std::string* second)
 {

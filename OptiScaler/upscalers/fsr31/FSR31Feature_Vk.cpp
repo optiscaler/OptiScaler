@@ -6,86 +6,8 @@
 
 #include "nvsdk_ngx_vk.h"
 
-static inline uint32_t ffxApiGetSurfaceFormatVKLocal(VkFormat fmt)
-{
-    switch (fmt)
-    {
-    case VK_FORMAT_R32G32B32A32_SFLOAT:
-        return FFX_API_SURFACE_FORMAT_R32G32B32A32_FLOAT;
-    case VK_FORMAT_R32G32B32_SFLOAT:
-        return FFX_API_SURFACE_FORMAT_R32G32B32_FLOAT;
-    case VK_FORMAT_R32G32B32A32_UINT:
-        return FFX_API_SURFACE_FORMAT_R32G32B32A32_UINT;
-    case VK_FORMAT_R16G16B16A16_SFLOAT:
-        return FFX_API_SURFACE_FORMAT_R16G16B16A16_FLOAT;
-    case VK_FORMAT_R32G32_SFLOAT:
-        return FFX_API_SURFACE_FORMAT_R32G32_FLOAT;
-    case VK_FORMAT_R32_UINT:
-    case VK_FORMAT_D24_UNORM_S8_UINT:
-    case VK_FORMAT_X8_D24_UNORM_PACK32:
-        return FFX_API_SURFACE_FORMAT_R32_UINT;
-    case VK_FORMAT_R8G8B8A8_UNORM:
-        return FFX_API_SURFACE_FORMAT_R8G8B8A8_UNORM;
-    case VK_FORMAT_R8G8B8A8_SNORM:
-        return FFX_API_SURFACE_FORMAT_R8G8B8A8_SNORM;
-    case VK_FORMAT_R8G8B8A8_SRGB:
-        return FFX_API_SURFACE_FORMAT_R8G8B8A8_SRGB;
-    case VK_FORMAT_B8G8R8A8_UNORM:
-        return FFX_API_SURFACE_FORMAT_B8G8R8A8_UNORM;
-    case VK_FORMAT_B8G8R8A8_SRGB:
-        return FFX_API_SURFACE_FORMAT_B8G8R8A8_SRGB;
-    case VK_FORMAT_B10G11R11_UFLOAT_PACK32:
-        return FFX_API_SURFACE_FORMAT_R11G11B10_FLOAT;
-    case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
-        return FFX_API_SURFACE_FORMAT_R10G10B10A2_UNORM;
-    case VK_FORMAT_R16G16_UNORM:
-        return FFX_API_SURFACE_FORMAT_R8G8B8A8_UNORM;
-    case VK_FORMAT_R16G16_SNORM:
-        return FFX_API_SURFACE_FORMAT_R8G8B8A8_SNORM;
-    case VK_FORMAT_R16G16_USCALED:
-    case VK_FORMAT_R16G16_SSCALED:
-    case VK_FORMAT_R16G16_SFLOAT:
-        return FFX_API_SURFACE_FORMAT_R16G16_FLOAT;
-    case VK_FORMAT_R16G16_UINT:
-        return FFX_API_SURFACE_FORMAT_R16G16_UINT;
-    case VK_FORMAT_R16G16_SINT:
-        return FFX_API_SURFACE_FORMAT_R16G16_SINT;
-    case VK_FORMAT_R16_SFLOAT:
-        return FFX_API_SURFACE_FORMAT_R16_FLOAT;
-    case VK_FORMAT_R16_UINT:
-        return FFX_API_SURFACE_FORMAT_R16_UINT;
-    case VK_FORMAT_R16_UNORM:
-    case VK_FORMAT_D16_UNORM:
-    case VK_FORMAT_D16_UNORM_S8_UINT:
-        return FFX_API_SURFACE_FORMAT_R16_UNORM;
-    case VK_FORMAT_R16_SNORM:
-        return FFX_API_SURFACE_FORMAT_R16_SNORM;
-    case VK_FORMAT_R8_UNORM:
-        return FFX_API_SURFACE_FORMAT_R8_UNORM;
-    case VK_FORMAT_R8_UINT:
-    case VK_FORMAT_S8_UINT:
-        return FFX_API_SURFACE_FORMAT_R8_UINT;
-    case VK_FORMAT_R8G8_UNORM:
-        return FFX_API_SURFACE_FORMAT_R8G8_UNORM;
-    case VK_FORMAT_R8G8_UINT:
-        return FFX_API_SURFACE_FORMAT_R8G8_UINT;
-    case VK_FORMAT_R32_SFLOAT:
-    case VK_FORMAT_D32_SFLOAT:
-    case VK_FORMAT_D32_SFLOAT_S8_UINT:
-        return FFX_API_SURFACE_FORMAT_R32_FLOAT;
-    case VK_FORMAT_E5B9G9R9_UFLOAT_PACK32:
-        return FFX_API_SURFACE_FORMAT_R9G9B9E5_SHAREDEXP;
-    case VK_FORMAT_UNDEFINED:
-        return FFX_API_SURFACE_FORMAT_UNKNOWN;
-
-    default:
-        // NOTE: we do not support typeless formats here
-        // FFX_ASSERT_MESSAGE(false, "Format not yet supported");
-        return FFX_API_SURFACE_FORMAT_UNKNOWN;
-    }
-}
-
-static inline FfxApiResourceDescription ffxApiGetImageResourceDescriptionVKLocal(NVSDK_NGX_Resource_VK* vkResource)
+static inline FfxApiResourceDescription ffxApiGetImageResourceDescriptionVKLocal(NVSDK_NGX_Resource_VK* vkResource,
+                                                                                 bool depth = false)
 {
     FfxApiResourceDescription resourceDescription = {};
 
@@ -101,7 +23,7 @@ static inline FfxApiResourceDescription ffxApiGetImageResourceDescriptionVKLocal
         resourceDescription.usage |= FFX_API_RESOURCE_USAGE_UAV;
 
     // depth use
-    if ((vkResource->Resource.ImageViewInfo.SubresourceRange.aspectMask & VK_IMAGE_ASPECT_DEPTH_BIT) > 0)
+    if ((vkResource->Resource.ImageViewInfo.SubresourceRange.aspectMask & VK_IMAGE_ASPECT_DEPTH_BIT) > 0 || depth)
         resourceDescription.usage |= FFX_API_RESOURCE_USAGE_DEPTHTARGET;
 
     if ((vkResource->Resource.ImageViewInfo.SubresourceRange.aspectMask & VK_IMAGE_ASPECT_STENCIL_BIT) > 0)
@@ -113,7 +35,7 @@ static inline FfxApiResourceDescription ffxApiGetImageResourceDescriptionVKLocal
     resourceDescription.mipCount = 1;
     resourceDescription.depth = 1;
     resourceDescription.flags = FFX_API_RESOURCE_FLAGS_NONE;
-    resourceDescription.format = ffxApiGetSurfaceFormatVKLocal(vkResource->Resource.ImageViewInfo.Format);
+    resourceDescription.format = ffxApiGetSurfaceFormatVK(vkResource->Resource.ImageViewInfo.Format);
 
     return resourceDescription;
 }
@@ -155,14 +77,14 @@ bool FSR31FeatureVk::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
         uint64_t versionCount = 0;
         versionQuery.outputCount = &versionCount;
         // get number of versions for allocation
-        FfxApiProxy::VULKAN_Query()(nullptr, &versionQuery.header);
+        FfxApiProxy::VULKAN_Query(nullptr, &versionQuery.header);
 
         State::Instance().ffxUpscalerVersionIds.resize(versionCount);
         State::Instance().ffxUpscalerVersionNames.resize(versionCount);
         versionQuery.versionIds = State::Instance().ffxUpscalerVersionIds.data();
         versionQuery.versionNames = State::Instance().ffxUpscalerVersionNames.data();
         // fill version ids and names arrays.
-        FfxApiProxy::VULKAN_Query()(nullptr, &versionQuery.header);
+        FfxApiProxy::VULKAN_Query(nullptr, &versionQuery.header);
 
         _contextDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE;
         _contextDesc.fpMessage = FfxLogCallback;
@@ -277,17 +199,40 @@ bool FSR31FeatureVk::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
             }
         }
 
-        ffxCreateBackendVKDesc backendDesc = { 0 };
-        backendDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK;
-        backendDesc.vkDevice = Device;
-        backendDesc.vkPhysicalDevice = PhysicalDevice;
+        ffxCreateBackendVKDesc_DEPRECATED backendDescOld = {};
+        backendDescOld.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK_DEPRECATED;
+        backendDescOld.vkDevice = Device;
+        backendDescOld.vkPhysicalDevice = PhysicalDevice;
 
         if (GDPA == nullptr)
-            backendDesc.vkDeviceProcAddr = vkGetDeviceProcAddr;
+            backendDescOld.vkDeviceProcAddr = vkGetDeviceProcAddr;
         else
-            backendDesc.vkDeviceProcAddr = GDPA;
+            backendDescOld.vkDeviceProcAddr = GDPA;
 
-        _contextDesc.header.pNext = &backendDesc.header;
+        ffxCreateBackendVKDesc backendDesc = {};
+        backendDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK;
+        backendDesc.deviceContext.vkDevice = Device;
+        backendDesc.deviceContext.vkPhysicalDevice = PhysicalDevice;
+
+        if (GDPA == nullptr)
+            backendDesc.deviceContext.vkDeviceProcAddr = vkGetDeviceProcAddr;
+        else
+            backendDesc.deviceContext.vkDeviceProcAddr = GDPA;
+
+        if (FfxApiProxy::IsSRReady_Vk())
+        {
+            if (FfxApiProxy::VersionVk_SR() < feature_version { 3, 1, 5 })
+                _contextDesc.header.pNext = &backendDescOld.header;
+            else
+                _contextDesc.header.pNext = &backendDesc.header;
+        }
+        else if (FfxApiProxy::VkModule() != nullptr && FfxApiProxy::VersionVk() < feature_version { 3, 1, 5 })
+        {
+            if (FfxApiProxy::VersionVk() < feature_version { 3, 1, 5 })
+                _contextDesc.header.pNext = &backendDescOld.header;
+            else
+                _contextDesc.header.pNext = &backendDesc.header;
+        }
 
         if (Config::Instance()->FfxUpscalerIndex.value_or_default() < 0 ||
             Config::Instance()->FfxUpscalerIndex.value_or_default() >= State::Instance().ffxUpscalerVersionIds.size())
@@ -299,7 +244,7 @@ bool FSR31FeatureVk::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
         backendDesc.header.pNext = &ov.header;
 
         LOG_DEBUG("_createContext!");
-        auto ret = FfxApiProxy::VULKAN_CreateContext()(&_context, &_contextDesc.header, NULL);
+        auto ret = FfxApiProxy::VULKAN_CreateContext(&_context, &_contextDesc.header, NULL);
 
         if (ret != FFX_API_RETURN_OK)
         {
@@ -444,7 +389,7 @@ bool FSR31FeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
 
         params.depth =
             ffxApiGetResourceVK(((NVSDK_NGX_Resource_VK*) paramDepth)->Resource.ImageViewInfo.Image,
-                                ffxApiGetImageResourceDescriptionVKLocal((NVSDK_NGX_Resource_VK*) paramDepth),
+                                ffxApiGetImageResourceDescriptionVKLocal((NVSDK_NGX_Resource_VK*) paramDepth, true),
                                 FFX_API_RESOURCE_STATE_COMPUTE_READ);
     }
     else
@@ -704,7 +649,7 @@ bool FSR31FeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
         m_upscalerKeyValueConfig.header.type = FFX_API_CONFIGURE_DESC_TYPE_UPSCALE_KEYVALUE;
         m_upscalerKeyValueConfig.key = FFX_API_CONFIGURE_UPSCALE_KEY_FVELOCITYFACTOR;
         m_upscalerKeyValueConfig.ptr = &_velocity;
-        auto result = FfxApiProxy::VULKAN_Configure()(&_context, &m_upscalerKeyValueConfig.header);
+        auto result = FfxApiProxy::VULKAN_Configure(&_context, &m_upscalerKeyValueConfig.header);
 
         if (result != FFX_API_RETURN_OK)
             LOG_WARN("Velocity configure result: {}", (UINT) result);
@@ -719,7 +664,7 @@ bool FSR31FeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
             m_upscalerKeyValueConfig.header.type = FFX_API_CONFIGURE_DESC_TYPE_UPSCALE_KEYVALUE;
             m_upscalerKeyValueConfig.key = FFX_API_CONFIGURE_UPSCALE_KEY_FREACTIVENESSSCALE;
             m_upscalerKeyValueConfig.ptr = &_reactiveScale;
-            auto result = FfxApiProxy::VULKAN_Configure()(&_context, &m_upscalerKeyValueConfig.header);
+            auto result = FfxApiProxy::VULKAN_Configure(&_context, &m_upscalerKeyValueConfig.header);
 
             if (result != FFX_API_RETURN_OK)
                 LOG_WARN("Reactive Scale configure result: {}", (UINT) result);
@@ -732,7 +677,7 @@ bool FSR31FeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
             m_upscalerKeyValueConfig.header.type = FFX_API_CONFIGURE_DESC_TYPE_UPSCALE_KEYVALUE;
             m_upscalerKeyValueConfig.key = FFX_API_CONFIGURE_UPSCALE_KEY_FSHADINGCHANGESCALE;
             m_upscalerKeyValueConfig.ptr = &_shadingScale;
-            auto result = FfxApiProxy::VULKAN_Configure()(&_context, &m_upscalerKeyValueConfig.header);
+            auto result = FfxApiProxy::VULKAN_Configure(&_context, &m_upscalerKeyValueConfig.header);
 
             if (result != FFX_API_RETURN_OK)
                 LOG_WARN("Shading Scale configure result: {}", (UINT) result);
@@ -745,7 +690,7 @@ bool FSR31FeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
             m_upscalerKeyValueConfig.header.type = FFX_API_CONFIGURE_DESC_TYPE_UPSCALE_KEYVALUE;
             m_upscalerKeyValueConfig.key = FFX_API_CONFIGURE_UPSCALE_KEY_FACCUMULATIONADDEDPERFRAME;
             m_upscalerKeyValueConfig.ptr = &_accAddPerFrame;
-            auto result = FfxApiProxy::VULKAN_Configure()(&_context, &m_upscalerKeyValueConfig.header);
+            auto result = FfxApiProxy::VULKAN_Configure(&_context, &m_upscalerKeyValueConfig.header);
 
             if (result != FFX_API_RETURN_OK)
                 LOG_WARN("Acc. Add Per Frame configure result: {}", (UINT) result);
@@ -758,7 +703,7 @@ bool FSR31FeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
             m_upscalerKeyValueConfig.header.type = FFX_API_CONFIGURE_DESC_TYPE_UPSCALE_KEYVALUE;
             m_upscalerKeyValueConfig.key = FFX_API_CONFIGURE_UPSCALE_KEY_FMINDISOCCLUSIONACCUMULATION;
             m_upscalerKeyValueConfig.ptr = &_minDisOccAcc;
-            auto result = FfxApiProxy::VULKAN_Configure()(&_context, &m_upscalerKeyValueConfig.header);
+            auto result = FfxApiProxy::VULKAN_Configure(&_context, &m_upscalerKeyValueConfig.header);
 
             if (result != FFX_API_RETURN_OK)
                 LOG_WARN("Minimum Disocclusion Acc. configure result: {}", (UINT) result);
@@ -790,7 +735,7 @@ bool FSR31FeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
     }
 
     LOG_DEBUG("Dispatch!!");
-    auto result = FfxApiProxy::VULKAN_Dispatch()(&_context, &params.header);
+    auto result = FfxApiProxy::VULKAN_Dispatch(&_context, &params.header);
 
     if (result != FFX_API_RETURN_OK)
     {

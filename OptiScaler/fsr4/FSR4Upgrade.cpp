@@ -10,27 +10,11 @@
 #include "proxies/FfxApi_Proxy.h"
 #include <magic_enum.hpp>
 
-// A mess to be able to import both
-#define FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_WAITCALLBACK FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_WAITCALLBACK_DX12
-#define FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_FRAMEPACINGTUNING FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_FRAMEPACINGTUNING_DX12
-
-#include <dx12/ffx_api_dx12.h>
-
-#undef FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_WAITCALLBACK
-#undef FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_FRAMEPACINGTUNING
-
-#define FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_WAITCALLBACK FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_WAITCALLBACK_VK
-#define FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_FRAMEPACINGTUNING FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_FRAMEPACINGTUNING_VK
-
-#include <vk/ffx_api_vk.h>
-
-#undef FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_WAITCALLBACK
-#undef FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_FRAMEPACINGTUNING
-
 #pragma intrinsic(_ReturnAddress)
 
 static HMODULE moduleAmdxc64 = nullptr;
 static HMODULE moduleAmdxcffx64 = nullptr;
+static HMODULE moduleAmdvkffx64 = nullptr;
 
 static AmdExtD3DDevice8* amdExtD3DDevice8 = nullptr;
 static AmdExtD3DShaderIntrinsics* amdExtD3DShaderIntrinsics = nullptr;
@@ -282,8 +266,10 @@ struct ExternalProviderData
 
 struct AmdExtFfxApi : public IAmdExtFfxApi
 {
-    PFN_UpdateFfxApiProvider o_UpdateFfxApiProvider = nullptr;
-    PFN_UpdateFfxApiProviderEx o_UpdateFfxApiProviderEx = nullptr;
+    PFN_UpdateFfxApiProvider o_UpdateFfxApiProviderDx12 = nullptr;
+    PFN_UpdateFfxApiProviderEx o_UpdateFfxApiProviderExDx12 = nullptr;
+    PFN_UpdateFfxApiProvider o_UpdateFfxApiProviderVk = nullptr;
+    PFN_UpdateFfxApiProviderEx o_UpdateFfxApiProviderExVk = nullptr;
 
     HRESULT STDMETHODCALLTYPE UpdateFfxApiProvider(void* pData, uint32_t dataSizeInBytes) override
     {
@@ -302,7 +288,8 @@ struct AmdExtFfxApi : public IAmdExtFfxApi
         if (effectType >= FFXStructType::Unknown)
             effect = "???";
 
-        if (o_UpdateFfxApiProvider == nullptr)
+        // Dx12
+        if (o_UpdateFfxApiProviderDx12 == nullptr)
         {
             moduleAmdxcffx64 = nullptr;
             HMODULE memModule = nullptr;
@@ -339,7 +326,7 @@ struct AmdExtFfxApi : public IAmdExtFfxApi
 
             if (moduleAmdxcffx64)
             {
-                FSR4ModelSelection::Hook(moduleAmdxcffx64, FSR4Source::DriverDll);
+                FSR4ModelSelection::Hook(moduleAmdxcffx64, FSR4Source::DriverDll, API::DX12);
             }
             else
             {
@@ -347,14 +334,72 @@ struct AmdExtFfxApi : public IAmdExtFfxApi
                 return E_NOINTERFACE;
             }
 
-            o_UpdateFfxApiProvider =
+            o_UpdateFfxApiProviderDx12 =
                 (PFN_UpdateFfxApiProvider) KernelBaseProxy::GetProcAddress_()(moduleAmdxcffx64, "UpdateFfxApiProvider");
-            o_UpdateFfxApiProviderEx = (PFN_UpdateFfxApiProviderEx) KernelBaseProxy::GetProcAddress_()(
+            o_UpdateFfxApiProviderExDx12 = (PFN_UpdateFfxApiProviderEx) KernelBaseProxy::GetProcAddress_()(
                 moduleAmdxcffx64, "UpdateFfxApiProviderEx");
 
-            if (o_UpdateFfxApiProvider == nullptr)
+            if (o_UpdateFfxApiProviderDx12 == nullptr)
             {
-                LOG_ERROR("Failed to get UpdateFfxApiProvider");
+                LOG_ERROR("Failed to get UpdateFfxApiProviderDx12");
+                return E_NOINTERFACE;
+            }
+        }
+
+        // Vulkan
+        if (o_UpdateFfxApiProviderVk == nullptr)
+        {
+            moduleAmdvkffx64 = nullptr;
+            HMODULE memModule = nullptr;
+            auto optiPath = Config::Instance()->MainDllPath.value();
+            Util::LoadProxyLibrary(L"amdvkffx64.dll", L"", optiPath, &memModule, &moduleAmdvkffx64);
+
+            if (moduleAmdvkffx64 == nullptr && memModule != nullptr)
+                moduleAmdvkffx64 = memModule;
+
+            if (moduleAmdvkffx64 == nullptr)
+            {
+                auto storePath = GetDriverStore();
+
+                for (size_t i = 0; i < storePath.size(); i++)
+                {
+                    if (moduleAmdvkffx64 == nullptr)
+                    {
+                        auto dllPath = storePath[i] / L"amdvkffx64.dll";
+                        LOG_DEBUG("Trying to load: {}", wstring_to_string(dllPath.c_str()));
+                        moduleAmdvkffx64 = NtdllProxy::LoadLibraryExW_Ldr(dllPath.c_str(), NULL, 0);
+
+                        if (moduleAmdvkffx64 != nullptr)
+                        {
+                            LOG_INFO(L"amdvkffx64 loaded from {}", dllPath.wstring());
+                            break;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                LOG_INFO("amdvkffx64 loaded from game folder");
+            }
+
+            if (moduleAmdvkffx64)
+            {
+                FSR4ModelSelection::Hook(moduleAmdvkffx64, FSR4Source::DriverDll, API::Vulkan);
+            }
+            else
+            {
+                LOG_WARN("Failed to load amdvkffx64.dll");
+                return E_NOINTERFACE;
+            }
+
+            o_UpdateFfxApiProviderVk =
+                (PFN_UpdateFfxApiProvider) KernelBaseProxy::GetProcAddress_()(moduleAmdvkffx64, "UpdateFfxApiProvider");
+            o_UpdateFfxApiProviderExVk = (PFN_UpdateFfxApiProviderEx) KernelBaseProxy::GetProcAddress_()(
+                moduleAmdvkffx64, "UpdateFfxApiProviderEx");
+
+            if (o_UpdateFfxApiProviderVk == nullptr)
+            {
+                LOG_ERROR("Failed to get UpdateFfxApiProviderVk");
                 return E_NOINTERFACE;
             }
         }
@@ -370,31 +415,63 @@ struct AmdExtFfxApi : public IAmdExtFfxApi
                 return E_NOINTERFACE;
         }
 
+        // Dx12
         // Result 0x80004002 (E_NOINTERFACE) basically means that amdxcffx64 doesn't have a provider for that effect
         if ((effectType == FFXStructType::FG || effectType == FFXStructType::Upscaling ||
              effectType == FFXStructType::SwapchainDX12) &&
-            o_UpdateFfxApiProviderEx != nullptr)
+            o_UpdateFfxApiProviderExDx12 != nullptr)
         {
             State::DisableChecks(1);
 
             magicData data = { { 0, 1, 1, 0 }, nullptr };
-            auto result = o_UpdateFfxApiProviderEx(pData, dataSizeInBytes, &data);
+            auto result = o_UpdateFfxApiProviderExDx12(pData, dataSizeInBytes, &data);
 
             auto level = SUCCEEDED(result) ? spdlog::level::info : spdlog::level::err;
-            spdlog::log(level, "UpdateFfxApiProviderEx for: {}, result: {:#X}", effect, (UINT) result);
+            spdlog::log(level, "UpdateFfxApiProviderExDx12 for: {}, result: {:#X}", effect, (UINT) result);
 
             State::EnableChecks(1);
             return result;
         }
 
-        else if (o_UpdateFfxApiProvider != nullptr)
+        else if (o_UpdateFfxApiProviderDx12 != nullptr)
         {
             State::DisableChecks(1);
 
-            auto result = o_UpdateFfxApiProvider(pData, dataSizeInBytes);
+            auto result = o_UpdateFfxApiProviderDx12(pData, dataSizeInBytes);
 
             auto level = SUCCEEDED(result) ? spdlog::level::info : spdlog::level::err;
-            spdlog::log(level, "UpdateFfxApiProvider for: {}, result: {:#X}", effect, (UINT) result);
+            spdlog::log(level, "UpdateFfxApiProviderDx12 for: {}, result: {:#X}", effect, (UINT) result);
+
+            State::EnableChecks(1);
+            return result;
+        }
+
+        // Vulkan
+        // Result 0x80004002 (E_NOINTERFACE) basically means that amdxcffx64 doesn't have a provider for that effect
+        if ((effectType == FFXStructType::FG || effectType == FFXStructType::Upscaling ||
+             effectType == FFXStructType::SwapchainVulkan) &&
+            o_UpdateFfxApiProviderExVk != nullptr)
+        {
+            State::DisableChecks(1);
+
+            magicData data = { { 0, 1, 1, 0 }, nullptr };
+            auto result = o_UpdateFfxApiProviderExVk(pData, dataSizeInBytes, &data);
+
+            auto level = SUCCEEDED(result) ? spdlog::level::info : spdlog::level::err;
+            spdlog::log(level, "UpdateFfxApiProviderExVk for: {}, result: {:#X}", effect, (UINT) result);
+
+            State::EnableChecks(1);
+            return result;
+        }
+
+        else if (o_UpdateFfxApiProviderVk != nullptr)
+        {
+            State::DisableChecks(1);
+
+            auto result = o_UpdateFfxApiProviderVk(pData, dataSizeInBytes);
+
+            auto level = SUCCEEDED(result) ? spdlog::level::info : spdlog::level::err;
+            spdlog::log(level, "UpdateFfxApiProviderVk for: {}, result: {:#X}", effect, (UINT) result);
 
             State::EnableChecks(1);
             return result;
@@ -479,7 +556,7 @@ struct AmdExtD3DDevice8 : public IAmdExtD3DDevice8
             // Try to allow for MLFG on Rdna3 on Linux while forcing int8 for the upscaler
             if (!Util::WhoIsTheCaller(_ReturnAddress()).starts_with("amd_fidelityfx_framegeneration_dx12") || !rdna3fp8)
             {
-                if (!rdna3fp8 || FSR4ModelSelection::IsInt8FsrHooked())
+                if (!rdna3fp8 || FSR4ModelSelection::IsInt8FsrHookedDx12())
                     waveMatrixProperties->aType = float16; // Anything to fail the check
             }
         }

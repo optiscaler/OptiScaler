@@ -56,6 +56,7 @@ void GetDeviceRemovedReason(ID3D11Device* pDevice);
 void GetDeviceRemovedReason(ID3D12Device* pDevice);
 void LoadProxyLibrary(const std::wstring& name, const std::wstring& optiPath, const std::wstring& overridePath,
                       HMODULE* memoryModule, HMODULE* loadedModule);
+void** FindVTableByRtti(HMODULE module, const char* mangledName);
 
 }; // namespace Util
 

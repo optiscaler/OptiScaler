@@ -10,6 +10,7 @@
 
 #include <ffx_upscale.h>
 #include <vk/ffx_api_vk.h>
+#include <vk/ffx_api_framegeneration_vk.h>
 
 #include <nvsdk_ngx_vk.h>
 #include <nvsdk_ngx_helpers_vk.h>
@@ -372,12 +373,19 @@ ffxReturnCode_t ffxCreateContext_Vk(ffxContext* context, ffxCreateContextDescHea
             upscaleContext = true;
             createDesc = (ffxCreateContextDescUpscale*) header;
         }
-        else if (header->type == FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK)
+        else if (header->type == FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK_DEPRECATED)
         {
-            auto backendDesc = (ffxCreateBackendVKDesc*) header;
+            auto backendDesc = (ffxCreateBackendVKDesc_DEPRECATED*) header;
             _vkDevice = backendDesc->vkDevice;
             _vkPhysicalDevice = backendDesc->vkPhysicalDevice;
             _vkDeviceProcAddress = backendDesc->vkDeviceProcAddr;
+        }
+        else if (header->type == FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK)
+        {
+            auto backendDesc = (ffxCreateBackendVKDesc*) header;
+            _vkDevice = backendDesc->deviceContext.vkDevice;
+            _vkPhysicalDevice = backendDesc->deviceContext.vkPhysicalDevice;
+            _vkDeviceProcAddress = backendDesc->deviceContext.vkDeviceProcAddr;
         }
 
         header = header->pNext;
@@ -386,7 +394,7 @@ ffxReturnCode_t ffxCreateContext_Vk(ffxContext* context, ffxCreateContextDescHea
 
     if (!upscaleContext || Config::Instance()->EnableHotSwapping.value_or_default())
     {
-        auto ffxApiResult = FfxApiProxy::VULKAN_CreateContext()(context, desc, memCb);
+        auto ffxApiResult = FfxApiProxy::VULKAN_CreateContext(context, desc, memCb);
 
         LOG_DEBUG("Vulkan_CreateContext result: {:X} ({}), context: {:X}", (UINT) ffxApiResult,
                   FfxApiProxy::ReturnCodeToString(ffxApiResult), (size_t) *context);
@@ -460,12 +468,12 @@ ffxReturnCode_t ffxDestroyContext_Vk(ffxContext* context, const ffxAllocationCal
     if (!State::Instance().isShuttingDown && upscalerContext &&
         Config::Instance()->EnableHotSwapping.value_or_default())
     {
-        auto cdResult = FfxApiProxy::VULKAN_DestroyContext()(context, memCb);
+        auto cdResult = FfxApiProxy::VULKAN_DestroyContext(context, memCb);
         LOG_INFO("result: {:X}", (UINT) cdResult);
         return FFX_API_RETURN_OK;
     }
 
-    auto cdResult = FfxApiProxy::VULKAN_DestroyContext()(context, memCb);
+    auto cdResult = FfxApiProxy::VULKAN_DestroyContext(context, memCb);
     LOG_INFO("result: {:X}", (UINT) cdResult);
     return cdResult;
 }
@@ -491,11 +499,11 @@ ffxReturnCode_t ffxConfigure_Vk(ffxContext* context, const ffxConfigureDescHeade
     if (desc->type > FFX_API_EFFECT_ID_FRAMEGENERATION && desc->type < 0x00050000u)
     {
         LOG_DEBUG("FG dispatch, redirecting to real FfxApi");
-        return FfxApiProxy::VULKAN_Configure()(context, desc);
+        return FfxApiProxy::VULKAN_Configure(context, desc);
     }
 
     if (Config::Instance()->EnableHotSwapping.value_or_default())
-        return FfxApiProxy::VULKAN_Configure()(context, desc);
+        return FfxApiProxy::VULKAN_Configure(context, desc);
 
     return FFX_API_RETURN_OK;
 }
@@ -507,14 +515,8 @@ ffxReturnCode_t ffxQuery_Vk(ffxContext* context, ffxQueryDescHeader* desc)
     if (desc == nullptr)
         return FFX_API_RETURN_ERROR_PARAMETER;
 
-    LOG_DEBUG("type: {:X}", desc->type);
-
     auto type = FfxApiProxy::GetIndirectType(desc);
-    if (type == FFXStructType::SwapchainVulkan || type == FFXStructType::FG)
-    {
-        LOG_DEBUG("FG dispatch, redirecting to real FfxApi");
-        return FfxApiProxy::VULKAN_Query()(context, desc);
-    }
+    LOG_DEBUG("Header type: {}, Indirect type: {}", FfxApiProxy::GetTypeName(desc->type), magic_enum::enum_name(type));
 
     if (desc->type == FFX_API_QUERY_DESC_TYPE_UPSCALE_GETRENDERRESOLUTIONFROMQUALITYMODE)
     {
@@ -572,23 +574,37 @@ ffxReturnCode_t ffxQuery_Vk(ffxContext* context, ffxQueryDescHeader* desc)
         auto providerDesc = (ffxQueryGetProviderVersion*) desc;
         feature_version ver = {};
 
-        if (type == FFXStructType::SwapchainVulkan || type == FFXStructType::FG)
+        if (type == FFXStructType::SwapchainDX12 || type == FFXStructType::FG)
         {
-            ver = FfxApiProxy::VersionVk();
+            ver = FfxApiProxy::VersionDx12_FG();
 
             providerDesc->versionId =
                 0xF600'0000ui64 << 32u << 32 | (((ver.major << 22) | (ver.minor << 12) | ver.patch) & 0xFFFFFFFF);
         }
         else if (type == FFXStructType::Upscaling)
         {
-            ver = FfxApiProxy::VersionVk();
+            ver = FfxApiProxy::VersionDx12_SR();
+
+            providerDesc->versionId =
+                0xF5A5'CA1Eui64 << 32 | (((ver.major << 22) | (ver.minor << 12) | ver.patch) & 0xFFFFFFFF);
+        }
+        else if (type == FFXStructType::Denoiser)
+        {
+            ver = FfxApiProxy::VersionDx12_RR();
+
+            providerDesc->versionId =
+                0xF5A5'CA1Eui64 << 32 | (((ver.major << 22) | (ver.minor << 12) | ver.patch) & 0xFFFFFFFF);
+        }
+        else if (type == FFXStructType::RadianceCache)
+        {
+            ver = FfxApiProxy::VersionDx12_RC();
 
             providerDesc->versionId =
                 0xF5A5'CA1Eui64 << 32 | (((ver.major << 22) | (ver.minor << 12) | ver.patch) & 0xFFFFFFFF);
         }
         else
         {
-            ver = FfxApiProxy::VersionVk();
+            ver = FfxApiProxy::VersionDx12();
 
             providerDesc->versionId = (((ver.major << 22) | (ver.minor << 12) | ver.patch) & 0xFFFFFFFF);
         }
@@ -618,6 +634,36 @@ ffxReturnCode_t ffxQuery_Vk(ffxContext* context, ffxQueryDescHeader* desc)
 
         return FFX_API_RETURN_OK;
     }
+    else if (desc->type == FFX_API_QUERY_DESC_TYPE_UPSCALE_GPU_MEMORY_USAGE)
+    {
+        auto muDesc = (ffxQueryDescUpscaleGetGPUMemoryUsage*) desc;
+
+        muDesc->gpuMemoryUsageUpscaler->totalUsageInBytes = 10485760;    // 10 MB for example
+        muDesc->gpuMemoryUsageUpscaler->aliasableUsageInBytes = 1048576; // 1 MB for example
+
+        return FFX_API_RETURN_OK;
+    }
+    else if (desc->type == FFX_API_QUERY_DESC_TYPE_UPSCALE_GPU_MEMORY_USAGE_V2)
+    {
+        auto muDesc = (ffxQueryDescUpscaleGetGPUMemoryUsageV2*) desc;
+
+        muDesc->gpuMemoryUsageUpscaler->totalUsageInBytes = 10485760;    // 10 MB for example
+        muDesc->gpuMemoryUsageUpscaler->aliasableUsageInBytes = 1048576; // 1 MB for example
+
+        return FFX_API_RETURN_OK;
+    }
+    else if (desc->type == FFX_API_QUERY_DESC_TYPE_UPSCALE_GET_RESOURCE_REQUIREMENTS)
+    {
+        auto rrDesc = (ffxQueryDescUpscaleGetResourceRequirements*) desc;
+
+        rrDesc->required_resources =
+            FFX_API_QUERY_RESOURCE_INPUT_COLOR | FFX_API_QUERY_RESOURCE_INPUT_DEPTH | FFX_API_QUERY_RESOURCE_INPUT_MV;
+
+        rrDesc->optional_resources = FFX_API_QUERY_RESOURCE_INPUT_EXPOSURE | FFX_API_QUERY_RESOURCE_INPUT_REACTIVEMASK |
+                                     FFX_API_QUERY_RESOURCE_INPUT_TRANSPARENCYCOMPOSITION;
+
+        return FFX_API_RETURN_OK;
+    }
 
     if (context != nullptr && _contexts.contains(*context) && !Config::Instance()->EnableHotSwapping.value_or_default())
     {
@@ -629,7 +675,7 @@ ffxReturnCode_t ffxQuery_Vk(ffxContext* context, ffxQueryDescHeader* desc)
     if (Config::Instance()->EnableHotSwapping.value_or_default() ||
         FfxApiProxy::GetType(desc->type) == FFXStructType::General)
     {
-        return FfxApiProxy::VULKAN_Query()(context, desc);
+        return FfxApiProxy::VULKAN_Query(context, desc);
     }
 
     return FFX_API_RETURN_OK;
@@ -646,18 +692,18 @@ ffxReturnCode_t ffxDispatch_Vk(ffxContext* context, ffxDispatchDescHeader* desc)
     if (type == FFXStructType::SwapchainVulkan || type == FFXStructType::FG)
     {
         LOG_DEBUG("FG dispatch, redirecting to real FfxApi");
-        return FfxApiProxy::VULKAN_Dispatch()(context, desc);
+        return FfxApiProxy::VULKAN_Dispatch(context, desc);
     }
 
     // Skip OptiScaler stuff
     if (Config::Instance()->EnableHotSwapping.value_or_default() &&
         !Config::Instance()->UseFfxInputs.value_or_default())
-        return FfxApiProxy::VULKAN_Dispatch()(context, desc);
+        return FfxApiProxy::VULKAN_Dispatch(context, desc);
 
     if (context == nullptr || !_initParams.contains(*context))
     {
         LOG_INFO("Not in _contexts");
-        return FfxApiProxy::VULKAN_Dispatch()(context, desc);
+        return FfxApiProxy::VULKAN_Dispatch(context, desc);
     }
 
     ffxApiHeader* header = desc;
@@ -679,13 +725,13 @@ ffxReturnCode_t ffxDispatch_Vk(ffxContext* context, ffxDispatchDescHeader* desc)
     if (dispatchDesc == nullptr)
     {
         LOG_INFO("dispatchDesc == nullptr, desc type: {:X}", desc->type);
-        return FfxApiProxy::VULKAN_Dispatch()(context, desc);
+        return FfxApiProxy::VULKAN_Dispatch(context, desc);
     }
 
     if (dispatchDesc->commandList == nullptr)
     {
         LOG_ERROR("dispatchDesc->commandList == nullptr !!!");
-        return FfxApiProxy::VULKAN_Dispatch()(context, desc);
+        return FfxApiProxy::VULKAN_Dispatch(context, desc);
     }
 
     // If not in contexts list create and add context

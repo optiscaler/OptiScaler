@@ -3351,8 +3351,8 @@ bool MenuCommon::RenderMenu()
                                                "PQ: Rarest, might increase ghosting and break lights.");
 
                                 // FSR 4 Presets
-                                const char* presets[] = { "Default",  "Preset 0", "Preset 1", "Preset 2",
-                                                          "Preset 3", "Preset 4", "Preset 5" };
+                                const char* presets[] = { "Default",     "NativeAA", "Quality",      "Balanced",
+                                                          "Performance", "DRS",      "U.Performance" };
                                 int currentPresetIdx =
                                     config->Fsr4Preset.has_value() ? config->Fsr4Preset.value() + 1 : 0;
 
@@ -3384,7 +3384,7 @@ bool MenuCommon::RenderMenu()
                                 ImGui::SameLine();
                                 if (state.currentFsr4Preset.has_value())
                                     ImGui::TextDisabled("(Active: %d)", state.currentFsr4Preset.value());
-                                else if (FSR4ModelSelection::IsInt8FsrHooked())
+                                else if (FSR4ModelSelection::IsInt8FsrHookedDx12())
                                     ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)),
                                                        "(Potential FSR3 fallback)");
                                 else

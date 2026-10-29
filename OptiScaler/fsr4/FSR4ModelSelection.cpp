@@ -1,19 +1,17 @@
 #include "pch.h"
 #include "FSR4ModelSelection.h"
-#include <scanner/scanner.h>
 #include <detours/detours.h>
 
-PFN_getModelBlob FSR4ModelSelection::o_getModelBlobSDK = nullptr;
-PFN_getModelBlob FSR4ModelSelection::o_getModelBlobDriver = nullptr;
-PFN_createModel FSR4ModelSelection::o_createModelSDK = nullptr;
-PFN_createModel FSR4ModelSelection::o_createModelDriver = nullptr;
-PFN_createModel2 FSR4ModelSelection::o_createModelDriver2 = nullptr;
-PFN_createModel2 FSR4ModelSelection::o_createModelSDK2 = nullptr;
-FSR4ModelSelection::AmdInt8Check FSR4ModelSelection::o_amdInt8Check = nullptr;
+#include <algorithm>
+#include <array>
+#include <mutex>
+#include <span>
+#include <vector>
 
 uint32_t getCorrectedPreset(uint32_t preset)
 {
     auto correctedPreset = preset;
+
     // Fixup for Quality preset sometimes using model 0, sometimes using model 1
     if (State::Instance().currentFeature)
     {
@@ -36,318 +34,378 @@ uint32_t getCorrectedPreset(uint32_t preset)
     return correctedPreset;
 }
 
-uint8_t FSR4ModelSelection::hkAmdInt8Check(void* a1, ID3D12Device* device)
+namespace
+{
+// Every known version takes 2 or 3 arguments, the extra ones are forwarded untouched
+typedef uint32_t (*PFN_CreateModel)(void* context, uint32_t preset, void* arg3, void* arg4);
+
+struct HookedModule
+{
+    HMODULE module = nullptr;
+    PFN_CreateModel o_CreateModel = nullptr;
+};
+
+// Each hooked module needs a detour of its own to know which original to call,
+// the SDK and driver dlls of both APIs, plus spares for dlls the game loads
+std::array<HookedModule, 8> hookedModules {};
+std::mutex hookMutex;
+
+template <size_t Index> uint32_t hkCreateModel(void* context, uint32_t preset, void* arg3, void* arg4)
+{
+    auto correctedPreset = getCorrectedPreset(preset);
+    LOG_DEBUG("preset: {}, corrected preset: {}", preset, correctedPreset);
+
+    return hookedModules[Index].o_CreateModel(context, correctedPreset, arg3, arg4);
+}
+
+template <size_t... Indices> constexpr auto MakeDetours(std::index_sequence<Indices...>)
+{
+    return std::array<PFN_CreateModel, sizeof...(Indices)> { hkCreateModel<Indices>... };
+}
+
+constexpr auto createModelDetours = MakeDetours(std::make_index_sequence<std::tuple_size_v<decltype(hookedModules)>>());
+
+IMAGE_NT_HEADERS64* NtHeaders(HMODULE module)
+{
+    auto base = reinterpret_cast<uint8_t*>(module);
+    return reinterpret_cast<IMAGE_NT_HEADERS64*>(base + reinterpret_cast<IMAGE_DOS_HEADER*>(base)->e_lfanew);
+}
+
+// Number of leading vtable entries that point into the module's code
+size_t CountVirtualFunctions(HMODULE module, void** vtable)
+{
+    auto base = reinterpret_cast<uint8_t*>(module);
+    auto nt = NtHeaders(module);
+    auto sections = std::span(IMAGE_FIRST_SECTION(nt), nt->FileHeader.NumberOfSections);
+
+    auto isCode = [&](const void* address)
+    {
+        return std::ranges::any_of(sections,
+                                   [&](const IMAGE_SECTION_HEADER& section)
+                                   {
+                                       auto start = base + section.VirtualAddress;
+                                       return (section.Characteristics & IMAGE_SCN_MEM_EXECUTE) && address >= start &&
+                                              address < start + section.Misc.VirtualSize;
+                                   });
+    };
+
+    size_t count = 0;
+    while (isCode(vtable[count]))
+        count++;
+
+    return count;
+}
+
+// Unwind info of a chunk that continues another one ends with the RUNTIME_FUNCTION of the previous chunk
+DWORD GetFirstChunkRva(const uint8_t* base, const RUNTIME_FUNCTION* chunk)
+{
+    struct UnwindInfo
+    {
+        BYTE versionAndFlags;
+        BYTE sizeOfProlog;
+        BYTE countOfCodes;
+        BYTE frameRegisterAndOffset;
+        USHORT codes[1];
+    };
+
+    while (true)
+    {
+        auto unwind = reinterpret_cast<const UnwindInfo*>(base + chunk->UnwindData);
+
+        if (((unwind->versionAndFlags >> 3) & UNW_FLAG_CHAININFO) == 0)
+            return chunk->BeginAddress;
+
+        // Unwind codes are padded to an even count
+        chunk = reinterpret_cast<const RUNTIME_FUNCTION*>(&unwind->codes[(unwind->countOfCodes + 1) & ~1]);
+    }
+}
+
+// The function body and the cold chunks the compiler split off from it
+std::vector<std::span<const uint8_t>> GetFunctionChunks(HMODULE module, const void* function)
+{
+    std::vector<std::span<const uint8_t>> chunks;
+
+    auto base = reinterpret_cast<const uint8_t*>(module);
+    auto& directory = NtHeaders(module)->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION];
+
+    auto functions = reinterpret_cast<const RUNTIME_FUNCTION*>(base + directory.VirtualAddress);
+    auto count = directory.Size / sizeof(RUNTIME_FUNCTION);
+    auto functionRva = static_cast<DWORD>(static_cast<const uint8_t*>(function) - base);
+
+    for (size_t i = 0; i < count; i++)
+    {
+        if (GetFirstChunkRva(base, &functions[i]) == functionRva)
+            chunks.emplace_back(base + functions[i].BeginAddress, functions[i].EndAddress - functions[i].BeginAddress);
+    }
+
+    return chunks;
+}
+
+struct Instruction
+{
+    const uint8_t* bytes;
+    size_t length;
+};
+
+std::vector<Instruction> Disassemble(std::span<const uint8_t> code)
+{
+    std::vector<Instruction> instructions;
+
+    auto current = code.data();
+    auto end = code.data() + code.size();
+
+    while (current < end)
+    {
+        auto next = static_cast<const uint8_t*>(
+            DetourCopyInstruction(nullptr, nullptr, const_cast<uint8_t*>(current), nullptr, nullptr));
+
+        if (next == nullptr || next <= current)
+            break;
+
+        instructions.push_back({ current, static_cast<size_t>(next - current) });
+        current = next;
+    }
+
+    return instructions;
+}
+
+uint8_t Rex(const Instruction& instruction) { return (instruction.bytes[0] & 0xF0) == 0x40 ? instruction.bytes[0] : 0; }
+
+// cmp r/m32, 4 - opcode 83 with 7 in the ModRM reg field, optionally after a REX prefix
+bool IsCompareWith4(const Instruction& instruction)
+{
+    auto bytes = instruction.bytes;
+    size_t opcode = Rex(instruction) != 0 ? 1 : 0;
+
+    return instruction.length > opcode + 2 && bytes[opcode] == 0x83 && ((bytes[opcode + 1] >> 3) & 7) == 7 &&
+           bytes[instruction.length - 1] == 4;
+}
+
+// mov r32, imm32 - opcode B8+r, REX.B extends the register number
+bool IsMoveImmediate(const Instruction& instruction, uint8_t& reg, uint32_t& value)
+{
+    auto rex = Rex(instruction);
+    auto opcode = instruction.bytes + (rex != 0 ? 1 : 0);
+
+    if (instruction.length != (rex != 0 ? 6 : 5) || (opcode[0] & 0xF8) != 0xB8)
+        return false;
+
+    reg = (opcode[0] & 7) | ((rex & 1) << 3);
+    memcpy(&value, opcode + 1, sizeof(value));
+    return true;
+}
+
+// cmp r/m32, r32 or cmp r32, r/m32 (opcodes 39 and 3B) where either register is in the mask
+bool IsCompareWithRegister(const Instruction& instruction, uint16_t registers)
+{
+    auto rex = Rex(instruction);
+    auto opcode = instruction.bytes + (rex != 0 ? 1 : 0);
+
+    if (instruction.length < (size_t) (rex != 0 ? 3 : 2) || (opcode[0] != 0x39 && opcode[0] != 0x3B))
+        return false;
+
+    auto modRM = opcode[1];
+    auto reg = ((modRM >> 3) & 7) | ((rex & 4) << 1);
+    auto rm = (modRM & 7) | ((rex & 1) << 3);
+
+    return (registers >> reg) & 1 || ((modRM >> 6) == 3 && (registers >> rm) & 1);
+}
+
+bool IsJumpIfEqual(const Instruction& instruction)
+{
+    auto bytes = instruction.bytes;
+    return bytes[0] == 0x74 || (bytes[0] == 0x0F && bytes[1] == 0x84);
+}
+
+bool IsDirectCall(const Instruction& instruction) { return instruction.length == 5 && instruction.bytes[0] == 0xE8; }
+
+// call rel32 or call r/m64 (FF with 2 in the ModRM reg field)
+bool IsCall(const Instruction& instruction)
+{
+    auto opcode = instruction.bytes + (Rex(instruction) != 0 ? 1 : 0);
+    return IsDirectCall(instruction) || (instruction.length >= 2 && opcode[0] == 0xFF && ((opcode[1] >> 3) & 7) == 2);
+}
+
+// rax, rcx, rdx, r8-r11, a call can change any of them
+constexpr uint16_t VolatileRegisters = 0x0F07;
+
+void* CallTarget(const Instruction& call)
+{
+    int32_t displacement;
+    memcpy(&displacement, call.bytes + 1, sizeof(displacement));
+    return const_cast<uint8_t*>(call.bytes + call.length + displacement);
+}
+
+// The dispatch only recreates the network when needed, preset 4 is the one used for dynamic resolution:
+//
+//     if (!created || flagsChanged || (preset != context->preset && context->preset != 4))
+//         CreateModel(context, preset, ...);
+//
+// Every version so far compiles the last check into `cmp reg, 4` + `jz`, then sets up the arguments and calls it.
+// Newer ones keep the 4 in a register instead, `mov r15d, 4` ... `cmp eax, r15d` + `jz`
+void* FindCreateModel(HMODULE module)
+{
+    constexpr size_t MaxArgumentSetupInstructions = 6;
+
+    auto vtable = Util::FindVTableByRtti(module, ".?AVffxProvider_FSR4@@");
+    auto virtualFunctions = vtable != nullptr ? CountVirtualFunctions(module, vtable) : 0;
+
+    if (virtualFunctions == 0)
+    {
+        LOG_DEBUG("No FSR 4 provider in the module");
+        return nullptr;
+    }
+
+    // Dispatch is the last virtual function of FFX providers, 4.0.x has more of them than newer versions
+    auto dispatch = vtable[virtualFunctions - 1];
+
+    std::vector<void*> candidates;
+
+    // Bit per register last loaded with 4
+    uint16_t registersWith4 = 0;
+
+    for (auto chunk : GetFunctionChunks(module, dispatch))
+    {
+        auto instructions = Disassemble(chunk);
+
+        for (size_t i = 0; i + 2 < instructions.size(); i++)
+        {
+            uint8_t reg;
+            uint32_t value;
+
+            if (IsMoveImmediate(instructions[i], reg, value))
+            {
+                if (value == 4)
+                    registersWith4 |= 1 << reg;
+                else
+                    registersWith4 &= ~(1 << reg);
+
+                continue;
+            }
+
+            if (IsCall(instructions[i]))
+            {
+                registersWith4 &= ~VolatileRegisters;
+                continue;
+            }
+
+            auto isCompareWith4 =
+                IsCompareWith4(instructions[i]) || IsCompareWithRegister(instructions[i], registersWith4);
+
+            if (!isCompareWith4 || !IsJumpIfEqual(instructions[i + 1]))
+                continue;
+
+            auto last = std::min(i + 2 + MaxArgumentSetupInstructions, instructions.size());
+            auto call = std::find_if(instructions.begin() + i + 2, instructions.begin() + last, IsDirectCall);
+
+            if (call != instructions.begin() + last)
+                candidates.push_back(CallTarget(*call));
+        }
+    }
+
+    if (candidates.size() != 1)
+    {
+        LOG_ERROR("Expected one model creation call in FSR 4 dispatch, found {}", candidates.size());
+        return nullptr;
+    }
+
+    return candidates.front();
+}
+
+void HookCreateModel(HMODULE module)
+{
+    std::scoped_lock lock(hookMutex);
+
+    if (std::ranges::any_of(hookedModules, [module](const HookedModule& hooked) { return hooked.module == module; }))
+        return;
+
+    auto freeSlot = std::ranges::find(hookedModules, HMODULE(nullptr), &HookedModule::module);
+    if (freeSlot == hookedModules.end())
+    {
+        LOG_ERROR("No free slot left for hooking FSR 4 model selection");
+        return;
+    }
+
+    auto createModel = FindCreateModel(module);
+    if (createModel == nullptr)
+    {
+        LOG_ERROR("Couldn't find FSR 4 model selection in {:X}", (uintptr_t) module);
+        return;
+    }
+
+    auto index = std::distance(hookedModules.begin(), freeSlot);
+    freeSlot->o_CreateModel = reinterpret_cast<PFN_CreateModel>(createModel);
+
+    DetourTransactionBegin();
+    DetourUpdateThread(GetCurrentThread());
+    DetourAttach(&(PVOID&) freeSlot->o_CreateModel, createModelDetours[index]);
+
+    auto detourResult = DetourTransactionCommit();
+    if (detourResult != NO_ERROR)
+    {
+        LOG_ERROR("Failed to attach detour: {:X}", detourResult);
+        freeSlot->o_CreateModel = nullptr;
+        return;
+    }
+
+    freeSlot->module = module;
+    LOG_INFO("Hooked FSR 4 model selection of {:X} at {:X}", (uintptr_t) module, (uintptr_t) createModel);
+}
+} // namespace
+
+uint8_t FSR4ModelSelection::hkAmdInt8Check(void* a1, void* device)
 {
     LOG_DEBUG("Called with a1: {:X}, device: {:X}", (uintptr_t) a1, (uintptr_t) device);
     return 1;
 }
 
-uint64_t FSR4ModelSelection::hkgetModelBlobSDK(uint32_t preset, uint64_t unknown, uint64_t* source, uint64_t* size)
-{
-    LOG_FUNC();
-
-    preset = getCorrectedPreset(preset);
-
-    auto result = o_getModelBlobSDK(preset, unknown, source, size);
-
-    return result;
-}
-
-uint64_t FSR4ModelSelection::hkgetModelBlobDriver(uint32_t preset, uint64_t unknown, uint64_t* source, uint64_t* size)
-{
-    LOG_FUNC();
-
-    preset = getCorrectedPreset(preset);
-
-    auto result = o_getModelBlobDriver(preset, unknown, source, size);
-
-    return result;
-}
-
-uint64_t FSR4ModelSelection::hkcreateModelSDK(void* context, uint32_t preset)
-{
-    LOG_FUNC();
-
-    preset = getCorrectedPreset(preset);
-
-    auto result = o_createModelSDK(context, preset);
-
-    return result;
-}
-
-uint64_t FSR4ModelSelection::hkcreateModelSDK2(void* context, uint32_t preset, void** model)
-{
-    LOG_FUNC();
-
-    preset = getCorrectedPreset(preset);
-
-    auto result = o_createModelSDK2(context, preset, model);
-
-    return result;
-}
-
-uint64_t FSR4ModelSelection::hkcreateModelDriver(void* context, uint32_t preset)
-{
-    LOG_FUNC();
-
-    preset = getCorrectedPreset(preset);
-
-    auto result = o_createModelDriver(context, preset);
-
-    return result;
-}
-
-uint64_t FSR4ModelSelection::hkcreateModelDriver2(void* context, uint32_t preset, void** model)
-{
-    LOG_FUNC();
-
-    preset = getCorrectedPreset(preset);
-
-    auto result = o_createModelDriver2(context, preset, model);
-
-    return result;
-}
-
-void FSR4ModelSelection::Hook(HMODULE module, FSR4Source source)
+void FSR4ModelSelection::Hook(HMODULE module, FSR4Source source, API api)
 {
     if (module == nullptr)
         return;
 
-    if (source == FSR4Source::SDK && (o_getModelBlobSDK || o_createModelSDK))
+    HookCreateModel(module);
+
+    auto& o_amdInt8Check = api == API::DX12 ? o_amdInt8Check_Dx12 : o_amdInt8Check_Vk;
+
+    if (o_amdInt8Check || source != FSR4Source::DriverDll)
+        return;
+
+    void** vtable = nullptr;
+
+    switch (Config::Instance()->Fsr4ForceEnableInt8.value_or_default())
     {
-        DetourTransactionBegin();
-        DetourUpdateThread(GetCurrentThread());
+    case 1:
+        vtable = Util::FindVTableByRtti(module, ".?AVffxProvider_FSR4_Int8@@");
+        break;
 
-        if (o_getModelBlobSDK)
-            DetourDetach(&(PVOID&) o_getModelBlobSDK, hkgetModelBlobSDK);
+    case 2:
+        vtable = Util::FindVTableByRtti(module, ".?AVffxProvider_FSR4_Int8_Navi2@@");
+        break;
 
-        if (o_createModelSDK)
-            DetourDetach(&(PVOID&) o_createModelSDK, hkcreateModelSDK);
+    case 3:
+        vtable = Util::FindVTableByRtti(module, ".?AVffxProvider_FSR4Lite_Int8@@");
+        break;
 
-        if (DetourTransactionCommit() == NO_ERROR)
-        {
-            LOG_DEBUG("Unhooked old model selection hooks for SDK");
-
-            o_createModelSDK = nullptr;
-            o_getModelBlobSDK = nullptr;
-        }
-    }
-    else if (source == FSR4Source::DriverDll && (o_getModelBlobDriver || o_createModelDriver))
-    {
-        DetourTransactionBegin();
-        DetourUpdateThread(GetCurrentThread());
-
-        if (o_getModelBlobDriver)
-            DetourDetach(&(PVOID&) o_getModelBlobDriver, hkgetModelBlobDriver);
-
-        else if (o_createModelDriver)
-            DetourDetach(&(PVOID&) o_createModelDriver, hkcreateModelDriver);
-
-        if (DetourTransactionCommit() == NO_ERROR)
-        {
-            LOG_DEBUG("Unhooked old model selection hooks for the driver dll");
-
-            o_createModelDriver = nullptr;
-            o_getModelBlobDriver = nullptr;
-        }
+    default:
+        return;
     }
 
-    /// Hooks for getModelBlob
+    // slot 2 of ffxProvider is IsSupported(void* device)
+    if (vtable == nullptr)
+        return;
 
-    // Older SDK and Driver use this
-    const char* modelBlobPattern = "83 F9 05 0F 87";
-    if (!o_getModelBlobSDK && source == FSR4Source::SDK)
+    o_amdInt8Check = (AmdInt8Check) vtable[2];
+    LOG_INFO("Found AmdInt8Check at {:X}", (size_t) o_amdInt8Check);
+
+    DetourTransactionBegin();
+    DetourUpdateThread(GetCurrentThread());
+    DetourAttach(&(PVOID&) o_amdInt8Check, hkAmdInt8Check);
+
+    auto detourResult = DetourTransactionCommit();
+    if (detourResult != NO_ERROR)
     {
-        o_getModelBlobSDK = (PFN_getModelBlob) scanner::GetAddress(module, modelBlobPattern);
-
-        if (o_getModelBlobSDK)
-        {
-            LOG_DEBUG("Hooking model selection o_getModelBlobSDK: {:X}", (uintptr_t) o_getModelBlobSDK);
-
-            DetourTransactionBegin();
-            DetourUpdateThread(GetCurrentThread());
-
-            DetourAttach(&(PVOID&) o_getModelBlobSDK, hkgetModelBlobSDK);
-
-            auto detourResult = DetourTransactionCommit();
-            if (detourResult != NO_ERROR)
-            {
-                LOG_ERROR("Failed to attach detour: {:X}", detourResult);
-                o_getModelBlobSDK = nullptr;
-            }
-        }
+        LOG_ERROR("DetourTransactionCommit result: {:X}", detourResult);
+        o_amdInt8Check = nullptr;
     }
-    else if (!o_getModelBlobDriver && source == FSR4Source::DriverDll)
-    {
-        o_getModelBlobDriver = (PFN_getModelBlob) scanner::GetAddress(module, modelBlobPattern);
-
-        if (o_getModelBlobDriver)
-        {
-            LOG_DEBUG("Hooking model selection o_getModelBlobDriver: {:X}", (uintptr_t) o_getModelBlobDriver);
-
-            DetourTransactionBegin();
-            DetourUpdateThread(GetCurrentThread());
-
-            DetourAttach(&(PVOID&) o_getModelBlobDriver, hkgetModelBlobDriver);
-
-            auto detourResult = DetourTransactionCommit();
-            if (detourResult != NO_ERROR)
-            {
-                LOG_ERROR("Failed to attach detour: {:X}", detourResult);
-                o_getModelBlobDriver = nullptr;
-            }
-        }
-    }
-
-    /// Hooks for createModel
-
-    // From amd_fidelityfx_upscaler_dx12 4.0.3.604 from FFX 2.1 SDK
-    // Used by some versions of SDK and Driver
-    const char* pattern403 =
-        "48 89 5C 24 ? 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ? ? ? ? B8 ? ? ? ? E8 ? ? ? ? 48 2B E0 0F 29 B4 24 "
-        "? ? ? ? 0F 29 BC 24 ? ? ? ? 48 8B 05 ? ? ? ? 48 33 C4 48 89 85 ? ? ? ? 44 8B F2";
-
-    if (!o_createModelSDK && source == FSR4Source::SDK)
-    {
-        o_createModelSDK = (PFN_createModel) scanner::GetAddress(module, pattern403);
-
-        if (!o_createModelSDK)
-        {
-            // From amd_fidelityfx_upscaler_dx12 4.1.0 from FFX 2.2 SDK
-            const char* pattern410 =
-                "48 8B C4 48 89 58 18 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 28 F2 FF FF 48 81 EC A0 "
-                "0E 00 00 0F 29 70 B8 0F 29 78 A8 48 8B ? ? ? ? ? 48 33 C4 48 89 85 78 0D 00 00 44 8B F2";
-            o_createModelSDK = (PFN_createModel) scanner::GetAddress(module, pattern410);
-        }
-
-        LOG_DEBUG("Hooking model selection, o_createModelSDK: {:X}", (uintptr_t) o_createModelSDK);
-
-        if (o_createModelSDK)
-        {
-            DetourTransactionBegin();
-            DetourUpdateThread(GetCurrentThread());
-
-            DetourAttach(&(PVOID&) o_createModelSDK, hkcreateModelSDK);
-
-            auto detourResult = DetourTransactionCommit();
-            if (detourResult != NO_ERROR)
-            {
-                LOG_ERROR("Failed to attach detour: {:X}", detourResult);
-                o_createModelSDK = nullptr;
-            }
-        }
-    }
-
-    if (!o_createModelSDK && !o_createModelSDK2 && source == FSR4Source::SDK)
-    {
-        // From amd_fidelityfx_upscaler_dx12 4.1.1.2740 from FFX 2.3 SDK
-        const char* pattern411 =
-            "48 8B C4 48 89 58 20 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 08 F2 FF FF 48 81 EC C0 0E 00 00 0F 29 70 "
-            "B8 0F 29 78 A8 48 8B ? ? ? ? ? 48 33 C4 48 89 85 90 0D 00 00 4D 8B E8 8B FA 48 8B F1";
-        o_createModelSDK2 = (PFN_createModel2) scanner::GetAddress(module, pattern411);
-
-        if (o_createModelSDK2)
-        {
-            LOG_DEBUG("Hooking model selection, o_createModelSDK2: {:X}", (uintptr_t) o_createModelSDK2);
-
-            DetourTransactionBegin();
-            DetourUpdateThread(GetCurrentThread());
-
-            DetourAttach(&(PVOID&) o_createModelSDK2, hkcreateModelSDK2);
-
-            auto detourResult = DetourTransactionCommit();
-            if (detourResult != NO_ERROR)
-            {
-                LOG_ERROR("Failed to attach detour: {:X}", detourResult);
-                o_createModelSDK2 = nullptr;
-            }
-        }
-    }
-
-    else if (!o_createModelDriver && source == FSR4Source::DriverDll)
-    {
-        o_createModelDriver = (PFN_createModel) scanner::GetAddress(module, pattern403);
-
-        if (!o_createModelDriver)
-        {
-            // From amdxcffx64 2.1.0.968/2.2.0.1328
-            const char* pattern =
-                "48 8B C4 48 89 58 ? 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 ? ? ? ? 48 81 EC ? ? ? ? 0F 29 70 ? 0F "
-                "29 78 ? 48 8B 05 ? ? ? ? 48 33 C4 48 89 85 ? ? ? ? 44 8B F2 48 8B F1 E8";
-            o_createModelDriver = (PFN_createModel) scanner::GetAddress(module, pattern);
-        }
-
-        if (o_createModelDriver)
-        {
-            LOG_DEBUG("Hooking model selection, o_createModelDriver: {:X}", (uintptr_t) o_createModelDriver);
-
-            DetourTransactionBegin();
-            DetourUpdateThread(GetCurrentThread());
-
-            DetourAttach(&(PVOID&) o_createModelDriver, hkcreateModelDriver);
-
-            auto detourResult = DetourTransactionCommit();
-            if (detourResult != NO_ERROR)
-            {
-                LOG_ERROR("Failed to attach detour: {:X}", detourResult);
-                o_createModelDriver = nullptr;
-            }
-        }
-    }
-
-    if (!o_createModelDriver && !o_createModelDriver2 && source == FSR4Source::DriverDll)
-    {
-        // From amdxcffx64 2.3.0.2740
-        const char* pattern = "48 8B C4 48 89 58 ? 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 ? ? ? ? 48 81 EC ? ? ? ? "
-                              "0F 29 70 ? 0F 29 78 ? 48 8B 05 ? ? ? ? 48 33 C4 48 89 85 ? ? ? ? 4D 8B E8 8B FA 48 8B";
-        o_createModelDriver2 = (PFN_createModel2) scanner::GetAddress(module, pattern);
-
-        if (o_createModelDriver2)
-        {
-            LOG_DEBUG("Hooking model selection, o_createModelDriver2: {:X}", (uintptr_t) o_createModelDriver2);
-
-            DetourTransactionBegin();
-            DetourUpdateThread(GetCurrentThread());
-
-            DetourAttach(&(PVOID&) o_createModelDriver2, hkcreateModelDriver2);
-
-            auto detourResult = DetourTransactionCommit();
-            if (detourResult != NO_ERROR)
-            {
-                LOG_ERROR("Failed to attach o_createModelDriver2 detour: {:X}", detourResult);
-                o_createModelDriver2 = nullptr;
-            }
-        }
-    }
-
-    if (Config::Instance()->Fsr4ForceEnableInt8.value_or_default() && !o_amdInt8Check &&
-        source == FSR4Source::DriverDll)
-    {
-        const char* pattern = "8B 54 24 30 8D 4A FF 83 F9 0E 76 ? 8D 4A E0 81 F9 DE 00 00 00 76 ? 8D 4A F0 83 F9 0F";
-
-        o_amdInt8Check = (AmdInt8Check) scanner::GetAddress(module, pattern, -63);
-
-        if (o_amdInt8Check)
-        {
-            LOG_DEBUG("Hooking model selection, o_amdInt8Check: {:X}", (uintptr_t) o_amdInt8Check);
-
-            DetourTransactionBegin();
-            DetourUpdateThread(GetCurrentThread());
-
-            DetourAttach(&(PVOID&) o_amdInt8Check, hkAmdInt8Check);
-
-            auto detourResult = DetourTransactionCommit();
-            if (detourResult != NO_ERROR)
-            {
-                LOG_ERROR("Failed to attach o_amdInt8Check detour: {:X}", detourResult);
-                o_amdInt8Check = nullptr;
-            }
-        }
-    }
-
-    if (!o_createModelDriver && !o_getModelBlobDriver && !o_createModelDriver2 && !o_amdInt8Check &&
-        source == FSR4Source::DriverDll)
-        LOG_ERROR("Couldn't hook model selection from the driver dll");
-    else if (!o_createModelSDK && !o_getModelBlobSDK && !o_createModelSDK2 && source == FSR4Source::SDK)
-        LOG_ERROR("Couldn't hook model selection from the SDK dll");
 }

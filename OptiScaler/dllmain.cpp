@@ -1862,6 +1862,8 @@ void CheckMemoryForProxies()
     FfxApiProxy::InitFfxDx12_FG();
     FfxApiProxy::InitFfxDx12_Denoiser();
     FfxApiProxy::InitFfxDx12_Radiance();
+    FfxApiProxy::InitFfxVk();
+    FfxApiProxy::InitFfxVk_SR();
 
     XeSSProxy::InitXeSS();
     XeSSProxy::InitXeSSDx11();

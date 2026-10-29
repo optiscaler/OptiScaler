@@ -2,9 +2,7 @@
 
 #include "Config.h"
 
-typedef uint64_t (*PFN_getModelBlob)(uint32_t preset, uint64_t unknown, uint64_t* source, uint64_t* size);
-typedef uint64_t (*PFN_createModel)(void* context, uint32_t preset);
-typedef uint64_t (*PFN_createModel2)(void* context, uint32_t preset, void** model);
+typedef uint8_t(__fastcall* AmdInt8Check)(void* a1, void* device);
 
 enum class FSR4Source
 {
@@ -12,26 +10,18 @@ enum class FSR4Source
     DriverDll,
 };
 
+// Overrides the FSR 4 preset by hooking the function that creates the network. It is found through RTTI and the code
+// of the FSR 4 dispatch instead of byte patterns, so it works for every FFX SDK upscaler and driver dll with FSR 4
 class FSR4ModelSelection
 {
-    static uint64_t hkgetModelBlobSDK(uint32_t preset, uint64_t unknown, uint64_t* source, uint64_t* size);
-    static uint64_t hkgetModelBlobDriver(uint32_t preset, uint64_t unknown, uint64_t* source, uint64_t* size);
-    static PFN_getModelBlob o_getModelBlobSDK;
-    static PFN_getModelBlob o_getModelBlobDriver;
-    static uint64_t hkcreateModelSDK(void* context, uint32_t preset);
-    static uint64_t hkcreateModelDriver(void* context, uint32_t preset);
-    static PFN_createModel o_createModelSDK;
-    static PFN_createModel o_createModelDriver;
-    static uint64_t hkcreateModelDriver2(void* context, uint32_t preset, void** model);
-    static PFN_createModel2 o_createModelDriver2;
-    static uint64_t hkcreateModelSDK2(void* context, uint32_t preset, void** model);
-    static PFN_createModel2 o_createModelSDK2;
+    static uint8_t hkAmdInt8Check(void* a1, void* device);
 
-    using AmdInt8Check = uint8_t(__fastcall*)(void* a1, ID3D12Device* device);
-    static AmdInt8Check o_amdInt8Check;
-    static uint8_t hkAmdInt8Check(void* a1, ID3D12Device* device);
+    inline static AmdInt8Check o_amdInt8Check_Dx12 = nullptr;
+    inline static AmdInt8Check o_amdInt8Check_Vk = nullptr;
 
   public:
-    static void Hook(HMODULE module, FSR4Source source);
-    static bool IsInt8FsrHooked() { return o_createModelDriver2 || o_createModelSDK2; };
+    // Safe to call more than once for the same module
+    static void Hook(HMODULE module, FSR4Source source, API api);
+    static bool IsInt8FsrHookedDx12() { return o_amdInt8Check_Dx12; };
+    static bool IsInt8FsrHookedVk() { return o_amdInt8Check_Vk; };
 };
