@@ -599,7 +599,7 @@
     <ClInclude Include="upscalers\FeatureProvider_Dx11.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="upscalers\CustomUpscalers.h">
+    <ClInclude Include="misc\CustomProviders.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="upscalers\FeatureProvider_Dx12.h">
@@ -1032,6 +1032,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="framegen\nvngx\IFGNvngx.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="framegen\nvngx\Nvngx_Custom.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="framegen\nvngx\Nvngx_Nukems.h">
@@ -1791,6 +1794,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="framegen\nvngx\Nvngx_FFX.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="framegen\nvngx\Nvngx_Custom.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="framegen\nvngx\Nvngx_Nukems.cpp">

@@ -1007,8 +1007,8 @@ static std::string SelectedCustom(Upscaler upscaler, API api)
     {
         auto custom = Config::Instance()->CustomUpscaler.value_or("");
 
-        return (upscaler == Upscaler::FFX && CustomUpscalers::IsFfx(custom)) ||
-                       (upscaler == Upscaler::DLSS && CustomUpscalers::IsDlss(custom))
+        return (upscaler == Upscaler::FFX && CustomProviders::IsFfx(custom)) ||
+                       (upscaler == Upscaler::DLSS && CustomProviders::IsDlss(custom))
                    ? custom
                    : "";
     }
@@ -1016,7 +1016,7 @@ static std::string SelectedCustom(Upscaler upscaler, API api)
     if (api == API::Vulkan)
     {
         auto custom = Config::Instance()->CustomUpscalerVk.value_or("");
-        return upscaler == Upscaler::FFX && CustomUpscalers::IsFfxVk(custom) ? custom : "";
+        return upscaler == Upscaler::FFX && CustomProviders::IsFfxVk(custom) ? custom : "";
     }
 
     return "";
@@ -1194,15 +1194,15 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
     // DLSS ones don't need a DLSS capable GPU
     if (api == API::DX12)
     {
-        for (auto& name : CustomUpscalers::Scan().ffx)
+        for (auto& name : CustomProviders::Scan().ffx)
             entries.push_back({ Upscaler::FFX, config->FfxUpscalerIndexFor(name).value_or_default(), {}, name });
 
-        for (auto& name : CustomUpscalers::Scan().dlss)
+        for (auto& name : CustomProviders::Scan().dlss)
             entries.push_back({ Upscaler::DLSS, -1, {}, name });
     }
     else if (api == API::Vulkan)
     {
-        for (auto& name : CustomUpscalers::Scan().ffxVk)
+        for (auto& name : CustomProviders::Scan().ffxVk)
             entries.push_back({ Upscaler::FFX, config->FfxUpscalerIndexFor(name).value_or_default(), {}, name });
     }
 
@@ -2853,6 +2853,10 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             {
                 fgText = formatFg("Combo", Nvngx_FG::getMaxFakeFramesCount());
             }
+            else if (activeNvngxFg == FGNvngxReplacement::Custom)
+            {
+                fgText = formatFg(state.activeFgNvngxCustom, Nvngx_FG::getMaxFakeFramesCount());
+            }
             else if (state.activeFgOutput == FGOutput::DLSSG && fg)
             {
                 fgText = formatFg("DLSSG", fg->GetMaxInterpolationCount());
@@ -4462,8 +4466,8 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     // DLSSG output requirements
     auto constexpr dlssgOutputIndex = (uint32_t) FGOutput::DLSSG;
     const bool maySupportDlssg = primaryGpu.vendorId == VendorId::Nvidia;
-    const bool hasDlssgReplacement =
-        state.nukemsFgFileAvailable || state.artursFgFileAvailable || FfxApiProxy::IsFGReady(false);
+    const bool hasDlssgReplacement = state.nukemsFgFileAvailable || state.artursFgFileAvailable ||
+                                     FfxApiProxy::IsFGReady(false) || !CustomProviders::Scan().dlssg.empty();
 
     if (!maySupportDlssg && hasDlssgReplacement)
     {
@@ -4532,6 +4536,14 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
     // clang-format on
 
+    // Custom ones go after the rest, each one is a value from FGNvngxReplacement::Custom on
+    const auto& customFgs = CustomProviders::Scan().dlssg;
+    auto constexpr fgNvngxCustomIndex = (uint32_t) FGNvngxReplacement::Custom;
+
+    for (uint32_t i = 0; i < customFgs.size(); i++)
+        nvngxOptions.push_back({ (FGNvngxReplacement) (fgNvngxCustomIndex + i), customFgs[i],
+                                 StrFmt("Custom DLSSG from custom\\%s\\dlssg", customFgs[i].c_str()) });
+
     bool replaceFgOutputWithNvngx = false;
     bool showNvngxFgDowndown = false;
 
@@ -4577,6 +4589,39 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     if (!config->FGNvngxReplacement.has_value())
         config->FGNvngxReplacement = config->FGNvngxReplacement.value_or_default(); // need to have a value before combo
 
+    // Folder names in FGNvngxReplacement aren't case sensitive
+    auto isActiveCustomFg = [&config, &state](const std::string& name)
+    {
+        return config->FGNvngxReplacement.value_or_default() == FGNvngxReplacement::Custom &&
+               _stricmp(state.fgNvngxCustom.c_str(), name.c_str()) == 0;
+    };
+
+    auto nvngxCombo = [&](const char* label)
+    {
+        auto current = config->FGNvngxReplacement.value_or_default();
+
+        if (current == FGNvngxReplacement::Custom)
+            current = (FGNvngxReplacement) (fgNvngxCustomIndex +
+                                            (std::ranges::find_if(customFgs, isActiveCustomFg) - customFgs.begin()));
+
+        auto selected = current;
+        PopulateCombo(label, selected, nvngxOptions);
+
+        if (selected == current)
+            return;
+
+        if ((uint32_t) selected >= fgNvngxCustomIndex)
+        {
+            state.fgNvngxCustom = customFgs[(uint32_t) selected - fgNvngxCustomIndex];
+            config->FGNvngxReplacement = FGNvngxReplacement::Custom;
+        }
+        else
+        {
+            state.fgNvngxCustom.clear();
+            config->FGNvngxReplacement = selected;
+        }
+    };
+
     if (state.activeFgInput != FGInput::ForceXeLL)
     {
         SectionTitle("Frame Generation");
@@ -4595,7 +4640,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
             if (replaceFgOutputWithNvngx)
             {
                 // Disable None?
-                PopulateCombo("FG Nvngx", config->FGNvngxReplacement, nvngxOptions);
+                nvngxCombo("FG Nvngx");
                 ShowTooltip("What backend to use instead of the real DLSSG");
             }
             else
@@ -4608,7 +4653,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
             {
                 ImGui::TableNextColumn();
 
-                PopulateCombo("FG Nvngx Replacement", config->FGNvngxReplacement, nvngxOptions);
+                nvngxCombo("FG Nvngx Replacement");
                 ShowTooltip("What backend to use instead of the real DLSSG");
             }
 
@@ -4627,10 +4672,18 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
             else if (FfxApiProxy::IsFGReady(false))
                 config->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::FFX);
+
+            else if (!customFgs.empty())
+            {
+                state.fgNvngxCustom = customFgs[0];
+                config->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::Custom);
+            }
         }
 
-        const bool nvngxFgChanged = (replaceFgOutputWithNvngx || showNvngxFgDowndown) &&
-                                    state.activeFgNvngx != config->FGNvngxReplacement.value_or_default();
+        const bool nvngxFgChanged =
+            (replaceFgOutputWithNvngx || showNvngxFgDowndown) &&
+            (state.activeFgNvngx != config->FGNvngxReplacement.value_or_default() ||
+             (state.activeFgNvngx == FGNvngxReplacement::Custom && !isActiveCustomFg(state.activeFgNvngxCustom)));
         // XeFG input to XeFG output runs without OptiScaler's FG output
         auto configFgOutput = config->FGOutput.value_or_default();
 
@@ -6199,6 +6252,11 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         {
             SeparatorWithHelpMarker("Frame Generation (FSRFG via FFX)", "FFX using the DLSSG swapchain");
         }
+        else if (activeNvngxFg == FGNvngxReplacement::Custom)
+        {
+            SeparatorWithHelpMarker(StrFmt("Frame Generation (%s)", state.activeFgNvngxCustom.c_str()).c_str(),
+                                    "Custom DLSSG from the custom folder");
+        }
         else if (activeNvngxFg == FGNvngxReplacement::Combo)
         {
             SeparatorWithHelpMarker("Frame Generation (Enabler + FFX)",
@@ -6240,8 +6298,9 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 // Hide to reduce confusion, config is still read
                 const bool isUnrealEngine = State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
                                             State::Instance().gameQuirks & GameQuirk::ForceUnrealEngine;
-                const bool isDllProxyNvngxType =
-                    activeNvngxFg == FGNvngxReplacement::Nukems || activeNvngxFg == FGNvngxReplacement::Arturs;
+                const bool isDllProxyNvngxType = activeNvngxFg == FGNvngxReplacement::Nukems ||
+                                                 activeNvngxFg == FGNvngxReplacement::Arturs ||
+                                                 activeNvngxFg == FGNvngxReplacement::Custom;
                 if (isDllProxyNvngxType && !primaryGpu.dlssCapable && primaryGpu.fsr4Support == FSR4Support::None &&
                     !primaryGpu.d3d12IsVkd3dProton && !isUnrealEngine)
                 {
@@ -9755,6 +9814,7 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
             const char* nvngxName = activeNvngxFg == FGNvngxReplacement::Nukems   ? "Nukems"
                                     : activeNvngxFg == FGNvngxReplacement::Arturs ? "Enabler"
                                     : activeNvngxFg == FGNvngxReplacement::FFX    ? "FFX"
+                                    : activeNvngxFg == FGNvngxReplacement::Custom ? state.activeFgNvngxCustom.c_str()
                                                                                   : "Combo";
             const int detectedCount = state.dlssgDetectedInterpolationCount;
 

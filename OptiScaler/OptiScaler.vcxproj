@@ -265,6 +265,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="menu\input\input_system.h" />
     <ClInclude Include="menu\input\input_system_internal.h" />
     <ClInclude Include="framegen\nvngx\Nvngx_FFX.h" />
+    <ClInclude Include="framegen\nvngx\Nvngx_Custom.h" />
     <ClInclude Include="framegen\nvngx\Nvngx_Nukems.h" />
     <ClInclude Include="framegen\nvngx\Nvngx_DllProxy.h" />
     <ClInclude Include="framegen\nvngx\Nvngx_Arturs.h" />
@@ -463,7 +464,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="upscalers\dlss\DLSSFeature_Dx12.h" />
     <ClInclude Include="upscalers\dlss\DLSSFeature_Vk.h" />
     <ClInclude Include="upscalers\FeatureProvider_Dx11.h" />
-    <ClInclude Include="upscalers\CustomUpscalers.h" />
+    <ClInclude Include="misc\CustomProviders.h" />
     <ClInclude Include="upscalers\FeatureProvider_Dx12.h" />
     <ClInclude Include="upscalers\FeatureProvider_Vk.h" />
     <ClInclude Include="upscalers\ffx\FFXFeature.h" />
@@ -631,6 +632,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="low_latency\low_latency_tech\ll_xell.cpp" />
     <ClCompile Include="nvapi\fakenvapi\nvapi_calls.cpp" />
     <ClCompile Include="framegen\nvngx\Nvngx_FFX.cpp" />
+    <ClCompile Include="framegen\nvngx\Nvngx_Custom.cpp" />
     <ClCompile Include="framegen\nvngx\Nvngx_Nukems.cpp" />
     <ClCompile Include="framegen\nvngx\Nvngx_Arturs.cpp" />
     <ClCompile Include="NVNGX_Parameter.cpp" />

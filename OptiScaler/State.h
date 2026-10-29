@@ -83,6 +83,7 @@ enum class FGNvngxReplacement : uint32_t
     Arturs,
     FFX,
     Combo,
+    Custom, // State::fgNvngxCustom folder in custom
 };
 
 enum class WorkingMode : uint32_t
@@ -209,8 +210,9 @@ class State
     // Frame Generation
     FGInput activeFgInput = FGInput::NoFG;
     FGOutput activeFgOutput = FGOutput::NoFG;
-    // This should be set to a non-None value only if all other requirements are met and nvngx can be used
     FGNvngxReplacement activeFgNvngx = FGNvngxReplacement::None;
+    std::string fgNvngxCustom;
+    std::string activeFgNvngxCustom;
 
     // Streamline FG inputs
     Sl_Inputs slFGInputs = {};

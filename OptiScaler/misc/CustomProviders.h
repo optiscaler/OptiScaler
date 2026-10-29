@@ -6,14 +6,15 @@
 
 #include <filesystem>
 
-// Upscaler dlls in custom/<name>/<kind> of the Opti folder, each kind a folder has is an entry in the upscaler list:
+// Dlls in custom/<name>/<kind> of the Opti folder, each kind a folder has is an entry in the upscaler or FG list:
 //   custom/<name>/ffx      DX12 FFX upscaler
 //   custom/<name>/ffx_vk   Vulkan FFX upscaler
 //   custom/<name>/dlss     NGX runtime that runs DLSS
-// The dll can have any name. When the folder has more dlls, like ones the upscaler loads itself, the standard name
-// is used (amd_fidelityfx_upscaler_dx12.dll, amd_fidelityfx_upscaler_vk.dll then amd_fidelityfx_vk.dll, nvngx.dll),
-// else the first one. A Vulkan dll with another name is taken as amd_fidelityfx_upscaler_vk.dll.
-namespace CustomUpscalers
+//   custom/<name>/dlssg    nvngx_dlssg replacement, an FG Nvngx entry
+// The dll can have any name. When the folder has more dlls, like ones the dll loads itself, the standard name
+// is used (amd_fidelityfx_upscaler_dx12.dll, amd_fidelityfx_upscaler_vk.dll then amd_fidelityfx_vk.dll, nvngx.dll,
+// nvngx_dlssg.dll), else the first one. A Vulkan dll with another name is taken as amd_fidelityfx_upscaler_vk.dll.
+namespace CustomProviders
 {
 inline std::filesystem::path Root()
 {
@@ -62,15 +63,20 @@ inline bool IsLegacyFfxVkDll(const std::filesystem::path& path)
 
 inline std::filesystem::path NgxDllPath(const std::string& name) { return DllPath(name, L"dlss", { L"nvngx.dll" }); }
 
+inline std::filesystem::path DlssgDllPath(const std::string& name)
+{
+    return DllPath(name, L"dlssg", { L"nvngx_dlssg.dll" });
+}
+
 // nullptr when the path is empty or the dll can't be loaded
 inline HMODULE LoadDll(const std::string& name, const std::filesystem::path& path)
 {
     auto dll = path.empty() ? nullptr : NtdllProxy::LoadLibraryExW_Ldr(path.c_str(), NULL, NULL);
 
     if (dll == nullptr)
-        LOG_ERROR("Can't load custom upscaler {} from {}", name, wstring_to_string(Folder(name).wstring()));
+        LOG_ERROR("Can't load custom {} from {}", name, wstring_to_string(Folder(name).wstring()));
     else
-        LOG_INFO("Loaded custom upscaler {} from {}", name, wstring_to_string(path.wstring()));
+        LOG_INFO("Loaded custom {} from {}", name, wstring_to_string(path.wstring()));
 
     return dll;
 }
@@ -80,6 +86,7 @@ struct Names
     std::vector<std::string> ffx;
     std::vector<std::string> ffxVk;
     std::vector<std::string> dlss;
+    std::vector<std::string> dlssg;
 };
 
 // Scanned once
@@ -102,6 +109,9 @@ inline const Names& Scan()
 
             if (!NgxDllPath(name).empty())
                 found.dlss.push_back(name);
+
+            if (!DlssgDllPath(name).empty())
+                found.dlssg.push_back(name);
         }
 
         return found;
@@ -119,6 +129,7 @@ inline bool Contains(const std::vector<std::string>& names, const std::string& n
 inline bool IsFfx(const std::string& name) { return Contains(Scan().ffx, name); }
 inline bool IsFfxVk(const std::string& name) { return Contains(Scan().ffxVk, name); }
 inline bool IsDlss(const std::string& name) { return Contains(Scan().dlss, name); }
+inline bool IsDlssg(const std::string& name) { return Contains(Scan().dlssg, name); }
 
 // Dx12Upscaler from the ini as a custom folder's kind, a folder with both is used as FFX
 inline void ResolveDx12Upscaler()
@@ -164,4 +175,21 @@ inline void ResolveVulkanUpscaler()
         cfg->CustomUpscalerVk.reset();
     }
 }
-} // namespace CustomUpscalers
+
+// FGNvngxReplacement from the ini as a custom folder with dlssg
+inline void ResolveFGNvngx()
+{
+    auto& name = State::Instance().fgNvngxCustom;
+
+    if (name.empty())
+        return;
+
+    if (!IsDlssg(name))
+    {
+        LOG_WARN("FGNvngxReplacement={} isn't a replacement or a folder with dlssg in {}", name,
+                 wstring_to_string(Root().wstring()));
+        name.clear();
+        Config::Instance()->FGNvngxReplacement.reset();
+    }
+}
+} // namespace CustomProviders

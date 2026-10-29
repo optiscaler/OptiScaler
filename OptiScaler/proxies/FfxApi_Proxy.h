@@ -15,7 +15,7 @@
 #include <fsr4/FSR4DriverProviderVk.h>
 #include <fsr4/FSR4Models.h>
 #include <fsr4/FSR4Presets.h>
-#include <upscalers/CustomUpscalers.h>
+#include <misc/CustomProviders.h>
 
 #include "ffx_api.h"
 #include "FfxModule.h"
@@ -1003,12 +1003,12 @@ class FfxApiProxy
     // Loading is only tried once per name, nullptr if it failed
     static CustomFfxModule* LoadCustomUpscalerDx12(const std::string& name)
     {
-        return LoadCustomUpscaler(custom_dx12, name, CustomUpscalers::FfxDllPath(name));
+        return LoadCustomUpscaler(custom_dx12, name, CustomProviders::FfxDllPath(name));
     }
 
     static CustomFfxModule* LoadCustomUpscalerVk(const std::string& name)
     {
-        return LoadCustomUpscaler(custom_vk, name, CustomUpscalers::FfxVkDllPath(name));
+        return LoadCustomUpscaler(custom_vk, name, CustomProviders::FfxVkDllPath(name));
     }
 
     // Already loaded custom upscaler, doesn't try loading it
@@ -2413,13 +2413,13 @@ class FfxApiProxy
         if (inserted)
         {
             it->second.name = name;
-            module.dll = CustomUpscalers::LoadDll(name, path);
+            module.dll = CustomProviders::LoadDll(name, path);
 
             if (module.dll == nullptr)
                 return nullptr;
 
             module.filePath = path.wstring();
-            module.vkBackendV2 = !CustomUpscalers::IsLegacyFfxVkDll(path);
+            module.vkBackendV2 = !CustomProviders::IsLegacyFfxVkDll(path);
             FSR4Presets::Hook(module.dll);
             FSR4Models::Hook(module.dll);
             GetMethods(module);

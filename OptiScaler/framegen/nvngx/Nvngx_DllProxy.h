@@ -36,6 +36,8 @@ class Nvngx_DllProxy : public IFGNvngx
 
     virtual void LoadLibraries() = 0;
 
+    void LoadNgxExports();
+
   public:
     Nvngx_DllProxy() = default;
     ~Nvngx_DllProxy()

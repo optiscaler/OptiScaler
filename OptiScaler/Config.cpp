@@ -62,13 +62,13 @@ bool Config::Reload(std::filesystem::path iniPath)
             auto dx12Upscaler = readString("Upscalers", "Dx12Upscaler", true).transform(CodeToUpscalerFfx);
 
             // Any other value is the folder name of a custom upscaler, its kind is set by
-            // CustomUpscalers::ResolveDx12Upscaler once the Opti folder is known
+            // CustomProviders::ResolveDx12Upscaler once the Opti folder is known
             if (dx12Upscaler == Upscaler::Reset)
                 CustomUpscaler.set_from_config(std::string(ini.GetValue("Upscalers", "Dx12Upscaler")));
             else
                 Dx12Upscaler.set_from_config(dx12Upscaler);
 
-            // Same for Vulkan, checked by CustomUpscalers::ResolveVulkanUpscaler
+            // Same for Vulkan, checked by CustomProviders::ResolveVulkanUpscaler
             auto vulkanUpscaler = readString("Upscalers", "VulkanUpscaler", true).transform(CodeToUpscalerFfx);
 
             if (vulkanUpscaler == Upscaler::Reset)
@@ -101,6 +101,11 @@ bool Config::Reload(std::filesystem::path iniPath)
                     FGNvngxReplacement.set_from_config(FGNvngxReplacement::FFX);
                 else if (lstrcmpiA(FGNvngxReplacementString.value().c_str(), "combo") == 0)
                     FGNvngxReplacement.set_from_config(FGNvngxReplacement::Combo);
+                else
+                {
+                    FGNvngxReplacement.set_from_config(FGNvngxReplacement::Custom);
+                    State::Instance().fgNvngxCustom = FGNvngxReplacementString.value();
+                }
             }
 
             if (auto forceXell = readBool("fakenvapi", "ForceXeLL"); forceXell.has_value() && forceXell.value())
@@ -1345,6 +1350,8 @@ bool Config::SaveIni()
                 FGNvngxReplacementString = "FFX";
             else if (FGNvngxReplacementHeld.value() == FGNvngxReplacement::Combo)
                 FGNvngxReplacementString = "Combo";
+            else if (FGNvngxReplacementHeld.value() == FGNvngxReplacement::Custom)
+                FGNvngxReplacementString = State::Instance().fgNvngxCustom;
         }
         ini.SetValue("FrameGen", "FGNvngxReplacement", FGNvngxReplacementString.c_str());
 

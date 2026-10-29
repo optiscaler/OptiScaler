@@ -1616,8 +1616,9 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         spdlog::info("");
         spdlog::info("LogLevel: {}", Config::Instance()->LogLevel.value_or_default());
 
-        CustomUpscalers::ResolveDx12Upscaler();
-        CustomUpscalers::ResolveVulkanUpscaler();
+        CustomProviders::ResolveDx12Upscaler();
+        CustomProviders::ResolveVulkanUpscaler();
+        CustomProviders::ResolveFGNvngx();
 
         spdlog::info("");
         if (Util::GetRealWindowsVersion(winVer))
@@ -1647,6 +1648,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         State::Instance().activeFgInput = Config::Instance()->FGInput.value_or_default();
         State::Instance().activeFgOutput = Config::Instance()->FGOutput.value_or_default();
         State::Instance().activeFgNvngx = Config::Instance()->FGNvngxReplacement.value_or_default();
+        State::Instance().activeFgNvngxCustom = State::Instance().fgNvngxCustom;
 
         // Ensure valid FG configuration
         if (State::Instance().activeFgOutput == FGOutput::NoFG && State::Instance().activeFgInput != FGInput::NoFG &&
