@@ -625,7 +625,7 @@ std::optional<std::filesystem::path> Util::FindFilePath(const std::filesystem::p
     // 3) Unreal-Engine/WinGDK fallback: check for Win64 or WinGDK in parent (and for other special games)
     std::filesystem::path parent = startDir.parent_path().parent_path();
     uint32_t cnt = 0;
-    for (const char* folder : { "Win64", "WinGDK", "Win64MasterMasterSteamPGO", "steam" })
+    for (const char* folder : { "Win64", "WinGDK", "Win64MasterMasterSteamPGO" })
     {
         if (std::filesystem::exists(parent / folder) && std::filesystem::is_directory(parent / folder))
         {
@@ -671,6 +671,52 @@ std::optional<std::filesystem::path> Util::FindFilePath(const std::filesystem::p
         }
 
         cnt++;
+    }
+
+    // 4) Optional extended search for special games. Search for Plugins and its subdirectories
+    if (State::Instance().gameQuirks & GameQuirk::ExtendedSearch)
+
+    {
+        std::filesystem::path ancestor = startDir;
+        for (uint32_t level = 0; level < 4 && !ancestor.empty(); ++level)
+        {
+            std::vector<std::filesystem::path> pluginRoots;
+            std::error_code ec;
+            if (std::filesystem::is_directory(ancestor, ec) && !ec)
+            {
+                std::filesystem::recursive_directory_iterator it(
+                    ancestor, std::filesystem::directory_options::skip_permission_denied, ec);
+                const std::filesystem::recursive_directory_iterator end;
+                while (!ec && it != end)
+                {
+                    if (it.depth() >= 5)
+                        it.disable_recursion_pending();
+                    std::error_code entryEc;
+                    if (it->is_directory(entryEc) && !entryEc && it->path().filename() == L"Plugins")
+                    {
+                        pluginRoots.push_back(it->path());
+                        it.disable_recursion_pending();
+                    }
+                    it.increment(ec);
+                }
+            }
+            for (const auto& pluginRoot : pluginRoots)
+            {
+                LOG_INFO(L"Extended search: searching at {}", pluginRoot.wstring());
+                if (auto foundPath = SearchDirectoryBFS(pluginRoot))
+                {
+                    LOG_INFO(L"{} found by extended search at {}", fileName.wstring(), foundPath.value().wstring());
+                    return foundPath;
+                }
+            }
+
+            if (!pluginRoots.empty())
+                break;
+            const auto parentPath = ancestor.parent_path();
+            if (parentPath == ancestor)
+                break;
+            ancestor = parentPath;
+        }
     }
 
     // Not found anywhere

@@ -31,7 +31,8 @@ enum class GameQuirk : uint64_t
     CreateSLOnThe2ndDevice,
     XeFGCameraMotionFill,      // XeFG inputs: velocity has alpha 0 where only the camera moved (The Witcher 3)
     DLSSGFrameLatencyWaitable, // Game waits on the frame latency waitable, SL must not consume it too
-    HideFsr4, // FFX inputs: game's options menu breaks when every upscaler it knows is available (BeamNG)
+    HideFsr4,       // FFX inputs: game's options menu breaks when every upscaler it knows is available (BeamNG)
+    ExtendedSearch, // Extend the search when normal lookup fails (Phantom Blade Zero)
     // Don't forget to add the new entry to printQuirks
     _
 };

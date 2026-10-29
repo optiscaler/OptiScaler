@@ -671,6 +671,13 @@ const std::vector<GameConfig> gameConfigs = {
         .defaults = { DxgiSpoofing = false, FGPreserveSwapChain = false, SimulateWaitableObject = true },
     },
 
+    // Phantom Blade Zero
+    // Extended Search for locating plugin binaries
+    {
+        .exes = { "pbz.exe" },
+        .quirks = { ExtendedSearch },
+    },
+
     // SL spoof enough to unlock everything DLSS/No spoof needed for DLSS inputs
     //
     // Crysis 3 Remastered, Warhammer 40,000: Darktide, Rise of the Ronin, DYNASTY WARRIORS: ORIGINS, Crysis Remastered,

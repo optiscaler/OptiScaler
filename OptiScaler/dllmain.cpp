@@ -1300,6 +1300,9 @@ static void printQuirks(flag_set<GameQuirk>& quirks)
     if (quirks & GameQuirk::HideFsr4)
         stringQuirks.push_back("Hide FSR 4 from the game's FFX version list");
 
+    if (quirks & GameQuirk::ExtendedSearch)
+        stringQuirks.push_back("Extended DLL search");
+
     state->detectedQuirks.append_range(stringQuirks);
     for (auto& stringQuirk : stringQuirks)
         spdlog::info("Quirk: {}", stringQuirk);
