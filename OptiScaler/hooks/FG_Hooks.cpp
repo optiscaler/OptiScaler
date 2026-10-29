@@ -19,6 +19,8 @@
 
 #include <d3d12.h>
 
+#include <optional>
+
 #define XEFG_RESOURCE_REF_LIMIT 1
 
 static ID3D12Fence* resizeFence = nullptr;
@@ -32,6 +34,34 @@ static HANDLE _semaphore = nullptr;
 #if (XEFG_RESOURCE_REF_LIMIT == 0)
 inline static std::vector<void*> oldBackBuffers;
 #endif
+
+static void SetCurrentCommandQueue(ID3D12CommandQueue* cq)
+{
+    if (currentCommandQueue != nullptr)
+        currentCommandQueue->Release();
+
+    currentCommandQueue = cq;
+}
+
+// For FG swapchain  wrap another FG swapchain resize deadlock issue
+static thread_local int resizeDepth = 0;
+
+struct ResizeScope
+{
+    std::optional<OwnedLockGuard> lock;
+
+    ResizeScope(OwnedMutex& mutex, uint32_t owner)
+    {
+        if (resizeDepth++ == 0)
+            lock.emplace(mutex, owner);
+    }
+
+    ~ResizeScope()
+    {
+        lock.reset();
+        resizeDepth--;
+    }
+};
 
 static void PauseFG(IFGFeature_Dx12* fg)
 {
@@ -94,6 +124,17 @@ static bool CheckForFGStatus()
     return true;
 }
 
+static bool IsOtherWindowWhileFGSwapchainExists(HWND fgHwnd, HWND hwnd)
+{
+    if (State::Instance().currentFGSwapchain == nullptr || fgHwnd == nullptr || hwnd == fgHwnd)
+        return false;
+
+    LOG_WARN("FG swapchain already exists for window {:X}, not using FG for window {:X}", (size_t) fgHwnd,
+             (size_t) hwnd);
+
+    return true;
+}
+
 HRESULT FGHooks::CreateSwapChain(IDXGIFactory* pFactory, IUnknown* pDevice, DXGI_SWAP_CHAIN_DESC* pDesc,
                                  IDXGISwapChain** ppSwapChain)
 {
@@ -103,6 +144,9 @@ HRESULT FGHooks::CreateSwapChain(IDXGIFactory* pFactory, IUnknown* pDevice, DXGI
         return E_NOINTERFACE;
     }
 
+    if (IsOtherWindowWhileFGSwapchainExists(_hwnd, pDesc->OutputWindow))
+        return E_NOINTERFACE;
+
     // Check if it's Dx12
     ID3D12CommandQueue* cq = nullptr;
     if (pDevice->QueryInterface(IID_PPV_ARGS(&cq)) != S_OK)
@@ -111,8 +155,7 @@ HRESULT FGHooks::CreateSwapChain(IDXGIFactory* pFactory, IUnknown* pDevice, DXGI
         return E_INVALIDARG;
     }
 
-    currentCommandQueue = cq;
-    cq->Release();
+    SetCurrentCommandQueue(cq);
 
     if (State::Instance().currentFG == nullptr)
     {
@@ -212,6 +255,9 @@ HRESULT FGHooks::CreateSwapChainForHwnd(IDXGIFactory* pFactory, IUnknown* pDevic
         return E_NOINTERFACE;
     }
 
+    if (IsOtherWindowWhileFGSwapchainExists(_hwnd, hWnd))
+        return E_NOINTERFACE;
+
     // Check if it's Dx12
     ID3D12CommandQueue* cq = nullptr;
     if (pDevice->QueryInterface(IID_PPV_ARGS(&cq)) != S_OK)
@@ -220,8 +266,7 @@ HRESULT FGHooks::CreateSwapChainForHwnd(IDXGIFactory* pFactory, IUnknown* pDevic
         return E_INVALIDARG;
     }
 
-    currentCommandQueue = cq;
-    cq->Release();
+    SetCurrentCommandQueue(cq);
 
     if (State::Instance().currentFG == nullptr)
     {
@@ -545,7 +590,7 @@ HRESULT FGHooks::hkResizeBuffers(IDXGISwapChain* This, UINT BufferCount, UINT Wi
 
     auto fg = State::Instance().currentFG;
 
-    OwnedLockGuard lg(fg->Mutex, 6677);
+    ResizeScope lg(fg->Mutex, 6677);
 
     // Disable frame generation when resizing swapchain
     PauseFG(fg);
@@ -832,7 +877,7 @@ HRESULT FGHooks::hkResizeBuffers1(IDXGISwapChain3* This, UINT BufferCount, UINT 
 
     auto fg = State::Instance().currentFG;
 
-    OwnedLockGuard lg(fg->Mutex, 6678);
+    ResizeScope lg(fg->Mutex, 6678);
 
     // Disable frame generation when resizing swapchain
     PauseFG(fg);
@@ -1181,9 +1226,10 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
         LOG_DEBUG("flags: {:X}, Frametime: {}", Flags, ftDelta);
     }
 
+    // The referenced queue of the FG swapchain
     if (willPresent && currentCommandQueue != nullptr)
     {
-        UpscalerTimeDx12::ReadUpscalingTime(State::Instance().currentCommandQueue);
+        UpscalerTimeDx12::ReadUpscalingTime(currentCommandQueue);
     }
 
     auto fg = State::Instance().currentFG;

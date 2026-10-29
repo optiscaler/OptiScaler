@@ -4181,10 +4181,10 @@ bool MenuCommon::RenderMenu()
                                        "Bottom middle: Interpolation source (w/o UI)\n"
                                        "Bottom right: HUDless resource");
 
-                        ImGui::SameLine(0.0f, 16.0f);
-
                         if (state.currentFG->Version().major > 3)
                         {
+                            ImGui::SameLine(0.0f, 16.0f);
+
                             if (bool fgwm = config->FSRFGEnableWatermark.value_or_default();
                                 ImGui::Checkbox("FG Watermark", &fgwm))
                             {
@@ -4215,8 +4215,9 @@ bool MenuCommon::RenderMenu()
                             else
                                 ImGui::TextDisabled("(Off)");
 
-                            ShowHelpMarker("Flip metering mode applied in the driver\nFSR only requests it in exclusive "
-                                           "or borderless fullscreen");
+                            ShowHelpMarker(
+                                "Flip metering mode applied in the driver\nFSR only requests it in exclusive "
+                                "or borderless fullscreen");
                         }
 
                         ImGui::Spacing();
