@@ -66,7 +66,8 @@ enum class GameQuirk : uint64_t
     IgnoreValidUntilEvaluateForFG,
     IgnoreTagsWithoutHudlessForFG,
     ForceFGRenderSizeMVs,
-    HideFsr4,
+    HideFsr4,       // FFX inputs: game's options menu breaks when every upscaler it knows is available (BeamNG)
+    ExtendedSearch, // Extend the search when normal lookup fails (Phantom Blade Zero)
     // Don't forget to add the new entry to printQuirks
     _
 };
@@ -456,6 +457,10 @@ static const QuirkEntry quirkTable[] = {
     // Auto Exposure required for XeSS, HideFsr4 fixes broken settings menu in DX12
     QUIRK_ENTRY("beamng.drive.x64.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceAutoExposure,
                 GameQuirk::HideFsr4),
+
+    // Phantom Blade Zero
+    // Extended Search for locating plugin binaries
+    QUIRK_ENTRY("pbz.exe", GameQuirk::ExtendedSearch),
 
     // METRO 2033 Redux, METRO Last Light Redux
     // Manual Input polling for fixing invisible Opti Overlay

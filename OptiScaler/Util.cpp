@@ -615,6 +615,59 @@ std::optional<std::filesystem::path> Util::FindFilePath(const std::filesystem::p
         cnt++;
     }
 
+    // 4) Optional extended search for special games. Search for Plugins and its subdirectories
+    if (State::Instance().gameQuirks & GameQuirk::ExtendedSearch)
+
+    {
+        std::filesystem::path ancestor = startDir;
+        for (uint32_t level = 0; level < 4 && !ancestor.empty(); ++level)
+        {
+            std::vector<std::filesystem::path> pluginRoots;
+            std::error_code ec;
+            if (std::filesystem::is_directory(ancestor, ec) && !ec)
+            {
+                std::filesystem::recursive_directory_iterator it(
+                    ancestor, std::filesystem::directory_options::skip_permission_denied, ec);
+                const std::filesystem::recursive_directory_iterator end;
+                while (!ec && it != end)
+                {
+                    if (it.depth() >= 5)
+                        it.disable_recursion_pending();
+                    std::error_code entryEc;
+                    if (it->is_directory(entryEc) && !entryEc && it->path().filename() == L"Plugins")
+                    {
+                        pluginRoots.push_back(it->path());
+                        it.disable_recursion_pending();
+                    }
+                    it.increment(ec);
+                }
+            }
+            for (const auto& pluginRoot : pluginRoots)
+            {
+                LOG_INFO(L"Extended search: searching at {}", pluginRoot.wstring());
+                // master uses SearchDirectoryBFS here (from 64efe037, not in 0.9); same plain search as step 2
+                std::error_code searchEc;
+                for (auto& entry : std::filesystem::recursive_directory_iterator(
+                         pluginRoot, std::filesystem::directory_options::skip_permission_denied, searchEc))
+                {
+                    if (!entry.is_directory() && entry.path().filename() == fileName)
+                    {
+                        LOG_INFO(L"{} found by extended search at {}", fileName.wstring(),
+                                 entry.path().wstring());
+                        return entry.path();
+                    }
+                }
+            }
+
+            if (!pluginRoots.empty())
+                break;
+            const auto parentPath = ancestor.parent_path();
+            if (parentPath == ancestor)
+                break;
+            ancestor = parentPath;
+        }
+    }
+
     // Not found anywhere
     return std::nullopt;
 }
