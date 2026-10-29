@@ -70,6 +70,9 @@ class FSRFG_Vk : public virtual IFGFeature_Vk
     VkImageView PresentView(VkImage image);
 
   public:
+    // Reverse of GetFfxState, as FFX's getVKImageLayoutFromResourceState does it
+    static VkImageLayout GetLayout(uint32_t state);
+
     // IFGFeature
     const char* Name() override final { return "FSR-FG"; }
     feature_version Version() override final { return _version; }

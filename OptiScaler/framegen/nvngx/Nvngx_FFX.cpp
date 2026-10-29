@@ -2,12 +2,15 @@
 #include "Nvngx_FFX.h"
 
 #include <NVNGX_Parameter.h>
+#include <nvsdk_ngx_vk.h>
 
 #include "proxies/NVNGX_Proxy.h"
 #include "proxies/Ntdll_Proxy.h"
 #include <proxies/FfxApi_Proxy.h>
 #include <numbers>
 #include <misc/IdentifyGpu.h>
+#include <hooks/Vulkan_Hooks.h>
+#include <framegen/ffx/FSRFG_Vk.h>
 
 using Microsoft::WRL::ComPtr;
 
@@ -31,6 +34,20 @@ bool Nvngx_FFX::Init()
     LOG_INFO("Nvngx FFX initialized");
 
     return inited;
+}
+
+bool Nvngx_FFX::InitVk()
+{
+    if (!FfxApiProxy::IsFGReadyVk())
+        FfxApiProxy::InitFfxVk();
+
+    if (!FfxApiProxy::IsFGReadyVk())
+    {
+        LOG_ERROR("Couldn't get Vulkan FG ready");
+        return false;
+    }
+
+    return true;
 }
 
 NVSDK_NGX_Result Nvngx_FFX::D3D12_Init(unsigned long long InApplicationId, const wchar_t* InApplicationDataPath,
@@ -67,32 +84,46 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_GetScratchBufferSize(NVSDK_NGX_Feature InFeatu
     return NVSDK_NGX_Result_Success;
 }
 
-NVSDK_NGX_Result Nvngx_FFX::D3D12_CreateFeature(ID3D12GraphicsCommandList* InCmdList, NVSDK_NGX_Feature InFeatureID,
-                                                NVSDK_NGX_Parameter* InParameters, NVSDK_NGX_Handle** OutHandle)
+NVSDK_NGX_Result Nvngx_FFX::CreateFeature(NVSDK_NGX_Feature InFeatureID, NVSDK_NGX_Parameter* InParameters,
+                                          NVSDK_NGX_Handle** OutHandle, ID3D12Device* InDevice, VkDevice InVkDevice)
 {
-    Nvngx_FFX_Handle** OutOurHandle = (Nvngx_FFX_Handle**) OutHandle;
-
-    if (!Init())
-        return NVSDK_NGX_Result_Fail;
-
-    if (!OutOurHandle || !InParameters)
+    if (!OutHandle || !InParameters)
         return NVSDK_NGX_Result_FAIL_InvalidParameter;
 
     if (InFeatureID != NVSDK_NGX_Feature_FrameGeneration)
         return NVSDK_NGX_Result_FAIL_FeatureNotSupported;
+
+    // Can't create FFX context yet, missing data
+    auto handle = new Nvngx_FFX_Handle { .Id = lastIdCreated++, .device = InDevice, .vkDevice = InVkDevice };
+
+    InParameters->Get("Width", &handle->swapchainWidth);
+    InParameters->Get("Height", &handle->swapchainHeight);
+
+    *OutHandle = (NVSDK_NGX_Handle*) handle;
+
+    return NVSDK_NGX_Result_Success;
+}
+
+NVSDK_NGX_Result Nvngx_FFX::D3D12_CreateFeature(ID3D12GraphicsCommandList* InCmdList, NVSDK_NGX_Feature InFeatureID,
+                                                NVSDK_NGX_Parameter* InParameters, NVSDK_NGX_Handle** OutHandle)
+{
+    if (!Init())
+        return NVSDK_NGX_Result_Fail;
+
+    if (!InCmdList)
+        return NVSDK_NGX_Result_FAIL_InvalidParameter;
 
     ID3D12Device* pDevice = nullptr;
 
     if (InCmdList->GetDevice(IID_PPV_ARGS(&pDevice)) != S_OK)
         return NVSDK_NGX_Result_FAIL_PlatformError;
 
-    // Can't create FFX context yet, missing data
-    *OutOurHandle = new Nvngx_FFX_Handle(lastIdCreated++, nullptr, pDevice);
+    auto result = CreateFeature(InFeatureID, InParameters, OutHandle, pDevice, VK_NULL_HANDLE);
 
-    InParameters->Get("Width", &(*OutOurHandle)->swapchainWidth);
-    InParameters->Get("Height", &(*OutOurHandle)->swapchainHeight);
+    if (result != NVSDK_NGX_Result_Success)
+        pDevice->Release();
 
-    return NVSDK_NGX_Result_Success;
+    return result;
 }
 
 NVSDK_NGX_Result Nvngx_FFX::D3D12_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
@@ -102,7 +133,9 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
     if (!InOurHandle)
         return NVSDK_NGX_Result_FAIL_InvalidParameter;
 
-    InOurHandle->device->Release();
+    if (InOurHandle->device)
+        InOurHandle->device->Release();
+
     delete InOurHandle; // destroys FFX context automatically
 
     return NVSDK_NGX_Result_Success;
@@ -120,6 +153,40 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_GetFeatureRequirements(IDXGIAdapter* Adapter,
     strcpy_s(OutSupported->MinOSVersion, "10.0.0");
 
     return NVSDK_NGX_Result_Success;
+}
+
+// FFX only interpolates a hudless of the backbuffer's precision group, as its GetFormatPrecisionGroup says
+static int FormatPrecisionGroup(uint32_t format)
+{
+    switch (format)
+    {
+    case FFX_API_SURFACE_FORMAT_R32G32B32A32_TYPELESS:
+    case FFX_API_SURFACE_FORMAT_R32G32B32A32_FLOAT:
+    case FFX_API_SURFACE_FORMAT_R32G32B32_FLOAT:
+        return 0;
+    case FFX_API_SURFACE_FORMAT_R16G16B16A16_TYPELESS:
+    case FFX_API_SURFACE_FORMAT_R16G16B16A16_FLOAT:
+        return 1;
+    case FFX_API_SURFACE_FORMAT_R8G8B8A8_TYPELESS:
+    case FFX_API_SURFACE_FORMAT_R8G8B8A8_UNORM:
+    case FFX_API_SURFACE_FORMAT_B8G8R8A8_TYPELESS:
+    case FFX_API_SURFACE_FORMAT_B8G8R8A8_UNORM:
+        return 2;
+    case FFX_API_SURFACE_FORMAT_R8G8B8A8_SNORM:
+        return 3;
+    case FFX_API_SURFACE_FORMAT_R8G8B8A8_SRGB:
+    case FFX_API_SURFACE_FORMAT_B8G8R8A8_SRGB:
+        return 4;
+    case FFX_API_SURFACE_FORMAT_R11G11B10_FLOAT:
+        return 5;
+    case FFX_API_SURFACE_FORMAT_R10G10B10A2_TYPELESS:
+    case FFX_API_SURFACE_FORMAT_R10G10B10A2_UNORM:
+        return 6;
+    case FFX_API_SURFACE_FORMAT_R9G9B9E5_SHAREDEXP:
+        return 7;
+    default:
+        return -1;
+    }
 }
 
 static void fgLogCallback(uint32_t type, const wchar_t* message)
@@ -161,10 +228,9 @@ static D3D12_RESOURCE_STATES GetD3D12State(FfxApiResourceState state)
     }
 }
 
-static void CopyTexture(ID3D12GraphicsCommandList* CommandList, const FfxApiResource* Destination,
-                        const FfxApiResource* Source)
+static void CopyTextureDx12(void* CommandList, const FfxApiResource* Destination, const FfxApiResource* Source)
 {
-    const auto cmdList12 = reinterpret_cast<ID3D12GraphicsCommandList*>(CommandList);
+    const auto cmdList12 = static_cast<ID3D12GraphicsCommandList*>(CommandList);
 
     D3D12_RESOURCE_BARRIER barriers[2] = {};
     barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -185,6 +251,83 @@ static void CopyTexture(ID3D12GraphicsCommandList* CommandList, const FfxApiReso
     std::swap(barriers[1].Transition.StateBefore, barriers[1].Transition.StateAfter);
     cmdList12->ResourceBarrier(2, barriers);
 }
+
+static void CopyTextureVk(void* CommandList, const FfxApiResource* Destination, const FfxApiResource* Source)
+{
+    const auto cmdBuffer = static_cast<VkCommandBuffer>(CommandList);
+    const auto dst = static_cast<VkImage>(Destination->resource);
+    const auto src = static_cast<VkImage>(Source->resource);
+    const auto dstLayout = FSRFG_Vk::GetLayout(Destination->state);
+    const auto srcLayout = FSRFG_Vk::GetLayout(Source->state);
+
+    // Only color images get copied, VK_FORMAT_UNDEFINED barriers the color aspect
+    IFGFeature_Vk::ImageBarrier(cmdBuffer, dst, VK_FORMAT_UNDEFINED, dstLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    IFGFeature_Vk::ImageBarrier(cmdBuffer, src, VK_FORMAT_UNDEFINED, srcLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+
+    VkImageCopy region {};
+    region.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+    region.dstSubresource = region.srcSubresource;
+    region.extent = { Source->description.width, Source->description.height, 1 };
+    vkCmdCopyImage(cmdBuffer, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+                   &region);
+
+    IFGFeature_Vk::ImageBarrier(cmdBuffer, dst, VK_FORMAT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, dstLayout);
+    IFGFeature_Vk::ImageBarrier(cmdBuffer, src, VK_FORMAT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, srcLayout);
+}
+
+static FfxApiResource GetResourceDx12(NVSDK_NGX_Parameter* InParameters, const char* name, uint32_t state)
+{
+    ID3D12Resource* resource = nullptr;
+    InParameters->Get(name, &resource);
+    return ffxApiGetResourceDX12(resource, state);
+}
+
+static FfxApiResource GetResourceVk(NVSDK_NGX_Parameter* InParameters, const char* name, uint32_t state)
+{
+    NVSDK_NGX_Resource_VK* resource = nullptr;
+    InParameters->Get(name, (void**) &resource);
+
+    if (!resource)
+        return {};
+
+    const auto& info = resource->Resource.ImageViewInfo;
+
+    FfxApiResourceDescription desc {};
+    desc.type = FFX_API_RESOURCE_TYPE_TEXTURE2D;
+    desc.format = ffxApiGetSurfaceFormatVK(info.Format);
+    desc.width = info.Width;
+    desc.height = info.Height;
+    desc.depth = 1;
+    desc.mipCount = 1;
+    desc.usage = (resource->ReadWrite || state == FFX_API_RESOURCE_STATE_UNORDERED_ACCESS)
+                     ? FFX_API_RESOURCE_USAGE_UAV
+                     : FFX_API_RESOURCE_USAGE_READ_ONLY;
+
+    if (ffxApiIsDepthFormat(info.Format))
+        desc.usage |= FFX_API_RESOURCE_USAGE_DEPTHTARGET;
+
+    return ffxApiGetResourceVK(info.Image, desc, state);
+}
+
+static constexpr Nvngx_FFX_Api ApiDx12 {
+    FfxApiProxy::D3D12_CreateContext,
+    FfxApiProxy::D3D12_DestroyContext,
+    FfxApiProxy::D3D12_Configure,
+    FfxApiProxy::D3D12_Query,
+    FfxApiProxy::D3D12_Dispatch,
+    GetResourceDx12,
+    CopyTextureDx12,
+};
+
+static constexpr Nvngx_FFX_Api ApiVk {
+    FfxApiProxy::VULKAN_CreateContext,
+    FfxApiProxy::VULKAN_DestroyContext,
+    FfxApiProxy::VULKAN_Configure,
+    FfxApiProxy::VULKAN_Query,
+    FfxApiProxy::VULKAN_Dispatch,
+    GetResourceVk,
+    CopyTextureVk,
+};
 
 // Implementation used as baseline
 // https://github.com/Nukem9/dlssg-to-fsr3/blob/0e253f63c3c66ee7582406bfa3dec698df7ab2c1/source/maindll/FFFrameInterpolator.cpp
@@ -244,19 +387,22 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
     if (!Init())
         return NVSDK_NGX_Result_Fail;
 
-    ID3D12Resource* backbuffer = nullptr;
-    ID3D12Resource* hudless = nullptr;
-    ID3D12Resource* depth = nullptr;
-    ID3D12Resource* motionVectors = nullptr;
-    ID3D12Resource* output = nullptr;
+    ffxCreateBackendDX12Desc backendDesc {};
+    backendDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_DX12;
+    backendDesc.device = InOurHandle->device;
 
-    InParameters->Get("DLSSG.Backbuffer", &backbuffer);
-    InParameters->Get("DLSSG.HUDLess", &hudless);
-    InParameters->Get("DLSSG.Depth", &depth);
-    InParameters->Get("DLSSG.MVecs", &motionVectors);
-    InParameters->Get("DLSSG.OutputInterpolated", &output);
+    return Evaluate(ApiDx12, &backendDesc.header, InOurHandle->device, InCmdList, InOurHandle, InParameters);
+}
 
-    auto outputFfx = ffxApiGetResourceDX12(output, FFX_API_RESOURCE_STATE_UNORDERED_ACCESS);
+NVSDK_NGX_Result Nvngx_FFX::Evaluate(const Nvngx_FFX_Api& api, ffxApiHeader* backend, void* device, void* cmdList,
+                                     Nvngx_FFX_Handle* InOurHandle, NVSDK_NGX_Parameter* InParameters)
+{
+    const auto backbuffer = api.GetResource(InParameters, "DLSSG.Backbuffer", FFX_API_RESOURCE_STATE_COMPUTE_READ);
+    const auto hudless = api.GetResource(InParameters, "DLSSG.HUDLess", FFX_API_RESOURCE_STATE_COPY_DEST);
+    const auto depth = api.GetResource(InParameters, "DLSSG.Depth", FFX_API_RESOURCE_STATE_COPY_DEST);
+    const auto motionVectors = api.GetResource(InParameters, "DLSSG.MVecs", FFX_API_RESOURCE_STATE_COPY_DEST);
+    const auto outputFfx =
+        api.GetResource(InParameters, "DLSSG.OutputInterpolated", FFX_API_RESOURCE_STATE_UNORDERED_ACCESS);
 
     uint32_t depthInverted = 0;
     InParameters->Get("DLSSG.DepthInverted", &depthInverted);
@@ -359,35 +505,38 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
         cameraFar = cameraNear + 1.0f;
     }
 
-    ffxCreateBackendDX12Desc backendDesc {};
-    backendDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_DX12;
-    backendDesc.device = InOurHandle->device;
+    const auto backbufferFormatFfx = backbuffer.description.format;
+    const auto hudlessFormatFfx = hudless.description.format;
+    const auto hudlessGroup = FormatPrecisionGroup(hudlessFormatFfx);
+    const bool useHudless =
+        hudless.resource && hudlessGroup != -1 && hudlessGroup == FormatPrecisionGroup(backbufferFormatFfx);
+    const bool newHudlessFormat =
+        useHudless && hudlessFormatFfx != backbufferFormatFfx && hudlessFormatFfx != InOurHandle->hudlessFormat;
 
-    auto backbufferFormatFfx = ffxApiGetSurfaceFormatDX12(backbuffer->GetDesc().Format);
-    uint32_t hudlessFormatFfx = 0;
-    static auto expectedHudlessFormatFfx = backbufferFormatFfx;
-    if (hudless)
+    if (hudless.resource && !useHudless && hudless.description.format != InOurHandle->ignoredHudlessFormat)
     {
-        hudlessFormatFfx = ffxApiGetSurfaceFormatDX12(hudless->GetDesc().Format);
+        LOG_WARN("Ignoring hudless of format {}, it doesn't match the backbuffer format {}", hudless.description.format,
+                 backbufferFormatFfx);
+        InOurHandle->ignoredHudlessFormat = hudless.description.format;
     }
 
-    if (expectedHudlessFormatFfx != hudlessFormatFfx)
-    {
-        State::Instance().fgChanged = true;
-        expectedHudlessFormatFfx = hudlessFormatFfx;
-        LOG_DEBUG("Hudless format different than expected, reiniting to adjust");
-    }
+    const bool formatChanged = backbufferFormatFfx != InOurHandle->backbufferFormat || newHudlessFormat;
 
     const bool outputMismatch = outputFfx.description.width != InOurHandle->swapchainWidth ||
                                 outputFfx.description.height != InOurHandle->swapchainHeight;
 
-    if (State::Instance().fgChanged || outputMismatch)
+    const bool recreate = State::Instance().fgChanged || outputMismatch || formatChanged;
+
+    if (recreate)
         InOurHandle->createFailed = false;
     else if (InOurHandle->createFailed)
         return NVSDK_NGX_Result_Fail;
 
-    if ((State::Instance().fgChanged || outputMismatch) && InOurHandle->fgContext && InOurHandle->fgContext->ctx)
+    if (recreate && InOurHandle->fgContext && InOurHandle->fgContext->ctx)
     {
+        if (formatChanged)
+            LOG_DEBUG("Backbuffer or hudless format changed, reiniting to adjust");
+
         if (outputMismatch)
         {
             InOurHandle->swapchainWidth = outputFfx.description.width;
@@ -400,25 +549,25 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
     State::Instance().fgChanged = false;
 
     if (!InOurHandle->fgContext)
-        InOurHandle->fgContext = std::make_unique<ffxContext_wrap>();
+        InOurHandle->fgContext = std::make_unique<ffxContext_wrap>(nullptr, api.DestroyContext);
 
     if (InOurHandle->fgContext->ctx == nullptr)
     {
         ffxQueryDescGetVersions versionQuery {};
         versionQuery.header.type = FFX_API_QUERY_DESC_TYPE_GET_VERSIONS;
         versionQuery.createDescType = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION;
-        versionQuery.device = InOurHandle->device;
+        versionQuery.device = device;
         uint64_t versionCount = 0;
         versionQuery.outputCount = &versionCount;
         // get number of versions for allocation
-        FfxApiProxy::D3D12_Query(nullptr, &versionQuery.header);
+        api.Query(nullptr, &versionQuery.header);
 
         State::Instance().ffxFGVersionIds.resize(versionCount);
         State::Instance().ffxFGVersionNames.resize(versionCount);
         versionQuery.versionIds = State::Instance().ffxFGVersionIds.data();
         versionQuery.versionNames = State::Instance().ffxFGVersionNames.data();
         // fill version ids and names arrays.
-        FfxApiProxy::D3D12_Query(nullptr, &versionQuery.header);
+        api.Query(nullptr, &versionQuery.header);
 
         ffxCreateContextDescFrameGeneration createFg {};
         createFg.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION;
@@ -465,18 +614,27 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
         if (spdlog::default_logger()->level() == SPDLOG_LEVEL_TRACE)
             createFg.flags |= FFX_FRAMEGENERATION_ENABLE_DEBUG_CHECKING;
 
-        createFg.backBufferFormat = ffxApiGetSurfaceFormatDX12(backbuffer->GetDesc().Format);
-        createFg.header.pNext = &backendDesc.header;
+        createFg.backBufferFormat = backbufferFormatFfx;
+        createFg.header.pNext = backend;
 
-        ffxCreateContextDescFrameGenerationHudless hudlessFormat {};
+        InOurHandle->backbufferFormat = backbufferFormatFfx;
 
-        if (hudlessFormatFfx != 0 && backbufferFormatFfx != hudlessFormatFfx)
+        // Keeps the previous hudless format while it still fits the backbuffer
+        if (newHudlessFormat)
+            InOurHandle->hudlessFormat = hudlessFormatFfx;
+        else if (FormatPrecisionGroup(InOurHandle->hudlessFormat) != FormatPrecisionGroup(backbufferFormatFfx) ||
+                 InOurHandle->hudlessFormat == backbufferFormatFfx)
+            InOurHandle->hudlessFormat = 0;
+
+        ffxCreateContextDescFrameGenerationHudless hudlessDesc {};
+
+        if (InOurHandle->hudlessFormat != 0)
         {
-            hudlessFormat.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION_HUDLESS;
-            hudlessFormat.hudlessBackBufferFormat = hudlessFormatFfx;
+            hudlessDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION_HUDLESS;
+            hudlessDesc.hudlessBackBufferFormat = InOurHandle->hudlessFormat;
 
-            hudlessFormat.header.pNext = createFg.header.pNext;
-            createFg.header.pNext = &hudlessFormat.header;
+            hudlessDesc.header.pNext = createFg.header.pNext;
+            createFg.header.pNext = &hudlessDesc.header;
         }
 
         {
@@ -489,15 +647,17 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
             override.header.type = FFX_API_DESC_TYPE_OVERRIDE_VERSION;
             override.versionId = State::Instance().ffxFGVersionIds[Config::Instance()->FfxFGIndex.value_or_default()];
 
-            backendDesc.header.pNext = &override.header;
+            backend->pNext = &override.header;
 
             _version.parse_version(
                 State::Instance().ffxFGVersionNames[Config::Instance()->FfxFGIndex.value_or_default()]);
 
             ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
             ScopedSkipHeapCapture skipHeapCapture {};
-            ffxReturnCode_t retCode =
-                FfxApiProxy::D3D12_CreateContext(&InOurHandle->fgContext->ctx, &createFg.header, nullptr);
+            ffxReturnCode_t retCode = api.CreateContext(&InOurHandle->fgContext->ctx, &createFg.header, nullptr);
+
+            // The override is only valid during creation
+            backend->pNext = nullptr;
 
             if (retCode != FFX_API_RETURN_OK)
             {
@@ -539,10 +699,10 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
         configureDesc.generationRect = { 0, 0, (int) InOurHandle->swapchainWidth, (int) InOurHandle->swapchainHeight };
     }
 
-    if (hudless)
-        configureDesc.HUDLessColor = ffxApiGetResourceDX12(hudless, FFX_API_RESOURCE_STATE_COPY_DEST);
+    if (useHudless)
+        configureDesc.HUDLessColor = hudless;
 
-    auto retCode = FfxApiProxy::D3D12_Configure(&InOurHandle->fgContext->ctx, &configureDesc.header);
+    auto retCode = api.Configure(&InOurHandle->fgContext->ctx, &configureDesc.header);
 
     if (retCode != FFX_API_RETURN_OK)
     {
@@ -554,11 +714,11 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
     fgLogging.header.type = FFX_API_CONFIGURE_DESC_TYPE_GLOBALDEBUG1;
     fgLogging.fpMessage = &fgLogCallback;
     fgLogging.debugLevel = FFX_API_CONFIGURE_GLOBALDEBUG_LEVEL_VERBOSE;
-    ffxReturnCode_t loggingRetCode = FfxApiProxy::D3D12_Configure(&InOurHandle->fgContext->ctx, &fgLogging.header);
+    ffxReturnCode_t loggingRetCode = api.Configure(&InOurHandle->fgContext->ctx, &fgLogging.header);
 
     ffxDispatchDescFrameGenerationPrepareCameraInfo dfgCameraData {};
     dfgCameraData.header.type = FFX_API_DISPATCH_DESC_TYPE_FRAMEGENERATION_PREPARE_CAMERAINFO;
-    dfgCameraData.header.pNext = &backendDesc.header;
+    dfgCameraData.header.pNext = backend;
 
     InParameters->Get("DLSSG.CameraPosX", &dfgCameraData.cameraPosition[0]);
     InParameters->Get("DLSSG.CameraPosY", &dfgCameraData.cameraPosition[1]);
@@ -581,9 +741,9 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
     if (cameraSuccess)
         dispatchPrepareDesc.header.pNext = &dfgCameraData.header;
     else
-        dispatchPrepareDesc.header.pNext = &backendDesc.header;
+        dispatchPrepareDesc.header.pNext = backend;
 
-    dispatchPrepareDesc.commandList = InCmdList;
+    dispatchPrepareDesc.commandList = cmdList;
     dispatchPrepareDesc.frameID = InOurHandle->lastFrameId;
     dispatchPrepareDesc.flags = 0;
 
@@ -604,10 +764,10 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
     dispatchPrepareDesc.cameraFar = cameraFar;
     dispatchPrepareDesc.cameraFovAngleVertical = cameraFovAngleVertical;
 
-    dispatchPrepareDesc.motionVectors = ffxApiGetResourceDX12(motionVectors, FFX_API_RESOURCE_STATE_COPY_DEST);
-    dispatchPrepareDesc.depth = ffxApiGetResourceDX12(depth, FFX_API_RESOURCE_STATE_COPY_DEST);
+    dispatchPrepareDesc.motionVectors = motionVectors;
+    dispatchPrepareDesc.depth = depth;
 
-    retCode = FfxApiProxy::D3D12_Dispatch(&InOurHandle->fgContext->ctx, &dispatchPrepareDesc.header);
+    retCode = api.Dispatch(&InOurHandle->fgContext->ctx, &dispatchPrepareDesc.header);
 
     if (retCode != FFX_API_RETURN_OK)
     {
@@ -619,7 +779,7 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
     dispatchDesc.header.type = FFX_API_DISPATCH_DESC_TYPE_FRAMEGENERATION;
     // dispatchDesc.header.pNext = &dispatchPrepareDesc.header;
 
-    dispatchDesc.commandList = InCmdList;
+    dispatchDesc.commandList = cmdList;
     dispatchDesc.frameID = InOurHandle->lastFrameId;
 
     dispatchDesc.backbufferTransferFunction =
@@ -639,12 +799,12 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
 
     dispatchDesc.numGeneratedFrames = 1;
     dispatchDesc.outputs[0] = outputFfx;
-    dispatchDesc.presentColor = ffxApiGetResourceDX12(backbuffer, FFX_API_RESOURCE_STATE_COMPUTE_READ);
+    dispatchDesc.presentColor = backbuffer;
     dispatchDesc.reset = reset;
 
     dispatchDesc.generationRect = configureDesc.generationRect;
 
-    retCode = FfxApiProxy::D3D12_Dispatch(&InOurHandle->fgContext->ctx, &dispatchDesc.header);
+    retCode = api.Dispatch(&InOurHandle->fgContext->ctx, &dispatchDesc.header);
 
     if (retCode != FFX_API_RETURN_OK)
     {
@@ -652,22 +812,20 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
         // return NVSDK_NGX_Result_Fail;
     }
 
-    ID3D12Resource* outputReal = nullptr;
-    InParameters->Get("DLSSG.OutputReal", &outputReal);
-    auto outputRealFfx = ffxApiGetResourceDX12(outputReal, FFX_API_RESOURCE_STATE_UNORDERED_ACCESS);
+    auto outputRealFfx = api.GetResource(InParameters, "DLSSG.OutputReal", FFX_API_RESOURCE_STATE_UNORDERED_ACCESS);
 
     // Copy backbuffer to output real
-    if (outputReal)
+    if (outputRealFfx.resource)
     {
         // Only fake frames gets the debug view, copy the fake frame to output to prevent flickering
         if (configureDesc.flags & FFX_FRAMEGENERATION_FLAG_DRAW_DEBUG_VIEW)
-            CopyTexture(InCmdList, &outputRealFfx, &dispatchDesc.outputs[0]);
+            api.CopyTexture(cmdList, &outputRealFfx, &dispatchDesc.outputs[0]);
         else
-            CopyTexture(InCmdList, &outputRealFfx, &dispatchDesc.presentColor);
+            api.CopyTexture(cmdList, &outputRealFfx, &dispatchDesc.presentColor);
 
         if (retCode != FFX_API_RETURN_OK)
         {
-            CopyTexture(InCmdList, &dispatchDesc.outputs[0], &dispatchDesc.presentColor);
+            api.CopyTexture(cmdList, &dispatchDesc.outputs[0], &dispatchDesc.presentColor);
         }
     }
 
@@ -713,4 +871,106 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_PopulateParameters_Impl(NVSDK_NGX_Parameter* I
     InParameters->Set("DLSSG.MultiFrameCountMax", 1);
 
     return NVSDK_NGX_Result_Success;
+}
+
+NVSDK_NGX_Result Nvngx_FFX::VULKAN_Init(unsigned long long InApplicationId, const wchar_t* InApplicationDataPath,
+                                        VkInstance InInstance, VkPhysicalDevice InPD, VkDevice InDevice,
+                                        PFN_vkGetInstanceProcAddr InGIPA, PFN_vkGetDeviceProcAddr InGDPA,
+                                        const NVSDK_NGX_FeatureCommonInfo* InFeatureInfo,
+                                        NVSDK_NGX_Version InSDKVersion)
+{
+    return VULKAN_Init_Ext(InApplicationId, InApplicationDataPath, InInstance, InPD, InDevice, InSDKVersion,
+                           InFeatureInfo);
+}
+
+NVSDK_NGX_Result Nvngx_FFX::VULKAN_Init_Ext(unsigned long long InApplicationId, const wchar_t* InApplicationDataPath,
+                                            VkInstance InInstance, VkPhysicalDevice InPD, VkDevice InDevice,
+                                            NVSDK_NGX_Version InSDKVersion,
+                                            const NVSDK_NGX_FeatureCommonInfo* InFeatureInfo)
+{
+    if (!InitVk())
+        return NVSDK_NGX_Result_Fail;
+
+    vkInitDevice = InDevice;
+    vkPhysicalDevice = InPD;
+
+    return NVSDK_NGX_Result_Success;
+}
+
+NVSDK_NGX_Result Nvngx_FFX::VULKAN_Init_Ext2(unsigned long long InApplicationId, const wchar_t* InApplicationDataPath,
+                                             VkInstance InInstance, VkPhysicalDevice InPD, VkDevice InDevice,
+                                             PFN_vkGetInstanceProcAddr InGIPA, PFN_vkGetDeviceProcAddr InGDPA,
+                                             NVSDK_NGX_Version InSDKVersion,
+                                             const NVSDK_NGX_FeatureCommonInfo* InFeatureInfo)
+{
+    return VULKAN_Init_Ext(InApplicationId, InApplicationDataPath, InInstance, InPD, InDevice, InSDKVersion,
+                           InFeatureInfo);
+}
+
+NVSDK_NGX_Result Nvngx_FFX::VULKAN_Shutdown() { return NVSDK_NGX_Result_Success; }
+
+NVSDK_NGX_Result Nvngx_FFX::VULKAN_Shutdown1(VkDevice InDevice) { return NVSDK_NGX_Result_Success; }
+
+NVSDK_NGX_Result Nvngx_FFX::VULKAN_GetScratchBufferSize(NVSDK_NGX_Feature InFeatureId,
+                                                        const NVSDK_NGX_Parameter* InParameters, size_t* OutSizeInBytes)
+{
+    return D3D12_GetScratchBufferSize(InFeatureId, InParameters, OutSizeInBytes);
+}
+
+NVSDK_NGX_Result Nvngx_FFX::VULKAN_CreateFeature(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Feature InFeatureID,
+                                                 NVSDK_NGX_Parameter* InParameters, NVSDK_NGX_Handle** OutHandle)
+{
+    return VULKAN_CreateFeature1(vkInitDevice, InCmdBuffer, InFeatureID, InParameters, OutHandle);
+}
+
+NVSDK_NGX_Result Nvngx_FFX::VULKAN_CreateFeature1(VkDevice InDevice, VkCommandBuffer InCmdList,
+                                                  NVSDK_NGX_Feature InFeatureID, NVSDK_NGX_Parameter* InParameters,
+                                                  NVSDK_NGX_Handle** OutHandle)
+{
+    if (!InitVk())
+        return NVSDK_NGX_Result_Fail;
+
+    if (InDevice == VK_NULL_HANDLE || vkPhysicalDevice == VK_NULL_HANDLE)
+        return NVSDK_NGX_Result_FAIL_InvalidParameter;
+
+    return CreateFeature(InFeatureID, InParameters, OutHandle, nullptr, InDevice);
+}
+
+NVSDK_NGX_Result Nvngx_FFX::VULKAN_ReleaseFeature(NVSDK_NGX_Handle* InHandle) { return D3D12_ReleaseFeature(InHandle); }
+
+NVSDK_NGX_Result Nvngx_FFX::VULKAN_GetFeatureRequirements(const VkInstance Instance,
+                                                          const VkPhysicalDevice PhysicalDevice,
+                                                          const NVSDK_NGX_FeatureDiscoveryInfo* FeatureDiscoveryInfo,
+                                                          NVSDK_NGX_FeatureRequirement* OutSupported)
+{
+    return D3D12_GetFeatureRequirements(nullptr, FeatureDiscoveryInfo, OutSupported);
+}
+
+NVSDK_NGX_Result Nvngx_FFX::VULKAN_EvaluateFeature(VkCommandBuffer InCmdList, const NVSDK_NGX_Handle* InFeatureHandle,
+                                                   NVSDK_NGX_Parameter* InParameters,
+                                                   PFN_NVSDK_NGX_ProgressCallback InCallback)
+{
+    // This is our handle so can cast away const
+    Nvngx_FFX_Handle* InOurHandle = (Nvngx_FFX_Handle*) InFeatureHandle;
+
+    if (!InParameters || !InOurHandle)
+        return NVSDK_NGX_Result_FAIL_InvalidParameter;
+
+    if (!InitVk())
+        return NVSDK_NGX_Result_Fail;
+
+    // The proxy swaps in the backend type of the FFX module creating the context
+    ffxCreateBackendVKDesc backendDesc {};
+    backendDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK;
+    backendDesc.vkDevice = InOurHandle->vkDevice;
+    backendDesc.vkPhysicalDevice = vkPhysicalDevice;
+    backendDesc.vkDeviceProcAddr = &VulkanHooks::GetDeviceProcAddr;
+
+    // Version queries take a VkDeviceContext, which is what follows the header
+    return Evaluate(ApiVk, &backendDesc.header, &backendDesc.vkDevice, InCmdList, InOurHandle, InParameters);
+}
+
+NVSDK_NGX_Result Nvngx_FFX::VULKAN_PopulateParameters_Impl(NVSDK_NGX_Parameter* InParameters)
+{
+    return D3D12_PopulateParameters_Impl(InParameters);
 }

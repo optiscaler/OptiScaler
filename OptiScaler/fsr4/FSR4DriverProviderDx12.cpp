@@ -173,6 +173,13 @@ HRESULT STDMETHODCALLTYPE AmdExtFfxApi::UpdateFfxApiProvider(void* pData, uint32
         return E_NOINTERFACE;
     }
 
+    // amd_fidelityfx_vk.dll asks too, but would get DX12 providers that never find their backend
+    if (FfxApiProxy::IsVkModule(callerModule))
+    {
+        LOG_DEBUG("Not giving the DX12 driver providers to a Vulkan FFX module");
+        return E_NOINTERFACE;
+    }
+
     auto effectType = FfxApiProxy::GetType(static_cast<ExternalProviderData*>(pData)->descType);
 
     auto effect = magic_enum::enum_name(effectType);

@@ -163,6 +163,23 @@ class FfxApiProxy
                (module == main_dx12.dll || module == upscaling_dx12.dll || IsCustomUpscalerModule(module));
     }
 
+    static bool IsVkModule(HMODULE module)
+    {
+        if (module == nullptr)
+            return false;
+
+        for (const auto* vk :
+             { &main_vk, &upscaling_vk, &fg_vk, &legacy_vk, &main_vk_hooked, &upscaling_vk_hooked, &fg_vk_hooked })
+        {
+            if (vk->dll == module)
+                return true;
+        }
+
+        std::scoped_lock lock(customMutex);
+        return std::ranges::any_of(custom_vk,
+                                   [module](const auto& custom) { return custom.second.module.dll == module; });
+    }
+
     static bool IsCustomUpscalerModule(HMODULE module)
     {
         if (module == nullptr)

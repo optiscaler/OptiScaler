@@ -96,9 +96,6 @@ class IFGFeature_Vk : public virtual IFGFeature
     void NewFrame() override final;
     std::optional<VkFGResource> GetResource(FG_ResourceType type, int index = -1);
 
-    static void ImageBarrier(VkCommandBuffer cmdBuffer, VkImage image, VkFormat format, VkImageLayout oldLayout,
-                             VkImageLayout newLayout);
-
     // Copies the resource into target in the given format, then points the resource to the copy.
     // Formats only differing in sRGB keep the stored values, others get blitted.
     bool CopyImage(VkCommandBuffer cmdBuffer, VkFGResource& resource, ImageCopy& target, VkFormat format);
@@ -110,6 +107,9 @@ class IFGFeature_Vk : public virtual IFGFeature
     const ImageCopy* OwnCopy(const VkFGResource& resource, int fIndex) const;
 
   public:
+    static void ImageBarrier(VkCommandBuffer cmdBuffer, VkImage image, VkFormat format, VkImageLayout oldLayout,
+                             VkImageLayout newLayout);
+
     static VkFormat WithoutSrgb(VkFormat format);
 
     // Called around vkCreateDevice to add what the output needs, like the extra queues, to the game's device

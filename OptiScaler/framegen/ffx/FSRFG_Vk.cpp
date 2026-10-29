@@ -57,7 +57,7 @@ static std::optional<uint32_t> GetFfxState(VkImageLayout layout)
 }
 
 // Reverse of GetFfxState, as FFX's getVKImageLayoutFromResourceState does it
-static VkImageLayout GetLayout(uint32_t state)
+VkImageLayout FSRFG_Vk::GetLayout(uint32_t state)
 {
     switch (state)
     {
