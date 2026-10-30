@@ -262,16 +262,16 @@ class CommandBufferStateTracker
                 }
                 else if (familyIt->second != *queueFamilyIndex)
                 {
-                    LOG_WARN("Pool {:X} queue family changed from {} to {} - replacing stale metadata",
-                             (size_t) pool, familyIt->second, *queueFamilyIndex);
+                    LOG_WARN("Pool {:X} queue family changed from {} to {} - replacing stale metadata", (size_t) pool,
+                             familyIt->second, *queueFamilyIndex);
                     familyIt->second = *queueFamilyIndex;
                 }
             }
 
             if (_poolEpochs.find(pool) == _poolEpochs.end())
             {
-                _poolEpochs[pool] = std::make_shared<std::atomic<uint64_t>>(
-                    _globalEpochCounter.load(std::memory_order_acquire));
+                _poolEpochs[pool] =
+                    std::make_shared<std::atomic<uint64_t>>(_globalEpochCounter.load(std::memory_order_acquire));
             }
         }
 
@@ -301,7 +301,7 @@ class CommandBufferStateTracker
         auto entry = GetOrCreateEntry(cmd, false);
         VkCommandBuffer expected = VK_NULL_HANDLE;
         if (!entry->VirtualCommandBuffer.compare_exchange_strong(expected, virtualCmd, std::memory_order_acq_rel,
-                                                                  std::memory_order_acquire))
+                                                                 std::memory_order_acquire))
         {
             return false;
         }
@@ -1139,6 +1139,18 @@ class CommandBufferStateTracker
         if (it == _cmdBufferLevels.end())
             return std::nullopt;
         return it->second;
+    }
+
+    std::vector<VkCommandBuffer> GetPoolCommandBuffers(VkCommandPool pool) const
+    {
+        std::vector<VkCommandBuffer> result;
+        std::shared_lock mapLock(_statesMapMutex);
+        for (const auto& [cmd, cmdPool] : _cmdBufferToPool)
+        {
+            if (cmdPool == pool)
+                result.push_back(cmd);
+        }
+        return result;
     }
 
   private:

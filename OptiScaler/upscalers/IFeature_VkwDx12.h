@@ -81,8 +81,11 @@ class IFeature_VkwDx12 : public virtual IFeature_Vk
     VkSemaphore vkSemaphoreCopyBack[2] = { VK_NULL_HANDLE, VK_NULL_HANDLE };
     ID3D12Fence* dx12FenceTextureCopy[2] = { nullptr, nullptr };
     HANDLE vkSHForTextureCopy[2] = { nullptr, nullptr };
-    ULONG _fenceValue = 0;
+    uint64_t _fenceValue = 0;
     uint64_t pendingResourceCopyValue = 0;
+    VkCommandBuffer registeredVirtualCommandBuffer = VK_NULL_HANDLE;
+    bool commandListOpen = false;
+    uint32_t _abortedWaits = 0;
     std::mutex EvaluateMutex;
 
     // D3D12 processing shaders
@@ -128,7 +131,10 @@ class IFeature_VkwDx12 : public virtual IFeature_Vk
     bool CreateSharedFenceSemaphore();
 
     void ReleaseSharedResources();
+    // Lets the last upscale finish on D3D12, call before destroying the upscaler context
+    void FinishPendingWork();
     void ReleaseSyncResources();
+    void ReleaseSharedResource(VK_TEXTURE2D_RESOURCE_C& resource);
 
   public:
     bool BaseInit(VkInstance InInstance, VkPhysicalDevice InPD, VkDevice InDevice, VkCommandBuffer InCmdList,
