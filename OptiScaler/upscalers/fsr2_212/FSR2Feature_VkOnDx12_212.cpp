@@ -148,6 +148,7 @@ bool FSR2FeatureVkOnDx12_212::Init(VkInstance InInstance, VkPhysicalDevice InPD,
 bool FSR2FeatureVkOnDx12_212::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters)
 {
     LOG_FUNC();
+    std::scoped_lock evaluateLock(EvaluateMutex);
 
     if (!_baseInit)
     {
@@ -540,29 +541,24 @@ bool FSR2FeatureVkOnDx12_212::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Pa
 
     } while (false);
 
-    auto evalResult = false;
-
-    do
+    // The submit transaction ProcessVulkanTextures registered has to be cancelled, otherwise D3D12 waits for it forever
+    if (state != 2 || ffxresult != Fsr212::FFX_OK)
     {
-        if (state != 2)
-            break;
+        AbortPendingInterop(InCmdBuffer, frame);
+        return false;
+    }
 
-        if (ffxresult != Fsr212::FFX_OK)
-            break;
+    if (!CopyBackOutput(InCmdBuffer))
+    {
+        LOG_ERROR("Can't copy output texture back!");
+        AbortPendingInterop(InCmdBuffer, frame);
+        return false;
+    }
 
-        if (!CopyBackOutput())
-        {
-            LOG_ERROR("Can't copy output texture back!");
-            break;
-        }
-
-        evalResult = true;
-
-    } while (false);
-
+    // Only a completed frame signals Dx12Fence, the next one waits for it
     _frameCount++;
 
-    return evalResult;
+    return true;
 }
 
 NVSDK_NGX_Parameter* FSR2FeatureVkOnDx12_212::SetParameters(NVSDK_NGX_Parameter* InParameters)

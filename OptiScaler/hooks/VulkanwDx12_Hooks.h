@@ -14,6 +14,25 @@
 
 class Vulkan_wDx12
 {
+  public:
+    struct PendingSubmission
+    {
+        VkCommandBuffer submitCommandBuffer = VK_NULL_HANDLE;
+        VkSemaphore resourceCopySemaphore = VK_NULL_HANDLE;
+        ID3D12Fence* resourceCopyFence = nullptr;
+        uint64_t resourceCopyValue = 0;
+        VkSemaphore copyBackSemaphore = VK_NULL_HANDLE;
+        uint64_t d3d12CompleteValue = 0;
+        uint64_t copyBackValue = 0;
+        VkCommandBuffer copyBackCommandBuffer = VK_NULL_HANDLE;
+        VkCommandBuffer barrierCommandBuffer = VK_NULL_HANDLE;
+    };
+
+    static bool RegisterPendingSubmission(const PendingSubmission& submission);
+    static void CancelPendingSubmission(VkCommandBuffer commandBuffer);
+    static bool RegisterVirtualCommandBuffer(VkCommandBuffer commandBuffer, VkCommandBuffer virtualCommandBuffer);
+    static VkCommandBuffer RemoveVirtualCommandBuffer(VkCommandBuffer commandBuffer);
+
   private:
     static VkResult hk_vkQueueSubmit(VkQueue queue, uint32_t submitCount, const VkSubmitInfo* pSubmits, VkFence fence);
     static VkResult hk_vkQueueSubmit2(VkQueue queue, uint32_t submitCount, const VkSubmitInfo2* pSubmits,
@@ -37,6 +56,12 @@ class Vulkan_wDx12
                                            const VkAllocationCallbacks* pAllocator, VkCommandPool* pCommandPool);
     static PFN_vkVoidFunction GetAddress(const PFN_vkVoidFunction original, const char* pName);
     static void InitializeStateTrackerFunctionTable();
+    static bool TakePendingSubmission(VkCommandBuffer commandBuffer, PendingSubmission& submission);
+    static VkCommandBuffer GetVirtualCommandBuffer(VkCommandBuffer commandBuffer);
+
+    inline static std::mutex pendingSubmissionMutex;
+    inline static std::unordered_map<VkCommandBuffer, PendingSubmission> pendingSubmissions;
+
 
 #pragma region Command Buffer Hooks
 
@@ -865,27 +890,8 @@ class Vulkan_wDx12
   public:
     inline static vk_state::CommandBufferStateTracker cmdBufferStateTracker;
 
-    // Queue Hooking
-    inline static int commandBufferFoundCount = 0;
-
-    inline static VkTimelineSemaphoreSubmitInfo timelineInfoResourceCopy = {};
-    inline static VkSubmitInfo resourceCopySubmitInfo = {};
-    inline static VkPipelineStageFlags waitStage1 = VK_PIPELINE_STAGE_NONE;
-    inline static uint64_t signalValueResourceCopy = 0;
-
-    inline static VkTimelineSemaphoreSubmitInfo copyBackTimelineInfo = {};
-    inline static VkSubmitInfo copyBackSubmitInfo = {};
-    inline static VkPipelineStageFlags copyBackWaitStage = VK_PIPELINE_STAGE_NONE;
-    inline static uint64_t signalValueD3D12 = 0;
-
-    inline static VkTimelineSemaphoreSubmitInfo syncTimelineInfo = {};
-    inline static VkSubmitInfo syncSubmitInfo = {};
-    inline static VkPipelineStageFlags syncWaitStage = VK_PIPELINE_STAGE_NONE;
-    inline static uint64_t signalValueCopyBack = 0;
-
-    inline static VkCommandBuffer lastCmdBuffer = VK_NULL_HANDLE;
-    inline static VkCommandBuffer virtualCmdBuffer = VK_NULL_HANDLE;
-    inline static bool virtualCmdBufferHasRecord = false;
+    // Command-buffer redirection and queue-submit transactions are keyed by command buffer and synchronized.
+    // This allows recording/end/submit to occur on different application threads without global single-slot state.
 
     static void Hook(HMODULE vulkanModule);
     static void Unhook();

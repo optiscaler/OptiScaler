@@ -10,6 +10,8 @@
 #include <detours/detours.h>
 
 #include <vulkan/vulkan_core.h>
+#include <atomic>
+#include <cstring>
 
 static PFN_vkQueueSubmit o_vkQueueSubmit = nullptr;
 static PFN_vkQueueSubmit2 o_vkQueueSubmit2 = nullptr;
@@ -311,18 +313,18 @@ void Vulkan_wDx12::hk_vkCmdBindPipeline(VkCommandBuffer commandBuffer, VkPipelin
                                         VkPipeline pipeline)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(commandBuffer);
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (mappedVirtualCmdBuffer == VK_NULL_HANDLE)
     {
         cmdBufferStateTracker.OnBindPipeline(commandBuffer, pipelineBindPoint, pipeline);
     }
-    else if (cmdBuffer == lastCmdBuffer)
+    else
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -336,18 +338,18 @@ void Vulkan_wDx12::hk_vkCmdSetViewport(VkCommandBuffer commandBuffer, uint32_t f
                                        const VkViewport* pViewports)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(commandBuffer);
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (mappedVirtualCmdBuffer == VK_NULL_HANDLE)
     {
         cmdBufferStateTracker.OnSetViewport(commandBuffer, firstViewport, viewportCount, pViewports);
     }
-    else if (cmdBuffer == lastCmdBuffer)
+    else
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -361,18 +363,18 @@ void Vulkan_wDx12::hk_vkCmdSetScissor(VkCommandBuffer commandBuffer, uint32_t fi
                                       const VkRect2D* pScissors)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(commandBuffer);
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (mappedVirtualCmdBuffer == VK_NULL_HANDLE)
     {
         cmdBufferStateTracker.OnSetScissor(commandBuffer, firstScissor, scissorCount, pScissors);
     }
-    else if (cmdBuffer == lastCmdBuffer)
+    else
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -386,13 +388,13 @@ void Vulkan_wDx12::hk_vkCmdSetLineWidth(VkCommandBuffer commandBuffer, float lin
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -407,13 +409,13 @@ void Vulkan_wDx12::hk_vkCmdSetDepthBias(VkCommandBuffer commandBuffer, float dep
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -427,13 +429,13 @@ void Vulkan_wDx12::hk_vkCmdSetBlendConstants(VkCommandBuffer commandBuffer, cons
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -447,13 +449,13 @@ void Vulkan_wDx12::hk_vkCmdSetDepthBounds(VkCommandBuffer commandBuffer, float m
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -468,13 +470,13 @@ void Vulkan_wDx12::hk_vkCmdSetStencilCompareMask(VkCommandBuffer commandBuffer, 
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -489,13 +491,13 @@ void Vulkan_wDx12::hk_vkCmdSetStencilWriteMask(VkCommandBuffer commandBuffer, Vk
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -510,13 +512,13 @@ void Vulkan_wDx12::hk_vkCmdSetStencilReference(VkCommandBuffer commandBuffer, Vk
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -532,20 +534,20 @@ void Vulkan_wDx12::hk_vkCmdBindDescriptorSets(VkCommandBuffer commandBuffer, VkP
                                               const uint32_t* pDynamicOffsets)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(commandBuffer);
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (mappedVirtualCmdBuffer == VK_NULL_HANDLE)
     {
         cmdBufferStateTracker.OnBindDescriptorSets(commandBuffer, pipelineBindPoint, layout, firstSet,
                                                    descriptorSetCount, pDescriptorSets, dynamicOffsetCount,
                                                    pDynamicOffsets);
     }
-    else if (cmdBuffer == lastCmdBuffer)
+    else
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -563,18 +565,18 @@ void Vulkan_wDx12::hk_vkCmdBindIndexBuffer(VkCommandBuffer commandBuffer, VkBuff
                                            VkIndexType indexType)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(commandBuffer);
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (mappedVirtualCmdBuffer == VK_NULL_HANDLE)
     {
         cmdBufferStateTracker.OnBindIndexBuffer(commandBuffer, buffer, offset, indexType);
     }
-    else if (cmdBuffer == lastCmdBuffer)
+    else
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -589,18 +591,18 @@ void Vulkan_wDx12::hk_vkCmdBindVertexBuffers(VkCommandBuffer commandBuffer, uint
                                              const VkDeviceSize* pOffsets)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(commandBuffer);
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (mappedVirtualCmdBuffer == VK_NULL_HANDLE)
     {
         cmdBufferStateTracker.OnBindVertexBuffers(commandBuffer, firstBinding, bindingCount, pBuffers, pOffsets);
     }
-    else if (cmdBuffer == lastCmdBuffer)
+    else
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -615,13 +617,13 @@ void Vulkan_wDx12::hk_vkCmdDraw(VkCommandBuffer commandBuffer, uint32_t vertexCo
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -636,13 +638,13 @@ void Vulkan_wDx12::hk_vkCmdDrawIndexed(VkCommandBuffer commandBuffer, uint32_t i
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -657,13 +659,13 @@ void Vulkan_wDx12::hk_vkCmdDrawIndirect(VkCommandBuffer commandBuffer, VkBuffer 
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -678,13 +680,13 @@ void Vulkan_wDx12::hk_vkCmdDrawIndexedIndirect(VkCommandBuffer commandBuffer, Vk
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -699,13 +701,13 @@ void Vulkan_wDx12::hk_vkCmdDispatch(VkCommandBuffer commandBuffer, uint32_t grou
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -719,13 +721,13 @@ void Vulkan_wDx12::hk_vkCmdDispatchIndirect(VkCommandBuffer commandBuffer, VkBuf
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -740,13 +742,13 @@ void Vulkan_wDx12::hk_vkCmdCopyBuffer(VkCommandBuffer commandBuffer, VkBuffer sr
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -762,13 +764,13 @@ void Vulkan_wDx12::hk_vkCmdCopyImage(VkCommandBuffer commandBuffer, VkImage srcI
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -784,13 +786,13 @@ void Vulkan_wDx12::hk_vkCmdBlitImage(VkCommandBuffer commandBuffer, VkImage srcI
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -806,13 +808,13 @@ void Vulkan_wDx12::hk_vkCmdCopyBufferToImage(VkCommandBuffer commandBuffer, VkBu
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -828,13 +830,13 @@ void Vulkan_wDx12::hk_vkCmdCopyImageToBuffer(VkCommandBuffer commandBuffer, VkIm
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -849,13 +851,13 @@ void Vulkan_wDx12::hk_vkCmdUpdateBuffer(VkCommandBuffer commandBuffer, VkBuffer 
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -870,13 +872,13 @@ void Vulkan_wDx12::hk_vkCmdFillBuffer(VkCommandBuffer commandBuffer, VkBuffer ds
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -892,13 +894,13 @@ void Vulkan_wDx12::hk_vkCmdClearColorImage(VkCommandBuffer commandBuffer, VkImag
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -915,13 +917,13 @@ void Vulkan_wDx12::hk_vkCmdClearDepthStencilImage(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -937,13 +939,13 @@ void Vulkan_wDx12::hk_vkCmdClearAttachments(VkCommandBuffer commandBuffer, uint3
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -959,13 +961,13 @@ void Vulkan_wDx12::hk_vkCmdResolveImage(VkCommandBuffer commandBuffer, VkImage s
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -979,13 +981,13 @@ void Vulkan_wDx12::hk_vkCmdSetEvent(VkCommandBuffer commandBuffer, VkEvent event
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -999,13 +1001,13 @@ void Vulkan_wDx12::hk_vkCmdResetEvent(VkCommandBuffer commandBuffer, VkEvent eve
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1025,13 +1027,13 @@ void Vulkan_wDx12::hk_vkCmdWaitEvents(VkCommandBuffer commandBuffer, uint32_t ev
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1094,20 +1096,20 @@ void Vulkan_wDx12::hk_vkCmdPipelineBarrier(VkCommandBuffer commandBuffer, VkPipe
     }
 
     VkCommandBuffer cmdBuffer = commandBuffer;
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(commandBuffer);
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (mappedVirtualCmdBuffer == VK_NULL_HANDLE)
     {
         cmdBufferStateTracker.OnPipelineBarrier(commandBuffer, srcStageMask, dstStageMask, dependencyFlags,
                                                 memoryBarrierCount, pMemoryBarriers, bufferMemoryBarrierCount,
                                                 pBufferMemoryBarriers, imageMemoryBarrierCount, pImageMemoryBarriers);
     }
-    else if (cmdBuffer == lastCmdBuffer)
+    else
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1124,13 +1126,13 @@ void Vulkan_wDx12::hk_vkCmdBeginQuery(VkCommandBuffer commandBuffer, VkQueryPool
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1144,13 +1146,13 @@ void Vulkan_wDx12::hk_vkCmdEndQuery(VkCommandBuffer commandBuffer, VkQueryPool q
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1165,13 +1167,13 @@ void Vulkan_wDx12::hk_vkCmdResetQueryPool(VkCommandBuffer commandBuffer, VkQuery
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1186,13 +1188,13 @@ void Vulkan_wDx12::hk_vkCmdWriteTimestamp(VkCommandBuffer commandBuffer, VkPipel
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1208,13 +1210,13 @@ void Vulkan_wDx12::hk_vkCmdCopyQueryPoolResults(VkCommandBuffer commandBuffer, V
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1229,8 +1231,9 @@ void Vulkan_wDx12::hk_vkCmdPushConstants(VkCommandBuffer commandBuffer, VkPipeli
                                          const void* pValues)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(commandBuffer);
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (mappedVirtualCmdBuffer == VK_NULL_HANDLE)
     {
         // Infer bind point from stage flags
         VkPipelineBindPoint bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -1251,13 +1254,12 @@ void Vulkan_wDx12::hk_vkCmdPushConstants(VkCommandBuffer commandBuffer, VkPipeli
 
         cmdBufferStateTracker.OnPushConstants(commandBuffer, bindPoint, layout, stageFlags, offset, size, pValues);
     }
-    else if (cmdBuffer == lastCmdBuffer)
+    else
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1271,18 +1273,18 @@ void Vulkan_wDx12::hk_vkCmdBeginRenderPass(VkCommandBuffer commandBuffer, const 
                                            VkSubpassContents contents)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(commandBuffer);
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (mappedVirtualCmdBuffer == VK_NULL_HANDLE)
     {
         cmdBufferStateTracker.OnBeginRenderPass(commandBuffer, pRenderPassBegin);
     }
-    else if (cmdBuffer == lastCmdBuffer)
+    else
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1296,13 +1298,13 @@ void Vulkan_wDx12::hk_vkCmdNextSubpass(VkCommandBuffer commandBuffer, VkSubpassC
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1315,18 +1317,18 @@ void Vulkan_wDx12::hk_vkCmdNextSubpass(VkCommandBuffer commandBuffer, VkSubpassC
 void Vulkan_wDx12::hk_vkCmdEndRenderPass(VkCommandBuffer commandBuffer)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(commandBuffer);
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (mappedVirtualCmdBuffer == VK_NULL_HANDLE)
     {
         cmdBufferStateTracker.OnEndRenderPass(commandBuffer);
     }
-    else if (cmdBuffer == lastCmdBuffer)
+    else
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1340,13 +1342,13 @@ void Vulkan_wDx12::hk_vkCmdSetDeviceMask(VkCommandBuffer commandBuffer, uint32_t
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1362,13 +1364,13 @@ void Vulkan_wDx12::hk_vkCmdDispatchBase(VkCommandBuffer commandBuffer, uint32_t 
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1384,13 +1386,13 @@ void Vulkan_wDx12::hk_vkCmdDrawIndirectCount(VkCommandBuffer commandBuffer, VkBu
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1406,13 +1408,13 @@ void Vulkan_wDx12::hk_vkCmdDrawIndexedIndirectCount(VkCommandBuffer commandBuffe
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1428,13 +1430,13 @@ void Vulkan_wDx12::hk_vkCmdBeginRenderPass2(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1449,13 +1451,13 @@ void Vulkan_wDx12::hk_vkCmdNextSubpass2(VkCommandBuffer commandBuffer, const VkS
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1469,13 +1471,13 @@ void Vulkan_wDx12::hk_vkCmdEndRenderPass2(VkCommandBuffer commandBuffer, const V
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1490,13 +1492,13 @@ void Vulkan_wDx12::hk_vkCmdSetEvent2(VkCommandBuffer commandBuffer, VkEvent even
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1510,13 +1512,13 @@ void Vulkan_wDx12::hk_vkCmdResetEvent2(VkCommandBuffer commandBuffer, VkEvent ev
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1531,13 +1533,13 @@ void Vulkan_wDx12::hk_vkCmdWaitEvents2(VkCommandBuffer commandBuffer, uint32_t e
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1551,13 +1553,13 @@ void Vulkan_wDx12::hk_vkCmdPipelineBarrier2(VkCommandBuffer commandBuffer, const
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1572,13 +1574,13 @@ void Vulkan_wDx12::hk_vkCmdWriteTimestamp2(VkCommandBuffer commandBuffer, VkPipe
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1592,13 +1594,13 @@ void Vulkan_wDx12::hk_vkCmdCopyBuffer2(VkCommandBuffer commandBuffer, const VkCo
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1612,13 +1614,13 @@ void Vulkan_wDx12::hk_vkCmdCopyImage2(VkCommandBuffer commandBuffer, const VkCop
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1633,13 +1635,13 @@ void Vulkan_wDx12::hk_vkCmdCopyBufferToImage2(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1654,13 +1656,13 @@ void Vulkan_wDx12::hk_vkCmdCopyImageToBuffer2(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1674,13 +1676,13 @@ void Vulkan_wDx12::hk_vkCmdBlitImage2(VkCommandBuffer commandBuffer, const VkBli
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1694,13 +1696,13 @@ void Vulkan_wDx12::hk_vkCmdResolveImage2(VkCommandBuffer commandBuffer, const Vk
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1714,13 +1716,13 @@ void Vulkan_wDx12::hk_vkCmdBeginRendering(VkCommandBuffer commandBuffer, const V
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1734,13 +1736,13 @@ void Vulkan_wDx12::hk_vkCmdEndRendering(VkCommandBuffer commandBuffer)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1753,18 +1755,18 @@ void Vulkan_wDx12::hk_vkCmdEndRendering(VkCommandBuffer commandBuffer)
 void Vulkan_wDx12::hk_vkCmdSetCullMode(VkCommandBuffer commandBuffer, VkCullModeFlags cullMode)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(commandBuffer);
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (mappedVirtualCmdBuffer == VK_NULL_HANDLE)
     {
         cmdBufferStateTracker.OnSetCullMode(commandBuffer, cullMode);
     }
-    else if (cmdBuffer == lastCmdBuffer)
+    else
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1777,18 +1779,18 @@ void Vulkan_wDx12::hk_vkCmdSetCullMode(VkCommandBuffer commandBuffer, VkCullMode
 void Vulkan_wDx12::hk_vkCmdSetFrontFace(VkCommandBuffer commandBuffer, VkFrontFace frontFace)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(commandBuffer);
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (mappedVirtualCmdBuffer == VK_NULL_HANDLE)
     {
         cmdBufferStateTracker.OnSetFrontFace(commandBuffer, frontFace);
     }
-    else if (cmdBuffer == lastCmdBuffer)
+    else
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1801,18 +1803,18 @@ void Vulkan_wDx12::hk_vkCmdSetFrontFace(VkCommandBuffer commandBuffer, VkFrontFa
 void Vulkan_wDx12::hk_vkCmdSetPrimitiveTopology(VkCommandBuffer commandBuffer, VkPrimitiveTopology primitiveTopology)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(commandBuffer);
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (mappedVirtualCmdBuffer == VK_NULL_HANDLE)
     {
         cmdBufferStateTracker.OnSetPrimitiveTopology(commandBuffer, primitiveTopology);
     }
-    else if (cmdBuffer == lastCmdBuffer)
+    else
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1827,13 +1829,13 @@ void Vulkan_wDx12::hk_vkCmdSetViewportWithCount(VkCommandBuffer commandBuffer, u
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1848,13 +1850,13 @@ void Vulkan_wDx12::hk_vkCmdSetScissorWithCount(VkCommandBuffer commandBuffer, ui
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1871,13 +1873,13 @@ void Vulkan_wDx12::hk_vkCmdBindVertexBuffers2(VkCommandBuffer commandBuffer, uin
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1890,18 +1892,18 @@ void Vulkan_wDx12::hk_vkCmdBindVertexBuffers2(VkCommandBuffer commandBuffer, uin
 void Vulkan_wDx12::hk_vkCmdSetDepthTestEnable(VkCommandBuffer commandBuffer, VkBool32 depthTestEnable)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(commandBuffer);
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (mappedVirtualCmdBuffer == VK_NULL_HANDLE)
     {
         cmdBufferStateTracker.OnSetDepthTestEnable(commandBuffer, depthTestEnable);
     }
-    else if (cmdBuffer == lastCmdBuffer)
+    else
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1914,18 +1916,18 @@ void Vulkan_wDx12::hk_vkCmdSetDepthTestEnable(VkCommandBuffer commandBuffer, VkB
 void Vulkan_wDx12::hk_vkCmdSetDepthWriteEnable(VkCommandBuffer commandBuffer, VkBool32 depthWriteEnable)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(commandBuffer);
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (mappedVirtualCmdBuffer == VK_NULL_HANDLE)
     {
         cmdBufferStateTracker.OnSetDepthWriteEnable(commandBuffer, depthWriteEnable);
     }
-    else if (cmdBuffer == lastCmdBuffer)
+    else
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1938,18 +1940,18 @@ void Vulkan_wDx12::hk_vkCmdSetDepthWriteEnable(VkCommandBuffer commandBuffer, Vk
 void Vulkan_wDx12::hk_vkCmdSetDepthCompareOp(VkCommandBuffer commandBuffer, VkCompareOp depthCompareOp)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(commandBuffer);
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (mappedVirtualCmdBuffer == VK_NULL_HANDLE)
     {
         cmdBufferStateTracker.OnSetDepthCompareOp(commandBuffer, depthCompareOp);
     }
-    else if (cmdBuffer == lastCmdBuffer)
+    else
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1962,18 +1964,18 @@ void Vulkan_wDx12::hk_vkCmdSetDepthCompareOp(VkCommandBuffer commandBuffer, VkCo
 void Vulkan_wDx12::hk_vkCmdSetDepthBoundsTestEnable(VkCommandBuffer commandBuffer, VkBool32 depthBoundsTestEnable)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(commandBuffer);
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (mappedVirtualCmdBuffer == VK_NULL_HANDLE)
     {
         cmdBufferStateTracker.OnSetDepthBoundsTestEnable(commandBuffer, depthBoundsTestEnable);
     }
-    else if (cmdBuffer == lastCmdBuffer)
+    else
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -1986,18 +1988,18 @@ void Vulkan_wDx12::hk_vkCmdSetDepthBoundsTestEnable(VkCommandBuffer commandBuffe
 void Vulkan_wDx12::hk_vkCmdSetStencilTestEnable(VkCommandBuffer commandBuffer, VkBool32 stencilTestEnable)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(commandBuffer);
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (mappedVirtualCmdBuffer == VK_NULL_HANDLE)
     {
         cmdBufferStateTracker.OnSetStencilTestEnable(commandBuffer, stencilTestEnable);
     }
-    else if (cmdBuffer == lastCmdBuffer)
+    else
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2011,18 +2013,18 @@ void Vulkan_wDx12::hk_vkCmdSetStencilOp(VkCommandBuffer commandBuffer, VkStencil
                                         VkStencilOp passOp, VkStencilOp depthFailOp, VkCompareOp compareOp)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(commandBuffer);
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (mappedVirtualCmdBuffer == VK_NULL_HANDLE)
     {
         cmdBufferStateTracker.OnSetStencilOp(commandBuffer, faceMask, failOp, passOp, depthFailOp, compareOp);
     }
-    else if (cmdBuffer == lastCmdBuffer)
+    else
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2036,13 +2038,13 @@ void Vulkan_wDx12::hk_vkCmdSetRasterizerDiscardEnable(VkCommandBuffer commandBuf
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2056,13 +2058,13 @@ void Vulkan_wDx12::hk_vkCmdSetDepthBiasEnable(VkCommandBuffer commandBuffer, VkB
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2076,13 +2078,13 @@ void Vulkan_wDx12::hk_vkCmdSetPrimitiveRestartEnable(VkCommandBuffer commandBuff
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2097,13 +2099,13 @@ void Vulkan_wDx12::hk_vkCmdSetLineStipple(VkCommandBuffer commandBuffer, uint32_
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2118,13 +2120,13 @@ void Vulkan_wDx12::hk_vkCmdBindIndexBuffer2(VkCommandBuffer commandBuffer, VkBuf
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2140,13 +2142,13 @@ void Vulkan_wDx12::hk_vkCmdPushDescriptorSet(VkCommandBuffer commandBuffer, VkPi
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2162,13 +2164,13 @@ void Vulkan_wDx12::hk_vkCmdPushDescriptorSetWithTemplate(VkCommandBuffer command
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2183,13 +2185,13 @@ void Vulkan_wDx12::hk_vkCmdSetRenderingAttachmentLocations(VkCommandBuffer comma
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2204,13 +2206,13 @@ void Vulkan_wDx12::hk_vkCmdSetRenderingInputAttachmentIndices(
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2225,13 +2227,13 @@ void Vulkan_wDx12::hk_vkCmdBindDescriptorSets2(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2245,13 +2247,13 @@ void Vulkan_wDx12::hk_vkCmdPushConstants2(VkCommandBuffer commandBuffer, const V
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2266,13 +2268,13 @@ void Vulkan_wDx12::hk_vkCmdPushDescriptorSet2(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2287,13 +2289,13 @@ void Vulkan_wDx12::hk_vkCmdPushDescriptorSetWithTemplate2(
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2308,13 +2310,13 @@ void Vulkan_wDx12::hk_vkCmdBeginVideoCodingKHR(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2329,13 +2331,13 @@ void Vulkan_wDx12::hk_vkCmdEndVideoCodingKHR(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2350,13 +2352,13 @@ void Vulkan_wDx12::hk_vkCmdControlVideoCodingKHR(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2370,13 +2372,13 @@ void Vulkan_wDx12::hk_vkCmdDecodeVideoKHR(VkCommandBuffer commandBuffer, const V
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2390,13 +2392,13 @@ void Vulkan_wDx12::hk_vkCmdBeginRenderingKHR(VkCommandBuffer commandBuffer, cons
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2410,13 +2412,13 @@ void Vulkan_wDx12::hk_vkCmdEndRenderingKHR(VkCommandBuffer commandBuffer)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2430,13 +2432,13 @@ void Vulkan_wDx12::hk_vkCmdSetDeviceMaskKHR(VkCommandBuffer commandBuffer, uint3
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2452,13 +2454,13 @@ void Vulkan_wDx12::hk_vkCmdDispatchBaseKHR(VkCommandBuffer commandBuffer, uint32
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2474,13 +2476,13 @@ void Vulkan_wDx12::hk_vkCmdPushDescriptorSetKHR(VkCommandBuffer commandBuffer, V
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2496,13 +2498,13 @@ void Vulkan_wDx12::hk_vkCmdPushDescriptorSetWithTemplateKHR(VkCommandBuffer comm
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2518,13 +2520,13 @@ void Vulkan_wDx12::hk_vkCmdBeginRenderPass2KHR(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2539,13 +2541,13 @@ void Vulkan_wDx12::hk_vkCmdNextSubpass2KHR(VkCommandBuffer commandBuffer, const 
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2559,13 +2561,13 @@ void Vulkan_wDx12::hk_vkCmdEndRenderPass2KHR(VkCommandBuffer commandBuffer, cons
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2581,13 +2583,13 @@ void Vulkan_wDx12::hk_vkCmdDrawIndirectCountKHR(VkCommandBuffer commandBuffer, V
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2604,13 +2606,13 @@ void Vulkan_wDx12::hk_vkCmdDrawIndexedIndirectCountKHR(VkCommandBuffer commandBu
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2625,13 +2627,13 @@ void Vulkan_wDx12::hk_vkCmdSetFragmentShadingRateKHR(VkCommandBuffer commandBuff
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2646,13 +2648,13 @@ void Vulkan_wDx12::hk_vkCmdSetRenderingAttachmentLocationsKHR(VkCommandBuffer co
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2667,13 +2669,13 @@ void Vulkan_wDx12::hk_vkCmdSetRenderingInputAttachmentIndicesKHR(
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2687,13 +2689,13 @@ void Vulkan_wDx12::hk_vkCmdEncodeVideoKHR(VkCommandBuffer commandBuffer, const V
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2708,13 +2710,13 @@ void Vulkan_wDx12::hk_vkCmdSetEvent2KHR(VkCommandBuffer commandBuffer, VkEvent e
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2728,13 +2730,13 @@ void Vulkan_wDx12::hk_vkCmdResetEvent2KHR(VkCommandBuffer commandBuffer, VkEvent
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2749,13 +2751,13 @@ void Vulkan_wDx12::hk_vkCmdWaitEvents2KHR(VkCommandBuffer commandBuffer, uint32_
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2769,13 +2771,13 @@ void Vulkan_wDx12::hk_vkCmdPipelineBarrier2KHR(VkCommandBuffer commandBuffer, co
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2790,13 +2792,13 @@ void Vulkan_wDx12::hk_vkCmdWriteTimestamp2KHR(VkCommandBuffer commandBuffer, VkP
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2810,13 +2812,13 @@ void Vulkan_wDx12::hk_vkCmdCopyBuffer2KHR(VkCommandBuffer commandBuffer, const V
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2830,13 +2832,13 @@ void Vulkan_wDx12::hk_vkCmdCopyImage2KHR(VkCommandBuffer commandBuffer, const Vk
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2851,13 +2853,13 @@ void Vulkan_wDx12::hk_vkCmdCopyBufferToImage2KHR(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2872,13 +2874,13 @@ void Vulkan_wDx12::hk_vkCmdCopyImageToBuffer2KHR(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2892,13 +2894,13 @@ void Vulkan_wDx12::hk_vkCmdBlitImage2KHR(VkCommandBuffer commandBuffer, const Vk
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2912,13 +2914,13 @@ void Vulkan_wDx12::hk_vkCmdResolveImage2KHR(VkCommandBuffer commandBuffer, const
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2932,13 +2934,13 @@ void Vulkan_wDx12::hk_vkCmdTraceRaysIndirect2KHR(VkCommandBuffer commandBuffer, 
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2953,13 +2955,13 @@ void Vulkan_wDx12::hk_vkCmdBindIndexBuffer2KHR(VkCommandBuffer commandBuffer, Vk
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2974,13 +2976,13 @@ void Vulkan_wDx12::hk_vkCmdSetLineStippleKHR(VkCommandBuffer commandBuffer, uint
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -2995,13 +2997,13 @@ void Vulkan_wDx12::hk_vkCmdBindDescriptorSets2KHR(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3016,13 +3018,13 @@ void Vulkan_wDx12::hk_vkCmdPushConstants2KHR(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3037,13 +3039,13 @@ void Vulkan_wDx12::hk_vkCmdPushDescriptorSet2KHR(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3058,13 +3060,13 @@ void Vulkan_wDx12::hk_vkCmdPushDescriptorSetWithTemplate2KHR(
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3079,13 +3081,13 @@ void Vulkan_wDx12::hk_vkCmdSetDescriptorBufferOffsets2EXT(
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3101,13 +3103,13 @@ void Vulkan_wDx12::hk_vkCmdBindDescriptorBufferEmbeddedSamplers2EXT(
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3122,13 +3124,13 @@ void Vulkan_wDx12::hk_vkCmdDebugMarkerBeginEXT(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3142,13 +3144,13 @@ void Vulkan_wDx12::hk_vkCmdDebugMarkerEndEXT(VkCommandBuffer commandBuffer)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3163,13 +3165,13 @@ void Vulkan_wDx12::hk_vkCmdDebugMarkerInsertEXT(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3185,13 +3187,13 @@ void Vulkan_wDx12::hk_vkCmdBindTransformFeedbackBuffersEXT(VkCommandBuffer comma
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3207,13 +3209,13 @@ void Vulkan_wDx12::hk_vkCmdBeginTransformFeedbackEXT(VkCommandBuffer commandBuff
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3230,13 +3232,13 @@ void Vulkan_wDx12::hk_vkCmdEndTransformFeedbackEXT(VkCommandBuffer commandBuffer
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3252,13 +3254,13 @@ void Vulkan_wDx12::hk_vkCmdBeginQueryIndexedEXT(VkCommandBuffer commandBuffer, V
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3273,13 +3275,13 @@ void Vulkan_wDx12::hk_vkCmdEndQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQ
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3296,13 +3298,13 @@ void Vulkan_wDx12::hk_vkCmdDrawIndirectByteCountEXT(VkCommandBuffer commandBuffe
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3317,13 +3319,13 @@ void Vulkan_wDx12::hk_vkCmdCuLaunchKernelNVX(VkCommandBuffer commandBuffer, cons
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3339,13 +3341,13 @@ void Vulkan_wDx12::hk_vkCmdDrawIndirectCountAMD(VkCommandBuffer commandBuffer, V
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3362,13 +3364,13 @@ void Vulkan_wDx12::hk_vkCmdDrawIndexedIndirectCountAMD(VkCommandBuffer commandBu
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3383,13 +3385,13 @@ void Vulkan_wDx12::hk_vkCmdBeginConditionalRenderingEXT(
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3403,13 +3405,13 @@ void Vulkan_wDx12::hk_vkCmdEndConditionalRenderingEXT(VkCommandBuffer commandBuf
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3424,13 +3426,13 @@ void Vulkan_wDx12::hk_vkCmdSetViewportWScalingNV(VkCommandBuffer commandBuffer, 
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3445,13 +3447,13 @@ void Vulkan_wDx12::hk_vkCmdSetDiscardRectangleEXT(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3465,13 +3467,13 @@ void Vulkan_wDx12::hk_vkCmdSetDiscardRectangleEnableEXT(VkCommandBuffer commandB
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3486,13 +3488,13 @@ void Vulkan_wDx12::hk_vkCmdSetDiscardRectangleModeEXT(VkCommandBuffer commandBuf
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3507,13 +3509,13 @@ void Vulkan_wDx12::hk_vkCmdBeginDebugUtilsLabelEXT(VkCommandBuffer commandBuffer
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3527,13 +3529,13 @@ void Vulkan_wDx12::hk_vkCmdEndDebugUtilsLabelEXT(VkCommandBuffer commandBuffer)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3548,13 +3550,13 @@ void Vulkan_wDx12::hk_vkCmdInsertDebugUtilsLabelEXT(VkCommandBuffer commandBuffe
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3569,13 +3571,13 @@ void Vulkan_wDx12::hk_vkCmdSetSampleLocationsEXT(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3590,13 +3592,13 @@ void Vulkan_wDx12::hk_vkCmdBindShadingRateImageNV(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3612,13 +3614,13 @@ void Vulkan_wDx12::hk_vkCmdSetViewportShadingRatePaletteNV(VkCommandBuffer comma
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3635,13 +3637,13 @@ void Vulkan_wDx12::hk_vkCmdSetCoarseSampleOrderNV(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3660,13 +3662,13 @@ void Vulkan_wDx12::hk_vkCmdBuildAccelerationStructureNV(VkCommandBuffer commandB
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3683,13 +3685,13 @@ void Vulkan_wDx12::hk_vkCmdCopyAccelerationStructureNV(VkCommandBuffer commandBu
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3710,13 +3712,13 @@ void Vulkan_wDx12::hk_vkCmdTraceRaysNV(VkCommandBuffer commandBuffer, VkBuffer r
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3737,13 +3739,13 @@ void Vulkan_wDx12::hk_vkCmdWriteAccelerationStructuresPropertiesNV(
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3759,13 +3761,13 @@ void Vulkan_wDx12::hk_vkCmdWriteBufferMarkerAMD(VkCommandBuffer commandBuffer, V
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3780,13 +3782,13 @@ void Vulkan_wDx12::hk_vkCmdWriteBufferMarker2AMD(VkCommandBuffer commandBuffer, 
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3800,13 +3802,13 @@ void Vulkan_wDx12::hk_vkCmdDrawMeshTasksNV(VkCommandBuffer commandBuffer, uint32
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3821,13 +3823,13 @@ void Vulkan_wDx12::hk_vkCmdDrawMeshTasksIndirectNV(VkCommandBuffer commandBuffer
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3844,13 +3846,13 @@ void Vulkan_wDx12::hk_vkCmdDrawMeshTasksIndirectCountNV(VkCommandBuffer commandB
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3867,13 +3869,13 @@ void Vulkan_wDx12::hk_vkCmdSetExclusiveScissorEnableNV(VkCommandBuffer commandBu
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3889,13 +3891,13 @@ void Vulkan_wDx12::hk_vkCmdSetExclusiveScissorNV(VkCommandBuffer commandBuffer, 
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3909,13 +3911,13 @@ void Vulkan_wDx12::hk_vkCmdSetCheckpointNV(VkCommandBuffer commandBuffer, const 
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3930,13 +3932,13 @@ VkResult Vulkan_wDx12::hk_vkCmdSetPerformanceMarkerINTEL(VkCommandBuffer command
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3951,13 +3953,13 @@ VkResult Vulkan_wDx12::hk_vkCmdSetPerformanceStreamMarkerINTEL(VkCommandBuffer c
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3972,13 +3974,13 @@ VkResult Vulkan_wDx12::hk_vkCmdSetPerformanceOverrideINTEL(VkCommandBuffer comma
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -3993,13 +3995,13 @@ void Vulkan_wDx12::hk_vkCmdSetLineStippleEXT(VkCommandBuffer commandBuffer, uint
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4013,13 +4015,13 @@ void Vulkan_wDx12::hk_vkCmdSetCullModeEXT(VkCommandBuffer commandBuffer, VkCullM
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4033,13 +4035,13 @@ void Vulkan_wDx12::hk_vkCmdSetFrontFaceEXT(VkCommandBuffer commandBuffer, VkFron
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4053,13 +4055,13 @@ void Vulkan_wDx12::hk_vkCmdSetPrimitiveTopologyEXT(VkCommandBuffer commandBuffer
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4074,13 +4076,13 @@ void Vulkan_wDx12::hk_vkCmdSetViewportWithCountEXT(VkCommandBuffer commandBuffer
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4095,13 +4097,13 @@ void Vulkan_wDx12::hk_vkCmdSetScissorWithCountEXT(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4118,13 +4120,13 @@ void Vulkan_wDx12::hk_vkCmdBindVertexBuffers2EXT(VkCommandBuffer commandBuffer, 
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4138,13 +4140,13 @@ void Vulkan_wDx12::hk_vkCmdSetDepthTestEnableEXT(VkCommandBuffer commandBuffer, 
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4158,13 +4160,13 @@ void Vulkan_wDx12::hk_vkCmdSetDepthWriteEnableEXT(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4178,13 +4180,13 @@ void Vulkan_wDx12::hk_vkCmdSetDepthCompareOpEXT(VkCommandBuffer commandBuffer, V
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4198,13 +4200,13 @@ void Vulkan_wDx12::hk_vkCmdSetDepthBoundsTestEnableEXT(VkCommandBuffer commandBu
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4218,13 +4220,13 @@ void Vulkan_wDx12::hk_vkCmdSetStencilTestEnableEXT(VkCommandBuffer commandBuffer
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4240,13 +4242,13 @@ void Vulkan_wDx12::hk_vkCmdSetStencilOpEXT(VkCommandBuffer commandBuffer, VkSten
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4261,13 +4263,13 @@ void Vulkan_wDx12::hk_vkCmdPreprocessGeneratedCommandsNV(VkCommandBuffer command
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4282,13 +4284,13 @@ void Vulkan_wDx12::hk_vkCmdExecuteGeneratedCommandsNV(VkCommandBuffer commandBuf
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4304,13 +4306,13 @@ void Vulkan_wDx12::hk_vkCmdBindPipelineShaderGroupNV(VkCommandBuffer commandBuff
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4324,13 +4326,13 @@ void Vulkan_wDx12::hk_vkCmdSetDepthBias2EXT(VkCommandBuffer commandBuffer, const
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4344,13 +4346,13 @@ void Vulkan_wDx12::hk_vkCmdCudaLaunchKernelNV(VkCommandBuffer commandBuffer, con
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4365,13 +4367,13 @@ void Vulkan_wDx12::hk_vkCmdBindDescriptorBuffersEXT(VkCommandBuffer commandBuffe
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4388,13 +4390,13 @@ void Vulkan_wDx12::hk_vkCmdSetDescriptorBufferOffsetsEXT(VkCommandBuffer command
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4411,13 +4413,13 @@ void Vulkan_wDx12::hk_vkCmdBindDescriptorBufferEmbeddedSamplersEXT(VkCommandBuff
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4433,13 +4435,13 @@ void Vulkan_wDx12::hk_vkCmdSetFragmentShadingRateEnumNV(VkCommandBuffer commandB
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4456,13 +4458,13 @@ void Vulkan_wDx12::hk_vkCmdSetVertexInputEXT(VkCommandBuffer commandBuffer, uint
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4477,13 +4479,13 @@ void Vulkan_wDx12::hk_vkCmdSubpassShadingHUAWEI(VkCommandBuffer commandBuffer)
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4498,13 +4500,13 @@ void Vulkan_wDx12::hk_vkCmdBindInvocationMaskHUAWEI(VkCommandBuffer commandBuffe
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4518,13 +4520,13 @@ void Vulkan_wDx12::hk_vkCmdSetPatchControlPointsEXT(VkCommandBuffer commandBuffe
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4539,13 +4541,13 @@ void Vulkan_wDx12::hk_vkCmdSetRasterizerDiscardEnableEXT(VkCommandBuffer command
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4559,13 +4561,13 @@ void Vulkan_wDx12::hk_vkCmdSetDepthBiasEnableEXT(VkCommandBuffer commandBuffer, 
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4579,13 +4581,13 @@ void Vulkan_wDx12::hk_vkCmdSetLogicOpEXT(VkCommandBuffer commandBuffer, VkLogicO
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4599,13 +4601,13 @@ void Vulkan_wDx12::hk_vkCmdSetPrimitiveRestartEnableEXT(VkCommandBuffer commandB
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4620,13 +4622,13 @@ void Vulkan_wDx12::hk_vkCmdSetColorWriteEnableEXT(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4642,13 +4644,13 @@ void Vulkan_wDx12::hk_vkCmdDrawMultiEXT(VkCommandBuffer commandBuffer, uint32_t 
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4664,13 +4666,13 @@ void Vulkan_wDx12::hk_vkCmdDrawMultiIndexedEXT(VkCommandBuffer commandBuffer, ui
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4685,13 +4687,13 @@ void Vulkan_wDx12::hk_vkCmdBuildMicromapsEXT(VkCommandBuffer commandBuffer, uint
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4705,13 +4707,13 @@ void Vulkan_wDx12::hk_vkCmdCopyMicromapEXT(VkCommandBuffer commandBuffer, const 
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4726,13 +4728,13 @@ void Vulkan_wDx12::hk_vkCmdCopyMicromapToMemoryEXT(VkCommandBuffer commandBuffer
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4747,13 +4749,13 @@ void Vulkan_wDx12::hk_vkCmdCopyMemoryToMicromapEXT(VkCommandBuffer commandBuffer
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4769,13 +4771,13 @@ void Vulkan_wDx12::hk_vkCmdWriteMicromapsPropertiesEXT(VkCommandBuffer commandBu
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4790,13 +4792,13 @@ void Vulkan_wDx12::hk_vkCmdDrawClusterHUAWEI(VkCommandBuffer commandBuffer, uint
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4811,13 +4813,13 @@ void Vulkan_wDx12::hk_vkCmdDrawClusterIndirectHUAWEI(VkCommandBuffer commandBuff
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4832,13 +4834,13 @@ void Vulkan_wDx12::hk_vkCmdCopyMemoryIndirectNV(VkCommandBuffer commandBuffer, V
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4855,13 +4857,13 @@ void Vulkan_wDx12::hk_vkCmdCopyMemoryToImageIndirectNV(VkCommandBuffer commandBu
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4877,13 +4879,13 @@ void Vulkan_wDx12::hk_vkCmdDecompressMemoryNV(VkCommandBuffer commandBuffer, uin
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4900,13 +4902,13 @@ void Vulkan_wDx12::hk_vkCmdDecompressMemoryIndirectCountNV(VkCommandBuffer comma
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4921,13 +4923,13 @@ void Vulkan_wDx12::hk_vkCmdUpdatePipelineIndirectBufferNV(VkCommandBuffer comman
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4941,13 +4943,13 @@ void Vulkan_wDx12::hk_vkCmdSetDepthClampEnableEXT(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4961,13 +4963,13 @@ void Vulkan_wDx12::hk_vkCmdSetPolygonModeEXT(VkCommandBuffer commandBuffer, VkPo
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -4982,13 +4984,13 @@ void Vulkan_wDx12::hk_vkCmdSetRasterizationSamplesEXT(VkCommandBuffer commandBuf
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5003,13 +5005,13 @@ void Vulkan_wDx12::hk_vkCmdSetSampleMaskEXT(VkCommandBuffer commandBuffer, VkSam
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5023,13 +5025,13 @@ void Vulkan_wDx12::hk_vkCmdSetAlphaToCoverageEnableEXT(VkCommandBuffer commandBu
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5043,13 +5045,13 @@ void Vulkan_wDx12::hk_vkCmdSetAlphaToOneEnableEXT(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5063,13 +5065,13 @@ void Vulkan_wDx12::hk_vkCmdSetLogicOpEnableEXT(VkCommandBuffer commandBuffer, Vk
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5084,13 +5086,13 @@ void Vulkan_wDx12::hk_vkCmdSetColorBlendEnableEXT(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5106,13 +5108,13 @@ void Vulkan_wDx12::hk_vkCmdSetColorBlendEquationEXT(VkCommandBuffer commandBuffe
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5127,13 +5129,13 @@ void Vulkan_wDx12::hk_vkCmdSetColorWriteMaskEXT(VkCommandBuffer commandBuffer, u
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5148,13 +5150,13 @@ void Vulkan_wDx12::hk_vkCmdSetTessellationDomainOriginEXT(VkCommandBuffer comman
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5168,13 +5170,13 @@ void Vulkan_wDx12::hk_vkCmdSetRasterizationStreamEXT(VkCommandBuffer commandBuff
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5189,13 +5191,13 @@ void Vulkan_wDx12::hk_vkCmdSetConservativeRasterizationModeEXT(
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5210,13 +5212,13 @@ void Vulkan_wDx12::hk_vkCmdSetExtraPrimitiveOverestimationSizeEXT(VkCommandBuffe
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5230,13 +5232,13 @@ void Vulkan_wDx12::hk_vkCmdSetDepthClipEnableEXT(VkCommandBuffer commandBuffer, 
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5250,13 +5252,13 @@ void Vulkan_wDx12::hk_vkCmdSetSampleLocationsEnableEXT(VkCommandBuffer commandBu
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5272,13 +5274,13 @@ void Vulkan_wDx12::hk_vkCmdSetColorBlendAdvancedEXT(VkCommandBuffer commandBuffe
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5293,13 +5295,13 @@ void Vulkan_wDx12::hk_vkCmdSetProvokingVertexModeEXT(VkCommandBuffer commandBuff
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5314,13 +5316,13 @@ void Vulkan_wDx12::hk_vkCmdSetLineRasterizationModeEXT(VkCommandBuffer commandBu
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5334,13 +5336,13 @@ void Vulkan_wDx12::hk_vkCmdSetLineStippleEnableEXT(VkCommandBuffer commandBuffer
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5354,13 +5356,13 @@ void Vulkan_wDx12::hk_vkCmdSetDepthClipNegativeOneToOneEXT(VkCommandBuffer comma
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5374,13 +5376,13 @@ void Vulkan_wDx12::hk_vkCmdSetViewportWScalingEnableNV(VkCommandBuffer commandBu
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5395,13 +5397,13 @@ void Vulkan_wDx12::hk_vkCmdSetViewportSwizzleNV(VkCommandBuffer commandBuffer, u
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5415,13 +5417,13 @@ void Vulkan_wDx12::hk_vkCmdSetCoverageToColorEnableNV(VkCommandBuffer commandBuf
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5435,13 +5437,13 @@ void Vulkan_wDx12::hk_vkCmdSetCoverageToColorLocationNV(VkCommandBuffer commandB
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5456,13 +5458,13 @@ void Vulkan_wDx12::hk_vkCmdSetCoverageModulationModeNV(VkCommandBuffer commandBu
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5477,13 +5479,13 @@ void Vulkan_wDx12::hk_vkCmdSetCoverageModulationTableEnableNV(VkCommandBuffer co
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5499,13 +5501,13 @@ void Vulkan_wDx12::hk_vkCmdSetCoverageModulationTableNV(VkCommandBuffer commandB
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5519,13 +5521,13 @@ void Vulkan_wDx12::hk_vkCmdSetShadingRateImageEnableNV(VkCommandBuffer commandBu
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5540,13 +5542,13 @@ void Vulkan_wDx12::hk_vkCmdSetRepresentativeFragmentTestEnableNV(VkCommandBuffer
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5561,13 +5563,13 @@ void Vulkan_wDx12::hk_vkCmdSetCoverageReductionModeNV(VkCommandBuffer commandBuf
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5582,13 +5584,13 @@ void Vulkan_wDx12::hk_vkCmdOpticalFlowExecuteNV(VkCommandBuffer commandBuffer, V
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5603,13 +5605,13 @@ void Vulkan_wDx12::hk_vkCmdBindShadersEXT(VkCommandBuffer commandBuffer, uint32_
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5624,13 +5626,13 @@ void Vulkan_wDx12::hk_vkCmdSetDepthClampRangeEXT(VkCommandBuffer commandBuffer, 
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5645,13 +5647,13 @@ void Vulkan_wDx12::hk_vkCmdConvertCooperativeVectorMatrixNV(VkCommandBuffer comm
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5666,13 +5668,13 @@ void Vulkan_wDx12::hk_vkCmdSetAttachmentFeedbackLoopEnableEXT(VkCommandBuffer co
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5687,13 +5689,13 @@ void Vulkan_wDx12::hk_vkCmdBuildClusterAccelerationStructureIndirectNV(
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5708,13 +5710,13 @@ void Vulkan_wDx12::hk_vkCmdBuildPartitionedAccelerationStructuresNV(
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5730,13 +5732,13 @@ void Vulkan_wDx12::hk_vkCmdPreprocessGeneratedCommandsEXT(VkCommandBuffer comman
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5751,13 +5753,13 @@ void Vulkan_wDx12::hk_vkCmdExecuteGeneratedCommandsEXT(VkCommandBuffer commandBu
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5773,13 +5775,13 @@ void Vulkan_wDx12::hk_vkCmdBuildAccelerationStructuresKHR(
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5796,13 +5798,13 @@ void Vulkan_wDx12::hk_vkCmdBuildAccelerationStructuresIndirectKHR(
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5818,13 +5820,13 @@ void Vulkan_wDx12::hk_vkCmdCopyAccelerationStructureKHR(VkCommandBuffer commandB
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5839,13 +5841,13 @@ void Vulkan_wDx12::hk_vkCmdCopyAccelerationStructureToMemoryKHR(VkCommandBuffer 
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5860,13 +5862,13 @@ void Vulkan_wDx12::hk_vkCmdCopyMemoryToAccelerationStructureKHR(VkCommandBuffer 
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5883,13 +5885,13 @@ void Vulkan_wDx12::hk_vkCmdWriteAccelerationStructuresPropertiesKHR(
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5909,13 +5911,13 @@ void Vulkan_wDx12::hk_vkCmdTraceRaysKHR(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5935,13 +5937,13 @@ void Vulkan_wDx12::hk_vkCmdTraceRaysIndirectKHR(VkCommandBuffer commandBuffer,
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5956,13 +5958,13 @@ void Vulkan_wDx12::hk_vkCmdSetRayTracingPipelineStackSizeKHR(VkCommandBuffer com
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5977,13 +5979,13 @@ void Vulkan_wDx12::hk_vkCmdDrawMeshTasksEXT(VkCommandBuffer commandBuffer, uint3
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -5998,13 +6000,13 @@ void Vulkan_wDx12::hk_vkCmdDrawMeshTasksIndirectEXT(VkCommandBuffer commandBuffe
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -6021,13 +6023,13 @@ void Vulkan_wDx12::hk_vkCmdDrawMeshTasksIndirectCountEXT(VkCommandBuffer command
 {
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
 #ifdef LOG_ALL_RECORDS
@@ -6069,392 +6071,203 @@ void Vulkan_wDx12::hk_vkCmdExecuteCommands(VkCommandBuffer commandBuffer, uint32
 
     VkCommandBuffer cmdBuffer = commandBuffer;
 
-    if (cmdBuffer == lastCmdBuffer && virtualCmdBuffer != VK_NULL_HANDLE)
+    auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
+    if (mappedVirtualCmdBuffer != VK_NULL_HANDLE)
     {
 #ifdef LOG_VIRTUAL_RECORDS
-        LOG_DEBUG("cmdBuffer: {:X}, lastCmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer,
-                  (size_t) lastCmdBuffer, (size_t) virtualCmdBuffer);
+        LOG_DEBUG("cmdBuffer: {:X}, virtualCmdBuffer: {:X}", (size_t) cmdBuffer, (size_t) mappedVirtualCmdBuffer);
 #endif
-        cmdBuffer = virtualCmdBuffer;
+        cmdBuffer = mappedVirtualCmdBuffer;
     }
 
     o_vkCmdExecuteCommands(cmdBuffer, commandBufferCount, pCommandBuffers);
 }
 
-#ifdef USE_QUEUE_SUBMIT_2_KHR
-VkResult Vulkan_wDx12::hk_vkQueueSubmit(VkQueue queue, uint32_t submitCount, VkSubmitInfo* pSubmits, VkFence fence)
+bool Vulkan_wDx12::RegisterVirtualCommandBuffer(VkCommandBuffer commandBuffer, VkCommandBuffer virtualCommandBuffer)
 {
-    if (pSubmits == nullptr || o_vkQueueSubmit == nullptr || o_vkQueueSubmit2KHR == nullptr)
+    if (!cmdBufferStateTracker.RegisterVirtualCommandBuffer(commandBuffer, virtualCommandBuffer))
     {
-        LOG_ERROR("Invalid parameters to hk_vkQueueSubmit");
-        return VK_ERROR_INITIALIZATION_FAILED;
+        LOG_ERROR("A virtual Vulkan command buffer is already registered for {:X}", (size_t) commandBuffer);
+        return false;
     }
 
-#ifdef LOG_ALL_RECORDS
-    LOG_DEBUG("queue: {:X}, submitCount: {}, fence: {:X}", (size_t) queue, submitCount, (size_t) fence);
-#endif
+    return true;
+}
 
-    std::vector<VkSemaphore> semaphores;
-    std::vector<VkSubmitInfo> submitInfos;
-    std::vector<uint64_t> signalValues;
-    std::vector<VkCommandBuffer> cmdBuffers;
-    bool injected = false;
+VkCommandBuffer Vulkan_wDx12::RemoveVirtualCommandBuffer(VkCommandBuffer commandBuffer)
+{
+    return cmdBufferStateTracker.RemoveVirtualCommandBuffer(commandBuffer);
+}
 
-    if (commandBufferFoundCount < 1 && lastCmdBuffer != VK_NULL_HANDLE && submitCount > 0)
+VkCommandBuffer Vulkan_wDx12::GetVirtualCommandBuffer(VkCommandBuffer commandBuffer)
+{
+    return cmdBufferStateTracker.GetVirtualCommandBuffer(commandBuffer);
+}
+
+bool Vulkan_wDx12::RegisterPendingSubmission(const PendingSubmission& submission)
+{
+    if (submission.submitCommandBuffer == VK_NULL_HANDLE || submission.resourceCopySemaphore == VK_NULL_HANDLE ||
+        submission.resourceCopyFence == nullptr || submission.copyBackSemaphore == VK_NULL_HANDLE ||
+        submission.copyBackCommandBuffer == VK_NULL_HANDLE || submission.barrierCommandBuffer == VK_NULL_HANDLE)
     {
-        for (uint32_t i = 0; i < submitCount; i++)
-        {
-            bool addSemaphore = false;
-            uint32_t submitIndex = 0;
-
-            if (pSubmits[i].commandBufferCount > 0)
-            {
-                for (uint32_t j = 0; j < pSubmits[i].commandBufferCount; j++)
-                {
-                    if (pSubmits[i].pCommandBuffers[j] == lastCmdBuffer)
-                    {
-                        LOG_DEBUG("Found upscaling command buffer: {:X}, submit: {}, queue: {:X}",
-                                  (size_t) lastCmdBuffer, i, (size_t) queue);
-
-                        // Upscaling command buffer found, inject timeline semaphore
-                        commandBufferFoundCount++;
-                        submitIndex = i;
-
-                        if (commandBufferFoundCount == 1)
-                        {
-                            addSemaphore = true;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (addSemaphore)
-            {
-                // Original signals in submit
-                auto signalCount = pSubmits[submitIndex].signalSemaphoreCount;
-                auto signals = pSubmits[submitIndex].pSignalSemaphores;
-                bool allFound = false;
-                VkDummyProps* lastNode = nullptr;
-
-                VkDummyProps* next = (VkDummyProps*) &pSubmits[submitIndex];
-                lastNode = next;
-
-                // collect all signal semaphore submit infos
-                while (next->pNext != nullptr)
-                {
-                    next = (VkDummyProps*) next->pNext;
-
-                    if (next->sType == VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO)
-                    {
-                        auto tlSemaphoreInfo = (VkTimelineSemaphoreSubmitInfo*) next;
-
-                        if (tlSemaphoreInfo->signalSemaphoreValueCount > 0)
-                        {
-                            // Store signal values
-                            for (size_t a = 0; a < tlSemaphoreInfo->signalSemaphoreValueCount; a++)
-                            {
-                                signalValues.push_back(tlSemaphoreInfo->pSignalSemaphoreValues[a]);
-                            }
-
-                            if (tlSemaphoreInfo->waitSemaphoreValueCount > 0)
-                            {
-                                // only removing signal info
-                                LOG_DEBUG("Clear signals from timeline semaphore submit info");
-                                tlSemaphoreInfo->signalSemaphoreValueCount = 0;
-                                tlSemaphoreInfo->pSignalSemaphoreValues = nullptr;
-                            }
-                            else if (lastNode != nullptr && lastNode->pNext == next)
-                            {
-                                // removing this signal info so update previous nodes pNext
-                                LOG_DEBUG("Remove timeline semaphore submit info");
-                                lastNode->pNext = next->pNext;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        lastNode = next;
-                    }
-                }
-
-                // insert out signal info structure after lastNode
-                if (lastNode != nullptr)
-                    lastNode->pNext = &timelineInfoResourceCopy;
-
-                LOG_DEBUG("Original submit command buffer count: {}", pSubmits[submitIndex].commandBufferCount);
-
-                // Find upscaler command buffer and move all after it to dummy submit
-                cmdBuffers.push_back(syncSubmitInfo.pCommandBuffers[0]); // Barrier command buffer
-
-                bool bufferFound = false;
-                uint32_t newCommandCount = pSubmits[submitIndex].commandBufferCount;
-                for (uint32_t b = 0; b < pSubmits[submitIndex].commandBufferCount; b++)
-                {
-                    if (bufferFound)
-                        cmdBuffers.push_back(pSubmits[submitIndex].pCommandBuffers[b]);
-
-                    if (!bufferFound && pSubmits[submitIndex].pCommandBuffers[b] == lastCmdBuffer)
-                    {
-                        newCommandCount = b + 1;
-                        bufferFound = true;
-                    }
-                }
-
-                // Remove moved command buffers from original submit
-                pSubmits[submitIndex].commandBufferCount = newCommandCount;
-
-                LOG_DEBUG("Moved {} command buffers to new submit", cmdBuffers.size() - 1);
-                LOG_DEBUG("Original submit command buffer count: {}", pSubmits[submitIndex].commandBufferCount);
-
-                // now inserting our signal to it
-                pSubmits[submitIndex].signalSemaphoreCount = resourceCopySubmitInfo.signalSemaphoreCount;
-                pSubmits[submitIndex].pSignalSemaphores = resourceCopySubmitInfo.pSignalSemaphores;
-                timelineInfoResourceCopy.waitSemaphoreValueCount = pSubmits[submitIndex].waitSemaphoreCount;
-
-                // Inject signal semaphore info to out submit info
-                syncSubmitInfo.commandBufferCount = static_cast<uint32_t>(cmdBuffers.size());
-                syncSubmitInfo.pCommandBuffers = cmdBuffers.data();
-
-                // move signal semaphores to new submit
-                syncSubmitInfo.signalSemaphoreCount = signalCount;
-                syncSubmitInfo.pSignalSemaphores = signals;
-
-                // move signal values to new submit
-                for (uint32_t z = 0; z < signalCount; z++)
-                    signalValues.push_back(0);
-
-                syncTimelineInfo.signalSemaphoreValueCount = static_cast<uint32_t>(signalValues.size());
-                syncTimelineInfo.pSignalSemaphoreValues = signalValues.data();
-
-                // prepare new submit infos list
-                submitInfos.reserve(submitCount + 2);
-
-                // copyback old submit infos
-                for (uint32_t n = 0; n < submitCount; n++)
-                {
-                    submitInfos.push_back(pSubmits[n]);
-
-                    // add our submit info
-                    if (n == submitIndex)
-                    {
-                        submitInfos.push_back(copyBackSubmitInfo);
-                        submitInfos.push_back(syncSubmitInfo);
-                    }
-                }
-
-                // update submit infos
-                submitCount = static_cast<uint32_t>(submitInfos.size());
-                pSubmits = submitInfos.data();
-
-                LOG_DEBUG("Injected w/Dx12 submits");
-                lastCmdBuffer = VK_NULL_HANDLE;
-                injected = true;
-                break;
-            }
-        }
+        LOG_ERROR("Invalid Vulkan w/Dx12 pending submission");
+        return false;
     }
 
-    // Convert VkSubmitInfo to VkSubmitInfo2 and call o_vkQueueSubmit2
-    std::vector<VkSubmitInfo2> submitInfos2;
-    std::vector<std::vector<VkSemaphoreSubmitInfo>> waitSemaphoreInfos;
-    std::vector<std::vector<VkSemaphoreSubmitInfo>> signalSemaphoreInfos;
-    std::vector<std::vector<VkCommandBufferSubmitInfo>> commandBufferInfos;
-
-    submitInfos2.reserve(submitCount);
-    waitSemaphoreInfos.reserve(submitCount);
-    signalSemaphoreInfos.reserve(submitCount);
-    commandBufferInfos.reserve(submitCount);
-
-    for (uint32_t i = 0; i < submitCount; i++)
+    std::scoped_lock lock(pendingSubmissionMutex);
+    if (pendingSubmissions.contains(submission.submitCommandBuffer))
     {
-        VkSubmitInfo2 submitInfo2 = {};
-        submitInfo2.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-        submitInfo2.pNext = nullptr; // Don't copy pNext - timeline info will be embedded in semaphore infos
-        submitInfo2.flags = 0;
-
-        // Extract timeline semaphore values from pNext chain
-        const VkTimelineSemaphoreSubmitInfo* timelineInfo = nullptr;
-        const void* pNext = pSubmits[i].pNext;
-        while (pNext != nullptr)
-        {
-            const VkDummyProps* props = static_cast<const VkDummyProps*>(pNext);
-            if (props->sType == VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO)
-            {
-                timelineInfo = static_cast<const VkTimelineSemaphoreSubmitInfo*>(pNext);
-                break;
-            }
-            pNext = props->pNext;
-        }
-
-        // Convert wait semaphores
-        std::vector<VkSemaphoreSubmitInfo> waitInfos;
-        waitInfos.reserve(pSubmits[i].waitSemaphoreCount);
-        for (uint32_t j = 0; j < pSubmits[i].waitSemaphoreCount; j++)
-        {
-            VkSemaphoreSubmitInfo waitInfo = {};
-            waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-            waitInfo.semaphore = pSubmits[i].pWaitSemaphores[j];
-
-            // Get timeline value if available
-            if (timelineInfo && j < timelineInfo->waitSemaphoreValueCount && timelineInfo->pWaitSemaphoreValues)
-            {
-                waitInfo.value = timelineInfo->pWaitSemaphoreValues[j];
-            }
-            else
-            {
-                waitInfo.value = 0; // Binary semaphore
-            }
-
-            // Convert VkPipelineStageFlags to VkPipelineStageFlags2
-            VkPipelineStageFlags stageMask =
-                pSubmits[i].pWaitDstStageMask ? pSubmits[i].pWaitDstStageMask[j] : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-
-            // Map VkPipelineStageFlags to VkPipelineStageFlags2
-            if (stageMask == VK_PIPELINE_STAGE_ALL_COMMANDS_BIT)
-                waitInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-            else if (stageMask == VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT)
-                waitInfo.stageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
-            else if (stageMask == VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT)
-                waitInfo.stageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
-            else
-                waitInfo.stageMask = static_cast<VkPipelineStageFlags2>(stageMask);
-
-            waitInfo.deviceIndex = 0;
-            waitInfos.push_back(waitInfo);
-        }
-        waitSemaphoreInfos.push_back(std::move(waitInfos));
-
-        // Convert command buffers
-        std::vector<VkCommandBufferSubmitInfo> cmdInfos;
-        cmdInfos.reserve(pSubmits[i].commandBufferCount);
-        for (uint32_t j = 0; j < pSubmits[i].commandBufferCount; j++)
-        {
-            VkCommandBufferSubmitInfo cmdInfo = {};
-            cmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-            cmdInfo.commandBuffer = pSubmits[i].pCommandBuffers[j];
-            cmdInfo.deviceMask = 0;
-            cmdInfos.push_back(cmdInfo);
-        }
-        commandBufferInfos.push_back(std::move(cmdInfos));
-
-        // Convert signal semaphores
-        std::vector<VkSemaphoreSubmitInfo> signalInfos;
-        signalInfos.reserve(pSubmits[i].signalSemaphoreCount);
-        for (uint32_t j = 0; j < pSubmits[i].signalSemaphoreCount; j++)
-        {
-            VkSemaphoreSubmitInfo signalInfo = {};
-            signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-            signalInfo.semaphore = pSubmits[i].pSignalSemaphores[j];
-
-            // Get timeline value if available
-            if (timelineInfo && j < timelineInfo->signalSemaphoreValueCount && timelineInfo->pSignalSemaphoreValues)
-            {
-                signalInfo.value = timelineInfo->pSignalSemaphoreValues[j];
-            }
-            else
-            {
-                signalInfo.value = 0; // Binary semaphore
-            }
-
-            signalInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-            signalInfo.deviceIndex = 0;
-            signalInfos.push_back(signalInfo);
-        }
-        signalSemaphoreInfos.push_back(std::move(signalInfos));
-
-        // Set pointers in VkSubmitInfo2
-        submitInfo2.waitSemaphoreInfoCount = static_cast<uint32_t>(waitSemaphoreInfos[i].size());
-        submitInfo2.pWaitSemaphoreInfos = waitSemaphoreInfos[i].empty() ? nullptr : waitSemaphoreInfos[i].data();
-        submitInfo2.commandBufferInfoCount = static_cast<uint32_t>(commandBufferInfos[i].size());
-        submitInfo2.pCommandBufferInfos = commandBufferInfos[i].empty() ? nullptr : commandBufferInfos[i].data();
-        submitInfo2.signalSemaphoreInfoCount = static_cast<uint32_t>(signalSemaphoreInfos[i].size());
-        submitInfo2.pSignalSemaphoreInfos = signalSemaphoreInfos[i].empty() ? nullptr : signalSemaphoreInfos[i].data();
-
-        submitInfos2.push_back(submitInfo2);
+        LOG_ERROR("A Vulkan w/Dx12 submission is already pending for command buffer {:X}",
+                  (size_t) submission.submitCommandBuffer);
+        return false;
     }
 
-    // Call original function using VkSubmitInfo2
-    if (injected)
-        LOG_DEBUG("Submitting {} submits with vkQueueSubmit2KHR", submitCount);
+    pendingSubmissions.emplace(submission.submitCommandBuffer, submission);
+    return true;
+}
 
-    auto result = o_vkQueueSubmit2KHR(queue, submitCount, submitInfos2.data(), fence);
+void Vulkan_wDx12::CancelPendingSubmission(VkCommandBuffer commandBuffer)
+{
+    if (commandBuffer == VK_NULL_HANDLE)
+        return;
 
-    if (injected)
-        LOG_DEBUG("Submitted {} submits with vkQueueSubmit2KHR", submitCount);
+    std::scoped_lock lock(pendingSubmissionMutex);
+    pendingSubmissions.erase(commandBuffer);
+}
 
-    if (result != VK_SUCCESS)
+bool Vulkan_wDx12::TakePendingSubmission(VkCommandBuffer commandBuffer, PendingSubmission& submission)
+{
+    std::scoped_lock lock(pendingSubmissionMutex);
+    auto it = pendingSubmissions.find(commandBuffer);
+    if (it == pendingSubmissions.end())
+        return false;
+
+    submission = it->second;
+    pendingSubmissions.erase(it);
+    return true;
+}
+
+static void AbortPendingD3D12Wait(const Vulkan_wDx12::PendingSubmission& pending, const char* reason)
+{
+    bool logAbort = true;
+    if (reason != nullptr && std::strcmp(reason, "unsupported legacy VkSubmitInfo pNext chain") == 0)
     {
-        LOG_ERROR("vkQueueSubmit2 failed with error code: {}", magic_enum::enum_name(result));
+        static std::atomic<uint32_t> unsupportedCount { 0 };
+        const uint32_t count = unsupportedCount.fetch_add(1, std::memory_order_relaxed) + 1;
+        logAbort = count <= 4 || (count % 512) == 0;
+    }
+    if (logAbort)
+        LOG_WARN("Aborting Vulkan w/Dx12 submit transaction: {}", reason ? reason : "unknown reason");
 
-        if (injected)
+    if (pending.resourceCopyFence == nullptr)
+        return;
+
+    // The private D3D12 interop queue is already waiting for this value. Host-signaling it drains only OptiScaler's
+    // private shared-copy work; because the Vulkan injection is being abandoned, no copy-back will consume it.
+    HRESULT result = pending.resourceCopyFence->Signal(pending.resourceCopyValue);
+    if (result != S_OK)
+        LOG_ERROR("Failed to release aborted Vulkan w/Dx12 D3D12 wait: {0:x}", result);
+}
+
+// The legacy submit can contain several valid, independently-owned pNext nodes. Never mutate the application's
+// chain. The split submits below rebuild their own timeline metadata and can omit extensions ONLY if the omission
+// is semantically equivalent. Unknown or nontrivial extensions must remain fail-closed.
+struct LegacyPNextInspection
+{
+    const VkTimelineSemaphoreSubmitInfo* timeline = nullptr;
+    VkStructureType rejectedType = VK_STRUCTURE_TYPE_MAX_ENUM;
+    const char* reason = nullptr;
+
+    explicit operator bool() const { return reason == nullptr; }
+};
+
+static LegacyPNextInspection InspectLegacySubmitPNext(const VkSubmitInfo& submit)
+{
+    LegacyPNextInspection result {};
+    uint32_t chainLength = 0;
+    for (auto* node = reinterpret_cast<const VkBaseInStructure*>(submit.pNext); node != nullptr; node = node->pNext)
+    {
+        auto Reject = [&](const char* reason)
         {
-            LOG_DEBUG("==================================================");
+            result.reason = reason;
+            result.rejectedType = node->sType;
+            return result;
+        };
 
-            for (size_t a = 0; a < submitCount; a++)
-            {
-                LOG_DEBUG("  sType: {}", magic_enum::enum_name(pSubmits[a].sType));
-                LOG_DEBUG("  Submit[{}]: cmdBufferCount: {}", a, pSubmits[a].commandBufferCount);
+        if (++chainLength > 16)
+            return Reject("pNext chain exceeds the inspection limit");
 
-                for (size_t b = 0; b < pSubmits[a].commandBufferCount; b++)
-                {
-                    LOG_DEBUG("    CmdBuffer[{}]: {:X}", b, (size_t) pSubmits[a].pCommandBuffers[b]);
-                }
-                LOG_DEBUG("    waitSemaphoreCount: {}", pSubmits[a].waitSemaphoreCount);
-                for (size_t c = 0; c < pSubmits[a].waitSemaphoreCount; c++)
-                {
-                    LOG_DEBUG("    WaitSemaphore[{}]: {:X}", c, (size_t) pSubmits[a].pWaitSemaphores[c]);
-                }
-                LOG_DEBUG("    signalSemaphoreCount: {}", pSubmits[a].signalSemaphoreCount);
-                for (size_t d = 0; d < pSubmits[a].signalSemaphoreCount; d++)
-                {
-                    LOG_DEBUG("    SignalSemaphore[{}]: {:X}", d, (size_t) pSubmits[a].pSignalSemaphores[d]);
-                }
+        switch (node->sType)
+        {
+        case VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO:
+            if (result.timeline != nullptr)
+                return Reject("duplicate VkTimelineSemaphoreSubmitInfo");
+            result.timeline = reinterpret_cast<const VkTimelineSemaphoreSubmitInfo*>(node);
+            break;
 
-                LOG_DEBUG("    pNext chain:");
-                VkDummyProps* next = (VkDummyProps*) &pSubmits[a];
-                while (next->pNext != nullptr)
-                {
-                    next = (VkDummyProps*) next->pNext;
+        case VK_STRUCTURE_TYPE_DEVICE_GROUP_SUBMIT_INFO:
+        {
+            // Vulkan defaults to device 0 when this extension is omitted. Accept only that exact equivalent.
+            // In particular, multi-device masks cannot be silently collapsed to one device.
+            const auto* group = reinterpret_cast<const VkDeviceGroupSubmitInfo*>(node);
+            if (group->waitSemaphoreCount != submit.waitSemaphoreCount ||
+                group->commandBufferCount != submit.commandBufferCount ||
+                group->signalSemaphoreCount != submit.signalSemaphoreCount)
+                return Reject("device-group count mismatch");
 
-                    if (next->sType == VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO)
-                    {
-                        LOG_DEBUG("      sType: VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO");
-                        auto tlSemaphoreInfo = (VkTimelineSemaphoreSubmitInfo*) next;
-                        LOG_DEBUG("        waitSemaphoreValueCount: {}", tlSemaphoreInfo->waitSemaphoreValueCount);
+            if ((group->waitSemaphoreCount && !group->pWaitSemaphoreDeviceIndices) ||
+                (group->commandBufferCount && !group->pCommandBufferDeviceMasks) ||
+                (group->signalSemaphoreCount && !group->pSignalSemaphoreDeviceIndices))
+                return Reject("device-group index arrays are missing");
 
-                        if (tlSemaphoreInfo->pWaitSemaphoreValues != nullptr)
-                        {
-                            for (size_t e = 0; e < tlSemaphoreInfo->waitSemaphoreValueCount; e++)
-                            {
-                                LOG_DEBUG("          WaitSemaphoreValue[{}]: {}", e,
-                                          tlSemaphoreInfo->pWaitSemaphoreValues[e]);
-                            }
-                        }
+            for (uint32_t i = 0; i < group->waitSemaphoreCount; ++i)
+                if (group->pWaitSemaphoreDeviceIndices[i] != 0)
+                    return Reject("nonzero device-group wait index");
+            for (uint32_t i = 0; i < group->commandBufferCount; ++i)
+                if (group->pCommandBufferDeviceMasks[i] != 1u)
+                    return Reject("non-default device-group command mask");
+            for (uint32_t i = 0; i < group->signalSemaphoreCount; ++i)
+                if (group->pSignalSemaphoreDeviceIndices[i] != 0)
+                    return Reject("nonzero device-group signal index");
+            break;
+        }
 
-                        LOG_DEBUG("        signalSemaphoreValueCount: {}", tlSemaphoreInfo->signalSemaphoreValueCount);
+        case VK_STRUCTURE_TYPE_PROTECTED_SUBMIT_INFO:
+        {
+            const auto* protection = reinterpret_cast<const VkProtectedSubmitInfo*>(node);
+            if (protection->protectedSubmit != VK_FALSE)
+                return Reject("protected Vulkan submits require protected interop command buffers");
+            // A false protected-submit flag is the same as omitting the node.
+            break;
+        }
 
-                        if (tlSemaphoreInfo->pSignalSemaphoreValues != nullptr)
-                        {
-                            for (size_t f = 0; f < tlSemaphoreInfo->signalSemaphoreValueCount; f++)
-                            {
-                                LOG_DEBUG("          SignalSemaphoreValue[{}]: {}", f,
-                                          tlSemaphoreInfo->pSignalSemaphoreValues[f]);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        LOG_DEBUG("      sType: {}", (UINT) next->sType);
-                    }
-                }
-            }
+        default:
+            return Reject("unsupported VkSubmitInfo extension");
         }
     }
-
     return result;
 }
-#else
+
+static void ReportRejectedLegacyPNext(const VkSubmitInfo& submit, const LegacyPNextInspection& inspection)
+{
+    // Vulkan submit is a hot path. Log the original chain for diagnosis but not on every frame.
+    static std::atomic<uint32_t> reports { 0 };
+    const uint32_t report = reports.fetch_add(1, std::memory_order_relaxed);
+    if (report >= 4 && (report % 512) != 0)
+        return;
+
+    LOG_WARN("Cannot split legacy VkSubmitInfo: {} (sType={}, rejects so far={}), waits={}, cmds={}, signals={}",
+             inspection.reason, (int32_t) inspection.rejectedType, report + 1, submit.waitSemaphoreCount,
+             submit.commandBufferCount, submit.signalSemaphoreCount);
+
+    uint32_t index = 0;
+    for (auto* node = reinterpret_cast<const VkBaseInStructure*>(submit.pNext); node != nullptr && index < 16;
+         node = node->pNext, ++index)
+    {
+        LOG_WARN("  legacy submit pNext[{}] sType={}", index, (int32_t) node->sType);
+    }
+}
+
 VkResult Vulkan_wDx12::hk_vkQueueSubmit(VkQueue queue, uint32_t submitCount, const VkSubmitInfo* pSubmits,
                                         VkFence fence)
 {
@@ -6468,257 +6281,268 @@ VkResult Vulkan_wDx12::hk_vkQueueSubmit(VkQueue queue, uint32_t submitCount, con
     LOG_DEBUG("queue: {:X}, submitCount: {}, fence: {:X}", (size_t) queue, submitCount, (size_t) fence);
 #endif
 
-    // Copy to freely modify
-    std::vector<VkSubmitInfo> submitInfos(pSubmits, pSubmits + submitCount);
+    PendingSubmission pending {};
+    uint32_t submitIndex = UINT32_MAX;
+    uint32_t commandBufferIndex = UINT32_MAX;
 
-    // Modified submits sent to the original call
-    std::vector<VkSubmitInfo> finalSubmits;
-
-    std::vector<VkSemaphore> semaphores;
-    std::vector<uint64_t> signalValues;
-    std::vector<VkCommandBuffer> cmdBuffers;
-    bool injected = false;
-
-    if (commandBufferFoundCount < 1 && lastCmdBuffer != VK_NULL_HANDLE && submitCount > 0)
+    for (uint32_t i = 0; i < submitCount && submitIndex == UINT32_MAX; i++)
     {
-        for (uint32_t i = 0; i < submitCount; i++)
+        for (uint32_t j = 0; j < pSubmits[i].commandBufferCount; j++)
         {
-            bool addSemaphore = false;
-            uint32_t submitIndex = 0;
-
-            if (pSubmits[i].commandBufferCount > 0)
+            if (TakePendingSubmission(pSubmits[i].pCommandBuffers[j], pending))
             {
-                for (uint32_t j = 0; j < pSubmits[i].commandBufferCount; j++)
-                {
-                    if (pSubmits[i].pCommandBuffers[j] == lastCmdBuffer)
-                    {
-                        LOG_DEBUG("Found upscaling command buffer: {:X}, submit: {}, queue: {:X}",
-                                  (size_t) lastCmdBuffer, i, (size_t) queue);
-
-                        // Upscaling command buffer found, inject timeline semaphore
-                        commandBufferFoundCount++;
-                        submitIndex = i;
-
-                        if (commandBufferFoundCount == 1)
-                        {
-                            addSemaphore = true;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (addSemaphore)
-            {
-                // Original signals in submit
-                auto signalCount = submitInfos[submitIndex].signalSemaphoreCount;
-                auto signals = submitInfos[submitIndex].pSignalSemaphores;
-
-                // Use the standard Vulkan struct to traverse the pNext chain safely
-                VkBaseOutStructure* lastNode = nullptr;
-                VkBaseOutStructure* next = reinterpret_cast<VkBaseOutStructure*>(&submitInfos[submitIndex]);
-                lastNode = next;
-
-                // collect all signal semaphore submit infos
-                while (next->pNext != nullptr)
-                {
-                    next = reinterpret_cast<VkBaseOutStructure*>(next->pNext);
-
-                    if (next->sType == VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO)
-                    {
-                        auto tlSemaphoreInfo = reinterpret_cast<VkTimelineSemaphoreSubmitInfo*>(next);
-
-                        if (tlSemaphoreInfo->signalSemaphoreValueCount > 0)
-                        {
-                            // Store signal values
-                            for (size_t a = 0; a < tlSemaphoreInfo->signalSemaphoreValueCount; a++)
-                            {
-                                signalValues.push_back(tlSemaphoreInfo->pSignalSemaphoreValues[a]);
-                            }
-
-                            if (tlSemaphoreInfo->waitSemaphoreValueCount > 0)
-                            {
-                                // only removing signal info
-                                LOG_DEBUG("Clear signals from timeline semaphore submit info");
-                                tlSemaphoreInfo->signalSemaphoreValueCount = 0;
-                                tlSemaphoreInfo->pSignalSemaphoreValues = nullptr;
-                            }
-                            else if (lastNode != nullptr &&
-                                     lastNode->pNext == reinterpret_cast<VkBaseOutStructure*>(next))
-                            {
-                                // removing this signal info so update previous nodes pNext
-                                LOG_DEBUG("Remove timeline semaphore submit info");
-                                lastNode->pNext = next->pNext;
-
-                                // FIX: Back up 'next' so the loop iterates correctly after removal
-                                next = lastNode;
-                                continue;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        lastNode = next;
-                    }
-                }
-
-                // insert our signal info structure after lastNode
-                if (lastNode != nullptr)
-                    lastNode->pNext = reinterpret_cast<VkBaseOutStructure*>(
-                        const_cast<VkTimelineSemaphoreSubmitInfo*>(&timelineInfoResourceCopy));
-
-                LOG_DEBUG("Original submit command buffer count: {}", submitInfos[submitIndex].commandBufferCount);
-
-                // Find upscaler command buffer and move all after it to dummy submit
-                cmdBuffers.push_back(syncSubmitInfo.pCommandBuffers[0]); // Barrier command buffer
-
-                bool bufferFound = false;
-                uint32_t newCommandCount = submitInfos[submitIndex].commandBufferCount;
-                for (uint32_t b = 0; b < submitInfos[submitIndex].commandBufferCount; b++)
-                {
-                    if (bufferFound)
-                        cmdBuffers.push_back(submitInfos[submitIndex].pCommandBuffers[b]);
-
-                    if (!bufferFound && submitInfos[submitIndex].pCommandBuffers[b] == lastCmdBuffer)
-                    {
-                        newCommandCount = b + 1;
-                        bufferFound = true;
-                    }
-                }
-
-                // Remove moved command buffers from our local submit
-                submitInfos[submitIndex].commandBufferCount = newCommandCount;
-
-                LOG_DEBUG("Moved {} command buffers to new submit", cmdBuffers.size() - 1);
-                LOG_DEBUG("Original submit command buffer count: {}", submitInfos[submitIndex].commandBufferCount);
-
-                // now inserting our signal to it
-                submitInfos[submitIndex].signalSemaphoreCount = resourceCopySubmitInfo.signalSemaphoreCount;
-                submitInfos[submitIndex].pSignalSemaphores = resourceCopySubmitInfo.pSignalSemaphores;
-                timelineInfoResourceCopy.waitSemaphoreValueCount = submitInfos[submitIndex].waitSemaphoreCount;
-
-                // Inject signal semaphore info to out submit info
-                syncSubmitInfo.commandBufferCount = static_cast<uint32_t>(cmdBuffers.size());
-                syncSubmitInfo.pCommandBuffers = cmdBuffers.data();
-
-                // move signal semaphores to new submit
-                syncSubmitInfo.signalSemaphoreCount = signalCount;
-                syncSubmitInfo.pSignalSemaphores = signals;
-
-                // move signal values to new submit
-                for (uint32_t z = 0; z < signalCount; z++)
-                    signalValues.push_back(0);
-
-                syncTimelineInfo.signalSemaphoreValueCount = static_cast<uint32_t>(signalValues.size());
-                syncTimelineInfo.pSignalSemaphoreValues = signalValues.data();
-
-                // prepare new submit infos list
-                finalSubmits.reserve(submitCount + 2);
-
-                // copyback old submit infos using our mutated local copy
-                for (uint32_t n = 0; n < submitCount; n++)
-                {
-                    finalSubmits.push_back(submitInfos[n]);
-
-                    // add our submit info
-                    if (n == submitIndex)
-                    {
-                        finalSubmits.push_back(copyBackSubmitInfo);
-                        finalSubmits.push_back(syncSubmitInfo);
-                    }
-                }
-
-                // update submit infos
-                submitCount = static_cast<uint32_t>(finalSubmits.size());
-
-                // Reassign the pointer to our local managed vector.
-                // This is completely valid since we are just moving what the pointer is looking at,
-                // and finalSubmits lives until the end of this function scope.
-                pSubmits = finalSubmits.data();
-
-                LOG_DEBUG("Injected w/Dx12 submits");
-                lastCmdBuffer = VK_NULL_HANDLE;
-                injected = true;
+                submitIndex = i;
+                commandBufferIndex = j;
                 break;
             }
         }
     }
 
-    // Call original function
-    auto result = o_vkQueueSubmit(queue, submitCount, pSubmits, fence);
+    if (submitIndex == UINT32_MAX)
+        return o_vkQueueSubmit(queue, submitCount, pSubmits, fence);
+
+    const auto& original = pSubmits[submitIndex];
+
+    // Inspect every node before splitting. Timeline values are cloned; single-device (device 0) group metadata
+    // and an explicitly unprotected submit have exactly the same meaning when omitted from our split submits.
+    const auto extensionInfo = InspectLegacySubmitPNext(original);
+    if (!extensionInfo)
+    {
+        ReportRejectedLegacyPNext(original, extensionInfo);
+        AbortPendingD3D12Wait(pending, "unsupported legacy VkSubmitInfo pNext chain");
+        return o_vkQueueSubmit(queue, submitCount, pSubmits, fence);
+    }
+
+    const auto* originalTimeline = extensionInfo.timeline;
+
+    // Copy timeline values instead of modifying the application's pNext chain. Binary semaphore slots use value 0.
+    std::vector<uint64_t> originalWaitValues(original.waitSemaphoreCount, 0);
+    std::vector<uint64_t> originalSignalValues(original.signalSemaphoreCount, 0);
+    if (originalTimeline != nullptr)
+    {
+        if (originalTimeline->pWaitSemaphoreValues != nullptr)
+        {
+            auto count = std::min(original.waitSemaphoreCount, originalTimeline->waitSemaphoreValueCount);
+            std::copy_n(originalTimeline->pWaitSemaphoreValues, count, originalWaitValues.data());
+        }
+
+        if (originalTimeline->pSignalSemaphoreValues != nullptr)
+        {
+            auto count = std::min(original.signalSemaphoreCount, originalTimeline->signalSemaphoreValueCount);
+            std::copy_n(originalTimeline->pSignalSemaphoreValues, count, originalSignalValues.data());
+        }
+    }
+
+    std::vector<VkCommandBuffer> originalCommandBuffers(original.pCommandBuffers,
+                                                        original.pCommandBuffers + commandBufferIndex + 1);
+
+    VkSemaphore resourceCopySemaphore = pending.resourceCopySemaphore;
+    uint64_t resourceCopyValue = pending.resourceCopyValue;
+
+    VkTimelineSemaphoreSubmitInfo originalTimelineCopy {};
+    originalTimelineCopy.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+    originalTimelineCopy.waitSemaphoreValueCount = original.waitSemaphoreCount;
+    originalTimelineCopy.pWaitSemaphoreValues = originalWaitValues.empty() ? nullptr : originalWaitValues.data();
+    originalTimelineCopy.signalSemaphoreValueCount = 1;
+    originalTimelineCopy.pSignalSemaphoreValues = &resourceCopyValue;
+
+    // The application-owned extension chain is untouched; only the explicitly verified-equivalent single-device
+    // group/unprotected flags are omitted from the temporary split submits.
+    originalTimelineCopy.pNext = nullptr;
+
+    VkSubmitInfo modifiedOriginal = original;
+    modifiedOriginal.pNext = &originalTimelineCopy;
+    modifiedOriginal.commandBufferCount = static_cast<uint32_t>(originalCommandBuffers.size());
+    modifiedOriginal.pCommandBuffers = originalCommandBuffers.data();
+    modifiedOriginal.signalSemaphoreCount = 1;
+    modifiedOriginal.pSignalSemaphores = &resourceCopySemaphore;
+
+    VkSemaphore copyBackWaitSemaphore = pending.resourceCopySemaphore;
+    VkSemaphore copyBackSignalSemaphore = pending.copyBackSemaphore;
+    VkPipelineStageFlags copyBackWaitStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    uint64_t d3d12CompleteValue = pending.d3d12CompleteValue;
+    uint64_t copyBackValue = pending.copyBackValue;
+
+    VkTimelineSemaphoreSubmitInfo copyBackTimeline {};
+    copyBackTimeline.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+    copyBackTimeline.waitSemaphoreValueCount = 1;
+    copyBackTimeline.pWaitSemaphoreValues = &d3d12CompleteValue;
+    copyBackTimeline.signalSemaphoreValueCount = 1;
+    copyBackTimeline.pSignalSemaphoreValues = &copyBackValue;
+
+    VkSubmitInfo copyBackSubmit {};
+    copyBackSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    copyBackSubmit.pNext = &copyBackTimeline;
+    copyBackSubmit.waitSemaphoreCount = 1;
+    copyBackSubmit.pWaitSemaphores = &copyBackWaitSemaphore;
+    copyBackSubmit.pWaitDstStageMask = &copyBackWaitStage;
+    copyBackSubmit.commandBufferCount = 1;
+    copyBackSubmit.pCommandBuffers = &pending.copyBackCommandBuffer;
+    copyBackSubmit.signalSemaphoreCount = 1;
+    copyBackSubmit.pSignalSemaphores = &copyBackSignalSemaphore;
+
+    std::vector<VkCommandBuffer> syncCommandBuffers;
+    syncCommandBuffers.reserve(1 + original.commandBufferCount - commandBufferIndex - 1);
+    syncCommandBuffers.push_back(pending.barrierCommandBuffer);
+    for (uint32_t i = commandBufferIndex + 1; i < original.commandBufferCount; i++)
+        syncCommandBuffers.push_back(original.pCommandBuffers[i]);
+
+    VkSemaphore syncWaitSemaphore = pending.copyBackSemaphore;
+    VkPipelineStageFlags syncWaitStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+
+    VkTimelineSemaphoreSubmitInfo syncTimeline {};
+    syncTimeline.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+    syncTimeline.waitSemaphoreValueCount = 1;
+    syncTimeline.pWaitSemaphoreValues = &copyBackValue;
+    syncTimeline.signalSemaphoreValueCount = original.signalSemaphoreCount;
+    syncTimeline.pSignalSemaphoreValues = originalSignalValues.empty() ? nullptr : originalSignalValues.data();
+
+    VkSubmitInfo syncSubmit {};
+    syncSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    syncSubmit.pNext = &syncTimeline;
+    syncSubmit.waitSemaphoreCount = 1;
+    syncSubmit.pWaitSemaphores = &syncWaitSemaphore;
+    syncSubmit.pWaitDstStageMask = &syncWaitStage;
+    syncSubmit.commandBufferCount = static_cast<uint32_t>(syncCommandBuffers.size());
+    syncSubmit.pCommandBuffers = syncCommandBuffers.data();
+    syncSubmit.signalSemaphoreCount = original.signalSemaphoreCount;
+    syncSubmit.pSignalSemaphores = original.pSignalSemaphores;
+
+    std::vector<VkSubmitInfo> finalSubmits;
+    finalSubmits.reserve(submitCount + 2);
+    for (uint32_t i = 0; i < submitCount; i++)
+    {
+        if (i == submitIndex)
+        {
+            finalSubmits.push_back(modifiedOriginal);
+            finalSubmits.push_back(copyBackSubmit);
+            finalSubmits.push_back(syncSubmit);
+        }
+        else
+        {
+            finalSubmits.push_back(pSubmits[i]);
+        }
+    }
+
+    LOG_DEBUG("Injected Vulkan w/Dx12 legacy submit for command buffer {:X}", (size_t) pending.submitCommandBuffer);
+    auto result = o_vkQueueSubmit(queue, static_cast<uint32_t>(finalSubmits.size()), finalSubmits.data(), fence);
     if (result != VK_SUCCESS)
     {
-        LOG_ERROR("vkQueueSubmit failed with error code: {}", magic_enum::enum_name(result));
-
-        if (injected)
-        {
-            LOG_DEBUG("==================================================");
-
-            for (size_t a = 0; a < submitCount; a++)
-            {
-                LOG_DEBUG("  sType: {}", magic_enum::enum_name(pSubmits[a].sType));
-                LOG_DEBUG("  Submit[{}]: cmdBufferCount: {}", a, pSubmits[a].commandBufferCount);
-
-                for (size_t b = 0; b < pSubmits[a].commandBufferCount; b++)
-                {
-                    LOG_DEBUG("    CmdBuffer[{}]: {:X}", b, (size_t) pSubmits[a].pCommandBuffers[b]);
-                }
-                LOG_DEBUG("    waitSemaphoreCount: {}", pSubmits[a].waitSemaphoreCount);
-                for (size_t c = 0; c < pSubmits[a].waitSemaphoreCount; c++)
-                {
-                    LOG_DEBUG("    WaitSemaphore[{}]: {:X}", c, (size_t) pSubmits[a].pWaitSemaphores[c]);
-                }
-                LOG_DEBUG("    signalSemaphoreCount: {}", pSubmits[a].signalSemaphoreCount);
-                for (size_t d = 0; d < pSubmits[a].signalSemaphoreCount; d++)
-                {
-                    LOG_DEBUG("    SignalSemaphore[{}]: {:X}", d, (size_t) pSubmits[a].pSignalSemaphores[d]);
-                }
-
-                LOG_DEBUG("    pNext chain:");
-
-                auto next = reinterpret_cast<const VkBaseOutStructure*>(&pSubmits[a]);
-                while (next->pNext != nullptr)
-                {
-                    next = reinterpret_cast<const VkBaseOutStructure*>(next->pNext);
-
-                    if (next->sType == VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO)
-                    {
-                        LOG_DEBUG("      sType: VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO");
-                        auto tlSemaphoreInfo = (VkTimelineSemaphoreSubmitInfo*) next;
-                        LOG_DEBUG("        waitSemaphoreValueCount: {}", tlSemaphoreInfo->waitSemaphoreValueCount);
-
-                        if (tlSemaphoreInfo->pWaitSemaphoreValues != nullptr)
-                        {
-                            for (size_t e = 0; e < tlSemaphoreInfo->waitSemaphoreValueCount; e++)
-                            {
-                                LOG_DEBUG("          WaitSemaphoreValue[{}]: {}", e,
-                                          tlSemaphoreInfo->pWaitSemaphoreValues[e]);
-                            }
-                        }
-
-                        LOG_DEBUG("        signalSemaphoreValueCount: {}", tlSemaphoreInfo->signalSemaphoreValueCount);
-
-                        if (tlSemaphoreInfo->pSignalSemaphoreValues != nullptr)
-                        {
-                            for (size_t f = 0; f < tlSemaphoreInfo->signalSemaphoreValueCount; f++)
-                            {
-                                LOG_DEBUG("          SignalSemaphoreValue[{}]: {}", f,
-                                          tlSemaphoreInfo->pSignalSemaphoreValues[f]);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        LOG_DEBUG("      sType: {}", (UINT) next->sType);
-                    }
-                }
-            }
-        }
+        LOG_ERROR("vkQueueSubmit failed after Vulkan w/Dx12 injection: {}", magic_enum::enum_name(result));
+        AbortPendingD3D12Wait(pending, "vkQueueSubmit failed");
     }
 
     return result;
 }
-#endif
+
+template <typename SubmitFn>
+static VkResult Submit2WithDx12Interop(SubmitFn originalSubmit, VkQueue queue, uint32_t submitCount,
+                                       const VkSubmitInfo2* pSubmits, VkFence fence,
+                                       const Vulkan_wDx12::PendingSubmission& pending, uint32_t submitIndex,
+                                       uint32_t commandBufferIndex)
+{
+    const auto& original = pSubmits[submitIndex];
+
+    if (original.pNext != nullptr || original.flags != 0)
+    {
+        AbortPendingD3D12Wait(pending, original.pNext != nullptr ? "unsupported VkSubmitInfo2 pNext chain"
+                                                                 : "non-zero VkSubmitInfo2 flags are unsupported");
+        return originalSubmit(queue, submitCount, pSubmits, fence);
+    }
+
+    std::vector<VkCommandBufferSubmitInfo> originalCommandBuffers;
+    originalCommandBuffers.reserve(commandBufferIndex + 1);
+    for (uint32_t i = 0; i <= commandBufferIndex; i++)
+        originalCommandBuffers.push_back(original.pCommandBufferInfos[i]);
+
+    VkSemaphoreSubmitInfo resourceCopySignal {};
+    resourceCopySignal.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    resourceCopySignal.semaphore = pending.resourceCopySemaphore;
+    resourceCopySignal.value = pending.resourceCopyValue;
+    resourceCopySignal.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+
+    VkSubmitInfo2 modifiedOriginal = original;
+    modifiedOriginal.commandBufferInfoCount = static_cast<uint32_t>(originalCommandBuffers.size());
+    modifiedOriginal.pCommandBufferInfos = originalCommandBuffers.data();
+    modifiedOriginal.signalSemaphoreInfoCount = 1;
+    modifiedOriginal.pSignalSemaphoreInfos = &resourceCopySignal;
+
+    VkSemaphoreSubmitInfo copyBackWait {};
+    copyBackWait.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    copyBackWait.semaphore = pending.resourceCopySemaphore;
+    copyBackWait.value = pending.d3d12CompleteValue;
+    copyBackWait.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+
+    VkCommandBufferSubmitInfo copyBackCommand {};
+    copyBackCommand.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+    copyBackCommand.commandBuffer = pending.copyBackCommandBuffer;
+
+    VkSemaphoreSubmitInfo copyBackSignal {};
+    copyBackSignal.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    copyBackSignal.semaphore = pending.copyBackSemaphore;
+    copyBackSignal.value = pending.copyBackValue;
+    copyBackSignal.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+
+    VkSubmitInfo2 copyBackSubmit {};
+    copyBackSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    copyBackSubmit.flags = original.flags;
+    copyBackSubmit.waitSemaphoreInfoCount = 1;
+    copyBackSubmit.pWaitSemaphoreInfos = &copyBackWait;
+    copyBackSubmit.commandBufferInfoCount = 1;
+    copyBackSubmit.pCommandBufferInfos = &copyBackCommand;
+    copyBackSubmit.signalSemaphoreInfoCount = 1;
+    copyBackSubmit.pSignalSemaphoreInfos = &copyBackSignal;
+
+    std::vector<VkCommandBufferSubmitInfo> syncCommandBuffers;
+    syncCommandBuffers.reserve(1 + original.commandBufferInfoCount - commandBufferIndex - 1);
+
+    VkCommandBufferSubmitInfo barrierCommand {};
+    barrierCommand.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+    barrierCommand.commandBuffer = pending.barrierCommandBuffer;
+    syncCommandBuffers.push_back(barrierCommand);
+
+    for (uint32_t i = commandBufferIndex + 1; i < original.commandBufferInfoCount; i++)
+        syncCommandBuffers.push_back(original.pCommandBufferInfos[i]);
+
+    VkSemaphoreSubmitInfo syncWait {};
+    syncWait.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    syncWait.semaphore = pending.copyBackSemaphore;
+    syncWait.value = pending.copyBackValue;
+    syncWait.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+
+    std::vector<VkSemaphoreSubmitInfo> originalSignals;
+    originalSignals.reserve(original.signalSemaphoreInfoCount);
+    for (uint32_t i = 0; i < original.signalSemaphoreInfoCount; i++)
+        originalSignals.push_back(original.pSignalSemaphoreInfos[i]);
+
+    VkSubmitInfo2 syncSubmit {};
+    syncSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    syncSubmit.flags = original.flags;
+    syncSubmit.waitSemaphoreInfoCount = 1;
+    syncSubmit.pWaitSemaphoreInfos = &syncWait;
+    syncSubmit.commandBufferInfoCount = static_cast<uint32_t>(syncCommandBuffers.size());
+    syncSubmit.pCommandBufferInfos = syncCommandBuffers.data();
+    syncSubmit.signalSemaphoreInfoCount = static_cast<uint32_t>(originalSignals.size());
+    syncSubmit.pSignalSemaphoreInfos = originalSignals.empty() ? nullptr : originalSignals.data();
+
+    std::vector<VkSubmitInfo2> finalSubmits;
+    finalSubmits.reserve(submitCount + 2);
+    for (uint32_t i = 0; i < submitCount; i++)
+    {
+        if (i == submitIndex)
+        {
+            finalSubmits.push_back(modifiedOriginal);
+            finalSubmits.push_back(copyBackSubmit);
+            finalSubmits.push_back(syncSubmit);
+        }
+        else
+        {
+            finalSubmits.push_back(pSubmits[i]);
+        }
+    }
+
+    return originalSubmit(queue, static_cast<uint32_t>(finalSubmits.size()), finalSubmits.data(), fence);
+}
 
 VkResult Vulkan_wDx12::hk_vkQueueSubmit2(VkQueue queue, uint32_t submitCount, const VkSubmitInfo2* pSubmits,
                                          VkFence fence)
@@ -6729,188 +6553,33 @@ VkResult Vulkan_wDx12::hk_vkQueueSubmit2(VkQueue queue, uint32_t submitCount, co
         return VK_ERROR_INITIALIZATION_FAILED;
     }
 
-#ifdef LOG_ALL_RECORDS
-    LOG_DEBUG("queue: {:X}, submitCount: {}, fence: {:X}", (size_t) queue, submitCount, (size_t) fence);
-#endif
+    PendingSubmission pending {};
+    uint32_t submitIndex = UINT32_MAX;
+    uint32_t commandBufferIndex = UINT32_MAX;
 
-    // Elevate the scope of all structs so they survive until o_vkQueueSubmit2 is called
-    std::vector<VkSubmitInfo2> finalSubmits;
-    VkSubmitInfo2 modifiedOriginalSubmit = {};
-    VkSubmitInfo2 copyBackSubmit = {};
-    VkSubmitInfo2 syncSubmit = {};
-
-    std::vector<VkCommandBufferSubmitInfo> modifiedOriginalCmdBuffers;
-    std::vector<VkCommandBufferSubmitInfo> syncCmdBuffers;
-    std::vector<VkSemaphoreSubmitInfo> syncSignalSemaphores;
-
-    VkSemaphoreSubmitInfo resourceCopyWaitInfo = {};
-    VkSemaphoreSubmitInfo resourceCopySignalInfo = {};
-    VkCommandBufferSubmitInfo copyBackCmdInfo = {};
-
-    bool injected = false;
-
-    if (commandBufferFoundCount < 1 && lastCmdBuffer != VK_NULL_HANDLE && submitCount > 0)
+    for (uint32_t i = 0; i < submitCount && submitIndex == UINT32_MAX; i++)
     {
-        for (uint32_t i = 0; i < submitCount; i++)
+        for (uint32_t j = 0; j < pSubmits[i].commandBufferInfoCount; j++)
         {
-            bool addSemaphore = false;
-            uint32_t submitIndex = 0;
-
-            if (pSubmits[i].commandBufferInfoCount > 0)
+            if (TakePendingSubmission(pSubmits[i].pCommandBufferInfos[j].commandBuffer, pending))
             {
-                for (uint32_t j = 0; j < pSubmits[i].commandBufferInfoCount; j++)
-                {
-                    if (pSubmits[i].pCommandBufferInfos[j].commandBuffer == lastCmdBuffer)
-                    {
-                        LOG_DEBUG("Found upscaling command buffer: {:X}, submit: {}, queue: {:X}",
-                                  (size_t) lastCmdBuffer, i, (size_t) queue);
-                        commandBufferFoundCount++;
-                        submitIndex = i;
-
-                        if (commandBufferFoundCount == 1)
-                        {
-                            addSemaphore = true;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (addSemaphore)
-            {
-                LOG_DEBUG("Original submit command buffer count: {}", pSubmits[submitIndex].commandBufferInfoCount);
-
-                // 1. Split command buffers into 'original' and 'sync' phases
-                bool bufferFound = false;
-                for (uint32_t b = 0; b < pSubmits[submitIndex].commandBufferInfoCount; b++)
-                {
-                    if (bufferFound)
-                    {
-                        syncCmdBuffers.push_back(pSubmits[submitIndex].pCommandBufferInfos[b]);
-                    }
-                    else
-                    {
-                        modifiedOriginalCmdBuffers.push_back(pSubmits[submitIndex].pCommandBufferInfos[b]);
-                        if (pSubmits[submitIndex].pCommandBufferInfos[b].commandBuffer == lastCmdBuffer)
-                        {
-                            bufferFound = true;
-                        }
-                    }
-                }
-
-                LOG_DEBUG("Moved {} command buffers to new submit", syncCmdBuffers.size());
-
-                // 2. Setup the signal info that ties Original -> CopyBack
-                resourceCopySignalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-                resourceCopySignalInfo.semaphore = resourceCopySubmitInfo.pSignalSemaphores[0];
-                resourceCopySignalInfo.value = timelineInfoResourceCopy.pSignalSemaphoreValues[0];
-                resourceCopySignalInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-
-                // 3. Assemble the Modified Original Submit (copying base properties, overriding cmd/signals)
-                modifiedOriginalSubmit = pSubmits[submitIndex];
-                modifiedOriginalSubmit.commandBufferInfoCount =
-                    static_cast<uint32_t>(modifiedOriginalCmdBuffers.size());
-                modifiedOriginalSubmit.pCommandBufferInfos = modifiedOriginalCmdBuffers.data();
-                modifiedOriginalSubmit.signalSemaphoreInfoCount = 1;
-                modifiedOriginalSubmit.pSignalSemaphoreInfos = &resourceCopySignalInfo;
-
-                // 4. Setup the CopyBack Submit
-                resourceCopyWaitInfo = resourceCopySignalInfo; // Wait is identical to the signal above
-
-                copyBackCmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-                copyBackCmdInfo.commandBuffer = copyBackSubmitInfo.pCommandBuffers[0];
-
-                copyBackSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-                copyBackSubmit.waitSemaphoreInfoCount = 1;
-                copyBackSubmit.pWaitSemaphoreInfos = &resourceCopyWaitInfo;
-                copyBackSubmit.commandBufferInfoCount = 1;
-                copyBackSubmit.pCommandBufferInfos = &copyBackCmdInfo;
-
-                // 5. Setup the final Sync Submit
-                VkCommandBufferSubmitInfo barrierCmdInfo = {};
-                barrierCmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-                barrierCmdInfo.commandBuffer = syncSubmitInfo.pCommandBuffers[0];
-
-                // Prepend barrier command buffer to the remaining sync command buffers
-                syncCmdBuffers.insert(syncCmdBuffers.begin(), barrierCmdInfo);
-
-                // Carry over the original signal semaphores
-                for (uint32_t s = 0; s < pSubmits[submitIndex].signalSemaphoreInfoCount; s++)
-                {
-                    syncSignalSemaphores.push_back(pSubmits[submitIndex].pSignalSemaphoreInfos[s]);
-                }
-
-                syncSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-                syncSubmit.commandBufferInfoCount = static_cast<uint32_t>(syncCmdBuffers.size());
-                syncSubmit.pCommandBufferInfos = syncCmdBuffers.data();
-                syncSubmit.signalSemaphoreInfoCount = static_cast<uint32_t>(syncSignalSemaphores.size());
-                syncSubmit.pSignalSemaphoreInfos = syncSignalSemaphores.data();
-
-                // 6. Build the final submit array
-                finalSubmits.reserve(submitCount + 2);
-                for (uint32_t n = 0; n < submitCount; n++)
-                {
-                    if (n == submitIndex)
-                    {
-                        finalSubmits.push_back(modifiedOriginalSubmit);
-                        finalSubmits.push_back(copyBackSubmit);
-                        finalSubmits.push_back(syncSubmit);
-                    }
-                    else
-                    {
-                        finalSubmits.push_back(pSubmits[n]);
-                    }
-                }
-
-                // Redirect the pointers to our persistent vector
-                submitCount = static_cast<uint32_t>(finalSubmits.size());
-                pSubmits = finalSubmits.data();
-
-                LOG_DEBUG("Injected w/Dx12 submits");
-                lastCmdBuffer = VK_NULL_HANDLE;
-                injected = true;
+                submitIndex = i;
+                commandBufferIndex = j;
                 break;
             }
         }
     }
 
-    // Call original function
-    auto result = o_vkQueueSubmit2(queue, submitCount, pSubmits, fence);
+    if (submitIndex == UINT32_MAX)
+        return o_vkQueueSubmit2(queue, submitCount, pSubmits, fence);
 
+    LOG_DEBUG("Injected Vulkan w/Dx12 submit2 for command buffer {:X}", (size_t) pending.submitCommandBuffer);
+    auto result = Submit2WithDx12Interop(o_vkQueueSubmit2, queue, submitCount, pSubmits, fence, pending, submitIndex,
+                                         commandBufferIndex);
     if (result != VK_SUCCESS)
     {
-        LOG_ERROR("o_vkQueueSubmit2 result: {}", magic_enum::enum_name(result));
-
-        if (injected)
-        {
-            LOG_DEBUG("==================================================");
-
-            for (size_t a = 0; a < submitCount; a++)
-            {
-                LOG_DEBUG("  Submit[{}]: cmdBufferInfoCount: {}", a, pSubmits[a].commandBufferInfoCount);
-
-                for (size_t b = 0; b < pSubmits[a].commandBufferInfoCount; b++)
-                {
-                    LOG_DEBUG("    CmdBuffer[{}]: {:X}", b, (size_t) pSubmits[a].pCommandBufferInfos[b].commandBuffer);
-                }
-
-                LOG_DEBUG("    waitSemaphoreInfoCount: {}", pSubmits[a].waitSemaphoreInfoCount);
-                for (size_t c = 0; c < pSubmits[a].waitSemaphoreInfoCount; c++)
-                {
-                    LOG_DEBUG("    WaitSemaphore[{}]: {:X}, value: {}", c,
-                              (size_t) pSubmits[a].pWaitSemaphoreInfos[c].semaphore,
-                              pSubmits[a].pWaitSemaphoreInfos[c].value);
-                }
-
-                LOG_DEBUG("    signalSemaphoreInfoCount: {}", pSubmits[a].signalSemaphoreInfoCount);
-                for (size_t d = 0; d < pSubmits[a].signalSemaphoreInfoCount; d++)
-                {
-                    LOG_DEBUG("    SignalSemaphore[{}]: {:X}, value: {}", d,
-                              (size_t) pSubmits[a].pSignalSemaphoreInfos[d].semaphore,
-                              pSubmits[a].pSignalSemaphoreInfos[d].value);
-                }
-            }
-        }
+        LOG_ERROR("vkQueueSubmit2 failed after Vulkan w/Dx12 injection: {}", magic_enum::enum_name(result));
+        AbortPendingD3D12Wait(pending, "vkQueueSubmit2 failed");
     }
 
     return result;
@@ -6925,188 +6594,33 @@ VkResult Vulkan_wDx12::hk_vkQueueSubmit2KHR(VkQueue queue, uint32_t submitCount,
         return VK_ERROR_INITIALIZATION_FAILED;
     }
 
-#ifdef LOG_ALL_RECORDS
-    LOG_DEBUG("queue: {:X}, submitCount: {}, fence: {:X}", (size_t) queue, submitCount, (size_t) fence);
-#endif
+    PendingSubmission pending {};
+    uint32_t submitIndex = UINT32_MAX;
+    uint32_t commandBufferIndex = UINT32_MAX;
 
-    // Elevate the scope of all structs so they survive until o_vkQueueSubmit2KHR is called
-    std::vector<VkSubmitInfo2> finalSubmits;
-    VkSubmitInfo2 modifiedOriginalSubmit = {};
-    VkSubmitInfo2 copyBackSubmit = {};
-    VkSubmitInfo2 syncSubmit = {};
-
-    std::vector<VkCommandBufferSubmitInfo> modifiedOriginalCmdBuffers;
-    std::vector<VkCommandBufferSubmitInfo> syncCmdBuffers;
-    std::vector<VkSemaphoreSubmitInfo> syncSignalSemaphores;
-
-    VkSemaphoreSubmitInfo resourceCopyWaitInfo = {};
-    VkSemaphoreSubmitInfo resourceCopySignalInfo = {};
-    VkCommandBufferSubmitInfo copyBackCmdInfo = {};
-
-    bool injected = false;
-
-    if (commandBufferFoundCount < 1 && lastCmdBuffer != VK_NULL_HANDLE && submitCount > 0)
+    for (uint32_t i = 0; i < submitCount && submitIndex == UINT32_MAX; i++)
     {
-        for (uint32_t i = 0; i < submitCount; i++)
+        for (uint32_t j = 0; j < pSubmits[i].commandBufferInfoCount; j++)
         {
-            bool addSemaphore = false;
-            uint32_t submitIndex = 0;
-
-            if (pSubmits[i].commandBufferInfoCount > 0)
+            if (TakePendingSubmission(pSubmits[i].pCommandBufferInfos[j].commandBuffer, pending))
             {
-                for (uint32_t j = 0; j < pSubmits[i].commandBufferInfoCount; j++)
-                {
-                    if (pSubmits[i].pCommandBufferInfos[j].commandBuffer == lastCmdBuffer)
-                    {
-                        LOG_DEBUG("Found upscaling command buffer: {:X}, submit: {}, queue: {:X}",
-                                  (size_t) lastCmdBuffer, i, (size_t) queue);
-                        commandBufferFoundCount++;
-                        submitIndex = i;
-
-                        if (commandBufferFoundCount == 1)
-                        {
-                            addSemaphore = true;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (addSemaphore)
-            {
-                LOG_DEBUG("Original submit command buffer count: {}", pSubmits[submitIndex].commandBufferInfoCount);
-
-                // 1. Split command buffers into 'original' and 'sync' phases
-                bool bufferFound = false;
-                for (uint32_t b = 0; b < pSubmits[submitIndex].commandBufferInfoCount; b++)
-                {
-                    if (bufferFound)
-                    {
-                        syncCmdBuffers.push_back(pSubmits[submitIndex].pCommandBufferInfos[b]);
-                    }
-                    else
-                    {
-                        modifiedOriginalCmdBuffers.push_back(pSubmits[submitIndex].pCommandBufferInfos[b]);
-                        if (pSubmits[submitIndex].pCommandBufferInfos[b].commandBuffer == lastCmdBuffer)
-                        {
-                            bufferFound = true;
-                        }
-                    }
-                }
-
-                LOG_DEBUG("Moved {} command buffers to new submit", syncCmdBuffers.size());
-
-                // 2. Setup the signal info that ties Original -> CopyBack
-                resourceCopySignalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-                resourceCopySignalInfo.semaphore = resourceCopySubmitInfo.pSignalSemaphores[0];
-                resourceCopySignalInfo.value = timelineInfoResourceCopy.pSignalSemaphoreValues[0];
-                resourceCopySignalInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-
-                // 3. Assemble the Modified Original Submit (copying base properties, overriding cmd/signals)
-                modifiedOriginalSubmit = pSubmits[submitIndex];
-                modifiedOriginalSubmit.commandBufferInfoCount =
-                    static_cast<uint32_t>(modifiedOriginalCmdBuffers.size());
-                modifiedOriginalSubmit.pCommandBufferInfos = modifiedOriginalCmdBuffers.data();
-                modifiedOriginalSubmit.signalSemaphoreInfoCount = 1;
-                modifiedOriginalSubmit.pSignalSemaphoreInfos = &resourceCopySignalInfo;
-
-                // 4. Setup the CopyBack Submit
-                resourceCopyWaitInfo = resourceCopySignalInfo; // Wait is identical to the signal above
-
-                copyBackCmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-                copyBackCmdInfo.commandBuffer = copyBackSubmitInfo.pCommandBuffers[0];
-
-                copyBackSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-                copyBackSubmit.waitSemaphoreInfoCount = 1;
-                copyBackSubmit.pWaitSemaphoreInfos = &resourceCopyWaitInfo;
-                copyBackSubmit.commandBufferInfoCount = 1;
-                copyBackSubmit.pCommandBufferInfos = &copyBackCmdInfo;
-
-                // 5. Setup the final Sync Submit
-                VkCommandBufferSubmitInfo barrierCmdInfo = {};
-                barrierCmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-                barrierCmdInfo.commandBuffer = syncSubmitInfo.pCommandBuffers[0];
-
-                // Prepend barrier command buffer to the remaining sync command buffers
-                syncCmdBuffers.insert(syncCmdBuffers.begin(), barrierCmdInfo);
-
-                // Carry over the original signal semaphores
-                for (uint32_t s = 0; s < pSubmits[submitIndex].signalSemaphoreInfoCount; s++)
-                {
-                    syncSignalSemaphores.push_back(pSubmits[submitIndex].pSignalSemaphoreInfos[s]);
-                }
-
-                syncSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-                syncSubmit.commandBufferInfoCount = static_cast<uint32_t>(syncCmdBuffers.size());
-                syncSubmit.pCommandBufferInfos = syncCmdBuffers.data();
-                syncSubmit.signalSemaphoreInfoCount = static_cast<uint32_t>(syncSignalSemaphores.size());
-                syncSubmit.pSignalSemaphoreInfos = syncSignalSemaphores.data();
-
-                // 6. Build the final submit array
-                finalSubmits.reserve(submitCount + 2);
-                for (uint32_t n = 0; n < submitCount; n++)
-                {
-                    if (n == submitIndex)
-                    {
-                        finalSubmits.push_back(modifiedOriginalSubmit);
-                        finalSubmits.push_back(copyBackSubmit);
-                        finalSubmits.push_back(syncSubmit);
-                    }
-                    else
-                    {
-                        finalSubmits.push_back(pSubmits[n]);
-                    }
-                }
-
-                // Redirect the pointers to our persistent vector
-                submitCount = static_cast<uint32_t>(finalSubmits.size());
-                pSubmits = finalSubmits.data();
-
-                LOG_DEBUG("Injected w/Dx12 submits");
-                lastCmdBuffer = VK_NULL_HANDLE;
-                injected = true;
+                submitIndex = i;
+                commandBufferIndex = j;
                 break;
             }
         }
     }
 
-    // Call original function
-    auto result = o_vkQueueSubmit2KHR(queue, submitCount, pSubmits, fence);
+    if (submitIndex == UINT32_MAX)
+        return o_vkQueueSubmit2KHR(queue, submitCount, pSubmits, fence);
 
+    LOG_DEBUG("Injected Vulkan w/Dx12 submit2KHR for command buffer {:X}", (size_t) pending.submitCommandBuffer);
+    auto result = Submit2WithDx12Interop(o_vkQueueSubmit2KHR, queue, submitCount, pSubmits, fence, pending, submitIndex,
+                                         commandBufferIndex);
     if (result != VK_SUCCESS)
     {
-        LOG_ERROR("o_vkQueueSubmit2 result: {}", magic_enum::enum_name(result));
-
-        if (injected)
-        {
-            LOG_DEBUG("==================================================");
-
-            for (size_t a = 0; a < submitCount; a++)
-            {
-                LOG_DEBUG("  Submit[{}]: cmdBufferInfoCount: {}", a, pSubmits[a].commandBufferInfoCount);
-
-                for (size_t b = 0; b < pSubmits[a].commandBufferInfoCount; b++)
-                {
-                    LOG_DEBUG("    CmdBuffer[{}]: {:X}", b, (size_t) pSubmits[a].pCommandBufferInfos[b].commandBuffer);
-                }
-
-                LOG_DEBUG("    waitSemaphoreInfoCount: {}", pSubmits[a].waitSemaphoreInfoCount);
-                for (size_t c = 0; c < pSubmits[a].waitSemaphoreInfoCount; c++)
-                {
-                    LOG_DEBUG("    WaitSemaphore[{}]: {:X}, value: {}", c,
-                              (size_t) pSubmits[a].pWaitSemaphoreInfos[c].semaphore,
-                              pSubmits[a].pWaitSemaphoreInfos[c].value);
-                }
-
-                LOG_DEBUG("    signalSemaphoreInfoCount: {}", pSubmits[a].signalSemaphoreInfoCount);
-                for (size_t d = 0; d < pSubmits[a].signalSemaphoreInfoCount; d++)
-                {
-                    LOG_DEBUG("    SignalSemaphore[{}]: {:X}, value: {}", d,
-                              (size_t) pSubmits[a].pSignalSemaphoreInfos[d].semaphore,
-                              pSubmits[a].pSignalSemaphoreInfos[d].value);
-                }
-            }
-        }
+        LOG_ERROR("vkQueueSubmit2KHR failed after Vulkan w/Dx12 injection: {}", magic_enum::enum_name(result));
+        AbortPendingD3D12Wait(pending, "vkQueueSubmit2KHR failed");
     }
 
     return result;
@@ -7115,7 +6629,7 @@ VkResult Vulkan_wDx12::hk_vkQueueSubmit2KHR(VkQueue queue, uint32_t submitCount,
 VkResult Vulkan_wDx12::hk_vkBeginCommandBuffer(VkCommandBuffer commandBuffer,
                                                const VkCommandBufferBeginInfo* pBeginInfo)
 {
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (GetVirtualCommandBuffer(commandBuffer) == VK_NULL_HANDLE)
         cmdBufferStateTracker.OnBegin(commandBuffer, pBeginInfo);
 
 #ifdef LOG_ALL_RECORDS
@@ -7131,17 +6645,16 @@ VkResult Vulkan_wDx12::hk_vkEndCommandBuffer(VkCommandBuffer commandBuffer)
     LOG_DEBUG("commandBuffer: {:X}", (size_t) commandBuffer);
 #endif
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    auto virtualCommandBuffer = RemoveVirtualCommandBuffer(commandBuffer);
+    if (virtualCommandBuffer == VK_NULL_HANDLE)
     {
         cmdBufferStateTracker.OnEnd(commandBuffer);
     }
-    else if (commandBuffer == lastCmdBuffer)
+    else
     {
-        auto result = o_vkEndCommandBuffer(virtualCmdBuffer);
-        LOG_DEBUG("Ending virtual command buffer: {:X}, result: {}", (size_t) virtualCmdBuffer,
+        auto result = o_vkEndCommandBuffer(virtualCommandBuffer);
+        LOG_DEBUG("Ending virtual command buffer: {:X}, result: {}", (size_t) virtualCommandBuffer,
                   magic_enum::enum_name(result));
-
-        virtualCmdBuffer = VK_NULL_HANDLE;
     }
 
     return o_vkEndCommandBuffer(commandBuffer);
@@ -7153,7 +6666,7 @@ VkResult Vulkan_wDx12::hk_vkResetCommandBuffer(VkCommandBuffer commandBuffer, Vk
     LOG_DEBUG("commandBuffer: {:X}", (size_t) commandBuffer);
 #endif
 
-    if (virtualCmdBuffer == VK_NULL_HANDLE)
+    if (GetVirtualCommandBuffer(commandBuffer) == VK_NULL_HANDLE)
         cmdBufferStateTracker.OnReset(commandBuffer);
 
     return o_vkResetCommandBuffer(commandBuffer, flags);
@@ -7185,17 +6698,25 @@ VkResult Vulkan_wDx12::hk_vkAllocateCommandBuffers(VkDevice device, const VkComm
 
     if (result == VK_SUCCESS && pAllocateInfo != nullptr && pCommandBuffers != nullptr)
     {
-        uint32_t queueFamily = 0;
+        std::optional<uint32_t> queueFamily;
 
         {
             std::scoped_lock lock(mutexCommandPoolToQueueFamilyMap);
             auto it = commandPoolToQueueFamilyMap.find(pAllocateInfo->commandPool);
-            queueFamily = (it != commandPoolToQueueFamilyMap.end()) ? it->second : 0;
+            if (it != commandPoolToQueueFamilyMap.end())
+                queueFamily = it->second;
         }
 
-        // Notify state tracker about new command buffers
+        if (!queueFamily.has_value())
+        {
+            LOG_WARN("Queue family is unknown for command pool {:X}; command buffers will remain fail-closed for "
+                     "Vulkan w/Dx12 interop",
+                     (size_t) pAllocateInfo->commandPool);
+        }
+
+        // Track both queue family (when known) and primary/secondary level.
         cmdBufferStateTracker.OnAllocateCommandBuffers(pAllocateInfo->commandPool, pAllocateInfo->commandBufferCount,
-                                                       pCommandBuffers, queueFamily);
+                                                       pCommandBuffers, queueFamily, pAllocateInfo->level);
     }
 
     return result;
@@ -7210,6 +6731,11 @@ void Vulkan_wDx12::hk_vkDestroyCommandPool(VkDevice device, VkCommandPool comman
 
     // Notify state tracker about pool destruction
     cmdBufferStateTracker.OnDestroyPool(commandPool);
+
+    {
+        std::scoped_lock lock(mutexCommandPoolToQueueFamilyMap);
+        commandPoolToQueueFamilyMap.erase(commandPool);
+    }
 
     o_vkDestroyCommandPool(device, commandPool, pAllocator);
 }

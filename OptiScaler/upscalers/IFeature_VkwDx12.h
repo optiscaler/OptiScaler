@@ -55,7 +55,7 @@ class IFeature_VkwDx12 : public virtual IFeature_Vk
     VkInstance VulkanInstance = VK_NULL_HANDLE;
     VkQueue VulkanGraphicsQueue = VK_NULL_HANDLE;
     std::map<uint32_t, QUERY_INDEX_BUFFERS> VulkanQueueCommandBuffers;
-    uint32_t ActiveQueueFamilyIndex = 9999;
+    uint32_t ActiveQueueFamilyIndex = UINT32_MAX;
 
     PFN_vkGetInstanceProcAddr VulkanGIPA = nullptr;
     PFN_vkGetDeviceProcAddr VulkanGDPA = nullptr;
@@ -82,6 +82,8 @@ class IFeature_VkwDx12 : public virtual IFeature_Vk
     ID3D12Fence* dx12FenceTextureCopy[2] = { nullptr, nullptr };
     HANDLE vkSHForTextureCopy[2] = { nullptr, nullptr };
     ULONG _fenceValue = 0;
+    uint64_t pendingResourceCopyValue = 0;
+    std::mutex EvaluateMutex;
 
     // D3D12 processing shaders
     std::unique_ptr<OS_Dx12> OutputScaler = nullptr;
@@ -113,7 +115,8 @@ class IFeature_VkwDx12 : public virtual IFeature_Vk
                                  VK_TEXTURE2D_RESOURCE_C* OutResource, ResourceCopy_Vk* InCopyShader, bool InCopy,
                                  bool InDepth);
     bool ProcessVulkanTextures(VkCommandBuffer InCmdList, const NVSDK_NGX_Parameter* InParameters);
-    bool CopyBackOutput();
+    bool CopyBackOutput(VkCommandBuffer InCmdBuffer);
+    void AbortPendingInterop(VkCommandBuffer InCmdBuffer, uint32_t InFrame);
 
     void ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
                          D3D12_RESOURCE_STATES InBeforeState, D3D12_RESOURCE_STATES InAfterState);
