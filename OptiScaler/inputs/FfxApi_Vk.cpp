@@ -9,7 +9,7 @@
 #include <proxies/FfxApi_Proxy.h>
 
 #include <ffx_upscale.h>
-#include <vk/ffx_api_vk.h>
+#include <include/ffx/FfxVkHeader.h>
 #include <vk/ffx_api_framegeneration_vk.h>
 
 #include <nvsdk_ngx_vk.h>

@@ -124,9 +124,14 @@ static bool CheckForFGStatus()
     return true;
 }
 
+bool FGHooks::IsOtherWindowThanFG(HWND hwnd)
+{
+    return State::Instance().currentFGSwapchain != nullptr && _hwnd != nullptr && hwnd != _hwnd;
+}
+
 static bool IsOtherWindowWhileFGSwapchainExists(HWND fgHwnd, HWND hwnd)
 {
-    if (State::Instance().currentFGSwapchain == nullptr || fgHwnd == nullptr || hwnd == fgHwnd)
+    if (!FGHooks::IsOtherWindowThanFG(hwnd))
         return false;
 
     LOG_WARN("FG swapchain already exists for window {:X}, not using FG for window {:X}", (size_t) fgHwnd,

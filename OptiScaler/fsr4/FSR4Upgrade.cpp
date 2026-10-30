@@ -31,9 +31,10 @@ typedef decltype(&D3DKMTQueryAdapterInfo) PFN_D3DKMTQueryAdapterInfo;
 typedef decltype(&D3DKMTEnumAdapters) PFN_D3DKMTEnumAdapters;
 typedef decltype(&D3DKMTCloseAdapter) PFN_D3DKMTCloseAdapter;
 
-std::vector<std::filesystem::path> GetDriverStore()
+// Adapter and driver folder of each adapter
+static std::vector<std::pair<LUID, std::filesystem::path>> EnumDriverStores()
 {
-    std::vector<std::filesystem::path> result;
+    std::vector<std::pair<LUID, std::filesystem::path>> result;
 
     // Load D3DKMT functions dynamically
     bool libraryLoaded = false;
@@ -95,7 +96,8 @@ std::vector<std::filesystem::path> GetDriverStore()
                 if (hr != 0)
                     LOG_WARN("Failed to query adapter info {:X}", hr);
                 else
-                    result.push_back(std::filesystem::path(umdFileInfo.UmdFileName).parent_path());
+                    result.emplace_back(adapter.AdapterLuid,
+                                        std::filesystem::path(umdFileInfo.UmdFileName).parent_path());
 
                 D3DKMT_CLOSEADAPTER closeAdapter = {};
                 closeAdapter.hAdapter = adapter.hAdapter;
@@ -116,6 +118,35 @@ std::vector<std::filesystem::path> GetDriverStore()
         NtdllProxy::FreeLibrary_Ldr(hGdi32);
 
     return result;
+}
+
+static bool SameLuid(const LUID& a, const LUID& b) { return a.LowPart == b.LowPart && a.HighPart == b.HighPart; }
+
+std::vector<std::filesystem::path> GetDriverStore(std::optional<LUID> preferred)
+{
+    std::vector<std::filesystem::path> result;
+
+    // Systems with two GPUs of a vendor have a driver package for each, the preferred one goes first
+    for (const auto& [luid, path] : EnumDriverStores())
+    {
+        if (preferred.has_value() && SameLuid(luid, *preferred))
+            result.insert(result.begin(), path);
+        else
+            result.push_back(path);
+    }
+
+    return result;
+}
+
+static std::optional<std::filesystem::path> GetDriverStoreOf(const LUID& adapter)
+{
+    for (const auto& [luid, path] : EnumDriverStores())
+    {
+        if (SameLuid(luid, adapter))
+            return path;
+    }
+
+    return std::nullopt;
 }
 
 #pragma endregion
@@ -248,31 +279,166 @@ void CheckForGPU()
              State::Instance().isRunningOnRDNA3.value(), Config::Instance()->Fsr4Update.value_or_default());
 }
 
-struct ffxProviderInterface
-{
-    uint64_t versionId;
-    const char* versionName;
-    PVOID canProvide;
-    PVOID createContext;
-    PVOID destroyContext;
-    PVOID configure;
-    PVOID query;
-    PVOID dispatch;
-};
+// Adapter of the device that asked for IAmdExtFfxApi, the driver dll is loaded from its driver package
+static std::optional<LUID> ffxApiAdapter;
 
-struct ExternalProviderData
+static std::optional<LUID> AdapterOf(IUnknown* object)
 {
-    uint32_t structVersion = 2;
-    uint64_t descType;
-    ffxProviderInterface provider;
-};
+    ID3D12Device* device = nullptr;
+    if (object == nullptr || FAILED(object->QueryInterface(IID_PPV_ARGS(&device))))
+        return std::nullopt;
+
+    auto luid = device->GetAdapterLuid();
+    device->Release();
+    return luid;
+}
+
+// Driver dll that gets itself for every FFX SDK dll it looks up while it sets its SDK version
+static std::atomic<HMODULE> primingDll = nullptr;
+static decltype(&GetModuleHandleW) o_driverGetModuleHandleW = nullptr;
+
+// Only the driver dlls call it, through their patched imports
+static HMODULE WINAPI hkDriverGetModuleHandleW(LPCWSTR lpModuleName)
+{
+    auto caller = Util::GetCallerModule(_ReturnAddress());
+
+    if (caller != nullptr && caller == primingDll && lpModuleName != nullptr &&
+        _wcsnicmp(lpModuleName, L"amd_fidelityfx_", 15) == 0)
+    {
+        return caller;
+    }
+
+    auto module = o_driverGetModuleHandleW(lpModuleName);
+
+    // amdvkffx64 only gives out providers when it sees a signed FFX SDK dll, the driver dll stands in for missing ones
+    if (module == nullptr && caller != nullptr && caller == moduleAmdvkffx64 && lpModuleName != nullptr &&
+        (_wcsicmp(lpModuleName, L"amd_fidelityfx_loader_vk.dll") == 0 ||
+         _wcsicmp(lpModuleName, L"amd_fidelityfx_upscaler_vk.dll") == 0 ||
+         _wcsicmp(lpModuleName, L"amd_fidelityfx_framegeneration_vk.dll") == 0))
+    {
+        return caller;
+    }
+
+    return module;
+}
+
+static BOOL CALLBACK PatchGetModuleHandleW(PVOID pContext, DWORD nOrdinal, LPCSTR pszFunc, PVOID* ppvFunc)
+{
+    if (pszFunc == nullptr || ppvFunc == nullptr || strcmp(pszFunc, "GetModuleHandleW") != 0)
+        return TRUE;
+
+    DWORD oldProtect = 0;
+    if (!VirtualProtect(ppvFunc, sizeof(PVOID), PAGE_READWRITE, &oldProtect))
+        return FALSE;
+
+    // Every driver dll imports the same kernel32 export
+    if (o_driverGetModuleHandleW == nullptr)
+        o_driverGetModuleHandleW = reinterpret_cast<decltype(&GetModuleHandleW)>(*ppvFunc);
+
+    *ppvFunc = reinterpret_cast<PVOID>(&hkDriverGetModuleHandleW);
+    VirtualProtect(ppvFunc, sizeof(PVOID), oldProtect, &oldProtect);
+
+    *static_cast<bool*>(pContext) = true;
+    return FALSE;
+}
+
+// The driver keeps the SDK version of the first FFX dll it checks for the rest of the process. An old one, like a
+// legacy amd_fidelityfx_dx12.dll in the game folder, leaves the driver upscaler and frame generation out. This
+// request runs before any other and has the driver dll check itself, its file version counts as the newest SDK
+static void PrimeSdkVersion(HMODULE driverDll, PFN_UpdateFfxApiProvider updateFfxApiProvider)
+{
+    bool patched = false;
+    DetourEnumerateImportsEx(driverDll, &patched, nullptr, PatchGetModuleHandleW);
+
+    if (!patched)
+    {
+        LOG_WARN("Couldn't patch GetModuleHandleW of {:X}", (size_t) driverDll);
+        return;
+    }
+
+    ExternalProviderData data {};
+    data.structVersion = 2;
+    data.descType = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE;
+
+    State::DisableChecks(1);
+    primingDll = driverDll;
+    auto result = updateFfxApiProvider(&data, offsetof(ExternalProviderData, isSupported));
+    primingDll = nullptr;
+    State::EnableChecks(1);
+
+    LOG_DEBUG("Set the SDK version of {:X}, result: {:#X}", (size_t) driverDll, (UINT) result);
+}
+
+// A copy next to Opti overrides the one of the driver
+static HMODULE LoadDriverDll(const wchar_t* name, std::optional<LUID> adapter)
+{
+    HMODULE module = nullptr;
+    HMODULE memModule = nullptr;
+    auto optiPath = Config::Instance()->MainDllPath.value();
+    Util::LoadProxyLibrary(name, L"", optiPath, &memModule, &module);
+
+    if (module == nullptr && memModule != nullptr)
+        module = memModule;
+
+    if (module != nullptr)
+    {
+        LOG_INFO(L"{} loaded from game folder", name);
+        return module;
+    }
+
+    for (const auto& storePath : GetDriverStore(adapter))
+    {
+        auto dllPath = storePath / name;
+        LOG_DEBUG("Trying to load: {}", wstring_to_string(dllPath.c_str()));
+        module = NtdllProxy::LoadLibraryExW_Ldr(dllPath.c_str(), NULL, 0);
+
+        if (module != nullptr)
+        {
+            LOG_INFO(L"{} loaded from {}", name, dllPath.wstring());
+            return module;
+        }
+    }
+
+    LOG_WARN(L"Failed to load {}", name);
+    return nullptr;
+}
+
+HMODULE LoadFSR4DriverDll(API api)
+{
+    static std::once_flag dx12Once;
+    static std::once_flag vkOnce;
+
+    const bool isDx12 = api == API::DX12;
+    auto& module = isDx12 ? moduleAmdxcffx64 : moduleAmdvkffx64;
+
+    std::call_once(isDx12 ? dx12Once : vkOnce,
+                   [&]
+                   {
+                       // The DX12 one has to come from the driver of the device that asked for IAmdExtFfxApi
+                       auto loaded = LoadDriverDll(isDx12 ? L"amdxcffx64.dll" : L"amdvkffx64.dll",
+                                                   isDx12 ? ffxApiAdapter : std::nullopt);
+                       if (loaded == nullptr)
+                           return;
+
+                       FSR4ModelSelection::Hook(loaded, FSR4Source::DriverDll, api);
+
+                       // Set before priming, the Vulkan stand-in checks for it
+                       module = loaded;
+
+                       auto update = reinterpret_cast<PFN_UpdateFfxApiProvider>(
+                           KernelBaseProxy::GetProcAddress_()(loaded, "UpdateFfxApiProvider"));
+
+                       if (update != nullptr)
+                           PrimeSdkVersion(loaded, update);
+                   });
+
+    return module;
+}
 
 struct AmdExtFfxApi : public IAmdExtFfxApi
 {
     PFN_UpdateFfxApiProvider o_UpdateFfxApiProviderDx12 = nullptr;
     PFN_UpdateFfxApiProviderEx o_UpdateFfxApiProviderExDx12 = nullptr;
-    PFN_UpdateFfxApiProvider o_UpdateFfxApiProviderVk = nullptr;
-    PFN_UpdateFfxApiProviderEx o_UpdateFfxApiProviderExVk = nullptr;
 
     HRESULT STDMETHODCALLTYPE UpdateFfxApiProvider(void* pData, uint32_t dataSizeInBytes) override
     {
@@ -294,48 +460,8 @@ struct AmdExtFfxApi : public IAmdExtFfxApi
         // Dx12
         if (o_UpdateFfxApiProviderDx12 == nullptr)
         {
-            moduleAmdxcffx64 = nullptr;
-            HMODULE memModule = nullptr;
-            auto optiPath = Config::Instance()->MainDllPath.value();
-            Util::LoadProxyLibrary(L"amdxcffx64.dll", L"", optiPath, &memModule, &moduleAmdxcffx64);
-
-            if (moduleAmdxcffx64 == nullptr && memModule != nullptr)
-                moduleAmdxcffx64 = memModule;
-
-            if (moduleAmdxcffx64 == nullptr)
-            {
-                auto storePath = GetDriverStore();
-
-                for (size_t i = 0; i < storePath.size(); i++)
-                {
-                    if (moduleAmdxcffx64 == nullptr)
-                    {
-                        auto dllPath = storePath[i] / L"amdxcffx64.dll";
-                        LOG_DEBUG("Trying to load: {}", wstring_to_string(dllPath.c_str()));
-                        moduleAmdxcffx64 = NtdllProxy::LoadLibraryExW_Ldr(dllPath.c_str(), NULL, 0);
-
-                        if (moduleAmdxcffx64 != nullptr)
-                        {
-                            LOG_INFO(L"amdxcffx64 loaded from {}", dllPath.wstring());
-                            break;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                LOG_INFO("amdxcffx64 loaded from game folder");
-            }
-
-            if (moduleAmdxcffx64)
-            {
-                FSR4ModelSelection::Hook(moduleAmdxcffx64, FSR4Source::DriverDll, API::DX12);
-            }
-            else
-            {
-                LOG_WARN("Failed to load amdxcffx64.dll");
+            if (LoadFSR4DriverDll(API::DX12) == nullptr)
                 return E_NOINTERFACE;
-            }
 
             o_UpdateFfxApiProviderDx12 =
                 (PFN_UpdateFfxApiProvider) KernelBaseProxy::GetProcAddress_()(moduleAmdxcffx64, "UpdateFfxApiProvider");
@@ -345,64 +471,6 @@ struct AmdExtFfxApi : public IAmdExtFfxApi
             if (o_UpdateFfxApiProviderDx12 == nullptr)
             {
                 LOG_ERROR("Failed to get UpdateFfxApiProviderDx12");
-                return E_NOINTERFACE;
-            }
-        }
-
-        // Vulkan
-        if (o_UpdateFfxApiProviderVk == nullptr)
-        {
-            moduleAmdvkffx64 = nullptr;
-            HMODULE memModule = nullptr;
-            auto optiPath = Config::Instance()->MainDllPath.value();
-            Util::LoadProxyLibrary(L"amdvkffx64.dll", L"", optiPath, &memModule, &moduleAmdvkffx64);
-
-            if (moduleAmdvkffx64 == nullptr && memModule != nullptr)
-                moduleAmdvkffx64 = memModule;
-
-            if (moduleAmdvkffx64 == nullptr)
-            {
-                auto storePath = GetDriverStore();
-
-                for (size_t i = 0; i < storePath.size(); i++)
-                {
-                    if (moduleAmdvkffx64 == nullptr)
-                    {
-                        auto dllPath = storePath[i] / L"amdvkffx64.dll";
-                        LOG_DEBUG("Trying to load: {}", wstring_to_string(dllPath.c_str()));
-                        moduleAmdvkffx64 = NtdllProxy::LoadLibraryExW_Ldr(dllPath.c_str(), NULL, 0);
-
-                        if (moduleAmdvkffx64 != nullptr)
-                        {
-                            LOG_INFO(L"amdvkffx64 loaded from {}", dllPath.wstring());
-                            break;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                LOG_INFO("amdvkffx64 loaded from game folder");
-            }
-
-            if (moduleAmdvkffx64)
-            {
-                FSR4ModelSelection::Hook(moduleAmdvkffx64, FSR4Source::DriverDll, API::Vulkan);
-            }
-            else
-            {
-                LOG_WARN("Failed to load amdvkffx64.dll");
-                return E_NOINTERFACE;
-            }
-
-            o_UpdateFfxApiProviderVk =
-                (PFN_UpdateFfxApiProvider) KernelBaseProxy::GetProcAddress_()(moduleAmdvkffx64, "UpdateFfxApiProvider");
-            o_UpdateFfxApiProviderExVk = (PFN_UpdateFfxApiProviderEx) KernelBaseProxy::GetProcAddress_()(
-                moduleAmdvkffx64, "UpdateFfxApiProviderEx");
-
-            if (o_UpdateFfxApiProviderVk == nullptr)
-            {
-                LOG_ERROR("Failed to get UpdateFfxApiProviderVk");
                 return E_NOINTERFACE;
             }
         }
@@ -447,37 +515,6 @@ struct AmdExtFfxApi : public IAmdExtFfxApi
 
             auto level = SUCCEEDED(result) ? spdlog::level::info : spdlog::level::err;
             spdlog::log(level, "UpdateFfxApiProviderDx12 for: {}, result: {:#X}", effect, (UINT) result);
-
-            State::EnableChecks(1);
-            return result;
-        }
-
-        // Vulkan
-        // Result 0x80004002 (E_NOINTERFACE) basically means that amdxcffx64 doesn't have a provider for that effect
-        if ((effectType == FFXStructType::FG || effectType == FFXStructType::Upscaling ||
-             effectType == FFXStructType::SwapchainVulkan) &&
-            o_UpdateFfxApiProviderExVk != nullptr)
-        {
-            State::DisableChecks(1);
-
-            magicData data = { { 0, 1, 1, 0 }, nullptr };
-            auto result = o_UpdateFfxApiProviderExVk(pData, dataSizeInBytes, &data);
-
-            auto level = SUCCEEDED(result) ? spdlog::level::info : spdlog::level::err;
-            spdlog::log(level, "UpdateFfxApiProviderExVk for: {}, result: {:#X}", effect, (UINT) result);
-
-            State::EnableChecks(1);
-            return result;
-        }
-
-        else if (o_UpdateFfxApiProviderVk != nullptr)
-        {
-            State::DisableChecks(1);
-
-            auto result = o_UpdateFfxApiProviderVk(pData, dataSizeInBytes);
-
-            auto level = SUCCEEDED(result) ? spdlog::level::info : spdlog::level::err;
-            spdlog::log(level, "UpdateFfxApiProviderVk for: {}, result: {:#X}", effect, (UINT) result);
 
             State::EnableChecks(1);
             return result;
@@ -799,10 +836,48 @@ static void HookFactory(IAmdExtD3DFactory* factory)
     }
 }
 
+// The hooked amdxc64 is the first one loaded, with two GPUs of a vendor it can belong to the other driver package.
+// A device only works with the extension of its own driver, which is loaded by d3d12 from its driver package
+static PFN_AmdExtD3DCreateInterface CreateInterfaceOf(IUnknown* pOuter)
+{
+    auto adapter = AdapterOf(pOuter);
+    if (!adapter.has_value())
+        return o_AmdExtD3DCreateInterface;
+
+    auto store = GetDriverStoreOf(*adapter);
+    if (!store.has_value())
+        return o_AmdExtD3DCreateInterface;
+
+    auto module = KernelBaseProxy::GetModuleHandleW_()((*store / L"amdxc64.dll").c_str());
+
+    // The export of the hooked module would call the hook again
+    if (module == nullptr || module == moduleAmdxc64)
+        return o_AmdExtD3DCreateInterface;
+
+    auto createInterface = reinterpret_cast<PFN_AmdExtD3DCreateInterface>(
+        KernelBaseProxy::GetProcAddress_()(module, "AmdExtD3DCreateInterface"));
+
+    if (createInterface == nullptr)
+        return o_AmdExtD3DCreateInterface;
+
+    static std::once_flag logOnce;
+    std::call_once(logOnce, [&] { LOG_INFO(L"Using amdxc64 of the device's driver: {}", store->wstring()); });
+
+    return createInterface;
+}
+
 // Original call, hooking the real factory on the way so the flip meter is seen
 static HRESULT CreateInterfaceOriginal(IUnknown* pOuter, REFIID riid, void** ppvObject)
 {
-    auto result = o_AmdExtD3DCreateInterface(pOuter, riid, ppvObject);
+    auto result = CreateInterfaceOf(pOuter)(pOuter, riid, ppvObject);
+
+    // The FSR 4 support checks of the FFX SDK and the driver rely on these
+    if (FAILED(result))
+    {
+        wchar_t iid[40] {};
+        StringFromGUID2(riid, iid, 40);
+        LOG_WARN(L"AmdExtD3DCreateInterface {} failed: {:X}", iid, (UINT) result);
+    }
 
     if (SUCCEEDED(result) && riid == __uuidof(IAmdExtD3DFactory) && *ppvObject != nullptr)
         HookFactory((IAmdExtD3DFactory*) *ppvObject);
@@ -828,7 +903,9 @@ void InitFSR4Update()
 
     if (moduleAmdxc64 != nullptr)
     {
-        LOG_INFO("amdxc64.dll loaded");
+        wchar_t amdxc64Path[MAX_PATH] {};
+        GetModuleFileNameW(moduleAmdxc64, amdxc64Path, MAX_PATH);
+        LOG_INFO(L"amdxc64.dll loaded from {}", amdxc64Path);
         o_AmdExtD3DCreateInterface = (PFN_AmdExtD3DCreateInterface) KernelBaseProxy::GetProcAddress_()(
             moduleAmdxc64, "AmdExtD3DCreateInterface");
 
@@ -884,6 +961,9 @@ HRESULT STDMETHODCALLTYPE hkAmdExtD3DCreateInterface(IUnknown* pOuter, REFIID ri
 
     else if (riid == __uuidof(IAmdExtFfxApi))
     {
+        if (!ffxApiAdapter.has_value())
+            ffxApiAdapter = AdapterOf(pOuter);
+
         if (amdExtFfxApi == nullptr)
             amdExtFfxApi = new AmdExtFfxApi();
 

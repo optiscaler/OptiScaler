@@ -3,6 +3,7 @@
 #include <Util.h>
 #include <proxies/FfxApi_Proxy.h>
 #include "FSR31Feature_Vk.h"
+#include <fsr4/FSR4DriverVk.h>
 
 #include "nvsdk_ngx_vk.h"
 
@@ -49,6 +50,10 @@ FSR31FeatureVk::FSR31FeatureVk(unsigned int InHandleId, NVSDK_NGX_Parameter* InP
         LOG_INFO("amd_fidelityfx_vk.dll methods loaded!");
     else
         LOG_ERROR("Can't load amd_fidelityfx_vk.dll methods!");
+
+    // FSR 4 of the driver works without amd_fidelityfx_vk.dll
+    if (FSR4DriverVk::Init())
+        _moduleLoaded = true;
 }
 
 bool FSR31FeatureVk::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
@@ -70,10 +75,15 @@ bool FSR31FeatureVk::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
     {
         ScopedSkipSpoofing skipSpoofing {};
 
+        auto gdpa = GDPA == nullptr ? vkGetDeviceProcAddr : GDPA;
+
+        // FSR 4 is only listed for a device it supports
+        VkDeviceContext deviceContext { Device, PhysicalDevice, gdpa };
+
         ffxQueryDescGetVersions versionQuery {};
         versionQuery.header.type = FFX_API_QUERY_DESC_TYPE_GET_VERSIONS;
         versionQuery.createDescType = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE;
-        // versionQuery.device = Device; // only for DirectX 12 applications
+        versionQuery.device = &deviceContext;
         uint64_t versionCount = 0;
         versionQuery.outputCount = &versionCount;
         // get number of versions for allocation
@@ -85,6 +95,30 @@ bool FSR31FeatureVk::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
         versionQuery.versionNames = State::Instance().ffxUpscalerVersionNames.data();
         // fill version ids and names arrays.
         FfxApiProxy::VULKAN_Query(nullptr, &versionQuery.header);
+
+        // FSR 4 of the driver goes before the first older upscaler, when it can run on this device
+        auto& ids = State::Instance().ffxUpscalerVersionIds;
+        auto& names = State::Instance().ffxUpscalerVersionNames;
+
+        if (FSR4DriverVk::IsSupported(deviceContext))
+        {
+            // FFX packs the version into the low bits of the id, external providers also set bit 31
+            auto driverVersion = FSR4DriverVk::Functions().versionId & 0x7FFFFFFF;
+            auto older = std::ranges::find_if(ids, [driverVersion](uint64_t id)
+                                              { return (id & 0x7FFFFFFF) < driverVersion; });
+            auto index = std::distance(ids.begin(), older);
+
+            ids.insert(ids.begin() + index, FSR4DriverVk::Functions().versionId);
+            names.insert(names.begin() + index, FSR4DriverVk::Functions().versionName);
+        }
+
+        LogUpscalerVersions();
+
+        if (ids.empty())
+        {
+            LOG_ERROR("No FFX upscaler for this device");
+            return false;
+        }
 
         _contextDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE;
         _contextDesc.fpMessage = FfxLogCallback;
@@ -243,8 +277,29 @@ bool FSR31FeatureVk::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
         ov.versionId = State::Instance().ffxUpscalerVersionIds[Config::Instance()->FfxUpscalerIndex.value_or_default()];
         backendDesc.header.pNext = &ov.header;
 
+        ffxCreateContextDescUpscaleVersion upscaleVersion {};
+        upscaleVersion.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE_VERSION;
+        upscaleVersion.version = FFX_UPSCALER_VERSION;
+
+        auto createContext = &FfxApiProxy::VULKAN_CreateContext;
+
+        if (FSR4DriverVk::Init() && ov.versionId == FSR4DriverVk::Functions().versionId)
+        {
+            LOG_INFO("Using FSR {} of the driver", FSR4DriverVk::Functions().versionName);
+
+            // The driver takes the SDK 2 backend and wants the upscaler version instead of the version override
+            _contextDesc.header.pNext = &backendDesc.header;
+            backendDesc.header.pNext = &upscaleVersion.header;
+
+            const auto& driver = FSR4DriverVk::Functions();
+            createContext = driver.createContext;
+            _configure = driver.configure;
+            _dispatch = driver.dispatch;
+            _destroyContext = driver.destroyContext;
+        }
+
         LOG_DEBUG("_createContext!");
-        auto ret = FfxApiProxy::VULKAN_CreateContext(&_context, &_contextDesc.header, NULL);
+        auto ret = createContext(&_context, &_contextDesc.header, NULL);
 
         if (ret != FFX_API_RETURN_OK)
         {
@@ -649,7 +704,7 @@ bool FSR31FeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
         m_upscalerKeyValueConfig.header.type = FFX_API_CONFIGURE_DESC_TYPE_UPSCALE_KEYVALUE;
         m_upscalerKeyValueConfig.key = FFX_API_CONFIGURE_UPSCALE_KEY_FVELOCITYFACTOR;
         m_upscalerKeyValueConfig.ptr = &_velocity;
-        auto result = FfxApiProxy::VULKAN_Configure(&_context, &m_upscalerKeyValueConfig.header);
+        auto result = _configure(&_context, &m_upscalerKeyValueConfig.header);
 
         if (result != FFX_API_RETURN_OK)
             LOG_WARN("Velocity configure result: {}", (UINT) result);
@@ -664,7 +719,7 @@ bool FSR31FeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
             m_upscalerKeyValueConfig.header.type = FFX_API_CONFIGURE_DESC_TYPE_UPSCALE_KEYVALUE;
             m_upscalerKeyValueConfig.key = FFX_API_CONFIGURE_UPSCALE_KEY_FREACTIVENESSSCALE;
             m_upscalerKeyValueConfig.ptr = &_reactiveScale;
-            auto result = FfxApiProxy::VULKAN_Configure(&_context, &m_upscalerKeyValueConfig.header);
+            auto result = _configure(&_context, &m_upscalerKeyValueConfig.header);
 
             if (result != FFX_API_RETURN_OK)
                 LOG_WARN("Reactive Scale configure result: {}", (UINT) result);
@@ -677,7 +732,7 @@ bool FSR31FeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
             m_upscalerKeyValueConfig.header.type = FFX_API_CONFIGURE_DESC_TYPE_UPSCALE_KEYVALUE;
             m_upscalerKeyValueConfig.key = FFX_API_CONFIGURE_UPSCALE_KEY_FSHADINGCHANGESCALE;
             m_upscalerKeyValueConfig.ptr = &_shadingScale;
-            auto result = FfxApiProxy::VULKAN_Configure(&_context, &m_upscalerKeyValueConfig.header);
+            auto result = _configure(&_context, &m_upscalerKeyValueConfig.header);
 
             if (result != FFX_API_RETURN_OK)
                 LOG_WARN("Shading Scale configure result: {}", (UINT) result);
@@ -690,7 +745,7 @@ bool FSR31FeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
             m_upscalerKeyValueConfig.header.type = FFX_API_CONFIGURE_DESC_TYPE_UPSCALE_KEYVALUE;
             m_upscalerKeyValueConfig.key = FFX_API_CONFIGURE_UPSCALE_KEY_FACCUMULATIONADDEDPERFRAME;
             m_upscalerKeyValueConfig.ptr = &_accAddPerFrame;
-            auto result = FfxApiProxy::VULKAN_Configure(&_context, &m_upscalerKeyValueConfig.header);
+            auto result = _configure(&_context, &m_upscalerKeyValueConfig.header);
 
             if (result != FFX_API_RETURN_OK)
                 LOG_WARN("Acc. Add Per Frame configure result: {}", (UINT) result);
@@ -703,7 +758,7 @@ bool FSR31FeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
             m_upscalerKeyValueConfig.header.type = FFX_API_CONFIGURE_DESC_TYPE_UPSCALE_KEYVALUE;
             m_upscalerKeyValueConfig.key = FFX_API_CONFIGURE_UPSCALE_KEY_FMINDISOCCLUSIONACCUMULATION;
             m_upscalerKeyValueConfig.ptr = &_minDisOccAcc;
-            auto result = FfxApiProxy::VULKAN_Configure(&_context, &m_upscalerKeyValueConfig.header);
+            auto result = _configure(&_context, &m_upscalerKeyValueConfig.header);
 
             if (result != FFX_API_RETURN_OK)
                 LOG_WARN("Minimum Disocclusion Acc. configure result: {}", (UINT) result);
@@ -735,7 +790,7 @@ bool FSR31FeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
     }
 
     LOG_DEBUG("Dispatch!!");
-    auto result = FfxApiProxy::VULKAN_Dispatch(&_context, &params.header);
+    auto result = _dispatch(&_context, &params.header);
 
     if (result != FFX_API_RETURN_OK)
     {

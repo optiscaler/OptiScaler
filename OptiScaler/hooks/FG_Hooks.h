@@ -15,6 +15,9 @@ class FGHooks
                                           DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pFullscreenDesc,
                                           IDXGIOutput* pRestrictToOutput, IDXGISwapChain1** ppSwapChain);
 
+    // True for a swapchain of another window while the FG swapchain exists, it must not replace the main swapchain
+    static bool IsOtherWindowThanFG(HWND hwnd);
+
   private:
     using PFN_Present = rewrite_signature<decltype(&IDXGISwapChain::Present)>::type;
     using PFN_Present1 = rewrite_signature<decltype(&IDXGISwapChain1::Present1)>::type;

@@ -1,7 +1,11 @@
 #pragma once
 #include "SysUtils.h"
+#include "State.h"
 #include <Unknwn.h>
+
+#include <ffx_api.h>
 #include <filesystem>
+#include <optional>
 
 // Forward declarations
 struct AmdExtFfxApi;
@@ -15,6 +19,34 @@ struct magicData
     magicData* nextMagicData;
 };
 
+// Functions of an FFX provider that the driver dlls hand out through UpdateFfxApiProvider
+struct FfxProviderFunctions
+{
+    uint64_t versionId;
+    const char* versionName;
+    void* canProvide;
+    PfnFfxCreateContext createContext;
+    PfnFfxDestroyContext destroyContext;
+    PfnFfxConfigure configure;
+    PfnFfxQuery query;
+    PfnFfxDispatch dispatch;
+};
+
+// Data passed to UpdateFfxApiProvider(Ex), the driver fills in the provider for descType
+struct ExternalProviderData
+{
+    uint32_t structVersion;
+    uint64_t descType;
+    FfxProviderFunctions provider;
+
+    // Version 3, whether the provider can run on a device. Takes what the driver gets from the backend create desc,
+    // { VkDevice, VkPhysicalDevice, GDPA } on Vulkan. Older versions end before it
+    bool (*isSupported)(const void* backend);
+    void* reserved;
+};
+
+static_assert(offsetof(ExternalProviderData, isSupported) == 0x50 && sizeof(ExternalProviderData) == 0x60);
+
 typedef HRESULT(__cdecl* PFN_AmdExtD3DCreateInterface)(IUnknown* pOuter, REFIID riid, void** ppvObject);
 typedef HRESULT(STDMETHODCALLTYPE* PFN_UpdateFfxApiProvider)(void* pData, uint32_t dataSizeInBytes);
 typedef HRESULT(STDMETHODCALLTYPE* PFN_UpdateFfxApiProviderEx)(void* pData, uint32_t dataSizeInBytes,
@@ -24,8 +56,12 @@ void InitFSR4Update();
 HRESULT STDMETHODCALLTYPE hkAmdExtD3DCreateInterface(IUnknown* pOuter, REFIID riid, void** ppvObject);
 
 void CheckForGPU();
-std::vector<std::filesystem::path> GetDriverStore();
+// Driver folder of each adapter, the preferred adapter's first
+std::vector<std::filesystem::path> GetDriverStore(std::optional<LUID> preferred = std::nullopt);
 HMODULE GetFSR4Module();
+
+// FSR 4 dll of the driver for the API, loaded once with its model selection hooked and its SDK version set
+HMODULE LoadFSR4DriverDll(API api);
 
 enum AmdExtWaveMatrixPropertiesType : int32_t
 {

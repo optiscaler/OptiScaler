@@ -46,6 +46,16 @@ class FSR31Feature : public virtual IFeature
         LOG_WARN("can't parse {0}", version_str);
     }
 
+    // What FFX offers on this device, the upscaler list of the menu
+    static inline void LogUpscalerVersions()
+    {
+        auto& state = State::Instance();
+
+        for (size_t i = 0; i < state.ffxUpscalerVersionNames.size(); i++)
+            LOG_INFO("FFX upscaler [{}]: {}, id: {:X}", i, state.ffxUpscalerVersionNames[i],
+                     state.ffxUpscalerVersionIds[i]);
+    }
+
     static inline uint32_t ffxResolveTypelessFormat(uint32_t format)
     {
         switch (format)

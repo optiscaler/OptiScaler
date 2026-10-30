@@ -1326,12 +1326,14 @@ void MenuCommon::AddVulkanBackends(std::string* code, std::string* name)
         (Config::Instance()->Fsr4ForceEnableInt8.value_or_default() && FfxApiProxy::Dx12Module_SR() != nullptr &&
          FfxApiProxy::VersionDx12_SR() >= feature_version { 4, 1, 1 });
 
+    // Native Vulkan gets FSR 4 from the driver
+    std::string fsr3xVkName = fsr4Possible ? "FSR 3.X/4" : "FSR 3.X";
     std::string fsr3xName = fsr4Possible ? "FSR 3.X/4 w/Dx12" : "FSR 3.X w/Dx12";
 
     if (State::Instance().newBackend == "fsr21" || (State::Instance().newBackend == "" && *code == "fsr21"))
         selectedUpscalerName = "FSR 2.1.2";
     else if (State::Instance().newBackend == "fsr31" || (State::Instance().newBackend == "" && *code == "fsr31"))
-        selectedUpscalerName = "FSR 3.X";
+        selectedUpscalerName = fsr3xVkName;
     else if (State::Instance().newBackend == "xess" || (State::Instance().newBackend == "" && *code == "xess"))
         selectedUpscalerName = "XeSS";
     else if (Config::Instance()->DLSSEnabled.value_or_default() &&
@@ -1355,7 +1357,7 @@ void MenuCommon::AddVulkanBackends(std::string* code, std::string* name)
         if (ImGui::Selectable("FSR 2.2.1", *code == "fsr22"))
             State::Instance().newBackend = "fsr22";
 
-        if (ImGui::Selectable("FSR 3.X", *code == "fsr31"))
+        if (ImGui::Selectable(fsr3xVkName.c_str(), *code == "fsr31"))
             State::Instance().newBackend = "fsr31";
 
         if (Config::Instance()->DLSSEnabled.value_or_default() && ImGui::Selectable("DLSS", *code == "dlss"))
@@ -1364,7 +1366,7 @@ void MenuCommon::AddVulkanBackends(std::string* code, std::string* name)
         if (ImGui::Selectable("FSR 2.1.2 w/Dx12", *code == "fsr21_12"))
             State::Instance().newBackend = "fsr21_12";
 
-        if (ImGui::Selectable("FSR 3.X w/Dx12", *code == "fsr31_12"))
+        if (ImGui::Selectable(fsr3xName.c_str(), *code == "fsr31_12"))
             State::Instance().newBackend = "fsr31_12";
 
         ImGui::EndCombo();

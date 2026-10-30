@@ -314,6 +314,8 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="framegen\ffx\FSRFG_Dx12.h" />
     <ClInclude Include="framegen\IFGFeature.h" />
     <ClInclude Include="framegen\IFGFeature_Dx12.h" />
+    <ClInclude Include="include\ffx\FfxVkHeader.h" />
+    <ClInclude Include="fsr4\FSR4DriverVk.h" />
     <ClInclude Include="fsr4\FSR4ModelSelection.h" />
     <ClInclude Include="hooks\D3D12_Hooks.h" />
     <ClInclude Include="hooks\DxgiFactory_Hooks.h" />
@@ -553,6 +555,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="framegen\ffx\FSRFG_Dx12.cpp" />
     <ClCompile Include="framegen\IFGFeature.cpp" />
     <ClCompile Include="framegen\IFGFeature_Dx12.cpp" />
+    <ClCompile Include="fsr4\FSR4DriverVk.cpp" />
     <ClCompile Include="fsr4\FSR4ModelSelection.cpp" />
     <ClCompile Include="fsr4\FSR4Upgrade.cpp" />
     <ClCompile Include="hooks\D3D12_Hooks.cpp" />

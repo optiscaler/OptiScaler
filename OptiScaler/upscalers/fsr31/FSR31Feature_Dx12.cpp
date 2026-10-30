@@ -807,6 +807,7 @@ bool FSR31FeatureDx12::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
         versionQuery.versionNames = State::Instance().ffxUpscalerVersionNames.data();
         // fill version ids and names arrays.
         FfxApiProxy::D3D12_Query(nullptr, &versionQuery.header);
+        LogUpscalerVersions();
 
         _contextDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE;
 

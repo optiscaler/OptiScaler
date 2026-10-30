@@ -312,7 +312,8 @@ HRESULT DxgiFactoryHooks::CreateSwapChain(IDXGIFactory* realFactory, IUnknown* p
         if (!Util::CheckForRealObject(__FUNCTION__, cq, &real))
             real = cq;
 
-        State::Instance().currentCommandQueue = (ID3D12CommandQueue*) real;
+        if (!FGHooks::IsOtherWindowThanFG(localDesc.OutputWindow))
+            State::Instance().currentCommandQueue = (ID3D12CommandQueue*) real;
 
         // Create FG SwapChain
         if (!_skipFGSwapChainCreation)
@@ -397,14 +398,20 @@ HRESULT DxgiFactoryHooks::CreateSwapChain(IDXGIFactory* realFactory, IUnknown* p
 
         if (result == S_OK)
         {
-            State::Instance().currentSwapchainDesc = localDesc;
+            // Another window's swapchain (temporary or helper) must not replace the FG swapchain's state, FG reads its
+            // back buffer format from there
+            const bool otherWindow = FGHooks::IsOtherWindowThanFG(localDesc.OutputWindow);
+
+            if (!otherWindow)
+                State::Instance().currentSwapchainDesc = localDesc;
 
             // Check for SL proxy
             IDXGISwapChain* realSC = nullptr;
             if (!Util::CheckForRealObject(__FUNCTION__, *ppSwapChain, (IUnknown**) &realSC))
                 realSC = *ppSwapChain;
 
-            State::Instance().currentRealSwapchain = realSC;
+            if (!otherWindow)
+                State::Instance().currentRealSwapchain = realSC;
 
             IUnknown* realDevice = nullptr;
             if (!Util::CheckForRealObject(__FUNCTION__, pDevice, (IUnknown**) &realDevice))
@@ -421,11 +428,14 @@ HRESULT DxgiFactoryHooks::CreateSwapChain(IDXGIFactory* realFactory, IUnknown* p
             *ppSwapChain =
                 new WrappedIDXGISwapChain4(realSC, realDevice, localDesc.OutputWindow, localDesc.Flags, false);
 
-            // Set as currentSwapchain is FG is disabled
-            if (!_skipFGSwapChainCreation)
-                State::Instance().currentSwapchain = *ppSwapChain;
+            if (!otherWindow)
+            {
+                // Set as currentSwapchain is FG is disabled
+                if (!_skipFGSwapChainCreation)
+                    State::Instance().currentSwapchain = *ppSwapChain;
 
-            State::Instance().currentWrappedSwapchain = *ppSwapChain;
+                State::Instance().currentWrappedSwapchain = *ppSwapChain;
+            }
 
             LOG_DEBUG("Created new WrappedIDXGISwapChain4: {:X}, pDevice: {:X}", (size_t) *ppSwapChain,
                       (size_t) pDevice);
@@ -636,7 +646,8 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
         if (!Util::CheckForRealObject(__FUNCTION__, cq, &real))
             real = cq;
 
-        State::Instance().currentCommandQueue = (ID3D12CommandQueue*) real;
+        if (!FGHooks::IsOtherWindowThanFG(hWnd))
+            State::Instance().currentCommandQueue = (ID3D12CommandQueue*) real;
 
         // Create FG SwapChain
         if (!_skipFGSwapChainCreation)
@@ -726,12 +737,17 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
 
         if (result == S_OK)
         {
+            // Another window's swapchain (temporary or helper) must not replace the FG swapchain's state, FG reads its
+            // back buffer format from there
+            const bool otherWindow = FGHooks::IsOtherWindowThanFG(hWnd);
+
             // check for SL proxy
             IDXGISwapChain1* realSC = nullptr;
             if (!Util::CheckForRealObject(__FUNCTION__, *ppSwapChain, (IUnknown**) &realSC))
                 realSC = *ppSwapChain;
 
-            State::Instance().currentRealSwapchain = realSC;
+            if (!otherWindow)
+                State::Instance().currentRealSwapchain = realSC;
 
             IUnknown* readDevice = nullptr;
             if (!Util::CheckForRealObject(__FUNCTION__, pDevice, (IUnknown**) &readDevice))
@@ -743,7 +759,8 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
                 State::Instance().screenHeight = static_cast<float>(localDesc.Height);
             }
 
-            realSC->GetDesc(&State::Instance().currentSwapchainDesc);
+            if (!otherWindow)
+                realSC->GetDesc(&State::Instance().currentSwapchainDesc);
 
             LOG_DEBUG("Created new swapchain: {0:X}, hWnd: {1:X}", (uintptr_t) *ppSwapChain, (uintptr_t) hWnd);
             *ppSwapChain = new WrappedIDXGISwapChain4(realSC, readDevice, hWnd, localDesc.Flags, false);
@@ -751,10 +768,13 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
             LOG_DEBUG("Created new WrappedIDXGISwapChain4: {0:X}, pDevice: {1:X}", (uintptr_t) *ppSwapChain,
                       (uintptr_t) pDevice);
 
-            if (!_skipFGSwapChainCreation)
-                State::Instance().currentSwapchain = *ppSwapChain;
+            if (!otherWindow)
+            {
+                if (!_skipFGSwapChainCreation)
+                    State::Instance().currentSwapchain = *ppSwapChain;
 
-            State::Instance().currentWrappedSwapchain = *ppSwapChain;
+                State::Instance().currentWrappedSwapchain = *ppSwapChain;
+            }
         }
         else
         {
