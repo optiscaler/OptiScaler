@@ -10,6 +10,7 @@
 #include <proxies/KernelBase_Proxy.h>
 #include <upscaler_time/UpscalerTime_Vk.h>
 
+#include <misc/DeferredRelease.h>
 #include <misc/FrameLimit.h>
 #include "Reflex_Hooks.h"
 
@@ -30,6 +31,7 @@ static HWND _hwnd = nullptr;
 static std::mutex _vkPresentMutex;
 
 PFN_vkCreateDevice o_vkCreateDevice = nullptr;
+static PFN_vkDestroyDevice o_vkDestroyDevice = nullptr;
 PFN_vkCreateInstance o_vkCreateInstance = nullptr;
 PFN_vkCreateWin32SurfaceKHR o_vkCreateWin32SurfaceKHR = nullptr;
 PFN_vkQueuePresentKHR o_QueuePresentKHR = nullptr;
@@ -158,6 +160,9 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
 
     auto result = o_vkCreateDevice(physicalDevice, &localCreteInfo, pAllocator, pDevice);
 
+    if (result == VK_SUCCESS)
+        DeferredRelease::DropOwnersExcept((uint64_t) *pDevice);
+
     if (result == VK_SUCCESS && !State::Instance().vulkanSkipHooks && Config::Instance()->OverlayMenu.value())
     {
         if (!State::Instance().vulkanSkipHooks)
@@ -193,6 +198,18 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
     return result;
 }
 
+VALIDATE_HOOK(hkvkDestroyDevice, PFN_vkDestroyDevice)
+static void hkvkDestroyDevice(VkDevice device, const VkAllocationCallbacks* pAllocator)
+{
+    LOG_FUNC();
+
+    // Objects created on the device have to go before it
+    if (device != VK_NULL_HANDLE)
+        DeferredRelease::ReleaseOwner((uint64_t) device);
+
+    o_vkDestroyDevice(device, pAllocator);
+}
+
 VALIDATE_HOOK(hkvkQueuePresentKHR, PFN_vkQueuePresentKHR)
 static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo)
 {
@@ -223,6 +240,8 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
     // original call
     ScopedVulkanCreatingSC scopedVulkanCreatingSC {};
     auto result = o_QueuePresentKHR(queue, &localPresentInfo);
+
+    DeferredRelease::Process();
 
     // Unsure about Vulkan Reflex fps limit and if that could be causing an issue here
     if (!State::Instance().reflexLimitsFps)
@@ -290,6 +309,10 @@ PFN_vkVoidFunction hkvkGetInstanceProcAddr(VkInstance instance, const char* pNam
         LOG_DEBUG("vkCreateDevice");
         return (PFN_vkVoidFunction) hkvkCreateDevice;
     }
+    else if (procName == std::string("vkDestroyDevice") && o_vkDestroyDevice != nullptr)
+    {
+        return (PFN_vkVoidFunction) hkvkDestroyDevice;
+    }
 
     auto result = VulkanSpoofing::hkvkGetInstanceProcAddr(orgFunc, pName);
     if (result != VK_NULL_HANDLE)
@@ -324,6 +347,10 @@ PFN_vkVoidFunction hkvkGetDeviceProcAddr(VkDevice device, const char* pName)
         LOG_DEBUG("vkCreateDevice");
         return (PFN_vkVoidFunction) hkvkCreateDevice;
     }
+    else if (procName == std::string("vkDestroyDevice") && o_vkDestroyDevice != nullptr)
+    {
+        return (PFN_vkVoidFunction) hkvkDestroyDevice;
+    }
 
     auto result = VulkanSpoofing::hkvkGetDeviceProcAddr(orgFunc, pName);
     if (result != VK_NULL_HANDLE)
@@ -348,6 +375,7 @@ void VulkanHooks::Hook(HMODULE vulkan1)
 
     o_vkCreateDevice = (PFN_vkCreateDevice) KernelBaseProxy::GetProcAddress_()(vulkan1, "vkCreateDevice");
     o_vkCreateInstance = (PFN_vkCreateInstance) KernelBaseProxy::GetProcAddress_()(vulkan1, "vkCreateInstance");
+    o_vkDestroyDevice = (PFN_vkDestroyDevice) KernelBaseProxy::GetProcAddress_()(vulkan1, "vkDestroyDevice");
 
     address = KernelBaseProxy::GetProcAddress_()(vulkan1, "vkGetInstanceProcAddr");
     o_vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr) address;
@@ -366,6 +394,9 @@ void VulkanHooks::Hook(HMODULE vulkan1)
 
     if (o_vkCreateDevice != nullptr)
         DetourAttach(&(PVOID&) o_vkCreateDevice, hkvkCreateDevice);
+
+    if (o_vkDestroyDevice != nullptr)
+        DetourAttach(&(PVOID&) o_vkDestroyDevice, hkvkDestroyDevice);
 
     if (o_vkGetInstanceProcAddr != nullptr)
         DetourAttach(&(PVOID&) o_vkGetInstanceProcAddr, hkvkGetInstanceProcAddr);
@@ -387,6 +418,7 @@ void VulkanHooks::Hook(HMODULE vulkan1)
     {
         LOG_ERROR("Failed to hook Vulkan, error code: {:X}", detourResult);
         o_vkCreateDevice = nullptr;
+        o_vkDestroyDevice = nullptr;
         o_vkCreateInstance = nullptr;
         o_vkGetInstanceProcAddr = nullptr;
         o_vkGetDeviceProcAddr = nullptr;
@@ -409,6 +441,9 @@ void VulkanHooks::Unhook()
     if (o_vkCreateDevice != nullptr)
         DetourDetach(&(PVOID&) o_vkCreateDevice, hkvkCreateDevice);
 
+    if (o_vkDestroyDevice != nullptr)
+        DetourDetach(&(PVOID&) o_vkDestroyDevice, hkvkDestroyDevice);
+
     if (o_vkCreateInstance != nullptr)
         DetourDetach(&(PVOID&) o_vkCreateInstance, hkvkCreateInstance);
 
@@ -428,6 +463,7 @@ void VulkanHooks::Unhook()
         o_QueuePresentKHR = nullptr;
         o_CreateSwapchainKHR = nullptr;
         o_vkCreateDevice = nullptr;
+        o_vkDestroyDevice = nullptr;
         o_vkCreateInstance = nullptr;
         o_vkGetInstanceProcAddr = nullptr;
         o_vkGetDeviceProcAddr = nullptr;
