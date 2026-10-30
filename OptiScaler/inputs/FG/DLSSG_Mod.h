@@ -5,6 +5,8 @@
 #include "proxies/NVNGX_Proxy.h"
 #include "proxies/Ntdll_Proxy.h"
 
+#include <misc/DeferredRelease.h>
+
 #define DLSSG_MOD_ID_OFFSET 2000000
 
 typedef void (*PFN_RefreshGlobalConfiguration)();
@@ -13,6 +15,24 @@ typedef void (*PFN_EnableDebugView)(bool enable);
 class DLSSGMod
 {
   private:
+    // Depth formats need depth stencil usage, the typeless one of the same family can be copied to
+    static DXGI_FORMAT DepthCopyFormat(DXGI_FORMAT format)
+    {
+        switch (format)
+        {
+        case DXGI_FORMAT_D32_FLOAT:
+            return DXGI_FORMAT_R32_TYPELESS;
+        case DXGI_FORMAT_D24_UNORM_S8_UINT:
+            return DXGI_FORMAT_R24G8_TYPELESS;
+        case DXGI_FORMAT_D16_UNORM:
+            return DXGI_FORMAT_R16_TYPELESS;
+        case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
+            return DXGI_FORMAT_R32G8X24_TYPELESS;
+        default:
+            return format;
+        }
+    }
+
     inline static HMODULE _dll = nullptr;
 
     inline static PFN_RefreshGlobalConfiguration _refreshGlobalConfiguration = nullptr;
@@ -313,39 +333,47 @@ class DLSSGMod
 
             if (dlssgDepth)
             {
+                // Previous frame's copy can still be read by FG
+                static ID3D12Resource* copiedDlssgDepth[2] = {};
+                static uint32_t copyIndex = 0;
+                copyIndex = (copyIndex + 1) % 2;
+                auto& copy = copiedDlssgDepth[copyIndex];
+
+                // Without depth stencil usage common state promotes to copy dest and decays back after execution
                 D3D12_RESOURCE_DESC desc = dlssgDepth->GetDesc();
+                desc.Flags &= ~(D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL | D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE);
+                desc.Format = DepthCopyFormat(desc.Format);
 
-                D3D12_HEAP_PROPERTIES heapProperties;
-                D3D12_HEAP_FLAGS heapFlags;
-
-                static ID3D12Resource* copiedDlssgDepth = nullptr;
-                if (copiedDlssgDepth != nullptr)
+                if (copy != nullptr)
                 {
-                    copiedDlssgDepth->Release();
-                    copiedDlssgDepth = nullptr;
+                    auto copyDesc = copy->GetDesc();
+                    if (copyDesc.Width != desc.Width || copyDesc.Height != desc.Height ||
+                        copyDesc.Format != desc.Format)
+                        DeferredRelease::Release(copy);
                 }
 
-                if (dlssgDepth->GetHeapProperties(&heapProperties, &heapFlags) == S_OK)
+                ID3D12Device* device = nullptr;
+                if (copy == nullptr && dlssgDepth->GetDevice(IID_PPV_ARGS(&device)) == S_OK)
                 {
-                    auto result = State::Instance().currentD3D12Device->CreateCommittedResource(
-                        &heapProperties, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                        IID_PPV_ARGS(&copiedDlssgDepth));
+                    D3D12_HEAP_PROPERTIES heapProperties {};
+                    heapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
 
-                    if (result == S_OK)
-                    {
-                        InCmdList->CopyResource(copiedDlssgDepth, dlssgDepth);
-                        InParameters->Set(
-                            "DLSSG.Depth",
-                            (void*) copiedDlssgDepth); // cast to make sure it's void*, otherwise dlssg cries
-                    }
-                    else
+                    if (device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &desc,
+                                                        D3D12_RESOURCE_STATE_COMMON, nullptr,
+                                                        IID_PPV_ARGS(&copy)) != S_OK)
                     {
                         LOG_ERROR("Making a new resource for DLSSG Depth has failed");
+                        copy = nullptr;
                     }
+
+                    device->Release();
                 }
-                else
+
+                if (copy != nullptr)
                 {
-                    LOG_ERROR("Getting heap properties has failed");
+                    InCmdList->CopyResource(copy, dlssgDepth);
+                    InParameters->Set("DLSSG.Depth",
+                                      (void*) copy); // cast to make sure it's void*, otherwise dlssg cries
                 }
             }
 

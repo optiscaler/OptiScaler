@@ -436,7 +436,7 @@ static Fsr3::FfxErrorCode hkffxRegisterFrameinterpolationUiResourceDX12(Fsr3::Ff
     auto& s = State::Instance();
     auto fg = s.currentFG;
 
-    if (fg->FrameGenerationContext() != nullptr && uiResource.resource != nullptr)
+    if (fg != nullptr && fg->FrameGenerationContext() != nullptr && uiResource.resource != nullptr)
     {
         auto fIndex = fg->GetIndexWillBeDispatched();
         if (fIndex < 0)
@@ -488,7 +488,8 @@ static Fsr3::FfxResource hkffxGetFrameinterpolationTextureDX12(Fsr3::FfxSwapchai
 
     auto fg = State::Instance().currentFG;
 
-    if (fg == nullptr)
+    // The game's FG context can outlive the FG swapchain
+    if (fg == nullptr || State::Instance().currentFGSwapchain == nullptr)
         return {};
 
     auto fIndex = fg->GetIndexWillBeDispatched();
@@ -555,7 +556,8 @@ hkffxFrameInterpolationContextCreate(FfxFrameInterpolationContext* context,
     if (uf != nullptr && !uf->LowResMV())
         _fgConst.flags |= FG_Flags::DisplayResolutionMVs;
 
-    if (uf != nullptr && !uf->JitteredMV())
+    // FG gets the upscaler's motion vectors, like OptiFG
+    if (uf != nullptr && uf->JitteredMV())
         _fgConst.flags |= FG_Flags::JitteredMVs;
 
     if ((contextDescription->flags & FFX_FRAMEINTERPOLATION_ENABLE_DEPTH_INVERTED) > 0)
@@ -576,6 +578,16 @@ hkffxFrameInterpolationContextCreate(FfxFrameInterpolationContext* context,
     Config::Instance()->SaveXeFG();
 
     _device = State::Instance().currentD3D12Device;
+
+    // No game swapchain yet, a backend device that isn't a known D3D12 device can be a custom interface
+    if (_device == nullptr)
+    {
+        auto backendDevice = (ID3D12Device*) contextDescription->backendInterface.device;
+        auto& devices = State::Instance().d3d12Devices;
+
+        if (std::find(devices.begin(), devices.end(), backendDevice) != devices.end())
+            _device = backendDevice;
+    }
 
     State::Instance().currentFG->CreateContext(_device, _fgConst);
 
@@ -714,7 +726,7 @@ static Fsr3::FfxErrorCode hkffxFsr3ConfigureFrameGeneration(void* context, Fsr3:
         }
         else if (!config->frameGenerationEnabled && fg->IsActive())
         {
-            fg->Deactivate();
+            fg->Disable();
             fg->ResetCounters();
         }
 
@@ -736,20 +748,18 @@ static Fsr3::FfxErrorCode hkffxFsr3ConfigureFrameGeneration(void* context, Fsr3:
 
         if (config->HUDLessColor.resource != nullptr)
         {
-            Dx12Resource ui {};
-            ui.cmdList = nullptr; // Not sure about this
-            ui.height = height;
-            ui.resource = (ID3D12Resource*) config->HUDLessColor.resource;
-            ui.state = GetD3D12State((Fsr3::FfxResourceStates) config->HUDLessColor.state);
-            ui.type = FG_ResourceType::HudlessColor;
-            ui.validity = FG_ResourceValidity::UntilPresent;
-            ui.width = width;
-            ui.left = left;
-            ui.top = top;
+            Dx12Resource hudless {};
+            hudless.cmdList = nullptr; // Not sure about this
+            hudless.height = height;
+            hudless.resource = (ID3D12Resource*) config->HUDLessColor.resource;
+            hudless.state = GetD3D12State((Fsr3::FfxResourceStates) config->HUDLessColor.state);
+            hudless.type = FG_ResourceType::HudlessColor;
+            hudless.validity = FG_ResourceValidity::UntilPresent;
+            hudless.width = width;
+            hudless.left = left;
+            hudless.top = top;
 
-            _uiRes[fg->GetIndex()] = ui;
-
-            fg->SetResource(&ui);
+            fg->SetResource(&hudless);
         }
 
         if (config->frameGenerationCallback != nullptr)
@@ -798,7 +808,7 @@ static Fsr3::FfxErrorCode hkffxSetFrameGenerationConfigToSwapchainDX12(Fsr3::Ffx
         }
         else if (!config->frameGenerationEnabled && fg->IsActive())
         {
-            fg->Deactivate();
+            fg->Disable();
             fg->ResetCounters();
         }
 
@@ -820,20 +830,18 @@ static Fsr3::FfxErrorCode hkffxSetFrameGenerationConfigToSwapchainDX12(Fsr3::Ffx
 
         if (config->HUDLessColor.resource != nullptr && !fg->GetResource(FG_ResourceType::HudlessColor))
         {
-            Dx12Resource ui {};
-            ui.cmdList = nullptr; // Not sure about this
-            ui.height = height;
-            ui.resource = (ID3D12Resource*) config->HUDLessColor.resource;
-            ui.state = GetD3D12State((Fsr3::FfxResourceStates) config->HUDLessColor.state);
-            ui.type = FG_ResourceType::HudlessColor;
-            ui.validity = FG_ResourceValidity::UntilPresent;
-            ui.width = width;
-            ui.left = left;
-            ui.top = top;
+            Dx12Resource hudless {};
+            hudless.cmdList = nullptr; // Not sure about this
+            hudless.height = height;
+            hudless.resource = (ID3D12Resource*) config->HUDLessColor.resource;
+            hudless.state = GetD3D12State((Fsr3::FfxResourceStates) config->HUDLessColor.state);
+            hudless.type = FG_ResourceType::HudlessColor;
+            hudless.validity = FG_ResourceValidity::UntilPresent;
+            hudless.width = width;
+            hudless.left = left;
+            hudless.top = top;
 
-            _uiRes[fg->GetIndex()] = ui;
-
-            fg->SetResource(&ui);
+            fg->SetResource(&hudless);
         }
 
         if (config->frameGenerationCallback != nullptr)

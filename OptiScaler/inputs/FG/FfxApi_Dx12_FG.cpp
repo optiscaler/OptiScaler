@@ -216,6 +216,14 @@ ffxReturnCode_t ffxCreateContext_Dx12FG(ffxContext* context, ffxCreateContextDes
                 s.currentFG->DestroyFGContext();
             }
 
+            // A new context can start its frame ids from a lower value
+            {
+                std::scoped_lock lock(_frameBoundaryMutex);
+                _currentFrameId = 0;
+                _currentIndex = -1;
+                std::fill(std::begin(_frameIdIndex), std::end(_frameIdIndex), UINT64_MAX);
+            }
+
             auto ccDesc = (ffxCreateContextDescFrameGeneration*) desc;
 
             _fgConst = {};
@@ -483,7 +491,7 @@ ffxReturnCode_t ffxConfigure_Dx12FG(ffxContext* context, ffxConfigureDescHeader*
         }
         else if (!cDesc->frameGenerationEnabled && fg->IsActive())
         {
-            fg->Deactivate();
+            fg->Disable();
             fg->ResetCounters();
         }
 
@@ -843,7 +851,9 @@ ffxReturnCode_t ffxQuery_Dx12FG(ffxContext* context, ffxQueryDescHeader* desc)
     else if (desc->type == FFX_API_QUERY_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_INTERPOLATIONTEXTURE_DX12)
     {
         auto fg = State::Instance().currentFG;
-        if (fg != nullptr)
+
+        // The game's FG context can outlive the FG swapchain
+        if (fg != nullptr && State::Instance().currentFGSwapchain != nullptr)
         {
             auto cDesc = (ffxQueryDescFrameGenerationSwapChainInterpolationTextureDX12*) desc;
             auto fIndex = fg->GetIndexWillBeDispatched();
