@@ -187,8 +187,7 @@ HRESULT DxgiFactoryHooks::CreateSwapChain(IDXGIFactory* realFactory, IUnknown* p
         return res;
     }
 
-    if (pDesc->BufferDesc.Height != 0 && pDesc->BufferDesc.Width != 0 &&
-        (pDesc->BufferDesc.Height <= 200 || pDesc->BufferDesc.Width <= 200))
+    if (Util::IsOverlaySwapchain(pDesc->OutputWindow, pDesc->BufferDesc.Width, pDesc->BufferDesc.Height))
     {
         LOG_WARN("Overlay call!");
 
@@ -212,7 +211,9 @@ HRESULT DxgiFactoryHooks::CreateSwapChain(IDXGIFactory* realFactory, IUnknown* p
     {
         if (!localDesc.Windowed)
         {
-            State::Instance().SCExclusiveFullscreen = true;
+            if (!FGHooks::IsOtherWindowThanFG(localDesc.OutputWindow))
+                State::Instance().SCExclusiveFullscreen = true;
+
             localDesc.Windowed = true;
         }
 
@@ -221,7 +222,7 @@ HRESULT DxgiFactoryHooks::CreateSwapChain(IDXGIFactory* realFactory, IUnknown* p
     }
 
     // For vsync override
-    if (!localDesc.Windowed)
+    if (!localDesc.Windowed && !FGHooks::IsOtherWindowThanFG(localDesc.OutputWindow))
     {
         LOG_INFO("Game is creating fullscreen swapchain, disabled V-Sync overrides");
         Config::Instance()->OverrideVsync.set_volatile_value(false);
@@ -236,9 +237,12 @@ HRESULT DxgiFactoryHooks::CreateSwapChain(IDXGIFactory* realFactory, IUnknown* p
             localDesc.BufferCount = 2;
     }
 
-    State::Instance().SCAllowTearing = (localDesc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) > 0;
-    State::Instance().SCLastFlags = localDesc.Flags;
-    State::Instance().realExclusiveFullscreen = !localDesc.Windowed;
+    if (!FGHooks::IsOtherWindowThanFG(localDesc.OutputWindow))
+    {
+        State::Instance().SCAllowTearing = (localDesc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) > 0;
+        State::Instance().SCLastFlags = localDesc.Flags;
+        State::Instance().realExclusiveFullscreen = !localDesc.Windowed;
+    }
 
 #ifdef DETAILED_SC_LOGS
     LOG_TRACE("localDesc.BufferCount: {}", localDesc.BufferCount);
@@ -268,52 +272,17 @@ HRESULT DxgiFactoryHooks::CreateSwapChain(IDXGIFactory* realFactory, IUnknown* p
     {
         cq->Release();
 
-        if (State::Instance().currentD3D12Device == nullptr)
-        {
-            ID3D12Device* device = nullptr;
-            if (cq->GetDevice(IID_PPV_ARGS(&device)) == S_OK)
-            {
-                if (device != nullptr)
-                {
-                    // Update current D3D12 device and adapter
-                    if (State::Instance().currentD3D12Device != device)
-                    {
-                        State::Instance().currentD3D12Device = device;
-
-                        IDXGIDevice* dxgiDevice = nullptr;
-                        if (device->QueryInterface(IID_PPV_ARGS(&dxgiDevice)) == S_OK)
-                        {
-                            IDXGIAdapter* adapter = nullptr;
-                            if (dxgiDevice->GetAdapter(&adapter) == S_OK)
-                            {
-                                adapter->GetDesc(&State::Instance().currentD3D12AdepterDesc);
-                                adapter->Release();
-                            }
-                            else
-                            {
-                                State::Instance().currentD3D12AdepterDesc = {};
-                            }
-
-                            dxgiDevice->Release();
-                        }
-                    }
-                    else
-                    {
-                        State::Instance().currentD3D12AdepterDesc = {};
-                    }
-
-                    LOG_INFO("Captured D3D12 device from command queue: {:X}", (UINT64) device);
-                    D3D12Hooks::HookDevice(State::Instance().currentD3D12Device);
-                    device->Release();
-                }
-            }
-        }
-
         if (!Util::CheckForRealObject(__FUNCTION__, cq, &real))
             real = cq;
 
+        if (!_skipFGSwapChainCreation)
+            FGHooks::ReleaseUnusableFGSwapchain(localDesc.OutputWindow, real);
+
         if (!FGHooks::IsOtherWindowThanFG(localDesc.OutputWindow))
+        {
             State::Instance().currentCommandQueue = (ID3D12CommandQueue*) real;
+            D3D12Hooks::CaptureDevice((ID3D12CommandQueue*) real);
+        }
 
         // Create FG SwapChain
         if (!_skipFGSwapChainCreation)
@@ -503,7 +472,7 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
         return result;
     }
 
-    if (pDesc->Height != 100 && pDesc->Width != 100 && (pDesc->Height <= 200 || pDesc->Width <= 200))
+    if (Util::IsOverlaySwapchain(hWnd, pDesc->Width, pDesc->Height))
     {
         LOG_WARN("Overlay call!");
         HRESULT result;
@@ -528,9 +497,6 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
               localDesc.Width, localDesc.Height, (UINT) localDesc.Format, localDesc.BufferCount, localDesc.Flags,
               (size_t) hWnd, _skipFGSwapChainCreation);
 
-    if (pFullscreenDesc != nullptr)
-        State::Instance().realExclusiveFullscreen = !pFullscreenDesc->Windowed;
-
     DXGI_SWAP_CHAIN_FULLSCREEN_DESC localFullscreenDesc {};
 
     if (pFullscreenDesc != nullptr)
@@ -542,7 +508,9 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
         if (pFullscreenDesc != nullptr && !localFullscreenDesc.Windowed)
         {
 
-            State::Instance().SCExclusiveFullscreen = true;
+            if (!FGHooks::IsOtherWindowThanFG(hWnd))
+                State::Instance().SCExclusiveFullscreen = true;
+
             localFullscreenDesc.Windowed = true;
         }
 
@@ -551,7 +519,7 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
     }
 
     // For vsync override
-    if (pFullscreenDesc != nullptr && !localFullscreenDesc.Windowed)
+    if (pFullscreenDesc != nullptr && !localFullscreenDesc.Windowed && !FGHooks::IsOtherWindowThanFG(hWnd))
     {
         LOG_INFO("Game is creating fullscreen swapchain, disabled V-Sync overrides");
         Config::Instance()->OverrideVsync.set_volatile_value(false);
@@ -566,9 +534,12 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
             localDesc.BufferCount = 2;
     }
 
-    State::Instance().SCAllowTearing = (localDesc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) > 0;
-    State::Instance().SCLastFlags = localDesc.Flags;
-    State::Instance().realExclusiveFullscreen = pFullscreenDesc != nullptr && !localFullscreenDesc.Windowed;
+    if (!FGHooks::IsOtherWindowThanFG(hWnd))
+    {
+        State::Instance().SCAllowTearing = (localDesc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) > 0;
+        State::Instance().SCLastFlags = localDesc.Flags;
+        State::Instance().realExclusiveFullscreen = pFullscreenDesc != nullptr && !localFullscreenDesc.Windowed;
+    }
 
 #ifdef VER_PRE_RELEASE
     LOG_TRACE("localDesc.AlphaMode : {}", magic_enum::enum_name(localDesc.AlphaMode));
@@ -602,52 +573,17 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
     {
         cq->Release();
 
-        if (State::Instance().currentD3D12Device == nullptr)
-        {
-            ID3D12Device* device = nullptr;
-            if (cq->GetDevice(IID_PPV_ARGS(&device)) == S_OK)
-            {
-                if (device != nullptr)
-                {
-                    // Update current D3D12 device and adapter
-                    if (State::Instance().currentD3D12Device != device)
-                    {
-                        State::Instance().currentD3D12Device = device;
-
-                        IDXGIDevice* dxgiDevice = nullptr;
-                        if (device->QueryInterface(IID_PPV_ARGS(&dxgiDevice)) == S_OK)
-                        {
-                            IDXGIAdapter* adapter = nullptr;
-                            if (dxgiDevice->GetAdapter(&adapter) == S_OK)
-                            {
-                                adapter->GetDesc(&State::Instance().currentD3D12AdepterDesc);
-                                adapter->Release();
-                            }
-                            else
-                            {
-                                State::Instance().currentD3D12AdepterDesc = {};
-                            }
-
-                            dxgiDevice->Release();
-                        }
-                    }
-                    else
-                    {
-                        State::Instance().currentD3D12AdepterDesc = {};
-                    }
-
-                    LOG_INFO("Captured D3D12 device from command queue: {:X}", (UINT64) device);
-                    D3D12Hooks::HookDevice(State::Instance().currentD3D12Device);
-                    device->Release();
-                }
-            }
-        }
-
         if (!Util::CheckForRealObject(__FUNCTION__, cq, &real))
             real = cq;
 
+        if (!_skipFGSwapChainCreation)
+            FGHooks::ReleaseUnusableFGSwapchain(hWnd, real);
+
         if (!FGHooks::IsOtherWindowThanFG(hWnd))
+        {
             State::Instance().currentCommandQueue = (ID3D12CommandQueue*) real;
+            D3D12Hooks::CaptureDevice((ID3D12CommandQueue*) real);
+        }
 
         // Create FG SwapChain
         if (!_skipFGSwapChainCreation)
@@ -815,7 +751,7 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForCoreWindow(IDXGIFactory2* realFactor
         return realFactory->CreateSwapChainForCoreWindow(pDevice, pWindow, pDesc, pRestrictToOutput, ppSwapChain);
     }
 
-    if (pDesc->Height != 100 && pDesc->Width != 100 && (pDesc->Height <= 200 || pDesc->Width <= 200))
+    if (Util::IsOverlaySwapchain(nullptr, pDesc->Width, pDesc->Height))
     {
         LOG_WARN("Overlay call!");
 
@@ -853,6 +789,7 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForCoreWindow(IDXGIFactory2* realFactor
             real = cq;
 
         State::Instance().currentCommandQueue = (ID3D12CommandQueue*) real;
+        D3D12Hooks::CaptureDevice((ID3D12CommandQueue*) real);
     }
 
     HRESULT result = E_FAIL;

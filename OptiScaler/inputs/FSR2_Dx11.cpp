@@ -203,6 +203,9 @@ static FfxErrorCode ffxFsr2ContextCreate_Dx11(FfxFsr2Context* context, FfxFsr2Co
         }
     }
 
+    if (_d3d11Device == nullptr)
+        _d3d11Device = state.currentD3D11Device;
+
     // if still no device use latest created one
     // Might fixed TLOU but FMF2 still crashes
     if (_d3d11Device == nullptr && state.d3d11Devices.size() > 0)

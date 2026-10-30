@@ -161,6 +161,12 @@ int IFGFeature::GetDispatchIndex(UINT64& willDispatchFrame)
 
 bool IFGFeature::IsActive() { return _isActive || _waitingNewFrameData; }
 
+void IFGFeature::Disable()
+{
+    Deactivate();
+    _waitingNewFrameData = false;
+}
+
 bool IFGFeature::IsPaused() { return _targetFrame != 0 && _targetFrame >= _frameCount; }
 
 bool IFGFeature::IsDispatched() { return _lastDispatchedFrame == _frameCount; }
@@ -181,7 +187,10 @@ void IFGFeature::SetFrameCount(UINT64 frameId)
 {
     // Only change frame count, if it's lower than current one
     // Or higher than allowed frame ahead
-    if (frameId < _frameCount || (frameId - _frameCount) > Config::Instance()->FGAllowedFrameAhead.value_or_default())
+    // XeFG needs increasing frame ids, so it's only moved forward
+    const bool lower = frameId < _frameCount;
+    if ((lower && State::Instance().activeFgOutput != FGOutput::XeFG) ||
+        (!lower && (frameId - _frameCount) > Config::Instance()->FGAllowedFrameAhead.value_or_default()))
     {
         LOG_DEBUG("Old: {}, New: {}", _frameCount, frameId);
         _frameCount = frameId;

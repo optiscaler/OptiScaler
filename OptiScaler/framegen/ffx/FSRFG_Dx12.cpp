@@ -770,12 +770,13 @@ void* FSRFG_Dx12::SwapchainContext()
 void FSRFG_Dx12::DestroyFGContext()
 {
     _frameCount = 1;
+    UpdateTarget();
     // _lastDispatchedFrame = 0;
     _version = {};
 
     LOG_DEBUG("");
 
-    Deactivate();
+    Disable();
 
     if (_fgContext != nullptr)
     {
@@ -787,12 +788,14 @@ void FSRFG_Dx12::DestroyFGContext()
         _fgContext = nullptr;
     }
 
+    _isActive = false;
+
     ReleaseObjects();
 }
 
 bool FSRFG_Dx12::Shutdown()
 {
-    Deactivate();
+    Disable();
 
     if (_swapChainContext != nullptr)
         ReleaseSwapchain(_hwnd);
@@ -814,8 +817,13 @@ bool FSRFG_Dx12::CreateSwapchain(IDXGIFactory* factory, ID3D12CommandQueue* cmdQ
                               desc->BufferCount, desc->BufferDesc.Width, desc->BufferDesc.Height,
                               desc->BufferDesc.Format, desc->Flags) == S_OK;
 
+            if (!result)
+                return false;
+
             *swapChain = State::Instance().currentFGSwapchain;
-            return result;
+            (*swapChain)->AddRef();
+
+            return true;
         }
         // Game is creating new swapchain without releasing old one,
         // we need to release it to avoid errors
@@ -881,8 +889,13 @@ bool FSRFG_Dx12::CreateSwapchain1(IDXGIFactory* factory, ID3D12CommandQueue* cmd
             auto result = State::Instance().currentFGSwapchain->ResizeBuffers(
                               desc->BufferCount, desc->Width, desc->Height, desc->Format, desc->Flags) == S_OK;
 
+            if (!result)
+                return false;
+
             *swapChain = (IDXGISwapChain1*) State::Instance().currentFGSwapchain;
-            return result;
+            (*swapChain)->AddRef();
+
+            return true;
         }
         // Game is creating new swapchain without releasing old one,
         // we need to release it to avoid errors
@@ -938,7 +951,7 @@ bool FSRFG_Dx12::CreateSwapchain1(IDXGIFactory* factory, ID3D12CommandQueue* cmd
     return false;
 }
 
-bool FSRFG_Dx12::ReleaseSwapchain(HWND hwnd)
+bool FSRFG_Dx12::ReleaseSwapchain(HWND hwnd, bool force)
 {
     if (hwnd != _hwnd || _hwnd == NULL)
         return false;
@@ -963,7 +976,7 @@ bool FSRFG_Dx12::ReleaseSwapchain(HWND hwnd)
     if (_fgContext != nullptr)
         DestroyFGContext();
 
-    if (!Config::Instance()->FGPreserveSwapChain.value_or_default())
+    if (force || !Config::Instance()->FGPreserveSwapChain.value_or_default())
     {
         if (!State::Instance().isShuttingDown)
         {
@@ -1260,8 +1273,8 @@ void FSRFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
             // Pause for 10 frames
             UpdateTarget();
 
-            // Destroy if Swapchain has a change destroy FG Context too
-            if (State::Instance().SCchanged)
+            // Destroy if Swapchain has a change destroy FG Context too, or if FG couldn't be disabled
+            if (State::Instance().SCchanged || _isActive)
                 DestroyFGContext();
         }
 
@@ -1273,7 +1286,11 @@ void FSRFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
         if (IsActive())
         {
             LOG_DEBUG("!IsActive");
-            Deactivate();
+            Disable();
+
+            // FG couldn't be disabled
+            if (_isActive)
+                DestroyFGContext();
 
             State::Instance().ClearCapturedHudlesses = true;
             Hudfix_Dx12::ResetCounters();

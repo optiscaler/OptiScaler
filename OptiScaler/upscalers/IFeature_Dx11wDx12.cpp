@@ -5,6 +5,7 @@
 
 #include <proxies/DXGI_Proxy.h>
 #include <proxies/D3D12_Proxy.h>
+#include <misc/DeferredRelease.h>
 
 #define ASSIGN_DESC(dest, src)                                                                                         \
     dest.Width = src.Width;                                                                                            \
@@ -251,31 +252,40 @@ bool IFeature_Dx11wDx12::CopyTextureFrom11To12(ID3D11Resource* InResource, D3D11
 
 void IFeature_Dx11wDx12::ReleaseSharedResources()
 {
+    // The objects released below can still be in use by the last upscale, D3D11 keeps its own objects alive
+    if (Dx12CommandQueue != nullptr && Dx12Fence != nullptr && Dx12FenceEvent != nullptr &&
+        Dx12CommandQueue->Signal(Dx12Fence, _frameCount + 1) == S_OK &&
+        Dx12Fence->SetEventOnCompletion(_frameCount + 1, Dx12FenceEvent) == S_OK)
+    {
+        WaitForSingleObject(Dx12FenceEvent, 1000);
+    }
+
     SAFE_RELEASE(dx11Color.SharedTexture);
     SAFE_RELEASE(dx11Mv.SharedTexture);
     SAFE_RELEASE(dx11Out.SharedTexture);
     SAFE_RELEASE(dx11Depth.SharedTexture);
     SAFE_RELEASE(dx11Reactive.SharedTexture);
     SAFE_RELEASE(dx11Exp.SharedTexture);
-    SAFE_RELEASE(dx11Color.Dx12Resource);
-    SAFE_RELEASE(dx11Mv.Dx12Resource);
-    SAFE_RELEASE(dx11Out.Dx12Resource);
-    SAFE_RELEASE(dx11Depth.Dx12Resource);
-    SAFE_RELEASE(dx11Reactive.Dx12Resource);
-    SAFE_RELEASE(dx11Exp.Dx12Resource);
+    DeferredRelease::Release(dx11Color.Dx12Resource);
+    DeferredRelease::Release(dx11Mv.Dx12Resource);
+    DeferredRelease::Release(dx11Out.Dx12Resource);
+    DeferredRelease::Release(dx11Depth.Dx12Resource);
+    DeferredRelease::Release(dx11Reactive.Dx12Resource);
+    DeferredRelease::Release(dx11Exp.Dx12Resource);
 
     ReleaseSyncResources();
 
-    SAFE_RELEASE(Dx12CommandList[0]);
-    SAFE_RELEASE(Dx12CommandList[1]);
-    SAFE_RELEASE(Dx12CommandQueue);
-    SAFE_RELEASE(Dx12CommandAllocator[0]);
-    SAFE_RELEASE(Dx12CommandAllocator[1]);
-    SAFE_RELEASE(Dx12Fence);
+    DeferredRelease::Release(Dx12CommandList[0]);
+    DeferredRelease::Release(Dx12CommandList[1]);
+    DeferredRelease::Release(Dx12CommandQueue);
+    DeferredRelease::Release(Dx12CommandAllocator[0]);
+    DeferredRelease::Release(Dx12CommandAllocator[1]);
+    DeferredRelease::Release(Dx12Fence);
 
+    // The fence can still signal it if the wait above timed out
     if (Dx12FenceEvent)
     {
-        CloseHandle(Dx12FenceEvent);
+        DeferredRelease::Enqueue([event = Dx12FenceEvent]() { CloseHandle(event); });
         Dx12FenceEvent = nullptr;
     }
 
@@ -285,7 +295,7 @@ void IFeature_Dx11wDx12::ReleaseSharedResources()
 void IFeature_Dx11wDx12::ReleaseSyncResources()
 {
     SAFE_RELEASE(dx11FenceTextureCopy);
-    SAFE_RELEASE(dx12FenceTextureCopy);
+    DeferredRelease::Release(dx12FenceTextureCopy);
 
     if (dx11SHForTextureCopy != NULL)
     {
@@ -374,8 +384,8 @@ HRESULT IFeature_Dx11wDx12::CreateDx12Device(D3D_FEATURE_LEVEL InFeatureLevel)
 
     HRESULT result;
 
-    if (State::Instance().currentD3D12Device == nullptr ||
-        ((State::Instance().gameQuirks & GameQuirk::ForceCreateD3D12Device) && _localDx11on12Device == nullptr))
+    if (_localDx11on12Device == nullptr && (State::Instance().currentD3D12Device == nullptr ||
+                                            (State::Instance().gameQuirks & GameQuirk::ForceCreateD3D12Device)))
     {
         IDXGIFactory2* factory = nullptr;
 
@@ -408,6 +418,9 @@ HRESULT IFeature_Dx11wDx12::CreateDx12Device(D3D_FEATURE_LEVEL InFeatureLevel)
         }
 
         _dx11on12Device = _localDx11on12Device;
+
+        if (State::Instance().currentD3D12Device == nullptr)
+            State::Instance().currentD3D12Device = _localDx11on12Device;
 
         if (hwAdapter != nullptr)
         {
@@ -505,6 +518,9 @@ HRESULT IFeature_Dx11wDx12::CreateDx12Device(D3D_FEATURE_LEVEL InFeatureLevel)
 
 bool IFeature_Dx11wDx12::ProcessDx11Textures(const NVSDK_NGX_Parameter* InParameters)
 {
+    // Frees deferred objects even when presents aren't hooked
+    DeferredRelease::Collect();
+
     HRESULT result;
 
     // Wait for last frame

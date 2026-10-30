@@ -17,6 +17,7 @@ class D3D12Hooks
     static void Hook();
     static void HookAgility(HMODULE module);
     static void HookDevice(ID3D12Device* device);
+    static void CaptureDevice(ID3D12CommandQueue* queue);
     static void Unhook();
     static void SetRootSignatureTracking(bool enable);
     static bool CanRestoreRootSignature(ID3D12GraphicsCommandList* cmdList);

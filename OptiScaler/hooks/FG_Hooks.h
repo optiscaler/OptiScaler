@@ -18,6 +18,9 @@ class FGHooks
     // True for a swapchain of another window while the FG swapchain exists, it must not replace the main swapchain
     static bool IsOtherWindowThanFG(HWND hwnd);
 
+    // A kept FG swapchain the game released is reused only for the same window and queue, otherwise it's released
+    static void ReleaseUnusableFGSwapchain(HWND hwnd, IUnknown* pDevice);
+
   private:
     using PFN_Present = rewrite_signature<decltype(&IDXGISwapChain::Present)>::type;
     using PFN_Present1 = rewrite_signature<decltype(&IDXGISwapChain1::Present1)>::type;
@@ -48,8 +51,12 @@ class FGHooks
     inline static bool _skipPresent1 = false;
     inline static UINT _lastPresentFlags = 0;
     inline static double _lastFGFrameTime = -1.0;
+    inline static bool _skipReleaseChecks = false;
+    inline static bool _fgSwapchainReleased = false;
+    inline static ULONG _fgSwapchainBaseRefs = 0;
 
     static void HookFGSwapchain(IDXGISwapChain* pSwapChain);
+    static void ReleaseFGSwapchain(IUnknown* swapchain, bool releaseReferences);
 
     static HRESULT hkSetFullscreenState(IDXGISwapChain* This, BOOL Fullscreen, IDXGIOutput* pTarget);
     static HRESULT hkGetFullscreenDesc(IDXGISwapChain1* This, DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pDesc);

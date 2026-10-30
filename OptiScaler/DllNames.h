@@ -52,7 +52,7 @@ DEFINE_NAME_VECTORS(overlay, "eosovh-win32-shipping",
                              "discordoverlay",
                              "discordoverlay64",        // Discord
                              "overlay",
-                             "overlay64"                  // Ubisoft
+                             "overlay64",                 // Ubisoft
                              "overlayenginex64.dll", 
                              "overlayreleasex64.dll"
  );

@@ -397,6 +397,9 @@ static Fsr212::FfxErrorCode ffxFsr2ContextCreate_Dx12(Fsr212::FfxFsr2Context* co
         }
     }
 
+    if (_d3d12Device == nullptr)
+        _d3d12Device = state.currentD3D12Device;
+
     // if still no device use latest created one
     // Might fixed TLOU but FMF2 still crashes
     if (_d3d12Device == nullptr && state.d3d12Devices.size() > 0)
@@ -482,6 +485,9 @@ static Fsr212::FfxErrorCode ffxFsr2ContextCreate_Pattern_Dx12(Fsr212::FfxFsr2Con
             }
         }
     }
+
+    if (_d3d12Device == nullptr)
+        _d3d12Device = state.currentD3D12Device;
 
     // if still no device use latest created one
     // Might fixed TLOU but FMF2 still crashes

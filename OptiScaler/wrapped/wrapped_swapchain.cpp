@@ -8,9 +8,11 @@
 #include <hooks/Reflex_Hooks.h>
 #include <hooks/D3D12_Hooks.h>
 
+#include <menu/menu_overlay_base.h>
 #include <menu/menu_overlay_dx.h>
 
 #include <misc/FrameLimit.h>
+#include <misc/DeferredRelease.h>
 #include <upscaler_time/UpscalerTime_Dx11.h>
 #include <upscaler_time/UpscalerTime_Dx12.h>
 
@@ -48,10 +50,26 @@ static ID3D12Device* resizeFenceDevice = nullptr;
 static UINT64 resizeFenceValue = 0;
 static HANDLE resizeFenceEvent = nullptr;
 
+// Menu and FG belong to the game's swapchain (or the one FG presents with), not to other windows' swapchains
+static bool IsCurrentSwapchain(IDXGISwapChain* swapchain)
+{
+    return State::Instance().currentSwapchain == swapchain || State::Instance().currentWrappedSwapchain == swapchain;
+}
+
+// The menu draws on whichever swapchain presented last, it can be another window's
+static bool HasMenu(IDXGISwapChain* swapchain, HWND hwnd)
+{
+    return IsCurrentSwapchain(swapchain) || MenuOverlayBase::Handle() == hwnd;
+}
+
 static void WaitForGPUIdle(IUnknown* object)
 {
     if (object == nullptr)
         return;
+
+    // Fence state is shared by every caller
+    static std::mutex waitMutex;
+    std::scoped_lock lock(waitMutex);
 
     ID3D12CommandQueue* queue = nullptr;
 
@@ -188,7 +206,8 @@ void ReportD3D12LiveObjects(ID3D12Device* device)
 #endif
 
 static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags,
-                            const DXGI_PRESENT_PARAMETERS* pPresentParameters, IUnknown* pDevice, HWND hWnd, bool isUWP)
+                            const DXGI_PRESENT_PARAMETERS* pPresentParameters, IUnknown* pDevice, HWND hWnd, bool isUWP,
+                            bool isCurrent)
 {
     if (State::Instance().isShuttingDown)
     {
@@ -222,7 +241,7 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         LOG_DEBUG("SyncInterval: {}, Flags: {:X}, Frametime: {:0.3f} ms", SyncInterval, Flags, ftDelta);
 
         // Update swapchain info evey frame
-        if (pSwapChain->GetDesc(&State::Instance().currentSwapchainDesc) != S_OK)
+        if (isCurrent && pSwapChain->GetDesc(&State::Instance().currentSwapchainDesc) != S_OK)
             LOG_WARN("Can't get swapchain desc!");
     }
 
@@ -242,8 +261,12 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
             LOG_DEBUG("D3D11Device captured");
 
         _dx11Device = true;
-        State::Instance().swapchainApi = DX11;
-        State::Instance().currentD3D11Device = device;
+
+        if (isCurrent)
+        {
+            State::Instance().swapchainApi = DX11;
+            State::Instance().currentD3D11Device = device;
+        }
 
         if (!State::Instance().DeviceAdapterNames.contains(device))
         {
@@ -302,22 +325,21 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         if (Util::CheckForRealObject(__FUNCTION__, cq, (IUnknown**) &realQueue))
             cq = realQueue;
 
-        State::Instance().swapchainApi = DX12;
+        if (isCurrent)
+        {
+            State::Instance().swapchainApi = DX12;
 
-        if (State::Instance().currentCommandQueue == nullptr)
-            State::Instance().currentCommandQueue = cq;
+            if (State::Instance().currentCommandQueue == nullptr)
+                State::Instance().currentCommandQueue = cq;
 
-        if (cq->GetDevice(IID_PPV_ARGS(&device12)) == S_OK)
+            D3D12Hooks::CaptureDevice(cq);
+        }
+
+        if (!_dx12Device && cq->GetDevice(IID_PPV_ARGS(&device12)) == S_OK)
         {
             device12->Release();
-
-            if (!_dx12Device)
-                LOG_DEBUG("D3D12Device captured");
-
+            LOG_DEBUG("D3D12Device captured");
             _dx12Device = true;
-
-            State::Instance().currentD3D12Device = device12;
-            D3D12Hooks::HookDevice(device12);
         }
     }
 
@@ -383,6 +405,9 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         else
             presentResult = ((IDXGISwapChain1*) pSwapChain)->Present1(SyncInterval, Flags, pPresentParameters);
 
+        if (willPresent)
+            DeferredRelease::Process();
+
         if (presentResult == S_OK)
         {
             LOG_TRACE("3 {}", (UINT) presentResult);
@@ -445,6 +470,9 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         presentResult = pSwapChain->Present(SyncInterval, Flags);
     else
         presentResult = ((IDXGISwapChain1*) pSwapChain)->Present1(SyncInterval, Flags, pPresentParameters);
+
+    if (willPresent)
+        DeferredRelease::Process();
 
     if (presentResult == S_OK)
     {
@@ -602,7 +630,8 @@ ULONG STDMETHODCALLTYPE WrappedIDXGISwapChain4::Release()
     // Preserve swapchain when SL releasing it
     if (ret == 0 && State::Instance().activeFgOutput != FGOutput::NoFG &&
         State::Instance().activeFgOutput != FGOutput::Nukems &&
-        Config::Instance()->FGPreserveSwapChain.value_or_default() && !State::Instance().isShuttingDown)
+        Config::Instance()->FGPreserveSwapChain.value_or_default() && !State::Instance().isShuttingDown &&
+        !State::Instance().releasingFGSwapchain)
     {
         LOG_DEBUG("Real swapchain is released, probaby SL. Preserving FG swapchain");
         AddRef();
@@ -615,18 +644,31 @@ ULONG STDMETHODCALLTYPE WrappedIDXGISwapChain4::Release()
         OwnedLockGuard lock(_localMutex, 999);
 #endif
 
-        MenuOverlayDx::CleanupRenderTarget(true, _handle);
+        const bool isCurrent = IsCurrentSwapchain(this);
+
+        // Menu's last command list can still be running
+        if (HasMenu(this, _handle))
+        {
+            WaitForGPUIdle(_device);
+            MenuOverlayDx::CleanupRenderTarget(true, _handle);
+        }
 
         if (State::Instance().currentSwapchain == this)
             State::Instance().currentSwapchain = nullptr;
 
-        if (State::Instance().currentRealSwapchain == this)
+        if (State::Instance().currentWrappedSwapchain == this)
+            State::Instance().currentWrappedSwapchain = nullptr;
+
+        if (State::Instance().currentRealSwapchain == _real)
             State::Instance().currentRealSwapchain = nullptr;
 
+        if (isCurrent && State::Instance().currentCommandQueue == _device)
+            State::Instance().currentCommandQueue = nullptr;
+
         auto fg = State::Instance().currentFG;
-        if (fg != nullptr && fg->Mutex.getOwner() != 1 && fg->SwapchainContext() != nullptr)
+        if (isCurrent && fg != nullptr && fg->Mutex.getOwner() != 1 && fg->SwapchainContext() != nullptr)
         {
-            fg->Deactivate();
+            fg->Disable();
             fg->ReleaseSwapchain(_handle);
 
             if (State::Instance().currentFGSwapchain != nullptr)
@@ -704,7 +746,8 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::Present(UINT SyncInterval, UIN
 
     if ((Flags & DXGI_PRESENT_TEST) == 0)
     {
-        result = LocalPresent(_real, SyncInterval, Flags, nullptr, _device, _handle, _uwp);
+        result = LocalPresent(_real, SyncInterval, Flags, nullptr, _device, _handle, _uwp,
+                              IsCurrentSwapchain(this) || State::Instance().currentSwapchain == nullptr);
 
         // When Reflex can't be used to limit, sleep in present
         if (!State::Instance().reflexLimitsFps && State::Instance().activeFgOutput == FGOutput::NoFG &&
@@ -735,20 +778,15 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::SetFullscreenState(BOOL Fullsc
     bool ffxLock = false;
 
     {
-#ifdef USE_LOCAL_MUTEX
-        // dlssg calls this from present it seems
-        // don't try to get a mutex when present owns it while dlssg mod is enabled
-        if (!(_localMutex.getOwner() == 4 && Config::Instance()->FGInput.value_or_default() == FGInput::Nukems))
-            OwnedLockGuard lock(_localMutex, 3);
-#endif
         if (Config::Instance()->FGUseMutexForSwapchain.value_or_default())
         {
 
             if (State::Instance().currentFG != nullptr && State::Instance().currentFG->IsActive() &&
-                State::Instance().currentFG->Mutex.getOwner() != 3)
+                !State::Instance().currentFG->IsPaused() && State::Instance().currentFG->Mutex.getOwner() != 3 &&
+                !State::Instance().currentFG->Mutex.isLockedByThisThread())
             {
-                LOG_TRACE("Waiting ffxMutex 3, current: {}", State::Instance().currentFG->Mutex.getOwner());
-                State::Instance().currentFG->Mutex.lock(3);
+                LOG_TRACE("Waiting ffxMutex 7, current: {}", State::Instance().currentFG->Mutex.getOwner());
+                State::Instance().currentFG->Mutex.lock(7);
                 ffxLock = true;
                 LOG_TRACE("Accuired ffxMutex: {}", State::Instance().currentFG->Mutex.getOwner());
             }
@@ -758,7 +796,8 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::SetFullscreenState(BOOL Fullsc
             }
         }
 
-        State::Instance().realExclusiveFullscreen = Fullscreen;
+        if (IsCurrentSwapchain(this))
+            State::Instance().realExclusiveFullscreen = Fullscreen;
 
         result = _real->SetFullscreenState(Fullscreen, pTarget);
 
@@ -771,7 +810,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::SetFullscreenState(BOOL Fullsc
     if (ffxLock)
     {
         LOG_TRACE("Releasing ffxMutex: {}", State::Instance().currentFG->Mutex.getOwner());
-        State::Instance().currentFG->Mutex.unlockThis(3);
+        State::Instance().currentFG->Mutex.unlockThis(7);
     }
 
     return result;
@@ -789,18 +828,16 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
 {
     LOG_DEBUG("");
 
-#ifdef USE_LOCAL_MUTEX
-    // dlssg calls this from present it seems
-    // don't try to get a mutex when present owns it while dlssg mod is enabled
-    if (!(_localMutex.getOwner() == 4 && Config::Instance()->FGInput.value_or_default() == FGInput::Nukems))
-        OwnedLockGuard lock(_localMutex, 1);
-#endif
-
+    bool ffxLock = false;
     if (State::Instance().currentFG != nullptr && Config::Instance()->FGUseMutexForSwapchain.value_or_default() &&
-        State::Instance().currentFG->Mutex.getOwner() != 6677 && State::Instance().currentFG->Mutex.getOwner() != 6678)
+        State::Instance().currentFG->Mutex.getOwner() != 6677 &&
+        State::Instance().currentFG->Mutex.getOwner() != 6678 &&
+        !(State::Instance().currentFG->Mutex.getOwner() == 7 && InSendMessage()) &&
+        !State::Instance().currentFG->Mutex.isLockedByThisThread())
     {
         LOG_TRACE("Waiting ffxMutex 3, current: {}", State::Instance().currentFG->Mutex.getOwner());
         State::Instance().currentFG->Mutex.lock(3);
+        ffxLock = true;
         LOG_TRACE("Accuired ffxMutex: {}", State::Instance().currentFG->Mutex.getOwner());
     }
 
@@ -808,16 +845,23 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
     DXGI_SWAP_CHAIN_DESC desc {};
     _real->GetDesc(&desc);
 
-    if (Config::Instance()->FGEnabled.value_or_default())
+    // Menu's last command list can still be running
+    WaitForGPUIdle(_device);
+
+    if (HasMenu(this, _handle))
+        MenuOverlayDx::CleanupRenderTarget(true, _handle);
+
+    if (IsCurrentSwapchain(this))
     {
-        State::Instance().FGresetCapturedResources = true;
-        State::Instance().FGonlyUseCapturedResources = false;
-        State::Instance().FGchanged = true;
+        if (Config::Instance()->FGEnabled.value_or_default())
+        {
+            State::Instance().FGresetCapturedResources = true;
+            State::Instance().FGonlyUseCapturedResources = false;
+            State::Instance().FGchanged = true;
+        }
+
+        State::Instance().SCchanged = true;
     }
-
-    MenuOverlayDx::CleanupRenderTarget(true, _handle);
-
-    State::Instance().SCchanged = true;
 
     if (Config::Instance()->OverrideVsync.value_or_default() && !State::Instance().SCExclusiveFullscreen &&
         State::Instance().currentFG == nullptr)
@@ -829,12 +873,11 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
             BufferCount = 2;
     }
 
-    State::Instance().SCAllowTearing = (SwapChainFlags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) > 0;
+    if (IsCurrentSwapchain(this))
+        State::Instance().SCAllowTearing = (SwapChainFlags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) > 0;
 
     LOG_DEBUG("BufferCount: {0}, Width: {1}, Height: {2}, NewFormat: {3}, SwapChainFlags: {4:X}", BufferCount, Width,
               Height, (UINT) NewFormat, SwapChainFlags);
-
-    WaitForGPUIdle(_device);
 
     // Release swapchain backbuffers to prevent errors when resizing
     /*
@@ -993,7 +1036,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
 
     LOG_DEBUG("result: {0:X}", (UINT) result);
 
-    if (State::Instance().currentFG != nullptr && Config::Instance()->FGUseMutexForSwapchain.value_or_default())
+    if (ffxLock)
     {
         LOG_TRACE("Releasing ffxMutex: {}", State::Instance().currentFG->Mutex.getOwner());
         State::Instance().currentFG->Mutex.unlockThis(3);
@@ -1054,7 +1097,8 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::Present1(UINT SyncInterval, UI
 
     if ((Flags & DXGI_PRESENT_TEST) == 0)
     {
-        result = LocalPresent(_real1, SyncInterval, Flags, pPresentParameters, _device, _handle, _uwp);
+        result = LocalPresent(_real1, SyncInterval, Flags, pPresentParameters, _device, _handle, _uwp,
+                              IsCurrentSwapchain(this) || State::Instance().currentSwapchain == nullptr);
 
         // When Reflex can't be used to limit, sleep in present
         if (!State::Instance().reflexLimitsFps && State::Instance().activeFgOutput == FGOutput::NoFG &&
@@ -1165,43 +1209,53 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
 {
     LOG_DEBUG("");
 
-#ifdef USE_LOCAL_MUTEX
-    // dlssg calls this from present it seems
-    // don't try to get a mutex when present owns it while dlssg mod is enabled
-    if (!(_localMutex.getOwner() == 4 && Config::Instance()->FGInput.value_or_default() == FGInput::Nukems))
-        OwnedLockGuard lock(_localMutex, 2);
-#endif
-
+    bool ffxLock = false;
     if (State::Instance().currentFG != nullptr && Config::Instance()->FGUseMutexForSwapchain.value_or_default() &&
         State::Instance().currentFG->Mutex.getOwner() != 6677 &&
-        State::Instance().currentFG->Mutex.getOwner() != 6678 && State::Instance().currentFG->Mutex.getOwner() != 2)
+        State::Instance().currentFG->Mutex.getOwner() != 6678 && State::Instance().currentFG->Mutex.getOwner() != 2 &&
+        !(State::Instance().currentFG->Mutex.getOwner() == 7 && InSendMessage()) &&
+        !State::Instance().currentFG->Mutex.isLockedByThisThread())
     {
         LOG_TRACE("Waiting ffxMutex 3, current: {}", State::Instance().currentFG->Mutex.getOwner());
         State::Instance().currentFG->Mutex.lock(3);
+        ffxLock = true;
         LOG_TRACE("Accuired ffxMutex: {}", State::Instance().currentFG->Mutex.getOwner());
     }
 
+    // Menu's last command list can still be running
+    WaitForGPUIdle(_device);
+
     auto state = &State::Instance();
-    if (*ppPresentQueue != nullptr && state->activeFgOutput == FGOutput::XeFG && state->currentFG != nullptr)
+    if (ppPresentQueue != nullptr && *ppPresentQueue != nullptr && state->activeFgOutput == FGOutput::XeFG &&
+        state->currentFG != nullptr)
     {
         state->currentCommandQueue = (ID3D12CommandQueue*) *ppPresentQueue;
-        _device = state->currentCommandQueue;
+
+        if (_device != state->currentCommandQueue)
+        {
+            _device = state->currentCommandQueue;
+            WaitForGPUIdle(_device);
+        }
     }
 
     HRESULT result = E_FAIL;
     DXGI_SWAP_CHAIN_DESC desc {};
     _real->GetDesc(&desc);
 
-    if (Config::Instance()->FGEnabled.value_or_default())
+    if (HasMenu(this, _handle))
+        MenuOverlayDx::CleanupRenderTarget(true, _handle);
+
+    if (IsCurrentSwapchain(this))
     {
-        State::Instance().FGresetCapturedResources = true;
-        State::Instance().FGonlyUseCapturedResources = false;
-        State::Instance().FGchanged = true;
+        if (Config::Instance()->FGEnabled.value_or_default())
+        {
+            State::Instance().FGresetCapturedResources = true;
+            State::Instance().FGonlyUseCapturedResources = false;
+            State::Instance().FGchanged = true;
+        }
+
+        State::Instance().SCchanged = true;
     }
-
-    MenuOverlayDx::CleanupRenderTarget(true, _handle);
-
-    State::Instance().SCchanged = true;
 
     if (Config::Instance()->OverrideVsync.value_or_default() && !State::Instance().SCExclusiveFullscreen &&
         State::Instance().currentFG == nullptr)
@@ -1213,12 +1267,11 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
             BufferCount = 2;
     }
 
-    State::Instance().SCAllowTearing = (SwapChainFlags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) > 0;
+    if (IsCurrentSwapchain(this))
+        State::Instance().SCAllowTearing = (SwapChainFlags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) > 0;
 
     LOG_DEBUG("BufferCount: {}, Width: {}, Height: {}, NewFormat: {}, SwapChainFlags: {:X}", BufferCount, Width, Height,
               (UINT) Format, SwapChainFlags);
-
-    WaitForGPUIdle(_device);
 
     // Release swapchain backbuffers to prevent errors when resizing
     if (State::Instance().activeFgOutput != FGOutput::NoFG && State::Instance().activeFgOutput != FGOutput::Nukems &&
@@ -1398,8 +1451,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
 
     LOG_DEBUG("result: {0:X}", (UINT) result);
 
-    if (State::Instance().activeFgOutput == FGOutput::FSRFG &&
-        Config::Instance()->FGUseMutexForSwapchain.value_or_default())
+    if (ffxLock)
     {
         LOG_TRACE("Releasing ffxMutex: {}", State::Instance().currentFG->Mutex.getOwner());
         State::Instance().currentFG->Mutex.unlockThis(3);

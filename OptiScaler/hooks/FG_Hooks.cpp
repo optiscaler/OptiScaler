@@ -43,6 +43,24 @@ static void SetCurrentCommandQueue(ID3D12CommandQueue* cq)
     currentCommandQueue = cq;
 }
 
+// Resize fails while a back buffer is still referenced
+static void LogBackBufferReferences(IDXGISwapChain* swapChain)
+{
+    DXGI_SWAP_CHAIN_DESC desc {};
+    if (swapChain->GetDesc(&desc) != S_OK)
+        return;
+
+    for (UINT i = 0; i < desc.BufferCount; i++)
+    {
+        ID3D12Resource* buffer = nullptr;
+        if (swapChain->GetBuffer(i, IID_PPV_ARGS(&buffer)) != S_OK)
+            break;
+
+        auto references = buffer->Release();
+        LOG_WARN("Backbuffer {}: {:X}, references: {}", i, (size_t) buffer, references);
+    }
+}
+
 // For FG swapchain  wrap another FG swapchain resize deadlock issue
 static thread_local int resizeDepth = 0;
 
@@ -52,7 +70,8 @@ struct ResizeScope
 
     ResizeScope(OwnedMutex& mutex, uint32_t owner)
     {
-        if (resizeDepth++ == 0)
+        // Owner 7 is a mode switch waiting for the window to handle this resize
+        if (resizeDepth++ == 0 && !mutex.isLockedByThisThread() && !(mutex.getOwner() == 7 && InSendMessage()))
             lock.emplace(mutex, owner);
     }
 
@@ -75,6 +94,9 @@ static void PauseFG(IFGFeature_Dx12* fg)
 
 static void WaitForGPUIdle()
 {
+    static std::mutex waitMutex;
+    std::scoped_lock lock(waitMutex);
+
     if (currentCommandQueue != nullptr && resizeFence != nullptr && resizeFenceEvent != nullptr)
     {
         LOG_DEBUG("Waiting for GPU to finish before resizing buffers");
@@ -127,6 +149,28 @@ static bool CheckForFGStatus()
 bool FGHooks::IsOtherWindowThanFG(HWND hwnd)
 {
     return State::Instance().currentFGSwapchain != nullptr && _hwnd != nullptr && hwnd != _hwnd;
+}
+
+void FGHooks::ReleaseUnusableFGSwapchain(HWND hwnd, IUnknown* pDevice)
+{
+    auto swapchain = State::Instance().currentFGSwapchain;
+    if (swapchain == nullptr || !_fgSwapchainReleased)
+        return;
+
+    ID3D12CommandQueue* queue = nullptr;
+    if (pDevice->QueryInterface(IID_PPV_ARGS(&queue)) != S_OK)
+        return;
+
+    queue->Release();
+
+    if (hwnd == _hwnd && queue == currentCommandQueue)
+        return;
+
+    LOG_INFO("Releasing kept FG swapchain, window: {:X} -> {:X}, queue: {:X} -> {:X}", (size_t) _hwnd, (size_t) hwnd,
+             (size_t) currentCommandQueue, (size_t) queue);
+
+    // Other hooks can still hold its references
+    ReleaseFGSwapchain(swapchain, false);
 }
 
 static bool IsOtherWindowWhileFGSwapchainExists(HWND fgHwnd, HWND hwnd)
@@ -202,6 +246,15 @@ HRESULT FGHooks::CreateSwapChain(IDXGIFactory* pFactory, IUnknown* pDevice, DXGI
 
         scResult = fg->CreateSwapchain(pFactory, cq, pDesc, ppSwapChain, true);
 
+        // Reusing failed, the kept swapchain still owns the window
+        if (!scResult && _fgSwapchainReleased && State::Instance().currentFGSwapchain != nullptr)
+        {
+            ReleaseFGSwapchain(State::Instance().currentFGSwapchain, false);
+
+            if (State::Instance().currentFGSwapchain == nullptr)
+                scResult = fg->CreateSwapchain(pFactory, cq, pDesc, ppSwapChain, true);
+        }
+
         // Looks like game is creating new swapchain,
         // without releasing old one, be sure gpu is in idle state
         if (!Config::Instance()->FGPreserveSwapChain.value_or_default() &&
@@ -237,7 +290,15 @@ HRESULT FGHooks::CreateSwapChain(IDXGIFactory* pFactory, IUnknown* pDevice, DXGI
             resizeFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
         }
 
+        // References the FG library keeps, the game's last release leaves only these
+        if (*ppSwapChain != State::Instance().currentFGSwapchain)
+        {
+            (*ppSwapChain)->AddRef();
+            _fgSwapchainBaseRefs = (*ppSwapChain)->Release() - 1;
+        }
+
         _hwnd = pDesc->OutputWindow;
+        _fgSwapchainReleased = false;
         State::Instance().currentFGSwapchain = *ppSwapChain;
 
         HookFGSwapchain(*ppSwapChain);
@@ -313,6 +374,15 @@ HRESULT FGHooks::CreateSwapChainForHwnd(IDXGIFactory* pFactory, IUnknown* pDevic
 
         scResult = fg->CreateSwapchain1(pFactory, cq, hWnd, pDesc, pFullscreenDesc, ppSwapChain, true);
 
+        // Reusing failed, the kept swapchain still owns the window
+        if (!scResult && _fgSwapchainReleased && State::Instance().currentFGSwapchain != nullptr)
+        {
+            ReleaseFGSwapchain(State::Instance().currentFGSwapchain, false);
+
+            if (State::Instance().currentFGSwapchain == nullptr)
+                scResult = fg->CreateSwapchain1(pFactory, cq, hWnd, pDesc, pFullscreenDesc, ppSwapChain, true);
+        }
+
         // Looks like game is creating new swapchain,
         // without releasing old one, be sure gpu is in idle state
         if (!Config::Instance()->FGPreserveSwapChain.value_or_default() &&
@@ -348,7 +418,15 @@ HRESULT FGHooks::CreateSwapChainForHwnd(IDXGIFactory* pFactory, IUnknown* pDevic
             resizeFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
         }
 
+        // References the FG library keeps, the game's last release leaves only these
+        if (*ppSwapChain != State::Instance().currentFGSwapchain)
+        {
+            (*ppSwapChain)->AddRef();
+            _fgSwapchainBaseRefs = (*ppSwapChain)->Release() - 1;
+        }
+
         _hwnd = hWnd;
+        _fgSwapchainReleased = false;
         State::Instance().currentFGSwapchain = *ppSwapChain;
 
         HookFGSwapchain(*ppSwapChain);
@@ -659,21 +737,16 @@ HRESULT FGHooks::hkResizeBuffers(IDXGISwapChain* This, UINT BufferCount, UINT Wi
 
                         auto cmdList = fg->GetUICommandList();
 
-                        if (cmdList != nullptr)
+                        ID3D12Resource* backBuffer = nullptr;
+                        if (cmdList != nullptr &&
+                            swapchain->GetBuffer(swapchainIndex, IID_PPV_ARGS(&backBuffer)) == S_OK)
                         {
-                            for (size_t i = 0; i < desc.BufferCount; i++)
-                            {
-                                ID3D12Resource* backBuffer = nullptr;
-                                if (swapchain->GetBuffer(swapchainIndex, IID_PPV_ARGS(&backBuffer)) == S_OK)
-                                {
-                                    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-                                        backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COMMON);
+                            auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+                                backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COMMON);
 
-                                    cmdList->ResourceBarrier(1, &barrier);
+                            cmdList->ResourceBarrier(1, &barrier);
 
-                                    backBuffer->Release();
-                                }
-                            }
+                            backBuffer->Release();
                         }
                     }
 
@@ -695,7 +768,12 @@ HRESULT FGHooks::hkResizeBuffers(IDXGISwapChain* This, UINT BufferCount, UINT Wi
             }
         }
 
-        SwapChainFlags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+        // ALLOW_TEARING can't change on resize
+        if (desc.BufferCount != 0)
+        {
+            SwapChainFlags = (SwapChainFlags & ~DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) |
+                             (desc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING);
+        }
     }
 
     _skipResize1 = true;
@@ -709,38 +787,6 @@ HRESULT FGHooks::hkResizeBuffers(IDXGISwapChain* This, UINT BufferCount, UINT Wi
     // Release menu render targets
     if (Config::Instance()->OverlayMenu.value_or_default())
         MenuOverlayDx::CleanupRenderTarget(false, NULL);
-
-    // Release swapchain backbuffers to prevent errors when resizing
-    if (State::Instance().activeFgOutput == FGOutput::XeFG)
-    {
-        for (UINT i = 0; i < 8; i++)
-        {
-            ID3D12Resource* backBuffer = nullptr;
-            auto bbResult = This->GetBuffer(i, IID_PPV_ARGS(&backBuffer));
-
-            if (bbResult == S_OK)
-            {
-                LOG_DEBUG("Backbuffer {}: {:X}", i, (size_t) backBuffer);
-                auto refCount = backBuffer->Release();
-                while (refCount > XEFG_RESOURCE_REF_LIMIT)
-                {
-                    LOG_DEBUG("Releasing backbuffer {}: RefCount {}", i, refCount);
-                    refCount = backBuffer->Release();
-                }
-
-#if (XEFG_RESOURCE_REF_LIMIT == 0)
-                oldBackBuffers.push_back(backBuffer);
-#endif
-            }
-            else
-            {
-                LOG_DEBUG("GetBuffer failed for index {}: {:X}", i, (UINT) bbResult);
-                break;
-            }
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
 
     // Force HDR10 for XeFG if HDR16 is used
     if (State::Instance().activeFgOutput == FGOutput::XeFG && NewFormat >= DXGI_FORMAT_R16G16B16A16_TYPELESS &&
@@ -822,6 +868,9 @@ HRESULT FGHooks::hkResizeBuffers(IDXGISwapChain* This, UINT BufferCount, UINT Wi
     }
 
     LOG_DEBUG("Result: {:X}, Caller: {}", (UINT) result, Util::WhoIsTheCaller(_ReturnAddress()));
+
+    if (result == DXGI_ERROR_INVALID_CALL)
+        LogBackBufferReferences(This);
 
     // Resize window to cover the screen
     if (result == S_OK && Config::Instance()->FGXeFGForceBorderless.value_or_default() &&
@@ -945,21 +994,16 @@ HRESULT FGHooks::hkResizeBuffers1(IDXGISwapChain3* This, UINT BufferCount, UINT 
 
                         auto cmdList = fg->GetUICommandList();
 
-                        if (cmdList != nullptr)
+                        ID3D12Resource* backBuffer = nullptr;
+                        if (cmdList != nullptr &&
+                            swapchain->GetBuffer(swapchainIndex, IID_PPV_ARGS(&backBuffer)) == S_OK)
                         {
-                            for (size_t i = 0; i < desc.BufferCount; i++)
-                            {
-                                ID3D12Resource* backBuffer = nullptr;
-                                if (swapchain->GetBuffer(swapchainIndex, IID_PPV_ARGS(&backBuffer)) == S_OK)
-                                {
-                                    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-                                        backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COMMON);
+                            auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+                                backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COMMON);
 
-                                    cmdList->ResourceBarrier(1, &barrier);
+                            cmdList->ResourceBarrier(1, &barrier);
 
-                                    backBuffer->Release();
-                                }
-                            }
+                            backBuffer->Release();
                         }
                     }
 
@@ -981,7 +1025,12 @@ HRESULT FGHooks::hkResizeBuffers1(IDXGISwapChain3* This, UINT BufferCount, UINT 
             }
         }
 
-        SwapChainFlags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+        // ALLOW_TEARING can't change on resize
+        if (desc.BufferCount != 0)
+        {
+            SwapChainFlags = (SwapChainFlags & ~DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) |
+                             (desc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING);
+        }
     }
 
     _skipResize = true;
@@ -995,38 +1044,6 @@ HRESULT FGHooks::hkResizeBuffers1(IDXGISwapChain3* This, UINT BufferCount, UINT 
     // Release menu render targets
     if (Config::Instance()->OverlayMenu.value_or_default())
         MenuOverlayDx::CleanupRenderTarget(false, NULL);
-
-    // Release swapchain backbuffers to prevent errors when resizing
-    if (State::Instance().activeFgOutput == FGOutput::XeFG)
-    {
-        for (UINT i = 0; i < 8; i++)
-        {
-            ID3D12Resource* backBuffer = nullptr;
-            auto bbResult = This->GetBuffer(i, IID_PPV_ARGS(&backBuffer));
-
-            if (bbResult == S_OK)
-            {
-                LOG_DEBUG("Backbuffer {}: {:X}", i, (size_t) backBuffer);
-                auto refCount = backBuffer->Release();
-                while (refCount > XEFG_RESOURCE_REF_LIMIT)
-                {
-                    LOG_DEBUG("Releasing backbuffer {}: RefCount {}", i, refCount);
-                    refCount = backBuffer->Release();
-                }
-
-#if (XEFG_RESOURCE_REF_LIMIT == 0)
-                oldBackBuffers.push_back(backBuffer);
-#endif
-            }
-            else
-            {
-                LOG_DEBUG("GetBuffer failed for index {}: {:X}", i, (UINT) bbResult);
-                break;
-            }
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
 
     // Force HDR10 for XeFG if HDR16 is used
     if (State::Instance().activeFgOutput == FGOutput::XeFG && Format >= DXGI_FORMAT_R16G16B16A16_TYPELESS &&
@@ -1109,6 +1126,9 @@ HRESULT FGHooks::hkResizeBuffers1(IDXGISwapChain3* This, UINT BufferCount, UINT 
     }
 
     LOG_DEBUG("Result: {:X}, Caller: {}", (UINT) result, Util::WhoIsTheCaller(_ReturnAddress()));
+
+    if (result == DXGI_ERROR_INVALID_CALL)
+        LogBackBufferReferences(This);
 
     // Resize window to cover the screen
     if (result == S_OK && Config::Instance()->FGXeFGForceBorderless.value_or_default() &&
@@ -1369,9 +1389,7 @@ ULONG FGHooks::hkFGRelease(IUnknown* This)
     }
 #endif // (XEFG_RESOURCE_REF_LIMIT == 0)
 
-    static bool skipReleaseChecks = false;
-
-    if (skipReleaseChecks || State::Instance().currentFGSwapchain != This || State::Instance().isShuttingDown)
+    if (_skipReleaseChecks || State::Instance().currentFGSwapchain != This || State::Instance().isShuttingDown)
         return o_FGRelease(This);
 
     This->AddRef();
@@ -1380,80 +1398,110 @@ ULONG FGHooks::hkFGRelease(IUnknown* This)
     {
         if (o_FGRelease(This) == 1)
         {
-            LOG_DEBUG("");
-
-            WaitForGPUIdle();
-
-            DXGI_SWAP_CHAIN_DESC scDesc {};
-            ((IDXGISwapChain*) This)->GetDesc(&scDesc);
-
-            // Release swapchain backbuffers to prevent errors when releasing FG swapchain
-            {
-                for (UINT i = 0; i < scDesc.BufferCount; i++)
-                {
-                    ID3D12Resource* backBuffer = nullptr;
-                    auto bbResult = ((IDXGISwapChain*) This)->GetBuffer(i, IID_PPV_ARGS(&backBuffer));
-
-                    if (bbResult == S_OK)
-                    {
-                        LOG_DEBUG("Backbuffer {}: {:X}", i, (size_t) backBuffer);
-                        auto refCount = backBuffer->Release();
-                        while (refCount > XEFG_RESOURCE_REF_LIMIT)
-                        {
-                            LOG_DEBUG("Releasing backbuffer {}: RefCount {}", i, refCount);
-                            refCount = backBuffer->Release();
-                        }
-
-#if (XEFG_RESOURCE_REF_LIMIT == 0)
-                        oldBackBuffers.push_back(backBuffer);
-#endif
-                    }
-                    else
-                    {
-                        LOG_DEBUG("GetBuffer failed for index {}: {:X}", i, (UINT) bbResult);
-                        break;
-                    }
-                }
-            }
-
-            // To prevent deadlock when FG release the swapchain
-            skipReleaseChecks = true;
-
-            if (State::Instance().currentFG != nullptr)
-            {
-                LOG_DEBUG("FG Swapchain released, release FG & swapchain context");
-                State::Instance().currentFG->ReleaseSwapchain(_hwnd);
-            }
-
-            LOG_DEBUG("FG Swapchain released, clearing currentFGSwapchain");
-            State::Instance().currentFGSwapchain = nullptr;
-
-            if (State::Instance().currentWrappedSwapchain != nullptr &&
-                State::Instance().currentSwapchainDesc.OutputWindow == _hwnd)
-            {
-                auto refCount = State::Instance().currentWrappedSwapchain->Release();
-
-                while (refCount > 0 && refCount < 0xffffff00)
-                {
-                    refCount = State::Instance().currentWrappedSwapchain->Release();
-                }
-
-                State::Instance().currentWrappedSwapchain = nullptr;
-            }
-
-            skipReleaseChecks = false;
-
+            ReleaseFGSwapchain(This, true);
             return 0;
         }
     }
     else
     {
-        if (o_FGRelease(This) == 1)
+        auto refCount = o_FGRelease(This);
+
+        if (refCount == 1)
         {
             LOG_INFO("Preserving FG Swapchain from release");
+            _fgSwapchainReleased = true;
+            _fgSwapchainBaseRefs = 1;
             return 0;
         }
+
+        // Only the FG library's own references are left
+        if (refCount - 1 == _fgSwapchainBaseRefs)
+            _fgSwapchainReleased = true;
     }
 
     return o_FGRelease(This);
+}
+
+// Only the swapchain context's reference is left
+void FGHooks::ReleaseFGSwapchain(IUnknown* swapchain, bool releaseReferences)
+{
+    LOG_DEBUG("");
+
+    WaitForGPUIdle();
+
+    DXGI_SWAP_CHAIN_DESC scDesc {};
+    ((IDXGISwapChain*) swapchain)->GetDesc(&scDesc);
+
+    // Release swapchain backbuffers to prevent errors when releasing FG swapchain
+    if (releaseReferences)
+    {
+        for (UINT i = 0; i < scDesc.BufferCount; i++)
+        {
+            ID3D12Resource* backBuffer = nullptr;
+            auto bbResult = ((IDXGISwapChain*) swapchain)->GetBuffer(i, IID_PPV_ARGS(&backBuffer));
+
+            if (bbResult == S_OK)
+            {
+                LOG_DEBUG("Backbuffer {}: {:X}", i, (size_t) backBuffer);
+                auto refCount = backBuffer->Release();
+                while (refCount > XEFG_RESOURCE_REF_LIMIT)
+                {
+                    LOG_DEBUG("Releasing backbuffer {}: RefCount {}", i, refCount);
+                    refCount = backBuffer->Release();
+                }
+
+#if (XEFG_RESOURCE_REF_LIMIT == 0)
+                oldBackBuffers.push_back(backBuffer);
+#endif
+            }
+            else
+            {
+                LOG_DEBUG("GetBuffer failed for index {}: {:X}", i, (UINT) bbResult);
+                break;
+            }
+        }
+    }
+
+    // To prevent deadlock when FG release the swapchain
+    _skipReleaseChecks = true;
+    State::Instance().releasingFGSwapchain = true;
+
+    if (State::Instance().currentFG != nullptr)
+    {
+        LOG_DEBUG("FG Swapchain released, release FG & swapchain context");
+        State::Instance().currentFG->ReleaseSwapchain(_hwnd, true);
+    }
+
+    // A kept swapchain stays tracked when the FG library couldn't release it
+    if (!releaseReferences && State::Instance().currentFG != nullptr &&
+        State::Instance().currentFG->SwapchainContext() != nullptr)
+    {
+        LOG_WARN("Kept FG swapchain couldn't be released");
+        State::Instance().releasingFGSwapchain = false;
+        _skipReleaseChecks = false;
+        return;
+    }
+
+    LOG_DEBUG("FG Swapchain released, clearing currentFGSwapchain");
+    State::Instance().currentFGSwapchain = nullptr;
+    _fgSwapchainReleased = false;
+
+    if (State::Instance().currentSwapchain == swapchain)
+        State::Instance().currentSwapchain = nullptr;
+
+    if (releaseReferences && State::Instance().currentWrappedSwapchain != nullptr &&
+        State::Instance().currentSwapchainDesc.OutputWindow == _hwnd)
+    {
+        auto refCount = State::Instance().currentWrappedSwapchain->Release();
+
+        while (refCount > 0 && refCount < 0xffffff00)
+        {
+            refCount = State::Instance().currentWrappedSwapchain->Release();
+        }
+
+        State::Instance().currentWrappedSwapchain = nullptr;
+    }
+
+    State::Instance().releasingFGSwapchain = false;
+    _skipReleaseChecks = false;
 }

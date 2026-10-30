@@ -103,7 +103,8 @@ class IFGFeature
     virtual void Activate() = 0;
     virtual void Deactivate() = 0;
     virtual void DestroyFGContext() = 0;
-    virtual bool ReleaseSwapchain(HWND hwnd) = 0;
+    // force releases a kept (FGPreserveSwapChain) swapchain too
+    virtual bool ReleaseSwapchain(HWND hwnd, bool force = false) = 0;
     virtual bool Shutdown() = 0;
     virtual bool HasResource(FG_ResourceType type, int index = -1) = 0;
     virtual bool SetInterpolatedFrameCount(UINT interpolatedFrameCount) = 0;
@@ -124,6 +125,8 @@ class IFGFeature
     bool WaitingExecution(int index = -1);
 
     bool IsActive();
+    // Deactivate which isn't resumed when new frame data arrives
+    void Disable();
     bool IsPaused();
     bool IsDispatched();
     bool IsLowResMV();

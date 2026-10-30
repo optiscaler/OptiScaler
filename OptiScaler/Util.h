@@ -38,6 +38,7 @@ double MillisecondsNow();
 std::wstring ToLower(std::wstring value);
 
 HWND GetProcessWindow();
+bool IsOverlaySwapchain(HWND hwnd, UINT width, UINT height);
 bool GetDLLVersion(std::wstring dllPath, version_t* versionOut);
 bool GetDLLVersion(std::wstring dllPath, xess_version_t* versionOut);
 bool GetRealWindowsVersion(OSVERSIONINFOW& osInfo);

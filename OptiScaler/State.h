@@ -289,6 +289,7 @@ class State
     std::string currentInputApiName;
 
     bool isShuttingDown = false;
+    bool releasingFGSwapchain = false;
     std::set<PVOID> modulesToFree;
 
     // menu warnings

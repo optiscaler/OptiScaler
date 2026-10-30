@@ -143,7 +143,7 @@ static HRESULT hkD3D11On12CreateDevice(IUnknown* pDevice, UINT Flags, const D3D_
     // Assuming RTSS is creating a D3D11on12 device, not sure why but sometimes RTSS tries to create
     // it's D3D11on12 device with old CommandQueue which results crash
     // I am changing it's CommandQueue with current swapchain's command queue
-    if (State::Instance().currentCommandQueue != nullptr &&
+    if (State::Instance().currentCommandQueue != nullptr && !copyCommandQueues.empty() &&
         copyCommandQueues[0] != State::Instance().currentCommandQueue &&
         GetModuleHandle(L"RTSSHooks64.dll") != nullptr && pDevice == State::Instance().currentD3D12Device)
     {
@@ -362,7 +362,9 @@ static HRESULT hkD3D11CreateDeviceAndSwapChain(IDXGIAdapter* pAdapter, D3D_DRIVE
         }
     }
 
-    if (pSwapChainDesc != nullptr && pSwapChainDesc->BufferDesc.Height == 2 && pSwapChainDesc->BufferDesc.Width == 2)
+    if (pSwapChainDesc != nullptr &&
+        Util::IsOverlaySwapchain(pSwapChainDesc->OutputWindow, pSwapChainDesc->BufferDesc.Width,
+                                 pSwapChainDesc->BufferDesc.Height))
     {
         LOG_WARN("Overlay call!");
 

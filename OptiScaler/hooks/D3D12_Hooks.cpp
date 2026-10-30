@@ -1403,16 +1403,16 @@ static HRESULT hkD3D12CreateDevice(IUnknown* pAdapter, D3D_FEATURE_LEVEL Minimum
 
     if (result == S_OK && ppDevice != nullptr && MinimumFeatureLevel != D3D_FEATURE_LEVEL_1_0_CORE)
     {
-        LOG_DEBUG("Device captured: {0:X}", (size_t) *ppDevice);
-        State::Instance().currentD3D12Device = (ID3D12Device*) *ppDevice;
+        // Becomes current with the game's swapchain, devices of mods are only hooked
+        LOG_DEBUG("Device created: {0:X}", (size_t) *ppDevice);
 
         if (szName.size() > 0)
             State::Instance().DeviceAdapterNames[*ppDevice] = wstring_to_string(szName);
 
         if (desc.VendorId == VendorId::Intel && Config::Instance()->UESpoofIntelAtomics64.value_or_default())
         {
-            IGDExtProxy::EnableAtomicSupport(State::Instance().currentD3D12Device);
-            _intelD3D12Device = State::Instance().currentD3D12Device;
+            IGDExtProxy::EnableAtomicSupport((ID3D12Device*) *ppDevice);
+            _intelD3D12Device = (ID3D12Device*) *ppDevice;
             _intelD3D12DeviceRefTarget = _intelD3D12Device->AddRef();
 
             if (o_D3D12DeviceRelease == nullptr)
@@ -1436,7 +1436,7 @@ static HRESULT hkD3D12CreateDevice(IUnknown* pAdapter, D3D_FEATURE_LEVEL Minimum
         if (infoQueue1 != nullptr)
             infoQueue1->Release();
 
-        if (State::Instance().currentD3D12Device->QueryInterface(IID_PPV_ARGS(&infoQueue)) == S_OK)
+        if (((ID3D12Device*) *ppDevice)->QueryInterface(IID_PPV_ARGS(&infoQueue)) == S_OK)
         {
             LOG_DEBUG("infoQueue accuired");
 
@@ -1549,8 +1549,8 @@ static HRESULT hkCreateDevice(ID3D12DeviceFactory* pFactory, IUnknown* pAdapter,
 
         if (desc.VendorId == VendorId::Intel && Config::Instance()->UESpoofIntelAtomics64.value_or_default())
         {
-            IGDExtProxy::EnableAtomicSupport(State::Instance().currentD3D12Device);
-            _intelD3D12Device = State::Instance().currentD3D12Device;
+            IGDExtProxy::EnableAtomicSupport((ID3D12Device*) *ppDevice);
+            _intelD3D12Device = (ID3D12Device*) *ppDevice;
             _intelD3D12DeviceRefTarget = _intelD3D12Device->AddRef();
 
             if (o_D3D12DeviceRelease == nullptr)
@@ -1571,7 +1571,7 @@ static HRESULT hkCreateDevice(ID3D12DeviceFactory* pFactory, IUnknown* pAdapter,
         if (infoQueue1 != nullptr)
             infoQueue1->Release();
 
-        if (State::Instance().currentD3D12Device->QueryInterface(IID_PPV_ARGS(&infoQueue)) == S_OK)
+        if (((ID3D12Device*) *ppDevice)->QueryInterface(IID_PPV_ARGS(&infoQueue)) == S_OK)
         {
             LOG_DEBUG("infoQueue accuired");
 
@@ -1704,7 +1704,8 @@ static ULONG hkD3D12DeviceRelease(IUnknown* device)
 
         o_D3D12DeviceRelease(device);
     }
-    else if (State::Instance().currentD3D12Device == device)
+
+    if (State::Instance().currentD3D12Device == device)
     {
         device->AddRef();
         auto refCount = o_D3D12DeviceRelease(device);
@@ -1727,7 +1728,7 @@ static HRESULT hkCheckFeatureSupport(ID3D12Device* device, D3D12_FEATURE Feature
     auto result = o_CheckFeatureSupport(device, Feature, pFeatureSupportData, FeatureSupportDataSize);
 
     if (Config::Instance()->UESpoofIntelAtomics64.value_or_default() && Feature == D3D12_FEATURE_D3D12_OPTIONS9 &&
-        device == State::Instance().currentD3D12Device)
+        device == _intelD3D12Device)
     {
         auto featureSupport = (D3D12_FEATURE_DATA_D3D12_OPTIONS9*) pFeatureSupportData;
         LOG_INFO("Spoofing AtomicInt64OnTypedResourceSupported {} -> 1",
@@ -2595,3 +2596,19 @@ void D3D12Hooks::RestoreRoot(ID3D12GraphicsCommandList* cmdList)
 }
 
 void D3D12Hooks::HookDevice(ID3D12Device* device) { HookToDevice(device); }
+
+void D3D12Hooks::CaptureDevice(ID3D12CommandQueue* queue)
+{
+    ID3D12Device* device = nullptr;
+    if (queue->GetDevice(IID_PPV_ARGS(&device)) != S_OK || device == nullptr)
+        return;
+
+    if (State::Instance().currentD3D12Device != device)
+    {
+        LOG_INFO("Captured D3D12 device from command queue: {:X}", (size_t) device);
+        State::Instance().currentD3D12Device = device;
+        HookToDevice(device);
+    }
+
+    device->Release();
+}
