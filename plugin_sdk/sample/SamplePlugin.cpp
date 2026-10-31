@@ -19,6 +19,9 @@ OptiPlugin* self = nullptr;
 const char* const qualityNames[] = { "Low", "Medium", "High", "Ultra" };
 constexpr int32_t qualityCount = sizeof(qualityNames) / sizeof(qualityNames[0]);
 
+const char* const logLevelNames[] = { "Debug", "Info", "Warn", "Error" };
+constexpr int32_t logLevelCount = sizeof(logLevelNames) / sizeof(logLevelNames[0]);
+
 struct Settings
 {
     bool enabled = true;
@@ -32,6 +35,7 @@ struct Settings
 Settings settings;
 bool unsaved = false;
 int32_t clickCount = 0;
+int32_t clickLogLevel = OptiLog_Debug;
 
 void LoadSettings()
 {
@@ -90,13 +94,24 @@ void DrawMainTab(void* /*userData*/)
     }
     api->ItemTooltip("0.0 - no effect\n1.0 - full effect");
 
+    // Logged once when the slider is released, not on every frame of the drag
+    if (api->ItemDeactivatedAfterEdit())
+    {
+        char text[64];
+        snprintf(text, sizeof(text), "Strength set to %.2f", settings.strength);
+        api->Log(self, OptiLog_Debug, text);
+    }
+
     if (api->SliderInt("Samples", &settings.samples, 1, 16, nullptr))
     {
         api->SetInt(self, "Samples", settings.samples);
         unsaved = true;
     }
 
-    if (api->Combo("Quality", &settings.quality, qualityNames, qualityCount))
+    // Ultra needs 8 samples, below that it stays in the list but can't be picked
+    const uint32_t disabledQualities = settings.samples < 8 ? 1u << 3 : 0u;
+
+    if (api->ComboEx("Quality", &settings.quality, qualityNames, qualityCount, disabledQualities))
     {
         api->SetInt(self, "Quality", settings.quality);
         unsaved = true;
@@ -178,13 +193,16 @@ void DrawInfoTab(void* userData)
 
     api->Section("Counter");
 
+    // Not kept in the ini, only for this session
+    api->Combo("Log clicks as", &clickLogLevel, logLevelNames, logLevelCount);
+
     // userData given to RegisterTab comes back here
     if (api->Button("Click me"))
     {
         (*counter)++;
 
         snprintf(text, sizeof(text), "Button clicked %d times", *counter);
-        api->Log(self, OptiLog_Debug, text);
+        api->Log(self, static_cast<OptiLogLevel>(clickLogLevel), text);
     }
 
     api->SameLine();
@@ -197,7 +215,7 @@ void DrawInfoTab(void* userData)
 extern "C" __declspec(dllexport) bool OptiPluginInit(const OptiPluginApi* optiApi, OptiPlugin* plugin)
 {
     // An older OptiScaler doesn't have everything this plugin uses
-    if (!OPTI_API_HAS(optiApi, Log))
+    if (!OPTI_API_HAS(optiApi, ItemDeactivatedAfterEdit))
         return false;
 
     api = optiApi;
