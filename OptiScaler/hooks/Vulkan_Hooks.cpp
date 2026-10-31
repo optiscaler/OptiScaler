@@ -14,6 +14,7 @@
 #include <framegen/dlssg/DLSSG_Vk.h>
 #include <framegen/reprojection/Reprojection_Vk.h>
 #include <fsr4/FSR4DriverProviderVk.h>
+#include <with_dx12/vk_with_dx12_sc.h>
 
 #include <misc/FrameLimit.h>
 #include <misc/DeferredRelease.h>
@@ -78,6 +79,11 @@ PFN_vkAntiLagUpdateAMD VulkanHooks::o_vkAntiLagUpdateAMD = nullptr;
 
 // The device with VK_NV_low_latency2 enabled
 static VkDevice _lowLatency2Device = VK_NULL_HANDLE;
+
+// The device whose swapchains present through a DX12 FG output
+static VkDevice _interopDevice = VK_NULL_HANDLE;
+static VkPhysicalDevice _interopPD = VK_NULL_HANDLE;
+static VkInstance _interopInstance = VK_NULL_HANDLE;
 
 // Set while the FG output handles a swapchain call
 static thread_local bool _inFGCall = false;
@@ -523,7 +529,8 @@ static VkResult hkvkCreateInstance(const VkInstanceCreateInfo* pCreateInfo, cons
     VkApplicationInfo appInfo { VK_STRUCTURE_TYPE_APPLICATION_INFO };
     const auto fgOutput = State::Instance().activeFgOutput;
 
-    if ((fgOutput == FGOutput::FSRFG || fgOutput == FGOutput::DLSSG) && !State::Instance().creatingD3DDevice)
+    if ((fgOutput == FGOutput::FSRFG || fgOutput == FGOutput::DLSSG || VkwDx12SC::Wanted()) &&
+        !State::Instance().creatingD3DDevice)
     {
         if (localCreateInfo.pApplicationInfo != nullptr)
             appInfo = *localCreateInfo.pApplicationInfo;
@@ -644,6 +651,18 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
         }
     }
 
+    // The shared D3D12 fences are timeline semaphores
+    bool interopDevice = false;
+
+    if (fg == nullptr && VkwDx12SC::Wanted() && !State::Instance().creatingD3DDevice &&
+        getPhysicalDeviceFeatures2 != nullptr && !IsDxgiBackedCaller(_ReturnAddress()))
+    {
+        interopDevice = fgFeatures.EnableTimelineSemaphores(physicalDevice);
+
+        if (!interopDevice)
+            LOG_WARN("Timeline semaphores aren't supported, can't use FG with this device");
+    }
+
     VkResult result;
     bool timelineSemaphoresEnabled = false;
     {
@@ -667,6 +686,17 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
     if (result == VK_SUCCESS && fg != nullptr)
     {
         fg->OnDeviceCreated(*pDevice);
+        HookDevice(*pDevice);
+        Hudfix_Vk::HookDevice(*pDevice);
+    }
+
+    if (result == VK_SUCCESS && interopDevice)
+    {
+        _interopDevice = *pDevice;
+        _interopPD = physicalDevice;
+        _interopInstance =
+            physicalDeviceInstance != VK_NULL_HANDLE ? physicalDeviceInstance : State::Instance().VulkanInstance;
+        VkwDx12SC::DeviceCreated(*pDevice, &localCreateInfo);
         HookDevice(*pDevice);
         Hudfix_Vk::HookDevice(*pDevice);
     }
@@ -759,6 +789,10 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
 {
     auto fg = State::Instance().currentVkFG;
 
+    // The DX12 FG output presents the swapchain's image on its own swapchain
+    const bool interopPresent = pPresentInfo != nullptr && pPresentInfo->swapchainCount == 1 &&
+                                VkwDx12SC::OwnsSwapchain(pPresentInfo->pSwapchains[0]);
+
     // FFX presents the real swapchain from its own queue
     if (FromFGOutput(_ReturnAddress()) || (fg != nullptr && fg->OwnsQueue(queue)))
         return FGOutputQueuePresent(queue, pPresentInfo);
@@ -824,7 +858,9 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
     const bool fgPresent = !dxgiBacked && fg != nullptr && localPresentInfo.swapchainCount == 1 &&
                            fg->OwnsSwapchain(localPresentInfo.pSwapchains[0]);
 
-    MenuCommon::FGOutputPresents(fgPresent && fg->IsActive() && !fg->IsPaused());
+    auto interopFG = interopPresent ? State::Instance().currentFG : nullptr;
+    MenuCommon::FGOutputPresents((fgPresent && fg->IsActive() && !fg->IsPaused()) ||
+                                 (interopFG != nullptr && interopFG->IsActive() && !interopFG->IsPaused()));
 
     if (fgPresent)
     {
@@ -849,6 +885,10 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
         ScopedFGCall fgCall {};
         result = fg->QueuePresent(queue, &localPresentInfo);
     }
+    else if (interopPresent)
+    {
+        result = VkwDx12SC::QueuePresent(queue, &localPresentInfo);
+    }
     else
     {
         result = o_QueuePresentKHR(queue, &localPresentInfo);
@@ -859,7 +899,8 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
         DeferredRelease::Process();
 
     // The limit counts presented frames, the FG output presents its generated frames from the game's present
-    if (!State::Instance().reflexLimitsFps && !InputCommon::can_limit_fps())
+    // The DX12 FG swapchain's present limits interop presents
+    if (!interopPresent && !State::Instance().reflexLimitsFps && !InputCommon::can_limit_fps())
         FrameLimit::sleep(fgPresent && fg->IsActive() && !fg->IsPaused());
 
     LOG_FUNC_RESULT(result);
@@ -938,6 +979,20 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
             ScopedFGCall fgCall {};
             fgSwapchain = fg->CreateSwapchain(device, pCreateInfo, pAllocator, pSwapchain);
         }
+        else if (device == _interopDevice && pCreateInfo != nullptr && !dxgiBacked &&
+                 !State::Instance().vulkanSkipHooks)
+        {
+            VkwDx12SC::Functions functions {};
+            functions.CreateWin32Surface = o_vkCreateWin32SurfaceKHR;
+            functions.CreateSwapchain = o_CreateSwapchainKHR;
+            functions.DestroySwapchain = o_DestroySwapchainKHR;
+            functions.GetSwapchainImages = o_GetSwapchainImagesKHR;
+            functions.QueuePresent = o_QueuePresentKHR;
+
+            auto hwnd = VulkanHooks::SurfaceWindow(pCreateInfo->surface);
+            fgSwapchain = VkwDx12SC::CreateSwapchain(device, _interopPD, _interopInstance, hwnd, pCreateInfo,
+                                                     pAllocator, functions, pSwapchain, result);
+        }
 
         if (!fgSwapchain)
             result = o_CreateSwapchainKHR(device, pCreateInfo, pAllocator, pSwapchain);
@@ -978,6 +1033,9 @@ static void hkvkDestroySwapchainKHR(VkDevice device, VkSwapchainKHR swapchain, c
 
     if (swapchain != VK_NULL_HANDLE)
         VulkanHooks::ForgetLowLatencySwapchain(swapchain);
+
+    if (VkwDx12SC::DestroySwapchain(device, swapchain, pAllocator))
+        return;
 
     if (auto fg = State::Instance().currentVkFG; fg != nullptr)
     {
@@ -1053,6 +1111,10 @@ static void hkvkSetHdrMetadataEXT(VkDevice device, uint32_t swapchainCount, cons
         {
             ScopedFGCall fgCall {};
             fg->SetHdrMetadata(device, pSwapchains[i], &pMetadata[i]);
+        }
+        else if (VkwDx12SC::OwnsSwapchain(pSwapchains[i]))
+        {
+            VkwDx12SC::SetHdrMetadata(pSwapchains[i], &pMetadata[i]);
         }
         else
             o_SetHdrMetadataEXT(device, 1, &pSwapchains[i], &pMetadata[i]);

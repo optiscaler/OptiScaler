@@ -7,6 +7,9 @@
 
 class DxgiFactoryHooks
 {
+    // Creates the DX12 FG swapchain of Vulkan games
+    friend class VkwDx12SC;
+
   public:
     static void HookToFactory(IDXGIFactory* pFactory);
     static void HookToDLSSGFactory(IDXGIFactory* pFactory);

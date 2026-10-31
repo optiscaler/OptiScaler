@@ -252,6 +252,8 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="inputs\FG\Streamline_Inputs_Sl1_Dx12.h" />
     <ClInclude Include="include\device_info\device_info.hpp" />
     <ClInclude Include="inputs\FG\Upscaler_Inputs_Dx11wDx12.h" />
+    <ClInclude Include="inputs\FG\Upscaler_Inputs_VkwDx12.h" />
+    <ClInclude Include="inputs\FG\VkwDx12_Inputs.h" />
     <ClInclude Include="low_latency\input\input_common.h" />
     <ClInclude Include="low_latency\input\input_reflex.h" />
     <ClInclude Include="low_latency\input\input_reflex_vk.h" />
@@ -384,6 +386,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="with_dx12\dx11_with_dx12.h" />
     <ClInclude Include="with_dx12\with_dx12.h" />
     <ClInclude Include="with_dx12\dx11_with_dx12_sc.h" />
+    <ClInclude Include="with_dx12\vk_with_dx12_sc.h" />
     <ClInclude Include="misc\HiddenWindow.h" />
     <ClInclude Include="wrapped\wrapped_factory.h" />
     <ClInclude Include="include\spdlog_sink\debug_sink.h" />
@@ -597,6 +600,8 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="inputs\FG\Streamline_Inputs_Sl1_Dx12.cpp" />
     <ClCompile Include="include\device_info\device_info.cpp" />
     <ClCompile Include="inputs\FG\Upscaler_Inputs_Dx11wDx12.cpp" />
+    <ClCompile Include="inputs\FG\Upscaler_Inputs_VkwDx12.cpp" />
+    <ClCompile Include="inputs\FG\VkwDx12_Inputs.cpp" />
     <ClCompile Include="low_latency\input\input_common.cpp" />
     <ClCompile Include="low_latency\input\input_reflex.cpp" />
     <ClCompile Include="low_latency\input\input_reflex_vk.cpp" />
@@ -683,6 +688,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="with_dx12\dx11_with_dx12.cpp" />
     <ClCompile Include="with_dx12\with_dx12.cpp" />
     <ClCompile Include="with_dx12\dx11_with_dx12_sc.cpp" />
+    <ClCompile Include="with_dx12\vk_with_dx12_sc.cpp" />
     <ClCompile Include="wrapped\wrapped_factory.cpp" />
     <ClCompile Include="inputs\FG\FSR3_Dx12_FG.cpp" />
     <ClCompile Include="inputs\FG\Streamline_Inputs.cpp" />

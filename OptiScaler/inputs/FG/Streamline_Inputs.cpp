@@ -1,7 +1,9 @@
 #include "pch.h"
 #include "Streamline_Inputs.h"
+#include "VkwDx12_Inputs.h"
 #include <Config.h>
 #include <resource_tracking/ResTrack_dx12.h>
+#include <with_dx12/vk_with_dx12_sc.h>
 #include <magic_enum.hpp>
 
 void Sl_Inputs::CheckForFrame(IFGFeature* fg, uint32_t frameId)
@@ -378,8 +380,10 @@ bool Sl_Inputs::reportResource(const sl::ResourceTag& tag, void* cmdBuffer, uint
             frameIndex = fgOutput->GetIndex();
     }
 
-    // Vulkan resources come with their size
-    const bool isVulkan = state.currentFG == nullptr;
+    // Vulkan resources come with their size, also the ones VkwDx12SC shares with the DX12 FG. A Vulkan game's stay
+    // Vulkan resources while its swapchain doesn't present through the DX12 FG, being recreated.
+    const bool vkwDx12 = VkwDx12Inputs::Active();
+    const bool isVulkan = state.currentFG == nullptr || vkwDx12 || VkwDx12SC::VulkanGame();
     auto d3dRes = (ID3D12Resource*) tag.resource->native;
     D3D12_RESOURCE_DESC desc {};
 
@@ -426,7 +430,10 @@ bool Sl_Inputs::reportResource(const sl::ResourceTag& tag, void* cmdBuffer, uint
         res.validity = validity;
         res.frameIndex = frameIndex;
 
-        state.currentVkFG->SetResource(&res);
+        if (vkwDx12)
+            VkwDx12Inputs::SetResource(res);
+        else if (state.currentVkFG != nullptr)
+            state.currentVkFG->SetResource(&res);
     }
     else
     {
