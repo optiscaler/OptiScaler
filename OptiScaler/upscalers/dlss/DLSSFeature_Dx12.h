@@ -10,6 +10,9 @@ class DLSSFeatureDx12 : public DLSSFeature, public IFeature_Dx12
     // Custom NGX runtime, nullptr for NVIDIA's
     CustomNgxModule* _custom = nullptr;
 
+    // The custom runtime is HelixSR's, it reads the game's input API and the reactive mask choice from parameters
+    bool _helixSRInput = false;
+
     // Functions of the NGX runtime this runs on
     PFN_D3D12_CreateFeature CreateFeature() const;
     PFN_D3D12_EvaluateFeature EvaluateFeature() const;
