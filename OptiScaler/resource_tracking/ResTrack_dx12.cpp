@@ -661,9 +661,11 @@ void ResTrack_Dx12::hkExecuteCommandLists(ID3D12CommandQueue* This, UINT NumComm
         {
             o_ExecuteCommandLists(This, NumCommandLists, ppCommandLists);
 
-            for (size_t i = 0; i < found.size(); i++)
+            // FG executes direct command lists on it
+            if (This->GetDesc().Type == D3D12_COMMAND_LIST_TYPE_DIRECT)
             {
-                fg->SetCommandQueue(found[i], This);
+                for (size_t i = 0; i < found.size(); i++)
+                    fg->SetCommandQueue(found[i], This);
             }
 
             return;

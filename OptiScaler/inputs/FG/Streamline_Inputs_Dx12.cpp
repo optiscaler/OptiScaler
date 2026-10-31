@@ -306,7 +306,7 @@ bool Sl_Inputs_Dx12::reportResource(const sl::ResourceTag& tag, ID3D12GraphicsCo
 
     CheckForFrame(fgOutput, frameId);
 
-    if (tag.resource->native == nullptr)
+    if (tag.resource == nullptr || tag.resource->native == nullptr)
     {
         LOG_TRACE("tag.resource->native is null");
         return false;

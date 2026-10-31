@@ -312,7 +312,9 @@ sl::Result StreamlineHooks::hkslEvaluateFeature(sl::Feature feature, const sl::F
 {
     LOG_DEBUG("frameIndex: {}", static_cast<uint32_t>(frame));
 
-    if (State::Instance().activeFgInput == FGInput::DLSSG && numInputs > 0 && inputs != nullptr)
+    // Resources are D3D12 only, like in the tag hooks
+    if (State::Instance().activeFgInput == FGInput::DLSSG && numInputs > 0 && inputs != nullptr &&
+        renderApi != sl::RenderAPI::eD3D11 && renderApi != sl::RenderAPI::eVulkan)
     {
         for (uint32_t i = 0; i < numInputs; i++)
         {

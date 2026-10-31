@@ -1202,8 +1202,18 @@ HRESULT FGHooks::hkResizeBuffers1(IDXGISwapChain3* This, UINT BufferCount, UINT 
 
     {
         ScopedSkipSpoofing skipSpoofing {};
-        result = o_FGSCResizeBuffers1(This, BufferCount, Width, Height, Format, SwapChainFlags, pCreationNodeMask,
-                                      ppPresentQueue);
+
+        // FSR FG proxy doesn't implement ResizeBuffers1, it returns S_OK without resizing.
+        // Called through the vtable, _skipResize passes the hooked class to its original
+        if (State::Instance().activeFgOutput == FGOutput::FSRFG)
+        {
+            result = This->ResizeBuffers(BufferCount, Width, Height, Format, SwapChainFlags);
+        }
+        else
+        {
+            result = o_FGSCResizeBuffers1(This, BufferCount, Width, Height, Format, SwapChainFlags, pCreationNodeMask,
+                                          ppPresentQueue);
+        }
     }
 
     LOG_DEBUG("Result: {:X}, Caller: {}", (UINT) result, Util::WhoIsTheCaller(_ReturnAddress()));

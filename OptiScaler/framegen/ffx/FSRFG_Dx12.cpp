@@ -1005,6 +1005,16 @@ void FSRFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
 {
     LOG_DEBUG("");
 
+    if (device == nullptr)
+    {
+        static bool logged = false;
+        if (!std::exchange(logged, true))
+            LOG_ERROR("No D3D12 device");
+
+        _isActive = false;
+        return;
+    }
+
     CreateObjects(device);
 
     _constants = fgConstants;
@@ -1050,6 +1060,16 @@ void FSRFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
     // fill version ids and names arrays.
     FfxApiProxy::D3D12_Query(nullptr, &versionQuery.header);
 
+    if (versionCount == 0)
+    {
+        static bool logged = false;
+        if (!std::exchange(logged, true))
+            LOG_ERROR("No FSR FG provider found");
+
+        _isActive = false;
+        return;
+    }
+
     ffxCreateBackendDX12Desc backendDesc {};
     backendDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_DX12;
     backendDesc.device = device;
@@ -1062,6 +1082,16 @@ void FSRFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
 
     ffxCreateContextDescFrameGeneration createFg {};
     createFg.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION;
+
+    if (State::Instance().currentSwapchain == nullptr)
+    {
+        static bool logged = false;
+        if (!std::exchange(logged, true))
+            LOG_ERROR("No swapchain");
+
+        _isActive = false;
+        return;
+    }
 
     // use swapchain buffer info
     DXGI_SWAP_CHAIN_DESC desc {};
