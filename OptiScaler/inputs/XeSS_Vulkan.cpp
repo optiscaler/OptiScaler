@@ -269,6 +269,10 @@ xess_result_t hk_xessVKExecute(xess_context_handle_t hContext, VkCommandBuffer c
         CreateNVRes(&pExecParams->exposureScaleTexture, &expNVRes[index]);
         params->Set(NVSDK_NGX_Parameter_ExposureTexture, &expNVRes[index]);
     }
+    else
+    {
+        params->Set(NVSDK_NGX_Parameter_ExposureTexture, (void*) nullptr);
+    }
 
     if (pExecParams->responsivePixelMaskTexture.image != nullptr)
     {
@@ -279,6 +283,11 @@ xess_result_t hk_xessVKExecute(xess_context_handle_t hContext, VkCommandBuffer c
             params->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, &biasNVRes[index]);
         else
             params->Set("FSR.reactive", &biasNVRes[index]);
+    }
+    else
+    {
+        params->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void*) nullptr);
+        params->Set("FSR.reactive", (void*) nullptr);
     }
 
     if (pExecParams->colorTexture.image == nullptr)

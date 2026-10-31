@@ -650,6 +650,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_AllocateParameters(NVSDK_NGX_Par
 
     auto params = new NVNGX_Parameters();
     params->Name = "OptiVk";
+    params->Set("OptiScaler", 1);
     *OutParameters = params;
 
     return NVSDK_NGX_Result_Success;
@@ -750,6 +751,13 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_DestroyParameters(NVSDK_NGX_Para
     if (InParameters == nullptr)
         return NVSDK_NGX_Result_Fail;
 
+    int optiParams = 0;
+    if (InParameters->Get("OptiScaler", &optiParams) == NVSDK_NGX_Result_Success && optiParams == 1)
+    {
+        delete static_cast<NVNGX_Parameters*>(InParameters);
+        return NVSDK_NGX_Result_Success;
+    }
+
     if (Config::Instance()->DLSSEnabled.value_or_default() && NVNGXProxy::NVNGXModule() != nullptr &&
         NVNGXProxy::VULKAN_DestroyParameters() != nullptr)
     {
@@ -760,9 +768,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_DestroyParameters(NVSDK_NGX_Para
         return result;
     }
 
-    delete InParameters;
-    InParameters = nullptr;
-
+    // Params of the real nvngx, they can't be destroyed after its shutdown
     return NVSDK_NGX_Result_Success;
 }
 

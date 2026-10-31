@@ -449,6 +449,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_AllocateParameters(NVSDK_NGX_Para
 
     auto params = new NVNGX_Parameters();
     params->Name = "OptiDx11";
+    params->Set("OptiScaler", 1);
     *OutParameters = params;
 
     return NVSDK_NGX_Result_Success;
@@ -473,6 +474,13 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_DestroyParameters(NVSDK_NGX_Param
     if (InParameters == nullptr)
         return NVSDK_NGX_Result_Fail;
 
+    int optiParams = 0;
+    if (InParameters->Get("OptiScaler", &optiParams) == NVSDK_NGX_Result_Success && optiParams == 1)
+    {
+        delete static_cast<NVNGX_Parameters*>(InParameters);
+        return NVSDK_NGX_Result_Success;
+    }
+
     if (Config::Instance()->DLSSEnabled.value_or_default() && NVNGXProxy::NVNGXModule() != nullptr &&
         NVNGXProxy::D3D11_DestroyParameters() != nullptr)
     {
@@ -483,8 +491,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_DestroyParameters(NVSDK_NGX_Param
         return result;
     }
 
-    delete InParameters;
-
+    // Params of the real nvngx, they can't be destroyed after its shutdown
     return NVSDK_NGX_Result_Success;
 }
 

@@ -551,7 +551,7 @@ static Fsr212::FfxErrorCode ffxFsr2ContextDispatch_Dx12(Fsr212::FfxFsr2Context* 
     }
 
     // Skip OptiScaler stuff
-    if (!Config::Instance()->UseFsr2Inputs.value_or_default())
+    if (!Config::Instance()->UseFsr2Inputs.value_or_default() || !_nvParams.contains(context))
     {
         _skipDispatch = true;
         LOG_DEBUG("UseFsr2Inputs not enabled, skipping");
@@ -618,7 +618,7 @@ ffxFsr2ContextDispatch_Pattern_Dx12(Fsr212::FfxFsr2Context* context,
     LOG_DEBUG("");
 
     // Skip OptiScaler stuff
-    if (!Config::Instance()->UseFsr2Inputs.value_or_default() || _skipDispatch)
+    if (!Config::Instance()->UseFsr2Inputs.value_or_default() || _skipDispatch || !_nvParams.contains(context))
     {
         LOG_DEBUG("UseFsr2Inputs not enabled, skipping");
         return o_ffxFsr2ContextDispatch_Pattern_Dx12(context, dispatchDescription);
@@ -682,11 +682,15 @@ static Fsr212::FfxErrorCode ffxFsr20ContextDispatch_Dx12(Fsr212::FfxFsr2Context*
     LOG_DEBUG("");
 
     // Skip OptiScaler stuff
-    if (!Config::Instance()->UseFsr2Inputs.value_or_default())
+    if (!Config::Instance()->UseFsr2Inputs.value_or_default() || !_nvParams.contains(context))
     {
         _skipDispatch = true;
         LOG_DEBUG("UseFsr2Inputs not enabled, skipping");
-        auto result = o_ffxFsr20ContextDispatch_Dx12(context, dispatchDescription);
+        // FSR 2.0 can come through the 2.1 export, the 2.0 export may not exist
+        auto result = o_ffxFsr20ContextDispatch_Dx12 != nullptr
+                          ? o_ffxFsr20ContextDispatch_Dx12(context, dispatchDescription)
+                          : o_ffxFsr2ContextDispatch_Dx12(
+                                context, (const Fsr212::FfxFsr2DispatchDescription*) dispatchDescription);
         _skipDispatch = false;
         return result;
     }
@@ -753,7 +757,7 @@ static Fsr212::FfxErrorCode ffxFsr20ContextDispatch_Pattern_Dx12(Fsr212::FfxFsr2
     LOG_DEBUG("");
 
     // Skip OptiScaler stuff
-    if (!Config::Instance()->UseFsr2Inputs.value_or_default() || _skipDispatch)
+    if (!Config::Instance()->UseFsr2Inputs.value_or_default() || _skipDispatch || !_nvParams.contains(context))
     {
         LOG_DEBUG("UseFsr2Inputs not enabled, skipping");
         return o_ffxFsr20ContextDispatch_Pattern_Dx12(context, dispatchDescription);
@@ -817,7 +821,7 @@ static Fsr212::FfxErrorCode ffxFsr2TinyContextDispatch_Dx12(Fsr212::FfxFsr2Conte
     LOG_DEBUG("");
 
     // Skip OptiScaler stuff
-    if (!Config::Instance()->UseFsr2Inputs.value_or_default())
+    if (!Config::Instance()->UseFsr2Inputs.value_or_default() || !_nvParams.contains(context))
     {
         LOG_DEBUG("UseFsr2Inputs not enabled, skipping");
         return o_ffxFsr2TinyContextDispatch_Dx12(context, dispatchDescription);
@@ -885,7 +889,11 @@ static Fsr212::FfxErrorCode ffxFsr2ContextDestroy_Dx12(Fsr212::FfxFsr2Context* c
         NVSDK_NGX_D3D12_ReleaseFeature(_contexts[context]);
 
     _contexts.erase(context);
-    _nvParams.erase(context);
+    if (auto it = _nvParams.find(context); it != _nvParams.end())
+    {
+        NVSDK_NGX_D3D12_DestroyParameters(it->second);
+        _nvParams.erase(it);
+    }
     _initParams.erase(context);
 
     _skipDestroy = true;
@@ -906,7 +914,11 @@ static Fsr212::FfxErrorCode ffxFsr2ContextDestroy_Pattern_Dx12(Fsr212::FfxFsr2Co
         NVSDK_NGX_D3D12_ReleaseFeature(_contexts[context]);
 
     _contexts.erase(context);
-    _nvParams.erase(context);
+    if (auto it = _nvParams.find(context); it != _nvParams.end())
+    {
+        NVSDK_NGX_D3D12_DestroyParameters(it->second);
+        _nvParams.erase(it);
+    }
     _initParams.erase(context);
 
     auto cdResult = o_ffxFsr2ContextDestroy_Pattern_Dx12(context);

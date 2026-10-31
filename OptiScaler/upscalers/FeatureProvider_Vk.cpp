@@ -126,6 +126,8 @@ bool FeatureProvider_Vk::ChangeFeature(std::string upscalerName, VkInstance inst
             else
                 contextData->createParams = parameters;
 
+            contextData->ownsCreateParams = contextData->createParams != parameters;
+
             contextData->createParams->Set(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags, dc->GetFeatureFlags());
             contextData->createParams->Set(NVSDK_NGX_Parameter_Width, dc->RenderWidth());
             contextData->createParams->Set(NVSDK_NGX_Parameter_Height, dc->RenderHeight());
@@ -152,14 +154,11 @@ bool FeatureProvider_Vk::ChangeFeature(std::string upscalerName, VkInstance inst
             State::Instance().newBackend = "";
             State::Instance().changeBackend[handleId] = false;
 
-            int optiParam = 0;
-            if (contextData->createParams != nullptr &&
-                contextData->createParams->Get("OptiScaler", &optiParam) == NVSDK_NGX_Result_Success && optiParam == 1)
-            {
+            if (contextData->ownsCreateParams)
                 delete static_cast<NVNGX_Parameters*>(contextData->createParams);
-            }
 
             contextData->createParams = nullptr;
+            contextData->ownsCreateParams = false;
 
             contextData->changeBackendCounter = 0;
         }
@@ -226,12 +225,12 @@ bool FeatureProvider_Vk::ChangeFeature(std::string upscalerName, VkInstance inst
             State::Instance().changeBackend[handleId] = false;
         }
 
-        // if opti nvparam release it
-        int optiParam = 0;
-        if (contextData->createParams->Get("OptiScaler", &optiParam) == NVSDK_NGX_Result_Success && optiParam == 1)
+        // Only params created for the change, dlss and dlssd use the caller's
+        if (contextData->ownsCreateParams)
         {
             delete static_cast<NVNGX_Parameters*>(contextData->createParams);
             contextData->createParams = nullptr;
+            contextData->ownsCreateParams = false;
         }
     }
 

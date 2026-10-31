@@ -174,6 +174,9 @@ bool DLSSFeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
 
         nvResult = NVNGXProxy::D3D12_EvaluateFeature()(InCommandList, _p_dlssHandle, InParameters, NULL);
 
+        // set original output texture back
+        InParameters->Set(NVSDK_NGX_Parameter_Output, paramOutput);
+
         if (nvResult != NVSDK_NGX_Result_Success)
         {
             LOG_ERROR("_EvaluateFeature result: {0:X}", (unsigned int) nvResult);
@@ -265,9 +268,6 @@ bool DLSSFeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
                     Imgui = std::make_unique<Menu_Dx12>(Util::GetProcessWindow(), Device);
             }
         }
-
-        // set original output texture back
-        InParameters->Set(NVSDK_NGX_Parameter_Output, paramOutput);
     }
     else
     {
@@ -282,12 +282,15 @@ bool DLSSFeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
 
 void DLSSFeatureDx12::Shutdown(ID3D12Device* InDevice)
 {
-    if (_dlssInited)
+    // Inputs share the same NGX instance, it's shut down once. Skipped on exit like the inputs do
+    if (_dlssInited && NVNGXProxy::IsDx12Inited() && !State::Instance().isShuttingDown)
     {
         if (NVNGXProxy::D3D12_Shutdown() != nullptr)
             NVNGXProxy::D3D12_Shutdown()();
         else if (NVNGXProxy::D3D12_Shutdown1() != nullptr)
             NVNGXProxy::D3D12_Shutdown1()(InDevice);
+
+        NVNGXProxy::SetDx12Inited(false);
     }
 
     DLSSFeature::Shutdown();

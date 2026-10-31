@@ -321,7 +321,11 @@ ffxReturnCode_t ffxDestroyContext_Dx12(ffxContext* context, const ffxAllocationC
         NVSDK_NGX_D3D12_ReleaseFeature(_contexts[*context]);
 
     _contexts.erase(*context);
-    _nvParams.erase(*context);
+    if (auto it = _nvParams.find(*context); it != _nvParams.end())
+    {
+        NVSDK_NGX_D3D12_DestroyParameters(it->second);
+        _nvParams.erase(it);
+    }
     _initParams.erase(*context);
 
     if (upscalerContext && !Config::Instance()->EnableHotSwapping.value_or_default())

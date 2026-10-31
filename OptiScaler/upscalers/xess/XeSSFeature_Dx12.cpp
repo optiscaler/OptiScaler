@@ -92,7 +92,7 @@ bool XeSSFeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
 
     LOG_DEBUG("Input Resolution: {0}x{1}", params.inputWidth, params.inputHeight);
 
-    ID3D12Resource* paramColor;
+    ID3D12Resource* paramColor = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_Color, &paramColor) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_Color, (void**) &paramColor);
 
@@ -153,7 +153,7 @@ bool XeSSFeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
         return false;
     }
 
-    ID3D12Resource* paramOutput;
+    ID3D12Resource* paramOutput = nullptr;
 
     if (InParameters->Get(NVSDK_NGX_Parameter_Output, &paramOutput) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_Output, (void**) &paramOutput);

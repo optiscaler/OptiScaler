@@ -176,6 +176,9 @@ bool DLSSDFeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_
 
         nvResult = NVNGXProxy::D3D12_EvaluateFeature()(InCommandList, _p_dlssdHandle, InParameters, NULL);
 
+        // set original output texture back
+        InParameters->Set(NVSDK_NGX_Parameter_Output, paramOutput);
+
         if (nvResult != NVSDK_NGX_Result_Success)
         {
             LOG_ERROR("_EvaluateFeature result: {0:X}", (unsigned int) nvResult);
@@ -267,9 +270,6 @@ bool DLSSDFeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_
                     Imgui = std::make_unique<Menu_Dx12>(Util::GetProcessWindow(), Device);
             }
         }
-
-        // set original output texture back
-        InParameters->Set(NVSDK_NGX_Parameter_Output, paramOutput);
     }
     else
     {

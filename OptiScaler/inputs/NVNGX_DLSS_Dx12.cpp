@@ -378,14 +378,13 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Shutdown(void)
     shutdown = true;
     State::Instance().NvngxDx12Inited = false;
 
-    D3D12Device = nullptr;
-
     State::Instance().currentFeature = nullptr;
 
     // Unhooking and cleaning stuff causing issues during shutdown.
     // Disabled for now to check if it cause any issues
     // UnhookAll();
     DLSSFeatureDx12::Shutdown(D3D12Device);
+    D3D12Device = nullptr;
 
     // Added `&& !State::Instance().isShuttingDown` hack for crash on exit
     if (Config::Instance()->DLSSEnabled.value_or_default() && NVNGXProxy::IsDx12Inited() &&
@@ -519,6 +518,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_AllocateParameters(NVSDK_NGX_Para
 
     auto params = new NVNGX_Parameters();
     params->Name = "OptiDx12";
+    params->Set("OptiScaler", 1);
     *OutParameters = params;
 
     return NVSDK_NGX_Result_Success;
@@ -546,6 +546,13 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_DestroyParameters(NVSDK_NGX_Param
     if (InParameters == nullptr)
         return NVSDK_NGX_Result_Fail;
 
+    int optiParams = 0;
+    if (InParameters->Get("OptiScaler", &optiParams) == NVSDK_NGX_Result_Success && optiParams == 1)
+    {
+        delete static_cast<NVNGX_Parameters*>(InParameters);
+        return NVSDK_NGX_Result_Success;
+    }
+
     if (Config::Instance()->DLSSEnabled.value_or_default() && NVNGXProxy::NVNGXModule() != nullptr &&
         NVNGXProxy::D3D12_DestroyParameters() != nullptr)
     {
@@ -557,7 +564,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_DestroyParameters(NVSDK_NGX_Param
         return NVSDK_NGX_Result_Success;
     }
 
-    delete InParameters;
+    // Params of the real nvngx, they can't be destroyed after its shutdown
     return NVSDK_NGX_Result_Success;
 }
 

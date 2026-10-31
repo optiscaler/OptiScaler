@@ -697,7 +697,7 @@ std::optional<NTSTATUS> LibraryLoadHooks::FreeLibrary(PVOID lpLibrary)
         State::Instance().modulesToFree.insert(lpLibrary);
         result = TRUE;
     }
-    else if (lpLibrary == XeLLProxy::Module())
+    else if (lpLibrary == XeLLProxy::Module() || (XeLLProxy::WasLoaded() && lpLibrary == XeLLProxy::MemModule()))
     {
 #ifdef LOG_LIB_OPERATIONS
         LOG_WARN("Call for XeLL, caller: {}", Util::WhoIsTheCaller(_ReturnAddress()));
@@ -705,7 +705,7 @@ std::optional<NTSTATUS> LibraryLoadHooks::FreeLibrary(PVOID lpLibrary)
         State::Instance().modulesToFree.insert(lpLibrary);
         result = TRUE;
     }
-    else if (lpLibrary == XeFGProxy::Module())
+    else if (lpLibrary == XeFGProxy::Module() || (XeFGProxy::WasLoaded() && lpLibrary == XeFGProxy::MemModule()))
     {
 #ifdef LOG_LIB_OPERATIONS
         LOG_WARN("Call for XeFG, caller: {}", Util::WhoIsTheCaller(_ReturnAddress()));

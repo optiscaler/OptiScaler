@@ -80,7 +80,7 @@ bool FSR2FeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
 
     params.commandList = ffxGetCommandListDX12(InCommandList);
 
-    ID3D12Resource* paramColor;
+    ID3D12Resource* paramColor = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_Color, &paramColor) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_Color, (void**) &paramColor);
 
@@ -112,7 +112,7 @@ bool FSR2FeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
         return false;
     }
 
-    ID3D12Resource* paramVelocity;
+    ID3D12Resource* paramVelocity = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, &paramVelocity) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, (void**) &paramVelocity);
 
@@ -144,7 +144,7 @@ bool FSR2FeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
         return false;
     }
 
-    ID3D12Resource* paramOutput;
+    ID3D12Resource* paramOutput = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_Output, &paramOutput) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_Output, (void**) &paramOutput);
 
@@ -192,7 +192,7 @@ bool FSR2FeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
         return false;
     }
 
-    ID3D12Resource* paramDepth;
+    ID3D12Resource* paramDepth = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_Depth, &paramDepth) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_Depth, (void**) &paramDepth);
 

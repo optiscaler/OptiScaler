@@ -307,7 +307,7 @@ static Fsr3::FfxErrorCode ffxFsr3ContextDispatch_Dx12(Fsr3::FfxFsr3UpscalerConte
         return result;
     }
 
-    if (_d3d12Device == nullptr)
+    if (_d3d12Device == nullptr || !_nvParams.contains(pContext))
     {
         _skipDispatch = true;
         auto result = o_ffxFsr3UpscalerContextDispatch_Dx12(pContext, pDispatchDescription);
@@ -398,7 +398,11 @@ static Fsr3::FfxErrorCode ffxFsr3ContextDestroy_Dx12(Fsr3::FfxFsr3UpscalerContex
         NVSDK_NGX_D3D12_ReleaseFeature(_contexts[pContext]);
 
     _contexts.erase(pContext);
-    _nvParams.erase(pContext);
+    if (auto it = _nvParams.find(pContext); it != _nvParams.end())
+    {
+        NVSDK_NGX_D3D12_DestroyParameters(it->second);
+        _nvParams.erase(it);
+    }
     _initParams.erase(pContext);
 
     _skipDestroy = true;
@@ -508,7 +512,7 @@ ffxFsr3ContextDispatch_Pattern_Dx12(Fsr3::FfxFsr3UpscalerContext* pContext,
     if (!Config::Instance()->UseFsr3Inputs.value_or_default() || _skipDispatch)
         return o_ffxFsr3UpscalerContextDispatch_Pattern_Dx12(pContext, pDispatchDescription);
 
-    if (_d3d12Device == nullptr)
+    if (_d3d12Device == nullptr || !_nvParams.contains(pContext))
         return o_ffxFsr3UpscalerContextDispatch_Pattern_Dx12(pContext, pDispatchDescription);
 
     if (pDispatchDescription == nullptr || pContext == nullptr || pDispatchDescription->commandList == nullptr)
@@ -594,7 +598,11 @@ static Fsr3::FfxErrorCode ffxFsr3ContextDestroy_Pattern_Dx12(Fsr3::FfxFsr3Upscal
         NVSDK_NGX_D3D12_ReleaseFeature(_contexts[pContext]);
 
     _contexts.erase(pContext);
-    _nvParams.erase(pContext);
+    if (auto it = _nvParams.find(pContext); it != _nvParams.end())
+    {
+        NVSDK_NGX_D3D12_DestroyParameters(it->second);
+        _nvParams.erase(it);
+    }
     _initParams.erase(pContext);
 
     auto cdResult = o_ffxFsr3UpscalerContextDestroy_Pattern_Dx12(pContext);

@@ -381,7 +381,7 @@ bool FSR31FeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
 
     params.commandList = InCmdBuffer;
 
-    void* paramColor;
+    void* paramColor = nullptr;
     InParameters->Get(NVSDK_NGX_Parameter_Color, &paramColor);
 
     if (paramColor)
@@ -399,7 +399,7 @@ bool FSR31FeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
         return false;
     }
 
-    void* paramVelocity;
+    void* paramVelocity = nullptr;
     InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, &paramVelocity);
 
     if (paramVelocity)
@@ -417,7 +417,7 @@ bool FSR31FeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
         return false;
     }
 
-    void* paramOutput;
+    void* paramOutput = nullptr;
     InParameters->Get(NVSDK_NGX_Parameter_Output, &paramOutput);
 
     if (paramOutput)
@@ -435,7 +435,7 @@ bool FSR31FeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
         return false;
     }
 
-    void* paramDepth;
+    void* paramDepth = nullptr;
     InParameters->Get(NVSDK_NGX_Parameter_Depth, &paramDepth);
 
     if (paramDepth)

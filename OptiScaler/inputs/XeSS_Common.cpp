@@ -129,6 +129,9 @@ xess_result_t hk_xessDestroyContext(xess_context_handle_t hContext)
     if (!_contexts.contains(hContext))
         return XESS_RESULT_ERROR_INVALID_CONTEXT;
 
+    // Vulkan contexts get Vulkan params, D3D11 and D3D12 ones get D3D12 params
+    const bool vkContext = _vkInitParams.contains(hContext);
+
     if (_d3d12InitParams.contains(hContext))
     {
         NVSDK_NGX_D3D12_ReleaseFeature(_contexts[hContext]);
@@ -148,7 +151,16 @@ xess_result_t hk_xessDestroyContext(xess_context_handle_t hContext)
     }
 
     _contexts.erase(hContext);
-    _nvParams.erase(hContext);
+
+    if (auto it = _nvParams.find(hContext); it != _nvParams.end())
+    {
+        if (vkContext)
+            NVSDK_NGX_VULKAN_DestroyParameters(it->second);
+        else
+            NVSDK_NGX_D3D12_DestroyParameters(it->second);
+
+        _nvParams.erase(it);
+    }
     _maxResponsiveMaskValues.erase(hContext);
 
     return XESS_RESULT_SUCCESS;

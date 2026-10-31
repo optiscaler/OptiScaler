@@ -211,7 +211,7 @@ bool FSR2FeatureVk212::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter
 
     params.commandList = Fsr212::ffxGetCommandListVK212(InCmdBuffer);
 
-    void* paramColor;
+    void* paramColor = nullptr;
     InParameters->Get(NVSDK_NGX_Parameter_Color, &paramColor);
 
     if (paramColor)
@@ -232,7 +232,7 @@ bool FSR2FeatureVk212::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter
         return false;
     }
 
-    void* paramVelocity;
+    void* paramVelocity = nullptr;
     InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, &paramVelocity);
 
     if (paramVelocity)
@@ -253,7 +253,7 @@ bool FSR2FeatureVk212::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter
         return false;
     }
 
-    void* paramOutput;
+    void* paramOutput = nullptr;
     InParameters->Get(NVSDK_NGX_Parameter_Output, &paramOutput);
 
     if (paramOutput)
@@ -274,7 +274,7 @@ bool FSR2FeatureVk212::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter
         return false;
     }
 
-    void* paramDepth;
+    void* paramDepth = nullptr;
     InParameters->Get(NVSDK_NGX_Parameter_Depth, &paramDepth);
 
     if (paramDepth)
