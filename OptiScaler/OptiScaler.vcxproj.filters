@@ -803,6 +803,12 @@
     <ClInclude Include="shaders\rcas\shaders\DA_RCAS_Shader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="misc\Optiscaler_Static.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="misc\Optiscaler_Static_API.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Config.cpp">
@@ -1212,6 +1218,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="spoofing\User32_Spoofing.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="misc\Optiscaler_Static_API.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
