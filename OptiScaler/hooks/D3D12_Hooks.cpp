@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "D3D12_Hooks.h"
+#include "Sampler_Overrides.h"
 
 #include <Util.h>
 #include <Config.h>
@@ -25,6 +26,7 @@
 
 using PFN_CheckFeatureSupport = rewrite_signature<decltype(&ID3D12Device::CheckFeatureSupport)>::type;
 using PFN_CreateSampler = rewrite_signature<decltype(&ID3D12Device::CreateSampler)>::type;
+using PFN_CreateSampler2 = rewrite_signature<decltype(&ID3D12Device11::CreateSampler2)>::type;
 using PFN_CreateCommittedResource = rewrite_signature<decltype(&ID3D12Device::CreateCommittedResource)>::type;
 using PFN_CreatePlacedResource = rewrite_signature<decltype(&ID3D12Device::CreatePlacedResource)>::type;
 using PFN_SetResidencyPriority = rewrite_signature<decltype(&ID3D12Device1::SetResidencyPriority)>::type;
@@ -44,6 +46,7 @@ using PFN_CreateDevice = rewrite_signature<decltype(&ID3D12DeviceFactory::Create
 using PFN_Release = rewrite_signature<decltype(&IUnknown::Release)>::type;
 
 static PFN_CreateSampler o_CreateSampler = nullptr;
+static PFN_CreateSampler2 o_CreateSampler2 = nullptr;
 static PFN_CheckFeatureSupport o_CheckFeatureSupport = nullptr;
 static PFN_CreateCommittedResource o_CreateCommittedResource = nullptr;
 static PFN_CreatePlacedResource o_CreatePlacedResource = nullptr;
@@ -250,129 +253,6 @@ static void CALLBACK D3D12DebugCallback(D3D12_MESSAGE_CATEGORY Category, D3D12_M
 
 static void HookToDevice(ID3D12Device* InDevice);
 static void UnhookDevice();
-
-static inline D3D12_FILTER UpgradeToAF(D3D12_FILTER f)
-{
-    // Skip point filter
-    const auto minF = D3D12_DECODE_MIN_FILTER(f);
-    const auto magF = D3D12_DECODE_MAG_FILTER(f);
-    const auto mipF = D3D12_DECODE_MIP_FILTER(f);
-    if (Config::Instance()->AnisotropySkipPointFilter.value_or_default() &&
-        ((mipF == D3D12_FILTER_TYPE_POINT) || (minF == D3D12_FILTER_TYPE_POINT && magF == D3D12_FILTER_TYPE_POINT)))
-    {
-        return f;
-    }
-
-    const auto reduction = D3D12_DECODE_FILTER_REDUCTION(f);
-
-    if (reduction == D3D12_FILTER_REDUCTION_TYPE_COMPARISON)
-    {
-        if (Config::Instance()->AnisotropyModifyComp.value_or_default())
-            return D3D12_ENCODE_ANISOTROPIC_FILTER(D3D12_FILTER_REDUCTION_TYPE_COMPARISON);
-
-        return f;
-    }
-
-    if (reduction == D3D12_FILTER_REDUCTION_TYPE_MINIMUM)
-    {
-        if (Config::Instance()->AnisotropyModifyMinMax.value_or_default())
-            return D3D12_ENCODE_ANISOTROPIC_FILTER(D3D12_FILTER_REDUCTION_TYPE_MINIMUM);
-
-        return f;
-    }
-
-    if (reduction == D3D12_FILTER_REDUCTION_TYPE_MAXIMUM)
-    {
-        if (Config::Instance()->AnisotropyModifyMinMax.value_or_default())
-            return D3D12_ENCODE_ANISOTROPIC_FILTER(D3D12_FILTER_REDUCTION_TYPE_MAXIMUM);
-
-        return f;
-    }
-
-    return D3D12_ENCODE_ANISOTROPIC_FILTER(D3D12_FILTER_REDUCTION_TYPE_STANDARD);
-}
-
-static void ApplySamplerOverrides(D3D12_STATIC_SAMPLER_DESC& samplerDesc)
-{
-    if (Config::Instance()->MipmapBiasOverride.has_value())
-    {
-        auto isMipmapped = samplerDesc.MinLOD != samplerDesc.MaxLOD;
-        auto isAnisotropic = (samplerDesc.Filter == D3D12_FILTER_ANISOTROPIC) || (samplerDesc.MaxAnisotropy > 1);
-        auto isAlreadyBiased = samplerDesc.MipLODBias < 0.0f;
-
-        if ((isMipmapped && (isAnisotropic || isAlreadyBiased)) ||
-            Config::Instance()->MipmapBiasOverrideAll.value_or_default())
-        {
-            if (Config::Instance()->MipmapBiasOverride.has_value())
-            {
-                LOG_DEBUG("Overriding mipmap bias {0} -> {1}", samplerDesc.MipLODBias,
-                          Config::Instance()->MipmapBiasOverride.value());
-
-                if (Config::Instance()->MipmapBiasFixedOverride.value_or_default())
-                    samplerDesc.MipLODBias = Config::Instance()->MipmapBiasOverride.value();
-                else if (Config::Instance()->MipmapBiasScaleOverride.value_or_default())
-                    samplerDesc.MipLODBias = samplerDesc.MipLODBias * Config::Instance()->MipmapBiasOverride.value();
-                else
-                    samplerDesc.MipLODBias = samplerDesc.MipLODBias + Config::Instance()->MipmapBiasOverride.value();
-
-                samplerDesc.MipLODBias = std::clamp(samplerDesc.MipLODBias, -16.0f, 15.99f);
-            }
-
-            if (State::Instance().lastMipBiasMax < samplerDesc.MipLODBias)
-                State::Instance().lastMipBiasMax = samplerDesc.MipLODBias;
-
-            if (State::Instance().lastMipBias > samplerDesc.MipLODBias)
-                State::Instance().lastMipBias = samplerDesc.MipLODBias;
-        }
-    }
-
-    if (Config::Instance()->AnisotropyOverride.has_value())
-    {
-        LOG_DEBUG("Overriding {2:X} to anisotropic filtering {0} -> {1}", samplerDesc.MaxAnisotropy,
-                  Config::Instance()->AnisotropyOverride.value(), (UINT) samplerDesc.Filter);
-
-        samplerDesc.Filter = UpgradeToAF(samplerDesc.Filter);
-        samplerDesc.MaxAnisotropy = Config::Instance()->AnisotropyOverride.value();
-    }
-}
-
-static void ApplySamplerOverrides(D3D12_STATIC_SAMPLER_DESC1& samplerDesc)
-{
-    if (Config::Instance()->MipmapBiasOverride.has_value())
-    {
-        if ((samplerDesc.MipLODBias < 0.0f && samplerDesc.MinLOD != samplerDesc.MaxLOD) ||
-            Config::Instance()->MipmapBiasOverrideAll.value_or_default())
-        {
-            if (Config::Instance()->MipmapBiasOverride.has_value())
-            {
-                LOG_DEBUG("Overriding mipmap bias {0} -> {1}", samplerDesc.MipLODBias,
-                          Config::Instance()->MipmapBiasOverride.value());
-
-                if (Config::Instance()->MipmapBiasFixedOverride.value_or_default())
-                    samplerDesc.MipLODBias = Config::Instance()->MipmapBiasOverride.value();
-                else if (Config::Instance()->MipmapBiasScaleOverride.value_or_default())
-                    samplerDesc.MipLODBias = samplerDesc.MipLODBias * Config::Instance()->MipmapBiasOverride.value();
-                else
-                    samplerDesc.MipLODBias = samplerDesc.MipLODBias + Config::Instance()->MipmapBiasOverride.value();
-            }
-
-            if (State::Instance().lastMipBiasMax < samplerDesc.MipLODBias)
-                State::Instance().lastMipBiasMax = samplerDesc.MipLODBias;
-
-            if (State::Instance().lastMipBias > samplerDesc.MipLODBias)
-                State::Instance().lastMipBias = samplerDesc.MipLODBias;
-        }
-    }
-
-    if (Config::Instance()->AnisotropyOverride.has_value())
-    {
-        LOG_DEBUG("Overriding {2:X} to anisotropic filtering {0} -> {1}", samplerDesc.MaxAnisotropy,
-                  Config::Instance()->AnisotropyOverride.value(), (UINT) samplerDesc.Filter);
-
-        samplerDesc.Filter = UpgradeToAF(samplerDesc.Filter);
-        samplerDesc.MaxAnisotropy = Config::Instance()->AnisotropyOverride.value();
-    }
-}
 
 // Early hooks, from Opti's own cmdlist
 VALIDATE_HOOK(hkSetPipelineState, PFN_SetPipelineState)
@@ -1603,89 +1483,16 @@ static HRESULT hkD3D12SerializeRootSignature(const D3D12_ROOT_SIGNATURE_DESC* pR
                                              D3D_ROOT_SIGNATURE_VERSION Version, ID3DBlob** ppBlob,
                                              ID3DBlob** ppErrorBlob)
 {
-    if (pRootSignature == nullptr)
-        return o_D3D12SerializeRootSignature(pRootSignature, Version, ppBlob, ppErrorBlob);
-
-    auto localRootSignature = *pRootSignature;
-    std::vector<D3D12_STATIC_SAMPLER_DESC> localSamplers;
-
-    if (pRootSignature->NumStaticSamplers > 0)
-    {
-        localSamplers.assign(pRootSignature->pStaticSamplers,
-                             pRootSignature->pStaticSamplers + pRootSignature->NumStaticSamplers);
-    }
-
-    for (auto& sampler : localSamplers)
-    {
-        ApplySamplerOverrides(sampler);
-    }
-
-    localRootSignature.pStaticSamplers = localSamplers.data();
-
-    return o_D3D12SerializeRootSignature(&localRootSignature, Version, ppBlob, ppErrorBlob);
+    // Sampler overrides are applied when the root signature is created, applying them here too doubles the bias
+    return o_D3D12SerializeRootSignature(pRootSignature, Version, ppBlob, ppErrorBlob);
 }
 
 VALIDATE_HOOK(hkD3D12SerializeVersionedRootSignature, D3d12Proxy::PFN_D3D12SerializeVersionedRootSignature)
 static HRESULT hkD3D12SerializeVersionedRootSignature(const D3D12_VERSIONED_ROOT_SIGNATURE_DESC* pRootSignature,
                                                       ID3DBlob** ppBlob, ID3DBlob** ppErrorBlob)
 {
-    if (pRootSignature == nullptr)
-        return o_D3D12SerializeVersionedRootSignature(pRootSignature, ppBlob, ppErrorBlob);
-
-    auto localVersionedRootSignature = *pRootSignature;
-    std::vector<D3D12_STATIC_SAMPLER_DESC> localSamplers;
-    std::vector<D3D12_STATIC_SAMPLER_DESC1> localSamplers1;
-
-    if (pRootSignature->Version == D3D_ROOT_SIGNATURE_VERSION_1_0)
-    {
-        if (pRootSignature->Desc_1_0.NumStaticSamplers > 0)
-        {
-            localSamplers.assign(pRootSignature->Desc_1_0.pStaticSamplers,
-                                 pRootSignature->Desc_1_0.pStaticSamplers + pRootSignature->Desc_1_0.NumStaticSamplers);
-        }
-
-        for (auto& sampler : localSamplers)
-        {
-            ApplySamplerOverrides(sampler);
-        }
-
-        localVersionedRootSignature.Desc_1_0.pStaticSamplers = localSamplers.data();
-    }
-    else if (pRootSignature->Version == D3D_ROOT_SIGNATURE_VERSION_1_1)
-    {
-        if (pRootSignature->Desc_1_1.NumStaticSamplers > 0)
-        {
-            localSamplers.assign(pRootSignature->Desc_1_1.pStaticSamplers,
-                                 pRootSignature->Desc_1_1.pStaticSamplers + pRootSignature->Desc_1_1.NumStaticSamplers);
-        }
-
-        for (auto& sampler : localSamplers)
-        {
-            ApplySamplerOverrides(sampler);
-        }
-
-        localVersionedRootSignature.Desc_1_1.pStaticSamplers = localSamplers.data();
-    }
-    else if (pRootSignature->Version == D3D_ROOT_SIGNATURE_VERSION_1_2)
-    {
-        if (pRootSignature->Desc_1_2.NumStaticSamplers > 0)
-        {
-            localSamplers1.assign(pRootSignature->Desc_1_2.pStaticSamplers,
-                                  pRootSignature->Desc_1_2.pStaticSamplers +
-                                      pRootSignature->Desc_1_2.NumStaticSamplers);
-        }
-
-        for (auto& sampler : localSamplers1)
-        {
-            ApplySamplerOverrides(sampler);
-        }
-
-        localVersionedRootSignature.Desc_1_2.pStaticSamplers = localSamplers1.data();
-    }
-
-    auto result = o_D3D12SerializeVersionedRootSignature(&localVersionedRootSignature, ppBlob, ppErrorBlob);
-
-    return result;
+    // Sampler overrides are applied when the root signature is created, applying them here too doubles the bias
+    return o_D3D12SerializeVersionedRootSignature(pRootSignature, ppBlob, ppErrorBlob);
 }
 
 VALIDATE_HOOK(hkD3D12DeviceRelease, PFN_Release)
@@ -1869,6 +1676,8 @@ hkGetResourceAllocationInfo(ID3D12Device* device, D3D12_RESOURCE_ALLOCATION_INFO
     return pResult;
 }
 
+static thread_local bool inCreateSampler = false;
+
 VALIDATE_HOOK(hkCreateSampler, PFN_CreateSampler)
 static void hkCreateSampler(ID3D12Device* device, const D3D12_SAMPLER_DESC* pDesc,
                             D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor)
@@ -1877,45 +1686,28 @@ static void hkCreateSampler(ID3D12Device* device, const D3D12_SAMPLER_DESC* pDes
         return;
 
     D3D12_SAMPLER_DESC newDesc = *pDesc;
+    SamplerOverrides::Apply(newDesc);
 
-    if (Config::Instance()->AnisotropyOverride.has_value())
-    {
-        LOG_DEBUG("Overriding {2:X} to anisotropic filtering {0} -> {1}", pDesc->MaxAnisotropy,
-                  Config::Instance()->AnisotropyOverride.value(), (UINT) newDesc.Filter);
+    inCreateSampler = true;
+    o_CreateSampler(device, &newDesc, DestDescriptor);
+    inCreateSampler = false;
+}
 
-        newDesc.Filter = UpgradeToAF(pDesc->Filter);
-        newDesc.MaxAnisotropy = Config::Instance()->AnisotropyOverride.value();
-    }
-    else
-    {
-        newDesc.Filter = pDesc->Filter;
-        newDesc.MaxAnisotropy = pDesc->MaxAnisotropy;
-    }
+VALIDATE_HOOK(hkCreateSampler2, PFN_CreateSampler2)
+static void hkCreateSampler2(ID3D12Device11* device, const D3D12_SAMPLER_DESC2* pDesc,
+                             D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor)
+{
+    if (pDesc == nullptr || device == nullptr)
+        return;
 
-    if ((newDesc.MipLODBias < 0.0f && newDesc.MinLOD != newDesc.MaxLOD) ||
-        Config::Instance()->MipmapBiasOverrideAll.value_or_default())
-    {
-        if (Config::Instance()->MipmapBiasOverride.has_value())
-        {
-            LOG_DEBUG("Overriding mipmap bias {0} -> {1}", pDesc->MipLODBias,
-                      Config::Instance()->MipmapBiasOverride.value());
+    // Called by the runtime's CreateSampler, overrides are already applied
+    if (inCreateSampler)
+        return o_CreateSampler2(device, pDesc, DestDescriptor);
 
-            if (Config::Instance()->MipmapBiasFixedOverride.value_or_default())
-                newDesc.MipLODBias = Config::Instance()->MipmapBiasOverride.value();
-            else if (Config::Instance()->MipmapBiasScaleOverride.value_or_default())
-                newDesc.MipLODBias = newDesc.MipLODBias * Config::Instance()->MipmapBiasOverride.value();
-            else
-                newDesc.MipLODBias = newDesc.MipLODBias + Config::Instance()->MipmapBiasOverride.value();
-        }
+    D3D12_SAMPLER_DESC2 newDesc = *pDesc;
+    SamplerOverrides::Apply(newDesc);
 
-        if (State::Instance().lastMipBiasMax < newDesc.MipLODBias)
-            State::Instance().lastMipBiasMax = newDesc.MipLODBias;
-
-        if (State::Instance().lastMipBias > newDesc.MipLODBias)
-            State::Instance().lastMipBias = newDesc.MipLODBias;
-    }
-
-    return o_CreateSampler(device, &newDesc, DestDescriptor);
+    return o_CreateSampler2(device, &newDesc, DestDescriptor);
 }
 
 VALIDATE_HOOK(hkCreateRootSignature, PFN_CreateRootSignature)
@@ -1949,7 +1741,7 @@ static HRESULT hkCreateRootSignature(ID3D12Device* device, UINT nodeMask, const 
         auto result =
             o_CreateRootSignature(device, nodeMask, pBlobWithRootSignature, blobLengthInBytes, riid, ppvRootSignature);
 
-        if (SUCCEEDED(result))
+        if (SUCCEEDED(result) && ppvRootSignature != nullptr)
         {
             std::unique_lock<std::shared_mutex> lock(rootSigParameterCountMutex);
             if (desc->Version == D3D_ROOT_SIGNATURE_VERSION_1_0)
@@ -1973,6 +1765,12 @@ static HRESULT hkCreateRootSignature(ID3D12Device* device, UINT nodeMask, const 
         return result;
     }
 
+    UINT numParameters = desc->Desc_1_2.NumParameters;
+    if (desc->Version == D3D_ROOT_SIGNATURE_VERSION_1_0)
+        numParameters = desc->Desc_1_0.NumParameters;
+    else if (desc->Version == D3D_ROOT_SIGNATURE_VERSION_1_1)
+        numParameters = desc->Desc_1_1.NumParameters;
+
     // Create a modifiable copy
     D3D12_VERSIONED_ROOT_SIGNATURE_DESC descCopy {};
     std::memcpy(&descCopy, desc, sizeof(D3D12_VERSIONED_ROOT_SIGNATURE_DESC));
@@ -1983,57 +1781,39 @@ static HRESULT hkCreateRootSignature(ID3D12Device* device, UINT nodeMask, const 
     // Modify Samplers based on Version
     if (descCopy.Version == D3D_ROOT_SIGNATURE_VERSION_1_0)
     {
-        {
-            std::unique_lock<std::shared_mutex> lock(rootSigParameterCountMutex);
-            rootSigParameterCount.insert_or_assign((ID3D12RootSignature*) *ppvRootSignature,
-                                                   desc->Desc_1_0.NumParameters);
-        }
-
         if (descCopy.Desc_1_0.NumStaticSamplers > 0)
         {
             samplers.assign(descCopy.Desc_1_0.pStaticSamplers,
                             descCopy.Desc_1_0.pStaticSamplers + descCopy.Desc_1_0.NumStaticSamplers);
 
             for (auto& s : samplers)
-                ApplySamplerOverrides(s);
+                SamplerOverrides::Apply(s, true);
 
             descCopy.Desc_1_0.pStaticSamplers = samplers.data();
         }
     }
     else if (descCopy.Version == D3D_ROOT_SIGNATURE_VERSION_1_1)
     {
-        {
-            std::unique_lock<std::shared_mutex> lock(rootSigParameterCountMutex);
-            rootSigParameterCount.insert_or_assign((ID3D12RootSignature*) *ppvRootSignature,
-                                                   desc->Desc_1_1.NumParameters);
-        }
-
         if (descCopy.Desc_1_1.NumStaticSamplers > 0)
         {
             samplers.assign(descCopy.Desc_1_1.pStaticSamplers,
                             descCopy.Desc_1_1.pStaticSamplers + descCopy.Desc_1_1.NumStaticSamplers);
 
             for (auto& s : samplers)
-                ApplySamplerOverrides(s);
+                SamplerOverrides::Apply(s, true);
 
             descCopy.Desc_1_1.pStaticSamplers = samplers.data();
         }
     }
     else if (descCopy.Version == D3D_ROOT_SIGNATURE_VERSION_1_2)
     {
-        {
-            std::unique_lock<std::shared_mutex> lock(rootSigParameterCountMutex);
-            rootSigParameterCount.insert_or_assign((ID3D12RootSignature*) *ppvRootSignature,
-                                                   desc->Desc_1_2.NumParameters);
-        }
-
         if (descCopy.Desc_1_2.NumStaticSamplers > 0)
         {
             samplers1.assign(descCopy.Desc_1_2.pStaticSamplers,
                              descCopy.Desc_1_2.pStaticSamplers + descCopy.Desc_1_2.NumStaticSamplers);
 
             for (auto& s : samplers1)
-                ApplySamplerOverrides(s);
+                SamplerOverrides::Apply(s, true);
 
             descCopy.Desc_1_2.pStaticSamplers = samplers1.data();
         }
@@ -2068,6 +1848,12 @@ static HRESULT hkCreateRootSignature(ID3D12Device* device, UINT nodeMask, const 
         // Fallback to original blob
         result =
             o_CreateRootSignature(device, nodeMask, pBlobWithRootSignature, blobLengthInBytes, riid, ppvRootSignature);
+    }
+
+    if (SUCCEEDED(result) && ppvRootSignature != nullptr)
+    {
+        std::unique_lock<std::shared_mutex> lock(rootSigParameterCountMutex);
+        rootSigParameterCount.insert_or_assign((ID3D12RootSignature*) *ppvRootSignature, numParameters);
     }
 
     deserializer->Release();
@@ -2145,6 +1931,14 @@ static void HookToDevice(ID3D12Device* InDevice)
         device12_1->Release();
     }
 
+    // Older runtimes don't have the slot
+    ID3D12Device11* device11 = nullptr;
+    if ((realDevice != nullptr ? realDevice : InDevice)->QueryInterface(IID_PPV_ARGS(&device11)) == S_OK)
+    {
+        o_CreateSampler2 = (PFN_CreateSampler2) (*(PVOID**) device11)[79];
+        device11->Release();
+    }
+
     // Apply the detour
     if (o_CreateSampler != nullptr)
     {
@@ -2153,6 +1947,9 @@ static void HookToDevice(ID3D12Device* InDevice)
 
         if (o_CreateSampler != nullptr)
             DetourAttach(&(PVOID&) o_CreateSampler, hkCreateSampler);
+
+        if (o_CreateSampler2 != nullptr)
+            DetourAttach(&(PVOID&) o_CreateSampler2, hkCreateSampler2);
 
         if (o_CreateRootSignature != nullptr)
             DetourAttach(&(PVOID&) o_CreateRootSignature, hkCreateRootSignature);
@@ -2187,6 +1984,7 @@ static void HookToDevice(ID3D12Device* InDevice)
         {
             LOG_ERROR("Failed to detour ID3D12Device methods, error: {:X}", detourResult);
             o_CreateSampler = nullptr;
+            o_CreateSampler2 = nullptr;
             o_CheckFeatureSupport = nullptr;
             o_CreateRootSignature = nullptr;
             o_CreateCommittedResource = nullptr;
@@ -2211,6 +2009,9 @@ static void UnhookDevice()
 
     if (o_CreateSampler != nullptr)
         DetourDetach(&(PVOID&) o_CreateSampler, hkCreateSampler);
+
+    if (o_CreateSampler2 != nullptr)
+        DetourDetach(&(PVOID&) o_CreateSampler2, hkCreateSampler2);
 
     if (o_CreateRootSignature != nullptr)
         DetourDetach(&(PVOID&) o_CreateRootSignature, hkCreateRootSignature);
@@ -2238,6 +2039,7 @@ static void UnhookDevice()
     else
     {
         o_CreateSampler = nullptr;
+        o_CreateSampler2 = nullptr;
         o_CheckFeatureSupport = nullptr;
         o_CreateCommittedResource = nullptr;
         o_CreatePlacedResource = nullptr;
@@ -2301,6 +2103,9 @@ void D3D12Hooks::Unhook()
     if (o_CreateSampler != nullptr)
         DetourDetach(&(PVOID&) o_CreateSampler, hkCreateSampler);
 
+    if (o_CreateSampler2 != nullptr)
+        DetourDetach(&(PVOID&) o_CreateSampler2, hkCreateSampler2);
+
     if (o_CheckFeatureSupport != nullptr)
         DetourDetach(&(PVOID&) o_CheckFeatureSupport, hkCheckFeatureSupport);
 
@@ -2324,6 +2129,7 @@ void D3D12Hooks::Unhook()
     else
     {
         o_CreateSampler = nullptr;
+        o_CreateSampler2 = nullptr;
         o_CheckFeatureSupport = nullptr;
         o_CreateCommittedResource = nullptr;
         o_CreatePlacedResource = nullptr;

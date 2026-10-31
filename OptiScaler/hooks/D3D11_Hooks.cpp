@@ -15,6 +15,7 @@
 #include <dxgi1_6.h>
 
 #include "Hook_Utils.h"
+#include "Sampler_Overrides.h"
 
 #pragma intrinsic(_ReturnAddress)
 
@@ -51,39 +52,6 @@ static ULONG hkD3D11DeviceRelease(IUnknown* device)
 
     auto result = o_D3D11DeviceRelease(device);
     return result;
-}
-
-static inline D3D11_FILTER UpgradeToAF(D3D11_FILTER f)
-{
-    if (Config::Instance()->AnisotropySkipPointFilter.value_or_default() &&
-        (f == D3D11_FILTER_MIN_MAG_MIP_POINT || f == D3D11_FILTER_COMPARISON_MIN_MAG_MIP_POINT ||
-         f == D3D11_FILTER_MINIMUM_MIN_MAG_MIP_POINT || f == D3D11_FILTER_MAXIMUM_MIN_MAG_MIP_POINT ||
-         f == D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT || f == D3D11_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT ||
-         f == D3D11_FILTER_MINIMUM_MIN_MAG_LINEAR_MIP_POINT || f == D3D11_FILTER_MAXIMUM_MIN_MAG_LINEAR_MIP_POINT ||
-         f == D3D11_FILTER_MIN_POINT_MAG_LINEAR_MIP_POINT ||
-         f == D3D11_FILTER_COMPARISON_MIN_POINT_MAG_LINEAR_MIP_POINT ||
-         f == D3D11_FILTER_MINIMUM_MIN_POINT_MAG_LINEAR_MIP_POINT ||
-         f == D3D11_FILTER_MAXIMUM_MIN_POINT_MAG_LINEAR_MIP_POINT))
-    {
-        return f;
-    }
-
-    if (f >= D3D11_FILTER_COMPARISON_MIN_MAG_MIP_POINT && f <= D3D11_FILTER_COMPARISON_ANISOTROPIC)
-    {
-        return Config::Instance()->AnisotropyModifyComp.value_or_default() ? D3D11_FILTER_COMPARISON_ANISOTROPIC : f;
-    }
-
-    if (f >= D3D11_FILTER_MINIMUM_MIN_MAG_MIP_POINT && f <= D3D11_FILTER_MINIMUM_ANISOTROPIC)
-    {
-        return Config::Instance()->AnisotropyModifyMinMax.value_or_default() ? D3D11_FILTER_MINIMUM_ANISOTROPIC : f;
-    }
-
-    if (f >= D3D11_FILTER_MAXIMUM_MIN_MAG_MIP_POINT && f <= D3D11_FILTER_MAXIMUM_ANISOTROPIC)
-    {
-        return Config::Instance()->AnisotropyModifyMinMax.value_or_default() ? D3D11_FILTER_MAXIMUM_ANISOTROPIC : f;
-    }
-
-    return D3D11_FILTER_ANISOTROPIC;
 }
 
 static void HookToDeviceLocal(ID3D11Device* InDevice)
@@ -411,13 +379,15 @@ static HRESULT hkD3D11CreateDeviceAndSwapChain(IDXGIAdapter* pAdapter, D3D_DRIVE
                                                   ppSwapChain, ppDevice, pFeatureLevel, ppImmediateContext);
     _skipDx11Create = false;
 
-    if (result == S_OK && *ppDevice != nullptr && State::Instance().currentD3D12Device == nullptr)
+    // Success codes like DXGI_STATUS_OCCLUDED still return a valid device and swapchain
+    if (SUCCEEDED(result) && ppDevice != nullptr && *ppDevice != nullptr &&
+        State::Instance().currentD3D12Device == nullptr)
     {
         LOG_INFO("Device captured");
         HookToDeviceLocal(*ppDevice);
     }
 
-    if (result == S_OK && pSwapChainDesc != nullptr && ppSwapChain != nullptr && *ppSwapChain != nullptr &&
+    if (SUCCEEDED(result) && pSwapChainDesc != nullptr && ppSwapChain != nullptr && *ppSwapChain != nullptr &&
         ppDevice != nullptr && *ppDevice != nullptr)
     {
         // check for SL proxy
@@ -454,7 +424,7 @@ static HRESULT hkD3D11CreateDeviceAndSwapChain(IDXGIAdapter* pAdapter, D3D_DRIVE
         }
     }
 
-    if (result == S_OK && ppDevice != nullptr && *ppDevice != nullptr)
+    if (SUCCEEDED(result) && ppDevice != nullptr && *ppDevice != nullptr)
         State::Instance().d3d11Devices.push_back(*ppDevice);
 
     LOG_FUNC_RESULT(result);
@@ -470,59 +440,8 @@ static HRESULT hkCreateSamplerState(ID3D11Device* This, const D3D11_SAMPLER_DESC
 
     LOG_FUNC();
 
-    D3D11_SAMPLER_DESC newDesc {};
-
-    newDesc.AddressU = pSamplerDesc->AddressU;
-    newDesc.AddressV = pSamplerDesc->AddressV;
-    newDesc.AddressW = pSamplerDesc->AddressW;
-    newDesc.ComparisonFunc = pSamplerDesc->ComparisonFunc;
-    newDesc.BorderColor[0] = pSamplerDesc->BorderColor[0];
-    newDesc.BorderColor[1] = pSamplerDesc->BorderColor[1];
-    newDesc.BorderColor[2] = pSamplerDesc->BorderColor[2];
-    newDesc.BorderColor[3] = pSamplerDesc->BorderColor[3];
-    newDesc.MinLOD = pSamplerDesc->MinLOD;
-    newDesc.MaxLOD = pSamplerDesc->MaxLOD;
-
-    if (Config::Instance()->AnisotropyOverride.has_value())
-    {
-        LOG_DEBUG("Overriding {2:X} to anisotropic filtering {0} -> {1}", pSamplerDesc->MaxAnisotropy,
-                  Config::Instance()->AnisotropyOverride.value(), (UINT) newDesc.Filter);
-
-        newDesc.Filter = UpgradeToAF(pSamplerDesc->Filter);
-        newDesc.MaxAnisotropy = Config::Instance()->AnisotropyOverride.value();
-    }
-    else
-    {
-        newDesc.Filter = pSamplerDesc->Filter;
-        newDesc.MaxAnisotropy = pSamplerDesc->MaxAnisotropy;
-    }
-
-    newDesc.MipLODBias = pSamplerDesc->MipLODBias;
-
-    if ((newDesc.MipLODBias < 0.0f && newDesc.MinLOD != newDesc.MaxLOD) ||
-        Config::Instance()->MipmapBiasOverrideAll.value_or_default())
-    {
-        if (Config::Instance()->MipmapBiasOverride.has_value())
-        {
-            LOG_DEBUG("Overriding mipmap bias {0} -> {1}", pSamplerDesc->MipLODBias,
-                      Config::Instance()->MipmapBiasOverride.value());
-
-            if (Config::Instance()->MipmapBiasFixedOverride.value_or_default())
-                newDesc.MipLODBias = Config::Instance()->MipmapBiasOverride.value();
-            else if (Config::Instance()->MipmapBiasScaleOverride.value_or_default())
-                newDesc.MipLODBias = newDesc.MipLODBias * Config::Instance()->MipmapBiasOverride.value();
-            else
-                newDesc.MipLODBias = newDesc.MipLODBias + Config::Instance()->MipmapBiasOverride.value();
-
-            newDesc.MipLODBias = std::clamp(newDesc.MipLODBias, -16.0f, 15.99f);
-        }
-
-        if (State::Instance().lastMipBiasMax < newDesc.MipLODBias)
-            State::Instance().lastMipBiasMax = newDesc.MipLODBias;
-
-        if (State::Instance().lastMipBias > newDesc.MipLODBias)
-            State::Instance().lastMipBias = newDesc.MipLODBias;
-    }
+    D3D11_SAMPLER_DESC newDesc = *pSamplerDesc;
+    SamplerOverrides::Apply(newDesc);
 
     return o_CreateSamplerState(This, &newDesc, ppSamplerState);
 }
