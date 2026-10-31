@@ -497,19 +497,25 @@ static FfxErrorCode ffxFsr2ContextDispatch_Vk(FfxFsr2Context* context,
     {
         params->Set("FSR.transparencyAndComposition", &fsrTransparencyNVRes);
     }
+    else
+    {
+        params->Set("FSR.transparencyAndComposition", (void*) nullptr);
+    }
 
     if (dispatchDescription->reactive.resource != nullptr &&
         CreateIVandNVRes(dispatchDescription->reactive, &fsrReactiveView, &fsrReactiveNVRes))
     {
         params->Set("FSR.reactive", &fsrReactiveNVRes);
     }
+    else
+    {
+        params->Set("FSR.reactive", (void*) nullptr);
+    }
 
     params->Set("FSR.cameraNear", dispatchDescription->cameraNear);
     params->Set("FSR.cameraFar", dispatchDescription->cameraFar);
     params->Set("FSR.cameraFovAngleVertical", dispatchDescription->cameraFovAngleVertical);
     params->Set("FSR.frameTimeDelta", dispatchDescription->frameTimeDelta);
-    params->Set("FSR.transparencyAndComposition", dispatchDescription->transparencyAndComposition.resource);
-    params->Set("FSR.reactive", dispatchDescription->reactive.resource);
     params->Set(NVSDK_NGX_Parameter_Sharpness, dispatchDescription->sharpness);
 
     LOG_DEBUG("handle: {:X}, internalResolution: {}x{}", handle->Id, dispatchDescription->renderSize.width,

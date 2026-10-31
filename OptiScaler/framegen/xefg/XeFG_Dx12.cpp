@@ -1471,6 +1471,7 @@ bool XeFG_Dx12::SetResource(Dx12Resource* inputResource)
 
             if (lastFormat[fIndex] != DXGI_FORMAT_UNKNOWN && lastFormat[fIndex] != desc.Format)
             {
+                std::fill_n(lastFormat, BUFFER_COUNT, desc.Format);
                 State::Instance().FGchanged = true;
                 return false;
             }
@@ -1479,6 +1480,7 @@ bool XeFG_Dx12::SetResource(Dx12Resource* inputResource)
         }
 
         xefg_swapchain_d3d12_resource_data_t resourceParam = GetResourceData(type, fIndex);
+        bool movedToCopyDest = false;
 
         // SDK version 2.1.1 fixes those issues
         if (version < feature_version { 1, 2, 2 })
@@ -1492,12 +1494,13 @@ bool XeFG_Dx12::SetResource(Dx12Resource* inputResource)
             // HACK: XeFG seems to crash if the resource is in COPY_SOURCE state
             // even though the docs say it's the preferred state
             // https://github.com/intel/xess/issues/47
-            if (inputResource->state == D3D12_RESOURCE_STATE_COPY_SOURCE)
+            if (inputResource->state == D3D12_RESOURCE_STATE_COPY_SOURCE && inputResource->cmdList != nullptr)
             {
                 ResourceBarrier(inputResource->cmdList, inputResource->resource, inputResource->state,
                                 D3D12_RESOURCE_STATE_COPY_DEST);
 
                 resourceParam.incomingState = D3D12_RESOURCE_STATE_COPY_DEST;
+                movedToCopyDest = true;
             }
         }
 
@@ -1505,31 +1508,32 @@ bool XeFG_Dx12::SetResource(Dx12Resource* inputResource)
         if (indexDiff < 0)
             indexDiff += BUFFER_COUNT;
 
+        auto result = XEFG_SWAPCHAIN_RESULT_SUCCESS;
+
         // We will us UI color later with Render UI
         if (type != FG_ResourceType::UIColor ||
             (XeFGProxy::SetUiCompositionState() != nullptr || Config::Instance()->FGDrawUIOverFG.value_or_default()))
         {
             auto frameId = static_cast<uint32_t>(_frameCount - indexDiff);
-            auto result =
-                XeFGProxy::D3D12TagFrameResource()(_swapChainContext, fResource->cmdList, frameId, &resourceParam);
+            result = XeFGProxy::D3D12TagFrameResource()(_swapChainContext, fResource->cmdList, frameId, &resourceParam);
             LOG_DEBUG("D3D12TagFrameResource, frameId: {}, type: {} result: {} ({})", frameId,
                       magic_enum::enum_name(type), magic_enum::enum_name(result), (int32_t) result);
-
-            if (result != XEFG_SWAPCHAIN_RESULT_SUCCESS)
-            {
-                State::Instance().FGchanged = true;
-                UpdateTarget();
-                Deactivate();
-
-                return false;
-            }
         }
 
         // Potentially we don't need to restore but do it just to be safe
-        if (inputResource->state == D3D12_RESOURCE_STATE_COPY_SOURCE)
+        if (movedToCopyDest)
         {
             ResourceBarrier(inputResource->cmdList, inputResource->resource, D3D12_RESOURCE_STATE_COPY_DEST,
                             inputResource->state);
+        }
+
+        if (result != XEFG_SWAPCHAIN_RESULT_SUCCESS)
+        {
+            State::Instance().FGchanged = true;
+            UpdateTarget();
+            Deactivate();
+
+            return false;
         }
 
         SetResourceReady(type, fIndex);

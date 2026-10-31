@@ -183,7 +183,6 @@ bool XeSSFeatureDx11on12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_N
     if (dc != Dx11DeviceContext)
     {
         LOG_WARN("Dx11DeviceContext changed!");
-        ReleaseSharedResources();
         Dx11DeviceContext = dc;
     }
 

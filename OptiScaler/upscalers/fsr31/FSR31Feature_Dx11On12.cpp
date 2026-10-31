@@ -188,7 +188,6 @@ bool FSR31FeatureDx11on12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_
     if (dc != Dx11DeviceContext)
     {
         LOG_WARN("Dx11DeviceContext changed!");
-        ReleaseSharedResources();
         Dx11DeviceContext = dc;
     }
 

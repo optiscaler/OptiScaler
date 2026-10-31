@@ -120,18 +120,21 @@ bool DLSSFeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* I
                                                   Config::Instance()->MotionSharpness.value_or(0.4) > 0.0f)) &&
                            RCAS->CanRender();
 
-        if (rcasEnabled && InParameters->Get(NVSDK_NGX_Parameter_Output, (void**) &paramOutput) &&
-            paramOutput == nullptr)
+        InParameters->Get(NVSDK_NGX_Parameter_Output, (void**) &paramOutput);
+
+        if (paramOutput == nullptr)
         {
             rcasEnabled = false;
             useSS = false;
         }
-
-        if (rcasEnabled)
+        else
         {
             finalOutputView = paramOutput->Resource.ImageViewInfo.ImageView;
             finalOutputImage = paramOutput->Resource.ImageViewInfo.Image;
+        }
 
+        if (rcasEnabled)
+        {
             InParameters->Set(NVSDK_NGX_Parameter_Sharpness, 0.0f);
             VkImage oldImage = RCAS->GetImage();
 
@@ -165,12 +168,6 @@ bool DLSSFeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* I
 
         if (useSS)
         {
-            if (finalOutputImage != RCAS->GetImage())
-            {
-                finalOutputView = paramOutput->Resource.ImageViewInfo.ImageView;
-                finalOutputImage = paramOutput->Resource.ImageViewInfo.Image;
-            }
-
             VkImage oldImage = OS->GetImage();
 
             if (OS->CreateImageResource(
@@ -201,6 +198,12 @@ bool DLSSFeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* I
         }
 
         nvResult = NVNGXProxy::VULKAN_EvaluateFeature()(InCmdBuffer, _p_dlssHandle, InParameters, NULL);
+
+        if (paramOutput != nullptr)
+        {
+            paramOutput->Resource.ImageViewInfo.Image = finalOutputImage;
+            paramOutput->Resource.ImageViewInfo.ImageView = finalOutputView;
+        }
 
         if (nvResult != NVSDK_NGX_Result_Success)
         {
@@ -273,9 +276,6 @@ bool DLSSFeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* I
                 RCAS->Dispatch(Device, InCmdBuffer, rcasConstants, RCAS->GetImageView(),
                                paramVelocity->Resource.ImageViewInfo.ImageView, finalOutputView, outExtent,
                                paramDepth->Resource.ImageViewInfo.ImageView);
-
-                paramOutput->Resource.ImageViewInfo.Image = finalOutputImage;
-                paramOutput->Resource.ImageViewInfo.ImageView = finalOutputView;
             }
         }
     }

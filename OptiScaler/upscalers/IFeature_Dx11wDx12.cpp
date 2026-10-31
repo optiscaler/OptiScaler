@@ -243,6 +243,8 @@ bool IFeature_Dx11wDx12::CopyTextureFrom11To12(ID3D11Resource* InResource, D3D11
                 return false;
             }
 
+            InResource->AddRef();
+            SAFE_RELEASE(OutResource->SharedTexture);
             OutResource->SharedTexture = (ID3D11Texture2D*) InResource;
         }
     }
