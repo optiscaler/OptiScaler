@@ -184,6 +184,15 @@ std::vector<GpuInformation> IdentifyGpu::checkGpuInfo()
                 if (State::Instance().activeFgOutput == FGOutput::DLSSG)
                     State::Instance().activeFgNvngx = FGNvngxReplacement::None;
             }
+
+            // Pascal and Turing can run the INT8 models through DP4a
+            if (gpuInfo.nvidiaArchInfo.architecture_id >= NV_GPU_ARCHITECTURE_GP100 &&
+                gpuInfo.nvidiaArchInfo.architecture_id < NV_GPU_ARCHITECTURE_GA100 &&
+                !Config::Instance()->Fsr4GpuSupport.has_value())
+            {
+                gpuInfo.fsr4Support = FSR4Support::INT8Lite;
+                gpuInfo.fsr4ForcedSupport = true;
+            }
         }
     }
 
