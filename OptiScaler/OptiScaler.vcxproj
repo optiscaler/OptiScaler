@@ -384,6 +384,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="with_dx12\dx11_with_dx12.h" />
     <ClInclude Include="with_dx12\with_dx12.h" />
     <ClInclude Include="with_dx12\dx11_with_dx12_sc.h" />
+    <ClInclude Include="with_dx12\dx11_context_state.h" />
     <ClInclude Include="misc\HiddenWindow.h" />
     <ClInclude Include="wrapped\wrapped_factory.h" />
     <ClInclude Include="include\spdlog_sink\debug_sink.h" />

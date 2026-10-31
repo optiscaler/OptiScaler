@@ -1022,6 +1022,9 @@
     <ClInclude Include="with_dx12\dx11_with_dx12_sc.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="with_dx12\dx11_context_state.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="misc\HiddenWindow.h">
       <Filter>Header Files</Filter>
     </ClInclude>
