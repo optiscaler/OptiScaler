@@ -469,6 +469,7 @@ class Config
 
     // ProcessFilter
     CustomOptional<std::wstring, NoDefault> TargetProcess;
+    CustomOptional<std::wstring, NoDefault> RequiredArgument; // disabled by default, see misc/RequiredArgument.h
     CustomOptional<std::wstring> ProcessExclusionList = {
         L"crashpad_handler.exe|crashreport.exe|crashreporter.exe|crs-handler.exe|crs-uploader.exe|crs-video.exe|"
         L"unitycrashhandler64.exe|idtechlauncher.exe|cefviewwing.exe|ace-setup64.exe|ace-service64.exe|"
