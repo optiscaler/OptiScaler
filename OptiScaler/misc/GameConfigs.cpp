@@ -668,7 +668,7 @@ const std::vector<GameConfig> gameConfigs = {
     // SL spoof enough to unlock everything DLSS, SimulateWaitableObject required to avoid freeze with DLSSG inputs
     {
         .exes = { "controlresonant.exe" },
-        .defaults = { DxgiSpoofing = false, FGPreserveSwapChain = false, SimulateWaitableObject = true },
+        .defaults = { DxgiSpoofing = false, SimulateWaitableObject = true },
     },
 
     // Phantom Blade Zero
