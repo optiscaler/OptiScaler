@@ -48,6 +48,7 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     ID3D12CommandQueue* _gameCommandQueue = nullptr;
 
     HWND _hwnd = NULL;
+    bool _releasingSwapchain = false;
 
     UINT64 _fgFramePresentId = 0;
     UINT64 _lastFGFramePresentId = 0;

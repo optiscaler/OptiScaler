@@ -5,6 +5,7 @@
 
 #include <hudfix/Hudfix_Dx12.h>
 #include <menu/menu_overlay_dx.h>
+#include <misc/DeferredRelease.h>
 
 #include <magic_enum.hpp>
 
@@ -681,24 +682,14 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
         ID3D12Resource* hudlessResource = nullptr;
         auto hudlessState = D3D12_RESOURCE_STATE_COPY_DEST;
 
-        // find, operator[] would insert empty entries into maps that are only written under the lock
+        // Only this frame's hudless, the copy map keeps older frames' copies
+        if (auto hudless = GetResource(FG_ResourceType::HudlessColor, fIndex))
         {
-            std::shared_lock<std::shared_mutex> lock(_resourceMutex[fIndex]);
-
-            if (auto it = _resourceCopy[fIndex].find(FG_ResourceType::HudlessColor); it != _resourceCopy[fIndex].end())
-                hudlessResource = it->second;
-        }
-
-        if (hudlessResource == nullptr)
-        {
-            if (auto hudless = GetResource(FG_ResourceType::HudlessColor, fIndex))
+            // state follows GetResource(), the copy or the format transfer buffer when there is one
+            if (hudless->copy != nullptr || hudless->validity == FG_ResourceValidity::UntilPresent)
             {
-                if (hudless->validity == FG_ResourceValidity::UntilPresent)
-                    hudlessResource = hudless->GetResource();
-
-                // hudless.state only holds the state for the original resource, not the copy that we could get here
-                if (hudlessResource && hudlessResource == hudless->resource)
-                    hudlessState = hudless->state;
+                hudlessResource = hudless->GetResource();
+                hudlessState = hudless->state;
             }
         }
 
@@ -970,6 +961,13 @@ bool FSRFG_Dx12::ReleaseSwapchain(HWND hwnd, bool force)
         Mutex.lock(1);
         LOG_TRACE("Accuired Mutex: {}", Mutex.getOwner());
     }
+    else if (_releasingSwapchain)
+    {
+        LOG_WARN("Already in ReleaseSwapchain");
+        return true;
+    }
+
+    _releasingSwapchain = true;
 
     MenuOverlayDx::CleanupRenderTarget(true, NULL);
 
@@ -991,6 +989,8 @@ bool FSRFG_Dx12::ReleaseSwapchain(HWND hwnd, bool force)
             _swapChainContext = nullptr;
         }
     }
+
+    _releasingSwapchain = false;
 
     if (Config::Instance()->FGUseMutexForSwapchain.value_or_default())
     {
@@ -1354,54 +1354,25 @@ void FSRFG_Dx12::ReleaseObjects()
 {
     for (size_t i = 0; i < BUFFER_COUNT; i++)
     {
-        if (_fgCommandAllocator[i] != nullptr)
-        {
-            _fgCommandAllocator[i]->Release();
-            _fgCommandAllocator[i] = nullptr;
-        }
-
-        if (_fgCommandList[i] != nullptr)
-        {
-            _fgCommandList[i]->Release();
-            _fgCommandList[i] = nullptr;
-        }
-
-        if (_uiCommandAllocator[i] != nullptr)
-        {
-            _uiCommandAllocator[i]->Release();
-            _uiCommandAllocator[i] = nullptr;
-        }
-
-        if (_uiCommandList[i] != nullptr)
-        {
-            _uiCommandList[i]->Release();
-            _uiCommandList[i] = nullptr;
-        }
-
-        if (_scCommandAllocator[i] != nullptr)
-        {
-            _scCommandAllocator[i]->Release();
-            _scCommandAllocator[i] = nullptr;
-        }
-
-        if (_scCommandList[i] != nullptr)
-        {
-            _scCommandList[i]->Release();
-            _scCommandList[i] = nullptr;
-        }
+        DeferredRelease::Release(_fgCommandAllocator[i]);
+        DeferredRelease::Release(_fgCommandList[i]);
+        DeferredRelease::Release(_uiCommandAllocator[i]);
+        DeferredRelease::Release(_uiCommandList[i]);
+        DeferredRelease::Release(_scCommandAllocator[i]);
+        DeferredRelease::Release(_scCommandList[i]);
 
         // Recreated lists start closed, a stale flag would skip their Reset
         _scCommandListResetted[i] = false;
         _uiCommandListResetted[i] = false;
 
-        _hudCopy[i].reset();
+        DeferredRelease::Release(_hudCopy[i]);
     }
 
     ReleaseUIFence();
-    _renderUI.reset();
-    _hudlessCompare.reset();
-    _mvFlip.reset();
-    _depthFlip.reset();
+    DeferredRelease::Release(_renderUI);
+    DeferredRelease::Release(_hudlessCompare);
+    DeferredRelease::Release(_mvFlip);
+    DeferredRelease::Release(_depthFlip);
 }
 
 bool FSRFG_Dx12::ExecuteCommandList(int index)

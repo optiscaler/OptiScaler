@@ -2,6 +2,7 @@
 #include "IFGFeature_Dx12.h"
 #include <State.h>
 #include <Config.h>
+#include <misc/DeferredRelease.h>
 
 #include <magic_enum.hpp>
 
@@ -165,15 +166,12 @@ void IFGFeature_Dx12::WaitForUIAllocator(int index)
 
 void IFGFeature_Dx12::ReleaseUIFence()
 {
-    if (_uiFence != nullptr)
-    {
-        _uiFence->Release();
-        _uiFence = nullptr;
-    }
+    // Signals of the last UI lists can still be pending
+    DeferredRelease::Release(_uiFence);
 
     if (_uiFenceEvent != nullptr)
     {
-        CloseHandle(_uiFenceEvent);
+        DeferredRelease::Enqueue([event = _uiFenceEvent]() { CloseHandle(event); });
         _uiFenceEvent = nullptr;
     }
 
@@ -454,17 +452,8 @@ void IFGFeature_Dx12::DestroyCopyCmdList()
 {
     for (size_t i = 0; i < BUFFER_COUNT; i++)
     {
-        if (_copyCommandAllocator[i] != nullptr)
-        {
-            _copyCommandAllocator[i]->Release();
-            _copyCommandAllocator[i] = nullptr;
-        }
-
-        if (_copyCommandList[i] != nullptr)
-        {
-            _copyCommandList[i]->Release();
-            _copyCommandList[i] = nullptr;
-        }
+        DeferredRelease::Release(_copyCommandAllocator[i]);
+        DeferredRelease::Release(_copyCommandList[i]);
     }
 }
 

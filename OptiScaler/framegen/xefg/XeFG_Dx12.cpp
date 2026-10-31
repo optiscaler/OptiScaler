@@ -2,6 +2,7 @@
 #include "XeFG_Dx12.h"
 #include <hudfix/Hudfix_Dx12.h>
 #include <menu/menu_overlay_dx.h>
+#include <misc/DeferredRelease.h>
 #include <resource_tracking/ResTrack_dx12.h>
 
 #include <nvapi/fakenvapi.h>
@@ -1058,29 +1059,10 @@ void XeFG_Dx12::ReleaseObjects()
 {
     for (size_t i = 0; i < BUFFER_COUNT; i++)
     {
-        if (_uiCommandAllocator[i] != nullptr)
-        {
-            _uiCommandAllocator[i]->Release();
-            _uiCommandAllocator[i] = nullptr;
-        }
-
-        if (_uiCommandList[i] != nullptr)
-        {
-            _uiCommandList[i]->Release();
-            _uiCommandList[i] = nullptr;
-        }
-
-        if (_scCommandAllocator[i] != nullptr)
-        {
-            _scCommandAllocator[i]->Release();
-            _scCommandAllocator[i] = nullptr;
-        }
-
-        if (_scCommandList[i] != nullptr)
-        {
-            _scCommandList[i]->Release();
-            _scCommandList[i] = nullptr;
-        }
+        DeferredRelease::Release(_uiCommandAllocator[i]);
+        DeferredRelease::Release(_uiCommandList[i]);
+        DeferredRelease::Release(_scCommandAllocator[i]);
+        DeferredRelease::Release(_scCommandList[i]);
 
         // Recreated lists start closed, a stale flag would skip their Reset
         _scCommandListResetted[i] = false;
@@ -1088,11 +1070,11 @@ void XeFG_Dx12::ReleaseObjects()
     }
 
     ReleaseUIFence();
-    _renderUI.reset();
-    _hudlessCompare.reset();
-    _mvFlip.reset();
-    _depthFlip.reset();
-    _depthInvert.reset();
+    DeferredRelease::Release(_renderUI);
+    DeferredRelease::Release(_hudlessCompare);
+    DeferredRelease::Release(_mvFlip);
+    DeferredRelease::Release(_depthFlip);
+    DeferredRelease::Release(_depthInvert);
 }
 
 void XeFG_Dx12::CreateObjects(ID3D12Device* InDevice)
@@ -1563,6 +1545,13 @@ bool XeFG_Dx12::ReleaseSwapchain(HWND hwnd, bool force)
         Mutex.lock(1);
         LOG_TRACE("Accuired Mutex: {}", Mutex.getOwner());
     }
+    else if (_releasingSwapchain)
+    {
+        LOG_WARN("Already in ReleaseSwapchain");
+        return true;
+    }
+
+    _releasingSwapchain = true;
 
     MenuOverlayDx::CleanupRenderTarget(true, NULL);
 
@@ -1581,6 +1570,8 @@ bool XeFG_Dx12::ReleaseSwapchain(HWND hwnd, bool force)
 
     ReleaseObjects();
     XeLLProxy::DestroyXeLLContext();
+
+    _releasingSwapchain = false;
 
     if (Config::Instance()->FGUseMutexForSwapchain.value_or_default())
     {

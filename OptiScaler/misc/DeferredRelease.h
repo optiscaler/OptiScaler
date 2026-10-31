@@ -2,6 +2,7 @@
 #include "SysUtils.h"
 
 #include <functional>
+#include <memory>
 
 // Destroys GPU objects once no queue can still reference them.
 // An entry runs after enough presents and enough wall time have passed. Presents bound how far the GPU
@@ -35,5 +36,13 @@ template <typename T> void Release(T*& object)
     object = nullptr;
 
     Enqueue([captured]() { captured->Release(); });
+}
+
+template <typename T> void Release(std::unique_ptr<T>& object)
+{
+    if (object == nullptr)
+        return;
+
+    Enqueue([captured = object.release()]() { delete captured; });
 }
 } // namespace DeferredRelease

@@ -744,22 +744,13 @@ bool Hudfix_Dx12::CheckForHudless(ID3D12GraphicsCommandList* cmdList, ResourceIn
                 srcBox.front = 0;
                 srcBox.back = 1;
 
-                if (scWidth > resource->width || scHeight > resource->height)
-                {
-                    srcBox.right = static_cast<UINT>(resource->width);
-                    srcBox.bottom = resource->height;
-                    UINT top = (scHeight - resource->height) / 2;
-                    UINT left = static_cast<UINT>((scWidth - resource->width) / 2);
+                // Centered on the axis it's smaller, cropped on the axis it's larger
+                srcBox.right = static_cast<UINT>(std::min<UINT64>(resource->width, scWidth));
+                srcBox.bottom = std::min<UINT>(resource->height, scHeight);
+                UINT left = (scWidth - srcBox.right) / 2;
+                UINT top = (scHeight - srcBox.bottom) / 2;
 
-                    cmdList->CopyTextureRegion(&dstLocation, left, top, 0, &srcLocation, &srcBox);
-                }
-                else
-                {
-                    srcBox.right = scWidth;
-                    srcBox.bottom = scHeight;
-
-                    cmdList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, &srcBox);
-                }
+                cmdList->CopyTextureRegion(&dstLocation, left, top, 0, &srcLocation, &srcBox);
 
                 // Using state D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE as skip flag
                 if (state != D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE)
@@ -912,6 +903,9 @@ bool Hudfix_Dx12::CheckForHudless(ID3D12GraphicsCommandList* cmdList, ResourceIn
 
 void Hudfix_Dx12::ResetCounters()
 {
+    // Recording threads can be in CheckForHudless
+    std::lock_guard<std::mutex> lock(_checkMutex);
+
     _fgCounter = 0;
     _upscaleCounter = 0;
 

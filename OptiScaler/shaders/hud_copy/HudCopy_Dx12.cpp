@@ -4,6 +4,7 @@
 
 #include <Config.h>
 #include <State.h>
+#include <misc/DeferredRelease.h>
 #include "precompile/HudCopy_Shader.h"
 
 void HudCopy_Dx12::ResourceBarrier(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* resource,
@@ -35,6 +36,17 @@ bool HudCopy_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* c
     auto hudlessDesc = hudless->GetDesc();
     auto presentDesc = present->GetDesc();
 
+    if (_buffer != nullptr)
+    {
+        auto bufferDesc = _buffer->GetDesc();
+
+        if (bufferDesc.Width != presentDesc.Width || bufferDesc.Height != presentDesc.Height ||
+            bufferDesc.Format != presentDesc.Format)
+        {
+            DeferredRelease::Release(_buffer);
+        }
+    }
+
     if (_buffer == nullptr)
     {
         LOG_DEBUG("[{0}] Start!", _name);
@@ -42,13 +54,13 @@ bool HudCopy_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* c
         auto resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS |
                              D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS;
 
-        auto result = Shader_Dx12::CreateBufferResource(InDevice, present, D3D12_RESOURCE_STATE_COPY_DEST, &_buffer,
-                                                        resourceFlags);
+        if (!Shader_Dx12::CreateBufferResource(InDevice, present, D3D12_RESOURCE_STATE_COPY_DEST, &_buffer,
+                                               resourceFlags))
+        {
+            return false;
+        }
 
-        if (result)
-            _buffer->SetName(L"HudCopy_Buffer");
-
-        return result;
+        _buffer->SetName(L"HudCopy_Buffer");
     }
 
     ResourceBarrier(cmdList, present, presentState, D3D12_RESOURCE_STATE_COPY_SOURCE);

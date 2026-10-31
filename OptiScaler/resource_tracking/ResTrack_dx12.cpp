@@ -809,23 +809,23 @@ ULONG ResTrack_Dx12::hkRelease(ID3D12Resource* This)
     if (State::Instance().isShuttingDown)
         return o_Release(This);
 
+    This->AddRef();
+
+    // Not the last reference, nothing to clean
+    if (o_Release(This) > 1)
+        return o_Release(This);
+
     std::vector<TrackedResourceSlot> toClean;
     {
         std::lock_guard lock(_trackedResourcesMutex);
 
-        This->AddRef();
-        auto refCount = o_Release(This);
-
-        if (refCount <= 1)
+        if (auto it = _trackedResources.find(This); it != _trackedResources.end())
         {
-            if (auto it = _trackedResources.find(This); it != _trackedResources.end())
-            {
-                toClean = std::move(it->second);
-                _trackedResources.erase(it);
-            }
-
-            State::Instance().CapturedHudlesses.erase(This);
+            toClean = std::move(it->second);
+            _trackedResources.erase(it);
         }
+
+        State::Instance().CapturedHudlesses.erase(This);
     }
 
     // Clean descriptor slots outside the reverse-index lock.
@@ -956,24 +956,21 @@ void ResTrack_Dx12::hkCopyDescriptorsSimple(ID3D12Device* This, UINT NumDescript
 
     auto size = This->GetDescriptorHandleIncrementSize(DescriptorHeapsType);
 
+    // A range is always in a single heap
+    auto dstHeap = GetHeapByCpuHandle(DestDescriptorRangeStart.ptr);
+
+    if (dstHeap == nullptr)
+        return;
+
+    std::shared_ptr<HeapInfo> srcHeap;
+
+    if (SrcDescriptorRangeStart.ptr != 0)
+        srcHeap = GetHeapByCpuHandle(SrcDescriptorRangeStart.ptr);
+
     for (size_t i = 0; i < NumDescriptors; i++)
     {
-        std::shared_ptr<HeapInfo> srcHeap;
-        SIZE_T srcHandle = 0;
-
-        // source
-        if (SrcDescriptorRangeStart.ptr != 0)
-        {
-            srcHandle = SrcDescriptorRangeStart.ptr + i * size;
-            srcHeap = GetHeapByCpuHandle(srcHandle);
-        }
-
+        auto srcHandle = SrcDescriptorRangeStart.ptr + i * size;
         auto destHandle = DestDescriptorRangeStart.ptr + i * size;
-        auto dstHeap = GetHeapByCpuHandle(destHandle);
-
-        // destination
-        if (dstHeap == nullptr)
-            continue;
 
         if (srcHeap == nullptr)
         {
