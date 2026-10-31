@@ -6,11 +6,11 @@
 class DxgiFactoryWrappedCalls
 {
   public:
-    static HRESULT CreateSwapChain(IDXGIFactory* realFactory, WrappedIDXGIFactory7* wrappedFactory, IUnknown* pDevice,
-                                   const DXGI_SWAP_CHAIN_DESC* pDesc, IDXGISwapChain** ppSwapChain);
+    static HRESULT CreateSwapChain(IDXGIFactory* realFactory, IUnknown* pDevice, const DXGI_SWAP_CHAIN_DESC* pDesc,
+                                   IDXGISwapChain** ppSwapChain);
 
-    static HRESULT CreateSwapChainForHwnd(IDXGIFactory2* realFactory, WrappedIDXGIFactory7* wrappedFactory,
-                                          IUnknown* pDevice, HWND hWnd, const DXGI_SWAP_CHAIN_DESC1* pDesc,
+    static HRESULT CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUnknown* pDevice, HWND hWnd,
+                                          const DXGI_SWAP_CHAIN_DESC1* pDesc,
                                           const DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pFullscreenDesc,
                                           IDXGIOutput* pRestrictToOutput, IDXGISwapChain1** ppSwapChain);
 

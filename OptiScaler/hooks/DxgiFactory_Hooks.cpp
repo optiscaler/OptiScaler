@@ -55,6 +55,14 @@ void DxgiFactoryHooks::HookToFactory(IDXGIFactory* pFactory)
 
     void** pFactoryVTable = *reinterpret_cast<void***>(real);
 
+    // Hooks attached by earlier calls stay in place if this one fails
+    std::vector<PVOID*> attached;
+    auto attach = [&attached](PVOID& original, PVOID hook)
+    {
+        DetourAttach(&original, hook);
+        attached.push_back(&original);
+    };
+
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
 
@@ -63,7 +71,7 @@ void DxgiFactoryHooks::HookToFactory(IDXGIFactory* pFactory)
         o_EnumAdapters = (PFN_EnumAdapters) pFactoryVTable[7];
 
         if (o_EnumAdapters != nullptr)
-            DetourAttach(&(PVOID&) o_EnumAdapters, DxgiFactoryHooks::EnumAdapters);
+            attach((PVOID&) o_EnumAdapters, DxgiFactoryHooks::EnumAdapters);
     }
 
     if (o_CreateSwapChain == nullptr)
@@ -71,7 +79,7 @@ void DxgiFactoryHooks::HookToFactory(IDXGIFactory* pFactory)
         o_CreateSwapChain = (PFN_CreateSwapChain) pFactoryVTable[10];
 
         if (o_CreateSwapChain != nullptr)
-            DetourAttach(&(PVOID&) o_CreateSwapChain, DxgiFactoryHooks::CreateSwapChain);
+            attach((PVOID&) o_CreateSwapChain, DxgiFactoryHooks::CreateSwapChain);
     }
 
     IDXGIFactory1* factory1 = nullptr;
@@ -84,7 +92,7 @@ void DxgiFactoryHooks::HookToFactory(IDXGIFactory* pFactory)
             o_EnumAdapters1 = (PFN_EnumAdapters1) pFactoryVTable[12];
 
             if (o_EnumAdapters1 != nullptr)
-                DetourAttach(&(PVOID&) o_EnumAdapters1, DxgiFactoryHooks::EnumAdapters1);
+                attach((PVOID&) o_EnumAdapters1, DxgiFactoryHooks::EnumAdapters1);
         }
     }
 
@@ -98,7 +106,7 @@ void DxgiFactoryHooks::HookToFactory(IDXGIFactory* pFactory)
             o_CreateSwapChainForHwnd = (PFN_CreateSwapChainForHwnd) pFactoryVTable[15];
 
             if (o_CreateSwapChainForHwnd != nullptr)
-                DetourAttach(&(PVOID&) o_CreateSwapChainForHwnd, DxgiFactoryHooks::CreateSwapChainForHwnd);
+                attach((PVOID&) o_CreateSwapChainForHwnd, DxgiFactoryHooks::CreateSwapChainForHwnd);
         }
 
         if (o_CreateSwapChainForCoreWindow == nullptr)
@@ -106,7 +114,7 @@ void DxgiFactoryHooks::HookToFactory(IDXGIFactory* pFactory)
             o_CreateSwapChainForCoreWindow = (PFN_CreateSwapChainForCoreWindow) pFactoryVTable[16];
 
             if (o_CreateSwapChainForCoreWindow != nullptr)
-                DetourAttach(&(PVOID&) o_CreateSwapChainForCoreWindow, DxgiFactoryHooks::CreateSwapChainForCoreWindow);
+                attach((PVOID&) o_CreateSwapChainForCoreWindow, DxgiFactoryHooks::CreateSwapChainForCoreWindow);
         }
     }
 
@@ -120,7 +128,7 @@ void DxgiFactoryHooks::HookToFactory(IDXGIFactory* pFactory)
             o_EnumAdapterByLuid = (PFN_EnumAdapterByLuid) pFactoryVTable[26];
 
             if (o_EnumAdapterByLuid != nullptr)
-                DetourAttach(&(PVOID&) o_EnumAdapterByLuid, DxgiFactoryHooks::EnumAdapterByLuid);
+                attach((PVOID&) o_EnumAdapterByLuid, DxgiFactoryHooks::EnumAdapterByLuid);
         }
     }
 
@@ -134,7 +142,7 @@ void DxgiFactoryHooks::HookToFactory(IDXGIFactory* pFactory)
             o_EnumAdapterByGpuPreference = (PFN_EnumAdapterByGpuPreference) pFactoryVTable[29];
 
             if (o_EnumAdapterByGpuPreference != nullptr)
-                DetourAttach(&(PVOID&) o_EnumAdapterByGpuPreference, DxgiFactoryHooks::EnumAdapterByGpuPreference);
+                attach((PVOID&) o_EnumAdapterByGpuPreference, DxgiFactoryHooks::EnumAdapterByGpuPreference);
         }
     }
 
@@ -142,13 +150,9 @@ void DxgiFactoryHooks::HookToFactory(IDXGIFactory* pFactory)
     if (detourResult != NO_ERROR)
     {
         LOG_ERROR("Failed to hook IDXGIFactory: {:X}", detourResult);
-        o_EnumAdapters = nullptr;
-        o_CreateSwapChain = nullptr;
-        o_EnumAdapters1 = nullptr;
-        o_CreateSwapChainForHwnd = nullptr;
-        o_CreateSwapChainForCoreWindow = nullptr;
-        o_EnumAdapterByLuid = nullptr;
-        o_EnumAdapterByGpuPreference = nullptr;
+
+        for (auto original : attached)
+            *original = nullptr;
     }
 }
 
@@ -390,8 +394,8 @@ HRESULT DxgiFactoryHooks::CreateSwapChain(IDXGIFactory* realFactory, IUnknown* p
 
             LOG_DEBUG("Created new swapchain: {0:X}, hWnd: {1:X}", (UINT64) *ppSwapChain,
                       (UINT64) localDesc.OutputWindow);
-            *ppSwapChain =
-                new WrappedIDXGISwapChain4(realSC, realDevice, localDesc.OutputWindow, localDesc.Flags, false);
+            *ppSwapChain = new WrappedIDXGISwapChain4(realSC, realDevice, localDesc.OutputWindow, localDesc.Flags,
+                                                      false, *ppSwapChain);
 
             if (!otherWindow)
             {
@@ -689,7 +693,7 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
                 realSC->GetDesc(&State::Instance().currentSwapchainDesc);
 
             LOG_DEBUG("Created new swapchain: {0:X}, hWnd: {1:X}", (uintptr_t) *ppSwapChain, (uintptr_t) hWnd);
-            *ppSwapChain = new WrappedIDXGISwapChain4(realSC, readDevice, hWnd, localDesc.Flags, false);
+            *ppSwapChain = new WrappedIDXGISwapChain4(realSC, readDevice, hWnd, localDesc.Flags, false, *ppSwapChain);
 
             LOG_DEBUG("Created new WrappedIDXGISwapChain4: {0:X}, pDevice: {1:X}", (uintptr_t) *ppSwapChain,
                       (uintptr_t) pDevice);
@@ -731,14 +735,14 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForCoreWindow(IDXGIFactory2* realFactor
                       pDesc->Height, (UINT) pDesc->Format, pDesc->Flags, pDesc->BufferCount, _skipFGSwapChainCreation);
 
         ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
-        return realFactory->CreateSwapChainForCoreWindow(pDevice, pWindow, pDesc, pRestrictToOutput, ppSwapChain);
+        return o_CreateSwapChainForCoreWindow(realFactory, pDevice, pWindow, pDesc, pRestrictToOutput, ppSwapChain);
     }
 
     if (pDevice == nullptr || pDesc == nullptr)
     {
         LOG_WARN("pDevice or pDesc is nullptr!");
         ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
-        return realFactory->CreateSwapChainForCoreWindow(pDevice, pWindow, pDesc, pRestrictToOutput, ppSwapChain);
+        return o_CreateSwapChainForCoreWindow(realFactory, pDevice, pWindow, pDesc, pRestrictToOutput, ppSwapChain);
     }
 
     if (Util::IsOverlaySwapchain(nullptr, pDesc->Width, pDesc->Height))
@@ -746,7 +750,7 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForCoreWindow(IDXGIFactory2* realFactor
         LOG_WARN("Overlay call!");
 
         ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
-        return realFactory->CreateSwapChainForCoreWindow(pDevice, pWindow, pDesc, pRestrictToOutput, ppSwapChain);
+        return o_CreateSwapChainForCoreWindow(realFactory, pDevice, pWindow, pDesc, pRestrictToOutput, ppSwapChain);
     }
 
     DXGI_SWAP_CHAIN_DESC1 localDesc {};
@@ -808,7 +812,8 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForCoreWindow(IDXGIFactory2* realFactor
         State::Instance().screenHeight = static_cast<float>(localDesc.Height);
 
         LOG_DEBUG("Created new swapchain: {0:X}, hWnd: {1:X}", (UINT64) *ppSwapChain, (UINT64) pWindow);
-        *ppSwapChain = new WrappedIDXGISwapChain4(realSC, readDevice, (HWND) pWindow, localDesc.Flags, true);
+        *ppSwapChain =
+            new WrappedIDXGISwapChain4(realSC, readDevice, (HWND) pWindow, localDesc.Flags, true, *ppSwapChain);
 
         if (!_skipFGSwapChainCreation)
             State::Instance().currentSwapchain = *ppSwapChain;
@@ -848,7 +853,8 @@ HRESULT DxgiFactoryHooks::EnumAdapters(IDXGIFactory* realFactory, UINT Adapter, 
 
             if (result != S_OK)
             {
-                LOG_ERROR("Can't get high performance adapter: {:X}, fallback to standard method", Adapter);
+                LOG_ERROR("Can't get high performance adapter {}: {:X}, fallback to standard method", Adapter,
+                          (UINT) result);
                 ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
                 result = o_EnumAdapters(realFactory, Adapter, ppAdapter);
             }
@@ -925,7 +931,8 @@ HRESULT DxgiFactoryHooks::EnumAdapters1(IDXGIFactory1* realFactory, UINT Adapter
 
             if (result != S_OK)
             {
-                LOG_ERROR("Can't get high performance adapter: {:X}, fallback to standard method", Adapter);
+                LOG_ERROR("Can't get high performance adapter {}: {:X}, fallback to standard method", Adapter,
+                          (UINT) result);
                 ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
                 result = o_EnumAdapters1(realFactory, Adapter, ppAdapter);
             }

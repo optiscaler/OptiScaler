@@ -293,8 +293,6 @@ HRESULT FGHooks::CreateSwapChain(IDXGIFactory* pFactory, IUnknown* pDevice, DXGI
         return E_INVALIDARG;
     }
 
-    SetCurrentCommandQueue(cq);
-
     if (State::Instance().currentFG == nullptr)
     {
         // FG Init
@@ -346,7 +344,7 @@ HRESULT FGHooks::CreateSwapChain(IDXGIFactory* pFactory, IUnknown* pDevice, DXGI
 
         // Looks like game is creating new swapchain,
         // without releasing old one, be sure gpu is in idle state
-        if (!Config::Instance()->FGPreserveSwapChain.value_or_default() &&
+        if (scResult && !Config::Instance()->FGPreserveSwapChain.value_or_default() &&
             State::Instance().currentFGSwapchain != nullptr)
         {
             LOG_WARN("Looks like game is creating new swapchain, without releasing old one!");
@@ -361,6 +359,8 @@ HRESULT FGHooks::CreateSwapChain(IDXGIFactory* pFactory, IUnknown* pDevice, DXGI
 
     if (scResult)
     {
+        SetCurrentCommandQueue(cq);
+
         if (State::Instance().currentD3D12Device != nullptr)
         {
             if (resizeFence != nullptr)
@@ -395,6 +395,9 @@ HRESULT FGHooks::CreateSwapChain(IDXGIFactory* pFactory, IUnknown* pDevice, DXGI
         _borderlessPending = UseBorderless();
         State::Instance().currentFGSwapchain = *ppSwapChain;
 
+        if (oldSwapChain == *ppSwapChain)
+            oldSwapChain = nullptr;
+
         HookFGSwapchain(*ppSwapChain);
 
         State::Instance().currentSwapchain = *ppSwapChain;
@@ -402,6 +405,7 @@ HRESULT FGHooks::CreateSwapChain(IDXGIFactory* pFactory, IUnknown* pDevice, DXGI
         return S_OK;
     }
 
+    cq->Release();
     return E_INVALIDARG;
 }
 
@@ -425,8 +429,6 @@ HRESULT FGHooks::CreateSwapChainForHwnd(IDXGIFactory* pFactory, IUnknown* pDevic
         LOG_ERROR("FG Feature requires D3D12 Command Queue!");
         return E_INVALIDARG;
     }
-
-    SetCurrentCommandQueue(cq);
 
     if (State::Instance().currentFG == nullptr)
     {
@@ -479,7 +481,7 @@ HRESULT FGHooks::CreateSwapChainForHwnd(IDXGIFactory* pFactory, IUnknown* pDevic
 
         // Looks like game is creating new swapchain,
         // without releasing old one, be sure gpu is in idle state
-        if (!Config::Instance()->FGPreserveSwapChain.value_or_default() &&
+        if (scResult && !Config::Instance()->FGPreserveSwapChain.value_or_default() &&
             State::Instance().currentFGSwapchain != nullptr)
         {
             LOG_WARN("Looks like game is creating new swapchain, without releasing old one!");
@@ -494,6 +496,8 @@ HRESULT FGHooks::CreateSwapChainForHwnd(IDXGIFactory* pFactory, IUnknown* pDevic
 
     if (scResult)
     {
+        SetCurrentCommandQueue(cq);
+
         if (State::Instance().currentD3D12Device != nullptr)
         {
             if (resizeFence != nullptr)
@@ -528,12 +532,16 @@ HRESULT FGHooks::CreateSwapChainForHwnd(IDXGIFactory* pFactory, IUnknown* pDevic
         _borderlessPending = UseBorderless();
         State::Instance().currentFGSwapchain = *ppSwapChain;
 
+        if (oldSwapChain == *ppSwapChain)
+            oldSwapChain = nullptr;
+
         HookFGSwapchain(*ppSwapChain);
         State::Instance().currentSwapchain = *ppSwapChain;
 
         return S_OK;
     }
 
+    cq->Release();
     return E_INVALIDARG;
 }
 
@@ -648,8 +656,6 @@ HRESULT FGHooks::hkSetFullscreenState(IDXGISwapChain* This, BOOL Fullscreen, IDX
         }
     }
 
-    State::Instance().realExclusiveFullscreen = Fullscreen;
-
     if (State::Instance().activeFgOutput == FGOutput::XeFG && Fullscreen)
         LOG_WARN("Using exclusive fullscreen with XeFG!!!");
 
@@ -660,6 +666,9 @@ HRESULT FGHooks::hkSetFullscreenState(IDXGISwapChain* This, BOOL Fullscreen, IDX
         result = o_FGSCSetFullscreenState(This, Fullscreen, pTarget);
         LOG_DEBUG("Fullscreen: {}, pTarget: {:X}, Result: {:X}", Fullscreen, (size_t) pTarget, (UINT) result);
     }
+
+    if (result == S_OK)
+        State::Instance().realExclusiveFullscreen = Fullscreen;
 
     if (result == S_OK && modeChanged)
     {

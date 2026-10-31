@@ -46,7 +46,10 @@ static void GetHardwareAdapter(IDXGIFactory* InFactory, IDXGIAdapter** InAdapter
             adapter->GetDesc1(&desc);
 
             if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
+            {
+                adapter->Release();
                 continue;
+            }
 
             *InAdapter = adapter;
             break;
@@ -64,7 +67,10 @@ static void GetHardwareAdapter(IDXGIFactory* InFactory, IDXGIAdapter** InAdapter
             adapter->GetDesc1(&desc);
 
             if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
+            {
+                adapter->Release();
                 continue;
+            }
 
             // Check to see whether the adapter supports Direct3D 12, but don't create the
             // actual device yet.
@@ -76,6 +82,8 @@ static void GetHardwareAdapter(IDXGIFactory* InFactory, IDXGIAdapter** InAdapter
                 *InAdapter = adapter;
                 break;
             }
+
+            adapter->Release();
         }
     }
 }
@@ -90,6 +98,9 @@ static void InitD3D12DeviceForLuma(IDXGIFactory* factory)
 
     auto result = D3d12Proxy::D3D12CreateDevice_()(hardwareAdapter, D3D_FEATURE_LEVEL_11_0,
                                                    IID_PPV_ARGS(&State::Instance().currentD3D12Device));
+
+    if (hardwareAdapter != nullptr)
+        hardwareAdapter->Release();
 
     LOG_DEBUG("D3D12CreateDevice result: {0:x}", result);
 }

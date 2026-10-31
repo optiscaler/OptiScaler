@@ -491,8 +491,8 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
 }
 
 WrappedIDXGISwapChain4::WrappedIDXGISwapChain4(IDXGISwapChain* real, IUnknown* pDevice, HWND hWnd, UINT flags,
-                                               bool isUWP)
-    : _real(real), _device(pDevice), _handle(hWnd), _refcount(1), _uwp(isUWP)
+                                               bool isUWP, IUnknown* owner)
+    : _real(real), _owner(owner != nullptr ? owner : real), _device(pDevice), _handle(hWnd), _refcount(1), _uwp(isUWP)
 {
     _id = ++scCount;
     _lastFlags = flags;
@@ -526,6 +526,11 @@ WrappedIDXGISwapChain4::~WrappedIDXGISwapChain4() {}
 //
 HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::QueryInterface(REFIID riid, void** ppvObject)
 {
+    if (ppvObject == nullptr)
+        return E_POINTER;
+
+    *ppvObject = nullptr;
+
     LOG_TRACE("Caller: {}", Util::WhoIsTheCaller(_ReturnAddress()));
 
     if (riid == __uuidof(IDXGISwapChain))
@@ -641,64 +646,66 @@ ULONG STDMETHODCALLTYPE WrappedIDXGISwapChain4::Release()
 
     if (ret == 0)
     {
+        {
 #ifdef USE_LOCAL_MUTEX
-        OwnedLockGuard lock(_localMutex, 999);
+            OwnedLockGuard lock(_localMutex, 999);
 #endif
 
-        const bool isCurrent = IsCurrentSwapchain(this);
+            const bool isCurrent = IsCurrentSwapchain(this);
 
-        // Menu's last command list can still be running
-        if (HasMenu(this, _handle))
-        {
-            WaitForGPUIdle(_device);
-            MenuOverlayDx::CleanupRenderTarget(true, _handle);
-        }
-
-        if (State::Instance().currentSwapchain == this)
-            State::Instance().currentSwapchain = nullptr;
-
-        if (State::Instance().currentWrappedSwapchain == this)
-            State::Instance().currentWrappedSwapchain = nullptr;
-
-        if (State::Instance().currentRealSwapchain == _real)
-            State::Instance().currentRealSwapchain = nullptr;
-
-        if (isCurrent && State::Instance().currentCommandQueue == _device)
-            State::Instance().currentCommandQueue = nullptr;
-
-        auto fg = State::Instance().currentFG;
-        if (isCurrent && fg != nullptr && fg->Mutex.getOwner() != 1 && fg->SwapchainContext() != nullptr)
-        {
-            fg->Disable();
-            fg->ReleaseSwapchain(_handle);
-
-            if (State::Instance().currentFGSwapchain != nullptr)
-                State::Instance().currentFGSwapchain = nullptr;
-        }
-
-        auto refCount = _real->Release();
-
-        // Disabled for now, cause issues with some games
-        /*
-        IDXGISwapChain* skSC = nullptr;
-        if (_real->QueryInterface(IID_IUnwrappedDXGISwapChain, (void**) &skSC) == S_OK && skSC != nullptr)
-        {
-            skSC->Release();
-            LOG_DEBUG("Found SK swapchain, skip releasing of main swapchain");
-        }
-        else
-        {
-            // Release real swapchain, otherwise it can cause issues when re-creating swapchain with same handle
-            while (refCount > 0)
+            // Menu's last command list can still be running
+            if (HasMenu(this, _handle))
             {
-                LOG_DEBUG("Waiting for real swapchain to be released, refCount: {}", refCount);
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                refCount = _real->Release();
+                WaitForGPUIdle(_device);
+                MenuOverlayDx::CleanupRenderTarget(true, _handle);
             }
-        }
-        */
 
-        LOG_DEBUG("Real swapchain released, refCount: {}", refCount);
+            if (State::Instance().currentSwapchain == this)
+                State::Instance().currentSwapchain = nullptr;
+
+            if (State::Instance().currentWrappedSwapchain == this)
+                State::Instance().currentWrappedSwapchain = nullptr;
+
+            if (State::Instance().currentRealSwapchain == _real)
+                State::Instance().currentRealSwapchain = nullptr;
+
+            if (isCurrent && State::Instance().currentCommandQueue == _device)
+                State::Instance().currentCommandQueue = nullptr;
+
+            auto fg = State::Instance().currentFG;
+            if (isCurrent && fg != nullptr && fg->Mutex.getOwner() != 1 && fg->SwapchainContext() != nullptr)
+            {
+                fg->Disable();
+                fg->ReleaseSwapchain(_handle);
+
+                if (State::Instance().currentFGSwapchain != nullptr)
+                    State::Instance().currentFGSwapchain = nullptr;
+            }
+
+            auto refCount = _owner->Release();
+
+            // Disabled for now, cause issues with some games
+            /*
+            IDXGISwapChain* skSC = nullptr;
+            if (_real->QueryInterface(IID_IUnwrappedDXGISwapChain, (void**) &skSC) == S_OK && skSC != nullptr)
+            {
+                skSC->Release();
+                LOG_DEBUG("Found SK swapchain, skip releasing of main swapchain");
+            }
+            else
+            {
+                // Release real swapchain, otherwise it can cause issues when re-creating swapchain with same handle
+                while (refCount > 0)
+                {
+                    LOG_DEBUG("Waiting for real swapchain to be released, refCount: {}", refCount);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    refCount = _real->Release();
+                }
+            }
+            */
+
+            LOG_DEBUG("Owner released, refCount: {}", refCount);
+        }
 
         delete this;
     }
@@ -797,10 +804,10 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::SetFullscreenState(BOOL Fullsc
             }
         }
 
-        if (IsCurrentSwapchain(this))
-            State::Instance().realExclusiveFullscreen = Fullscreen;
-
         result = _real->SetFullscreenState(Fullscreen, pTarget);
+
+        if (result == S_OK && IsCurrentSwapchain(this))
+            State::Instance().realExclusiveFullscreen = Fullscreen;
 
         if (FAILED(result))
             LOG_ERROR("result: {:X}", (UINT) result);
@@ -1274,6 +1281,8 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
     LOG_DEBUG("BufferCount: {}, Width: {}, Height: {}, NewFormat: {}, SwapChainFlags: {:X}", BufferCount, Width, Height,
               (UINT) Format, SwapChainFlags);
 
+    bool skResized = false;
+
     // Release swapchain backbuffers to prevent errors when resizing
     if (State::Instance().activeFgOutput != FGOutput::NoFG && State::Instance().activeFgOutput != FGOutput::Nukems &&
         State::Instance().currentFG != nullptr)
@@ -1282,6 +1291,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
         if (_real->QueryInterface(IID_IUnwrappedDXGISwapChain, (void**) &skSC) == S_OK && skSC != nullptr)
         {
             skSC->Release();
+            skResized = true;
             LOG_DEBUG(
                 "Found SK swapchain, skip releasing backbuffersand using ResizeBuffers instead of ResizeBuffers1");
 
@@ -1352,7 +1362,11 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
 #endif
 #endif
 
-    if (Config::Instance()->FGDontUseSwapchainBuffers.value_or_default())
+    if (skResized)
+    {
+        LOG_DEBUG("Resized with ResizeBuffers, result: {:X}", (UINT) result);
+    }
+    else if (Config::Instance()->FGDontUseSwapchainBuffers.value_or_default())
     {
         ScopedSkipHeapCapture skipHeapCapture {};
 

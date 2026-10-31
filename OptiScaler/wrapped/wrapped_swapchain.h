@@ -12,7 +12,8 @@
 class DECLSPEC_UUID("3af622a3-82d0-49cd-994f-cce05122c222") WrappedIDXGISwapChain4 final : public IDXGISwapChain4
 {
   public:
-    WrappedIDXGISwapChain4(IDXGISwapChain* real, IUnknown* pDevice, HWND hWnd, UINT flags, bool isUWP);
+    WrappedIDXGISwapChain4(IDXGISwapChain* real, IUnknown* pDevice, HWND hWnd, UINT flags, bool isUWP,
+                           IUnknown* owner = nullptr);
     virtual ~WrappedIDXGISwapChain4();
 
     // implement IUnknown
@@ -79,6 +80,9 @@ class DECLSPEC_UUID("3af622a3-82d0-49cd-994f-cce05122c222") WrappedIDXGISwapChai
 
   private:
     IDXGISwapChain* _real = nullptr;
+
+    // Object the game got from creation, a Streamline proxy owns the real swapchain
+    IUnknown* _owner = nullptr;
     IDXGISwapChain1* _real1 = nullptr;
     IDXGISwapChain2* _real2 = nullptr;
     IDXGISwapChain3* _real3 = nullptr;

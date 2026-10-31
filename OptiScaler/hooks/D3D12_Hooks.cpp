@@ -1554,11 +1554,11 @@ static HRESULT hkCreateCommittedResource(ID3D12Device* device, const D3D12_HEAP_
                                          const D3D12_CLEAR_VALUE* pOptimizedClearValue, REFIID riidResource,
                                          void** ppvResource)
 {
-    if (!_skipCommitedResource)
+    if (!_skipCommitedResource && pDesc != nullptr)
     {
         D3D12_RESOURCE_DESC localDesc = {};
         memcpy(&localDesc, pDesc, sizeof(D3D12_RESOURCE_DESC));
-        auto ueDesc = reinterpret_cast<UE_D3D12_RESOURCE_DESC*>(&pDesc);
+        auto ueDesc = reinterpret_cast<const UE_D3D12_RESOURCE_DESC*>(pDesc);
 
         if (Config::Instance()->UESpoofIntelAtomics64.value_or_default() && ueDesc != nullptr &&
             ueDesc->bRequires64BitAtomicSupport)
@@ -1586,11 +1586,11 @@ static HRESULT hkCreatePlacedResource(ID3D12Device* device, ID3D12Heap* pHeap, U
                                       const D3D12_RESOURCE_DESC* pDesc, D3D12_RESOURCE_STATES InitialState,
                                       const D3D12_CLEAR_VALUE* pOptimizedClearValue, REFIID riid, void** ppvResource)
 {
-    if (!skipPlacedResource)
+    if (!skipPlacedResource && pDesc != nullptr)
     {
         D3D12_RESOURCE_DESC localDesc = {};
         memcpy(&localDesc, pDesc, sizeof(D3D12_RESOURCE_DESC));
-        auto ueDesc = reinterpret_cast<UE_D3D12_RESOURCE_DESC*>(&pDesc);
+        auto ueDesc = reinterpret_cast<const UE_D3D12_RESOURCE_DESC*>(pDesc);
 
         if (Config::Instance()->UESpoofIntelAtomics64.value_or_default() && ueDesc != nullptr &&
             ueDesc->bRequires64BitAtomicSupport)
@@ -1868,7 +1868,8 @@ static HRESULT hkD3D12GetInterface(REFCLSID rclsid, REFIID riid, void** ppvDebug
 
     auto result = o_D3D12GetInterface(rclsid, riid, ppvDebug);
 
-    if (rclsid == CLSID_D3D12DeviceFactory && o_CreateDevice == nullptr)
+    if (SUCCEEDED(result) && ppvDebug != nullptr && *ppvDebug != nullptr && rclsid == CLSID_D3D12DeviceFactory &&
+        o_CreateDevice == nullptr)
     {
         auto deviceFactory = (ID3D12DeviceFactory*) *ppvDebug;
 

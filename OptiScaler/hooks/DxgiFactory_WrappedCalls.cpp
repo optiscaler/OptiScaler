@@ -40,9 +40,8 @@ void DxgiFactoryWrappedCalls::CheckAdapter(IUnknown* unkAdapter)
         adapter->Release();
 }
 
-HRESULT DxgiFactoryWrappedCalls::CreateSwapChain(IDXGIFactory* realFactory, WrappedIDXGIFactory7* wrappedFactory,
-                                                 IUnknown* pDevice, const DXGI_SWAP_CHAIN_DESC* pDesc,
-                                                 IDXGISwapChain** ppSwapChain)
+HRESULT DxgiFactoryWrappedCalls::CreateSwapChain(IDXGIFactory* realFactory, IUnknown* pDevice,
+                                                 const DXGI_SWAP_CHAIN_DESC* pDesc, IDXGISwapChain** ppSwapChain)
 {
     *ppSwapChain = nullptr;
 
@@ -215,19 +214,6 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChain(IDXGIFactory* realFactory, Wrap
         }
     }
 
-    // Create FG SwapChain
-    if (!_skipFGSwapChainCreation)
-    {
-        ScopedSkipFGSCCreation skipFGSCCreation {};
-        FGSCResult = FGHooks::CreateSwapChain(wrappedFactory, real, &localDesc, ppSwapChain);
-
-        if (FGSCResult == S_OK)
-        {
-            State::Instance().currentSwapchainDesc = *pDesc;
-            return FGSCResult;
-        }
-    }
-
     HRESULT result = E_FAIL;
 
     // If FG is disabled or call is coming from FG library
@@ -286,8 +272,8 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChain(IDXGIFactory* realFactory, Wrap
 
             LOG_DEBUG("Created new swapchain: {0:X}, hWnd: {1:X}", (UINT64) *ppSwapChain,
                       (UINT64) localDesc.OutputWindow);
-            *ppSwapChain =
-                new WrappedIDXGISwapChain4(realSC, realDevice, localDesc.OutputWindow, localDesc.Flags, false);
+            *ppSwapChain = new WrappedIDXGISwapChain4(realSC, realDevice, localDesc.OutputWindow, localDesc.Flags,
+                                                      false, *ppSwapChain);
 
             if (!otherWindow)
             {
@@ -306,9 +292,8 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChain(IDXGIFactory* realFactory, Wrap
     return result;
 }
 
-HRESULT DxgiFactoryWrappedCalls::CreateSwapChainForHwnd(IDXGIFactory2* realFactory,
-                                                        WrappedIDXGIFactory7* wrappedFactory, IUnknown* pDevice,
-                                                        HWND hWnd, const DXGI_SWAP_CHAIN_DESC1* pDesc,
+HRESULT DxgiFactoryWrappedCalls::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUnknown* pDevice, HWND hWnd,
+                                                        const DXGI_SWAP_CHAIN_DESC1* pDesc,
                                                         const DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pFullscreenDesc,
                                                         IDXGIOutput* pRestrictToOutput, IDXGISwapChain1** ppSwapChain)
 {
@@ -506,21 +491,6 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChainForHwnd(IDXGIFactory2* realFacto
         }
     }
 
-    // Create FG SwapChain
-    if (!_skipFGSwapChainCreation)
-    {
-        ScopedSkipFGSCCreation skipFGSCCreation {};
-        FGSCResult = FGHooks::CreateSwapChainForHwnd(wrappedFactory, real, hWnd, &localDesc,
-                                                     pFullscreenDesc != nullptr ? &localFullscreenDesc : nullptr,
-                                                     pRestrictToOutput, ppSwapChain);
-
-        if (FGSCResult == S_OK)
-        {
-            ((IDXGISwapChain*) *ppSwapChain)->GetDesc(&State::Instance().currentSwapchainDesc);
-            return FGSCResult;
-        }
-    }
-
     HRESULT result = E_FAIL;
 
     // If FG is disabled or call is coming from FG library
@@ -580,7 +550,7 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChainForHwnd(IDXGIFactory2* realFacto
             }
 
             LOG_DEBUG("Created new swapchain: {0:X}, hWnd: {1:X}", (UINT64) *ppSwapChain, (UINT64) hWnd);
-            *ppSwapChain = new WrappedIDXGISwapChain4(realSC, readDevice, hWnd, localDesc.Flags, false);
+            *ppSwapChain = new WrappedIDXGISwapChain4(realSC, readDevice, hWnd, localDesc.Flags, false, *ppSwapChain);
 
             LOG_DEBUG("Created new WrappedIDXGISwapChain4: {0:X}, pDevice: {1:X}", (UINT64) *ppSwapChain,
                       (UINT64) pDevice);
@@ -692,7 +662,8 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChainForCoreWindow(IDXGIFactory2* rea
         State::Instance().screenHeight = static_cast<float>(localDesc.Height);
 
         LOG_DEBUG("Created new swapchain: {0:X}, hWnd: {1:X}", (UINT64) *ppSwapChain, (UINT64) pWindow);
-        *ppSwapChain = new WrappedIDXGISwapChain4(realSC, readDevice, (HWND) pWindow, localDesc.Flags, true);
+        *ppSwapChain =
+            new WrappedIDXGISwapChain4(realSC, readDevice, (HWND) pWindow, localDesc.Flags, true, *ppSwapChain);
 
         if (!_skipFGSwapChainCreation)
             State::Instance().currentSwapchain = *ppSwapChain;
@@ -732,7 +703,8 @@ HRESULT DxgiFactoryWrappedCalls::EnumAdapters(IDXGIFactory* realFactory, UINT Ad
 
             if (result != S_OK)
             {
-                LOG_ERROR("Can't get high performance adapter: {:X}, fallback to standard method", Adapter);
+                LOG_ERROR("Can't get high performance adapter {}: {:X}, fallback to standard method", Adapter,
+                          (UINT) result);
                 result = realFactory->EnumAdapters(Adapter, ppAdapter);
             }
 
@@ -808,7 +780,8 @@ HRESULT DxgiFactoryWrappedCalls::EnumAdapters1(IDXGIFactory1* realFactory, UINT 
 
             if (result != S_OK)
             {
-                LOG_ERROR("Can't get high performance adapter: {:X}, fallback to standard method", Adapter);
+                LOG_ERROR("Can't get high performance adapter {}: {:X}, fallback to standard method", Adapter,
+                          (UINT) result);
                 result = realFactory->EnumAdapters1(Adapter, ppAdapter);
             }
 

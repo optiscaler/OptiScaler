@@ -907,7 +907,7 @@ static void CheckWorkingMode()
                 LOG_DEBUG("Check for d3d12");
                 HMODULE d3d12Module = nullptr;
                 d3d12Module = GetDllNameWModule(&dx12NamesW);
-                if (Config::Instance()->OverlayMenu.value() && d3d12Module != nullptr)
+                if (Config::Instance()->OverlayMenu.value_or_default() && d3d12Module != nullptr)
                 {
                     LOG_DEBUG("d3d12.dll already in memory");
                     D3d12Proxy::Init(d3d12Module);
@@ -959,7 +959,7 @@ static void CheckWorkingMode()
 
             // DirectX 11
             d3d11Module = GetDllNameWModule(&dx11NamesW);
-            if (Config::Instance()->OverlayMenu.value() && d3d11Module != nullptr)
+            if (Config::Instance()->OverlayMenu.value_or_default() && d3d11Module != nullptr)
             {
                 LOG_DEBUG("d3d11.dll already in memory");
                 D3D11Hooks::Hook(d3d11Module);

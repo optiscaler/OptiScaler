@@ -163,7 +163,8 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
     if (result == VK_SUCCESS)
         DeferredRelease::DropOwnersExcept((uint64_t) *pDevice);
 
-    if (result == VK_SUCCESS && !State::Instance().vulkanSkipHooks && Config::Instance()->OverlayMenu.value())
+    if (result == VK_SUCCESS && !State::Instance().vulkanSkipHooks &&
+        Config::Instance()->OverlayMenu.value_or_default())
     {
         if (!State::Instance().vulkanSkipHooks)
         {
