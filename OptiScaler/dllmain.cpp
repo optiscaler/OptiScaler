@@ -8,6 +8,7 @@
 #include "DllNames.h"
 #include "BuildInfo.h"
 #include "misc/GameConfigs.h"
+#include "misc/RequiredArgument.h"
 
 #include "proxies/Dxgi_Proxy.h"
 #include "proxies/Kernel32_Proxy.h"
@@ -1481,6 +1482,16 @@ void CheckForExcludedProcess()
             _passThruMode = true;
             return;
         }
+    }
+
+    // If a required argument is set, only processes started with it are hooked
+    auto verdict = RequiredArgument::Check(Config::Instance()->RequiredArgument,
+                                           [] { return std::wstring_view(GetCommandLineW()); });
+
+    if (verdict == RequiredArgument::Verdict::Missing || verdict == RequiredArgument::Verdict::Invalid)
+    {
+        _passThruMode = true;
+        return;
     }
 
     _passThruMode = false;

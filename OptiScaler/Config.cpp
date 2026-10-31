@@ -665,6 +665,7 @@ bool Config::Reload(std::filesystem::path iniPath)
         {
             ProcessExclusionList.set_from_config(readWString("ProcessFilter", "ProcessExclusionList", true));
             TargetProcess.set_from_config(readWString("ProcessFilter", "TargetProcessName", true));
+            RequiredArgument.set_from_config(readWString("ProcessFilter", "RequiredArgument"));
         }
 
         // Hotfixes
@@ -1847,6 +1848,8 @@ bool Config::SaveIni()
                      wstring_to_string(Instance()->TargetProcess.value_for_config_or(L"auto")).c_str());
         ini.SetValue("ProcessFilter", "ProcessExclusionList",
                      wstring_to_string(Instance()->ProcessExclusionList.value_for_config_or(L"auto")).c_str());
+        ini.SetValue("ProcessFilter", "RequiredArgument",
+                     wstring_to_string(Instance()->RequiredArgument.value_for_config_or(L"auto")).c_str());
     }
 
     // Hotfixes
