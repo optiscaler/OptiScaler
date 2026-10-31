@@ -6,6 +6,7 @@
 #include <proxies/KernelBase_Proxy.h>
 #include <proxies/Ntdll_Proxy.h>
 #include <low_latency/input/input_antilag2.h>
+#include <mutex>
 #include <misc/IdentifyGpu.h>
 
 #pragma endregion
@@ -228,6 +229,9 @@ HRESULT STDMETHODCALLTYPE Amdxc64Hooks::hkAmdExtD3DCreateInterface(IUnknown* pOu
 
 void Amdxc64Hooks::HookFactory(IAmdExtD3DFactory* factory)
 {
+    static std::mutex installMutex;
+    std::scoped_lock lock(installMutex);
+
     if (o_FactoryCreateInterface != nullptr)
         return;
 
@@ -249,6 +253,9 @@ void Amdxc64Hooks::HookFactory(IAmdExtD3DFactory* factory)
 
 void Amdxc64Hooks::HookFlipMeter(IAmdExtFlipMeter* flipMeter)
 {
+    static std::mutex installMutex;
+    std::scoped_lock lock(installMutex);
+
     if (o_FlipMeterSetConfig != nullptr)
         return;
 

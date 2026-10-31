@@ -186,6 +186,8 @@ HMODULE FSR4DriverDll::Load()
                                ExternalProviderData data {};
                                data.structVersion = 2;
                                data.descType = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE;
+                               static std::mutex primingMutex;
+                               std::scoped_lock primingLock(primingMutex);
 
                                primingDll = module;
                                auto result = UpdateFfxApiProvider(&data, ExternalProviderData::SizeFor(2));
