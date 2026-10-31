@@ -19,31 +19,32 @@ class NtdllProxy
 
     static HMODULE LoadLibraryExW_Ldr(LPCWSTR lpLibFileName, HANDLE hFile, DWORD dwFlags)
     {
+        // Search flags aren't passed to LdrLoadDll, a bare name is loaded from system32 by full path
+        std::wstring systemPath;
+        if ((dwFlags & LOAD_LIBRARY_SEARCH_SYSTEM32) && lpLibFileName != nullptr && !wcschr(lpLibFileName, L'\\') &&
+            !wcschr(lpLibFileName, L'/'))
+        {
+            wchar_t systemDir[MAX_PATH] {};
+            auto length = GetSystemDirectoryW(systemDir, MAX_PATH);
+
+            if (length > 0 && length < MAX_PATH)
+            {
+                systemPath = std::wstring(systemDir) + L"\\" + lpLibFileName;
+                lpLibFileName = systemPath.c_str();
+            }
+        }
+
         UNICODE_STRING uName;
         o_RtlInitUnicodeString(&uName, lpLibFileName);
 
-        // LdrLoadDll wants a ULONG*, so stash flags here:
-        ULONG flags = dwFlags;
-
-        // This will receive the module handle:
         HANDLE hModule = nullptr;
-
-        NTSTATUS status = o_LdrLoadDll(nullptr, // PathToFile – we rely on the default search order
-                                       &flags,  // optional flags
-                                       &uName,  // the name of the DLL
-                                       &hModule // out: module handle
-        );
+        NTSTATUS status = o_LdrLoadDll(nullptr, nullptr, &uName, &hModule);
 
         if (NT_SUCCESS(status))
-        {
             return static_cast<HMODULE>(hModule);
-        }
-        else
-        {
-            // translate NTSTATUS to a Win32 error code:
-            SetLastError(o_RtlNtStatusToDosError(status));
-            return nullptr;
-        }
+
+        SetLastError(o_RtlNtStatusToDosError(status));
+        return nullptr;
     }
 
     static NTSTATUS FreeLibrary_Ldr(PVOID handle) { return o_LdrUnloadDll(handle); }

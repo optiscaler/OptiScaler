@@ -28,12 +28,12 @@ static BOOL hkCryptQueryObject(DWORD dwObjectType, const void* pvObject, DWORD d
             GetFSR4Module())
         {
             LOG_DEBUG("Replacing FFX with a signed dll");
-            WCHAR signedDll[256] {};
-            GetModuleFileNameW(GetFSR4Module(), signedDll, 256);
+            std::wstring signedDll(32768, L'\0');
+            signedDll.resize(GetModuleFileNameW(GetFSR4Module(), signedDll.data(), (DWORD) signedDll.size()));
 
-            return o_CryptQueryObject(dwObjectType, signedDll, dwExpectedContentTypeFlags, dwExpectedFormatTypeFlags,
-                                      dwFlags, pdwMsgAndCertEncodingType, pdwContentType, pdwFormatType, phCertStore,
-                                      phMsg, ppvContext);
+            return o_CryptQueryObject(dwObjectType, signedDll.c_str(), dwExpectedContentTypeFlags,
+                                      dwExpectedFormatTypeFlags, dwFlags, pdwMsgAndCertEncodingType, pdwContentType,
+                                      pdwFormatType, phCertStore, phMsg, ppvContext);
         }
 
         if (pathString.contains("nvngx.dll") && !State::Instance().nvngxExists &&

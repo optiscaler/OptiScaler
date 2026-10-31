@@ -307,7 +307,8 @@ bool ReflexHooks::updateTimingData()
 
     // Please don't look, just thought it would be least work
     auto pTimes = (uint64_t*) &frameReport.simStartTime;
-    for (auto i = 0; i < 11; i++)
+    const auto timeCount = (uint64_t*) &frameReport.gpuRenderEndTime - pTimes + 1;
+    for (auto i = 0; i < timeCount; i++)
     {
         auto& time = pTimes[i];
         if (time == 0)

@@ -554,7 +554,13 @@ bool StreamlineHooks::hkdlss_slOnPluginLoad(sl::param::IParameters* params, cons
     if (Config::Instance()->StreamlineSpoofing.value_or_default())
         setArch(currentArch);
 
-    nlohmann::json configJson = nlohmann::json::parse(*pluginJSON);
+    if (!result || pluginJSON == nullptr || *pluginJSON == nullptr)
+        return result;
+
+    nlohmann::json configJson = nlohmann::json::parse(*pluginJSON, nullptr, false);
+
+    if (configJson.is_discarded())
+        return result;
 
     if (!State::Instance().isRunningOnNvidia || State::Instance().isPascalOrOlder)
     {
@@ -633,7 +639,13 @@ bool StreamlineHooks::hkdlssg_slOnPluginLoad(sl::param::IParameters* params, con
     if (shouldSpoofArch)
         setArch(currentArch);
 
-    nlohmann::json configJson = nlohmann::json::parse(*pluginJSON);
+    if (!result || pluginJSON == nullptr || *pluginJSON == nullptr)
+        return result;
+
+    nlohmann::json configJson = nlohmann::json::parse(*pluginJSON, nullptr, false);
+
+    if (configJson.is_discarded())
+        return result;
 
     // Kill the DLSSG streamline swapchain hooks
     if (State::Instance().activeFgInput == FGInput::DLSSG)
@@ -858,7 +870,13 @@ bool StreamlineHooks::hkreflex_slOnPluginLoad(sl::param::IParameters* params, co
     if (Config::Instance()->StreamlineSpoofing.value_or_default())
         setArch(currentArch);
 
-    nlohmann::json configJson = nlohmann::json::parse(*pluginJSON);
+    if (!result || pluginJSON == nullptr || *pluginJSON == nullptr)
+        return result;
+
+    nlohmann::json configJson = nlohmann::json::parse(*pluginJSON, nullptr, false);
+
+    if (configJson.is_discarded())
+        return result;
 
     if (!State::Instance().isRunningOnNvidia && Config::Instance()->VulkanExtensionSpoofing.value_or_default())
     {
@@ -1024,6 +1042,9 @@ sl::Result StreamlineHooks::hkslPCLSetMarker(sl::PCLMarker marker, const sl::Fra
 
         sl::FrameToken* newFramePointer {};
         auto result = o_slGetNewFrameToken(newFramePointer, &newFrameId);
+
+        if (result != sl::Result::eOk || newFramePointer == nullptr)
+            return o_slPCLSetMarker(marker, frame);
 
         LOG_WARN("Simulation start marker sent after end marker, offset: {}", correction_offset);
 
@@ -1413,10 +1434,9 @@ void StreamlineHooks::unhookDlssg()
 
     auto detourResult = DetourTransactionCommit();
     if (detourResult != NO_ERROR)
-    {
         LOG_ERROR("Failed to unhook DLSSG: {:X}", detourResult);
+    else
         o_dlssg_slGetPluginFunction = nullptr;
-    }
 }
 
 void StreamlineHooks::hookDlssg(HMODULE slDlssg)

@@ -57,10 +57,11 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
         // exe path
         auto exePath = Util::ExePath().parent_path().wstring();
 
-        for (size_t i = 0; i < exePath.size(); i++)
-            exePath[i] = std::tolower(exePath[i]);
+        to_lower_in_place(exePath);
 
-        auto pos = libName.rfind(exePath);
+        auto lowerName = libName;
+        to_lower_in_place(lowerName);
+        auto pos = lowerName.rfind(exePath);
 
         if (Config::Instance()->EnableDlssInputs.value_or_default() && CheckDllNameW(&libName, &nvngxNamesW) &&
             (!Config::Instance()->HookOriginalNvngxOnly.value_or_default() || pos == std::string::npos))
@@ -148,10 +149,10 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
             auto nvapi = GetModuleHandleW(libName.c_str());
 
-            // Try to load nvapi only from system32, like the original call would
+            // Default search order like the original call, a game folder nvapi wins
             if (nvapi == nullptr)
             {
-                nvapi = NtdllProxy::LoadLibraryExW_Ldr(libName.c_str(), NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+                nvapi = NtdllProxy::LoadLibraryExW_Ldr(libName.c_str(), NULL, 0);
             }
 
             if (nvapi != nullptr)
@@ -398,7 +399,7 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
     if (!State::Instance().skipDxgiLoadChecks && CheckDllNameW(&libName, &dxgiNamesW))
     {
-        auto module = NtdllProxy::LoadLibraryExW_Ldr(libName.c_str(), NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+        auto module = NtdllProxy::LoadLibraryExW_Ldr(libName.c_str(), NULL, 0);
 
         if (module != nullptr)
         {

@@ -30,7 +30,7 @@ class DxgiProxy
             _dll = GetModuleHandle(L"dxgi.dll");
 
             if (_dll == nullptr)
-                _dll = NtdllProxy::LoadLibraryExW_Ldr(L"dxgi.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+                _dll = NtdllProxy::LoadLibraryExW_Ldr(L"dxgi.dll", NULL, 0);
         }
         else
         {

@@ -163,7 +163,9 @@ inline static bool CompareFileName(std::string* first, std::string* second)
 
     auto start = first->size() - second->size();
 
-    bool match = true;
+    if (start > 0 && (*first)[start - 1] != '\\' && (*first)[start - 1] != '/')
+        return false;
+
     for (size_t j = 0; j < second->size(); ++j)
     {
         if (std::tolower(static_cast<unsigned char>((*first)[start + j])) !=
@@ -183,7 +185,9 @@ inline static bool CompareFileNameW(std::wstring* first, std::wstring* second)
 
     auto start = first->size() - second->size();
 
-    bool match = true;
+    if (start > 0 && (*first)[start - 1] != L'\\' && (*first)[start - 1] != L'/')
+        return false;
+
     for (size_t j = 0; j < second->size(); ++j)
     {
         if (std::towlower((*first)[start + j]) != std::towlower((*second)[j]))
