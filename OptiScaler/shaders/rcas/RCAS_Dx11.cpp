@@ -542,6 +542,12 @@ RCAS_Dx11::RCAS_Dx11(std::string InName, ID3D11Device* InDevice) : _name(InName)
                                               sizeof(da_rcas_sharpen_cso), nullptr, &_computeShaderDA);
         }
 
+        if (shaderBlob != nullptr)
+        {
+            shaderBlob->Release();
+            shaderBlob = nullptr;
+        }
+
         shaderBlob = RCAS_CompileShader(dasDASharpenCode.c_str(), "CSMain", "cs_5_0");
 
         if (shaderBlob != nullptr)
@@ -595,6 +601,9 @@ RCAS_Dx11::~RCAS_Dx11()
 
     if (_computeShaderDA != nullptr)
         _computeShaderDA->Release();
+
+    if (_computeShaderDASDA != nullptr)
+        _computeShaderDASDA->Release();
 
     if (_constantBuffer != nullptr)
         _constantBuffer->Release();

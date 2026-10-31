@@ -6,6 +6,7 @@
 #include "precompile/hudless_compare_VShader.h"
 
 #include <Config.h>
+#include <misc/DeferredRelease.h>
 
 inline static int GetFormatGroup(DXGI_FORMAT format)
 {
@@ -461,4 +462,9 @@ HC_Dx12::~HC_Dx12()
         _constantBuffer->Release();
         _constantBuffer = nullptr;
     }
+
+    DeferredRelease::Release(_pipelineState);
+
+    for (int i = 0; i < HC_NUM_OF_HEAPS; i++)
+        DeferredRelease::Release(_buffer[i]);
 }

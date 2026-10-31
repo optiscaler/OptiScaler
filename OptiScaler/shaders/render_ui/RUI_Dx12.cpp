@@ -8,6 +8,7 @@
 #include "precompile/render_ui_pm_VShader.h"
 
 #include <Config.h>
+#include <misc/DeferredRelease.h>
 
 bool RUI_Dx12::CreateBufferResource(UINT index, ID3D12Device* InDevice, ID3D12Resource* InSource,
                                     D3D12_RESOURCE_STATES InState)
@@ -361,4 +362,9 @@ RUI_Dx12::~RUI_Dx12()
         _constantBuffer->Release();
         _constantBuffer = nullptr;
     }
+
+    DeferredRelease::Release(_pipelineState);
+
+    for (int i = 0; i < HC_NUM_OF_HEAPS; i++)
+        DeferredRelease::Release(_buffer[i]);
 }

@@ -6180,7 +6180,7 @@ bool MenuCommon::RenderMenu()
                     }
 
                     const char* logLevels[] = { "Trace", "Debug", "Information", "Warning", "Error" };
-                    const char* selectedLevel = logLevels[config->LogLevel.value_or_default()];
+                    const char* selectedLevel = logLevels[std::clamp(config->LogLevel.value_or_default(), 0, 4)];
 
                     if (ImGui::BeginCombo("Log Level", selectedLevel))
                     {

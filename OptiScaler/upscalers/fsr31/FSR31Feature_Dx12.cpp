@@ -837,6 +837,12 @@ bool FSR31FeatureDx12::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
         FfxApiProxy::D3D12_Query(nullptr, &versionQuery.header);
         LogUpscalerVersions();
 
+        if (State::Instance().ffxUpscalerVersionIds.empty())
+        {
+            LOG_ERROR("No FFX upscaler for this device");
+            return false;
+        }
+
         _contextDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE;
 
         _contextDesc.flags = 0;

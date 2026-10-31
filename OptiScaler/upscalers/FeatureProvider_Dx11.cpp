@@ -151,11 +151,14 @@ bool FeatureProvider_Dx11::ChangeFeature(std::string upscalerName, ID3D11Device*
             State::Instance().newBackend = "";
             State::Instance().changeBackend[handleId] = false;
 
-            if (contextData->createParams != nullptr)
+            int optiParam = 0;
+            if (contextData->createParams != nullptr &&
+                contextData->createParams->Get("OptiScaler", &optiParam) == NVSDK_NGX_Result_Success && optiParam == 1)
             {
-                free(contextData->createParams);
-                contextData->createParams = nullptr;
+                delete static_cast<NVNGX_Parameters*>(contextData->createParams);
             }
+
+            contextData->createParams = nullptr;
 
             contextData->changeBackendCounter = 0;
         }
@@ -219,7 +222,7 @@ bool FeatureProvider_Dx11::ChangeFeature(std::string upscalerName, ID3D11Device*
         int optiParam = 0;
         if (contextData->createParams->Get("OptiScaler", &optiParam) == NVSDK_NGX_Result_Success && optiParam == 1)
         {
-            free(contextData->createParams);
+            delete static_cast<NVNGX_Parameters*>(contextData->createParams);
             contextData->createParams = nullptr;
         }
     }

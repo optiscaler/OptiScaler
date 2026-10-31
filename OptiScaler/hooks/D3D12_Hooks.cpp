@@ -405,8 +405,8 @@ static void hkSetDescriptorHeaps(ID3D12GraphicsCommandList* commandList, UINT Nu
         MarkListTracked();
         std::unique_lock<std::shared_mutex> lock(descriptorHeapsMutex);
         DescriptorHeap temp {};
-        temp.NumDescriptorHeaps = NumDescriptorHeaps;
-        for (UINT i = 0; i < NumDescriptorHeaps; ++i)
+        temp.NumDescriptorHeaps = std::min<UINT>(NumDescriptorHeaps, _countof(temp.Heaps));
+        for (UINT i = 0; i < temp.NumDescriptorHeaps; ++i)
         {
             temp.Heaps[i] = ppDescriptorHeaps[i];
         }
@@ -612,8 +612,8 @@ static void hkSetDescriptorHeapsLate(ID3D12GraphicsCommandList* commandList, UIN
         MarkListTracked();
         std::unique_lock<std::shared_mutex> lock(descriptorHeapsMutex);
         DescriptorHeap temp {};
-        temp.NumDescriptorHeaps = NumDescriptorHeaps;
-        for (UINT i = 0; i < NumDescriptorHeaps; ++i)
+        temp.NumDescriptorHeaps = std::min<UINT>(NumDescriptorHeaps, _countof(temp.Heaps));
+        for (UINT i = 0; i < temp.NumDescriptorHeaps; ++i)
         {
             temp.Heaps[i] = ppDescriptorHeaps[i];
         }

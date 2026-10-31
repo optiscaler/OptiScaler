@@ -626,6 +626,7 @@ FSR31FeatureDx11::~FSR31FeatureDx11()
             spdlog::error("FSR31FeatureDx11::~FSR31FeatureDx11 ffxFsr3ContextDestroy error: {0:x}", errorCode);
 
         free(_upscalerContextDesc.backendInterfaceUpscaling.scratchBuffer);
+        ReleaseResources();
     }
 
     SetInit(false);
