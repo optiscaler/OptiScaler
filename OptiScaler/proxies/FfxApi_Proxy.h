@@ -854,7 +854,7 @@ class FfxApiProxy
         if (radiance_dx12.dll != nullptr)
         {
             wchar_t modulePath[MAX_PATH];
-            DWORD len = GetModuleFileNameW(denoiser_dx12.dll, modulePath, MAX_PATH);
+            DWORD len = GetModuleFileNameW(radiance_dx12.dll, modulePath, MAX_PATH);
             radiance_dx12.filePath = std::wstring(modulePath);
 
             LOG_INFO("Loaded from {}", wstring_to_string(radiance_dx12.filePath));

@@ -233,10 +233,14 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
             ftDelta = now - _lastFrameTime;
 
         _lastFrameTime = now;
-        State::Instance().presentFrameTime = ftDelta;
 
-        if (State::Instance().currentFG == nullptr)
-            State::Instance().lastFGFrameTime = ftDelta;
+        if (isCurrent)
+        {
+            State::Instance().presentFrameTime = ftDelta;
+
+            if (State::Instance().currentFG == nullptr)
+                State::Instance().lastFGFrameTime = ftDelta;
+        }
 
         LOG_DEBUG("SyncInterval: {}, Flags: {:X}, Frametime: {:0.3f} ms", SyncInterval, Flags, ftDelta);
 
@@ -460,7 +464,9 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         }
 
         _frameCounter++;
-        State::Instance().frameCount = _frameCounter;
+
+        if (isCurrent)
+            State::Instance().frameCount = _frameCounter;
     }
 
     LOG_DEBUG("Calling original present");
@@ -799,11 +805,11 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::Present(UINT SyncInterval, UIN
 
     if ((Flags & DXGI_PRESENT_TEST) == 0)
     {
-        result = LocalPresent(_real, SyncInterval, Flags, nullptr, _device, _handle, _uwp,
-                              IsCurrentSwapchain(this) || State::Instance().currentSwapchain == nullptr);
+        auto isCurrent = IsCurrentSwapchain(this) || State::Instance().currentSwapchain == nullptr;
+        result = LocalPresent(_real, SyncInterval, Flags, nullptr, _device, _handle, _uwp, isCurrent);
 
         // When Reflex can't be used to limit, sleep in present
-        if (!State::Instance().reflexLimitsFps && State::Instance().activeFgOutput == FGOutput::NoFG &&
+        if (isCurrent && !State::Instance().reflexLimitsFps && State::Instance().activeFgOutput == FGOutput::NoFG &&
             !State::Instance().isRunningOnDXVK)
             FrameLimit::sleep(false);
     }
@@ -920,9 +926,17 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
         State::Instance().currentFG == nullptr)
     {
         LOG_DEBUG("Overriding flags");
-        SwapChainFlags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
 
-        if (BufferCount < 2)
+        // ALLOW_TEARING can't change on resize
+        DXGI_SWAP_CHAIN_DESC scDesc {};
+        if (_real->GetDesc(&scDesc) == S_OK)
+        {
+            SwapChainFlags = (SwapChainFlags & ~DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) |
+                             (scDesc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING);
+        }
+
+        // 0 keeps the current count
+        if (BufferCount == 1)
             BufferCount = 2;
     }
 
@@ -1131,11 +1145,11 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::Present1(UINT SyncInterval, UI
 
     if ((Flags & DXGI_PRESENT_TEST) == 0)
     {
-        result = LocalPresent(_real1, SyncInterval, Flags, pPresentParameters, _device, _handle, _uwp,
-                              IsCurrentSwapchain(this) || State::Instance().currentSwapchain == nullptr);
+        auto isCurrent = IsCurrentSwapchain(this) || State::Instance().currentSwapchain == nullptr;
+        result = LocalPresent(_real1, SyncInterval, Flags, pPresentParameters, _device, _handle, _uwp, isCurrent);
 
         // When Reflex can't be used to limit, sleep in present
-        if (!State::Instance().reflexLimitsFps && State::Instance().activeFgOutput == FGOutput::NoFG &&
+        if (isCurrent && !State::Instance().reflexLimitsFps && State::Instance().activeFgOutput == FGOutput::NoFG &&
             !State::Instance().isRunningOnDXVK)
             FrameLimit::sleep(false);
     }
@@ -1295,9 +1309,17 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
         State::Instance().currentFG == nullptr)
     {
         LOG_DEBUG("Overriding flags");
-        SwapChainFlags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
 
-        if (BufferCount < 2)
+        // ALLOW_TEARING can't change on resize
+        DXGI_SWAP_CHAIN_DESC scDesc {};
+        if (_real->GetDesc(&scDesc) == S_OK)
+        {
+            SwapChainFlags = (SwapChainFlags & ~DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) |
+                             (scDesc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING);
+        }
+
+        // 0 keeps the current count
+        if (BufferCount == 1)
             BufferCount = 2;
     }
 

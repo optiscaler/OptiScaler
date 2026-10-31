@@ -529,8 +529,6 @@ bool XeFG_Dx12::CreateSwapchain1(IDXGIFactory* factory, ID3D12CommandQueue* cmdQ
     if (Config::Instance()->FGXeFGHighResMV.value_or_default())
         _constants.flags |= FG_Flags::DisplayResolutionMVs;
 
-    State::Instance().skipSpoofing = true;
-
 #ifndef DONT_USE_XMX
     ScopedSkipSpoofing skipSpoofing {};
 #endif // !DONT_USE_XMX
@@ -538,8 +536,6 @@ bool XeFG_Dx12::CreateSwapchain1(IDXGIFactory* factory, ID3D12CommandQueue* cmdQ
     xefg_swapchain_result_t result;
     result = XeFGProxy::D3D12InitFromSwapChainDesc()(_swapChainContext, hwnd, desc, pFullscreenDesc, realQueue,
                                                      factory12, &params);
-
-    State::Instance().skipSpoofing = false;
 
     if (result != XEFG_SWAPCHAIN_RESULT_SUCCESS)
     {
@@ -1398,8 +1394,10 @@ bool XeFG_Dx12::SetResource(Dx12Resource* inputResource)
     static auto version = Version();
 
     // SDK version 2.1.1 fixed this
+    // The inverted copy takes the input's state, depth states are only valid on depth stencil resources
     if (version < feature_version { 1, 2, 2 } && _device != nullptr && type == FG_ResourceType::Depth &&
-        !Config::Instance()->FGXeFGDepthInverted.value_or_default())
+        !Config::Instance()->FGXeFGDepthInverted.value_or_default() &&
+        (fResource->state & (D3D12_RESOURCE_STATE_DEPTH_READ | D3D12_RESOURCE_STATE_DEPTH_WRITE)) == 0)
     {
         if (_depthInvert.get() == nullptr)
         {

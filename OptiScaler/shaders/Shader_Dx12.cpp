@@ -122,6 +122,7 @@ bool Shader_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* I
         return false;
     }
 
+    inDesc.Flags &= ~(D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL | D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE);
     inDesc.Flags |= ResourceFlags;
 
     hr = InDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &inDesc, InState, nullptr,

@@ -583,7 +583,7 @@ ffxReturnCode_t ffxQuery_Vk(ffxContext* context, ffxQueryDescHeader* desc)
         }
         else if (type == FFXStructType::Upscaling)
         {
-            ver = FfxApiProxy::VersionDx12_SR();
+            ver = FfxApiProxy::VersionVk_SR();
 
             providerDesc->versionId =
                 0xF5A5'CA1Eui64 << 32 | (((ver.major << 22) | (ver.minor << 12) | ver.patch) & 0xFFFFFFFF);
@@ -604,7 +604,7 @@ ffxReturnCode_t ffxQuery_Vk(ffxContext* context, ffxQueryDescHeader* desc)
         }
         else
         {
-            ver = FfxApiProxy::VersionDx12();
+            ver = FfxApiProxy::VersionVk();
 
             providerDesc->versionId = (((ver.major << 22) | (ver.minor << 12) | ver.patch) & 0xFFFFFFFF);
         }

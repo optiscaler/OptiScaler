@@ -36,8 +36,8 @@ bool FT_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InSou
     {
         auto inFormat = InSource->GetDesc().Format;
         createFormat = format;
-        LOG_INFO("Input Format: {}, Create Format: {}", magic_enum::enum_name(inFormat),
-                 magic_enum::enum_name(createFormat));
+        LOG_DEBUG("Input Format: {}, Create Format: {}", magic_enum::enum_name(inFormat),
+                  magic_enum::enum_name(createFormat));
     }
     else
     {
@@ -239,11 +239,7 @@ FT_Dx12::FT_Dx12(std::string InName, ID3D12Device* InDevice, DXGI_FORMAT InForma
     _init = true;
 }
 
-bool FT_Dx12::IsFormatCompatible(DXGI_FORMAT InFormat)
-{
-    // Bold move: accept all formats
-    return true;
-}
+bool FT_Dx12::IsFormatCompatible(DXGI_FORMAT InFormat) { return InFormat == format; }
 
 FT_Dx12::~FT_Dx12()
 {

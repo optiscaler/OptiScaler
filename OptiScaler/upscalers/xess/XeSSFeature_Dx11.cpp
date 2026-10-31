@@ -136,7 +136,7 @@ bool XeSSFeature_Dx11::Init(ID3D11Device* InDevice, ID3D11DeviceContext* InConte
         switch (PerfQualityValue())
         {
         case NVSDK_NGX_PerfQuality_Value_UltraPerformance:
-            if (Version().major >= 1 && Version().minor >= 3)
+            if (Version() >= feature_version { 1, 3, 0 })
                 xessParams.qualitySetting = XESS_QUALITY_SETTING_ULTRA_PERFORMANCE;
             else
                 xessParams.qualitySetting = XESS_QUALITY_SETTING_PERFORMANCE;
@@ -144,7 +144,7 @@ bool XeSSFeature_Dx11::Init(ID3D11Device* InDevice, ID3D11DeviceContext* InConte
             break;
 
         case NVSDK_NGX_PerfQuality_Value_MaxPerf:
-            if (Version().major >= 1 && Version().minor >= 3)
+            if (Version() >= feature_version { 1, 3, 0 })
                 xessParams.qualitySetting = XESS_QUALITY_SETTING_BALANCED;
             else
                 xessParams.qualitySetting = XESS_QUALITY_SETTING_PERFORMANCE;
@@ -152,7 +152,7 @@ bool XeSSFeature_Dx11::Init(ID3D11Device* InDevice, ID3D11DeviceContext* InConte
             break;
 
         case NVSDK_NGX_PerfQuality_Value_Balanced:
-            if (Version().major >= 1 && Version().minor >= 3)
+            if (Version() >= feature_version { 1, 3, 0 })
                 xessParams.qualitySetting = XESS_QUALITY_SETTING_QUALITY;
             else
                 xessParams.qualitySetting = XESS_QUALITY_SETTING_BALANCED;
@@ -160,7 +160,7 @@ bool XeSSFeature_Dx11::Init(ID3D11Device* InDevice, ID3D11DeviceContext* InConte
             break;
 
         case NVSDK_NGX_PerfQuality_Value_MaxQuality:
-            if (Version().major >= 1 && Version().minor >= 3)
+            if (Version() >= feature_version { 1, 3, 0 })
                 xessParams.qualitySetting = XESS_QUALITY_SETTING_ULTRA_QUALITY;
             else
                 xessParams.qualitySetting = XESS_QUALITY_SETTING_QUALITY;
@@ -168,7 +168,7 @@ bool XeSSFeature_Dx11::Init(ID3D11Device* InDevice, ID3D11DeviceContext* InConte
             break;
 
         case NVSDK_NGX_PerfQuality_Value_UltraQuality:
-            if (Version().major >= 1 && Version().minor >= 3)
+            if (Version() >= feature_version { 1, 3, 0 })
                 xessParams.qualitySetting = XESS_QUALITY_SETTING_ULTRA_QUALITY_PLUS;
             else
                 xessParams.qualitySetting = XESS_QUALITY_SETTING_ULTRA_QUALITY;
@@ -176,7 +176,7 @@ bool XeSSFeature_Dx11::Init(ID3D11Device* InDevice, ID3D11DeviceContext* InConte
             break;
 
         case NVSDK_NGX_PerfQuality_Value_DLAA:
-            if (Version().major >= 1 && Version().minor >= 3)
+            if (Version() >= feature_version { 1, 3, 0 })
                 xessParams.qualitySetting = XESS_QUALITY_SETTING_AA;
             else
                 xessParams.qualitySetting = XESS_QUALITY_SETTING_ULTRA_QUALITY;

@@ -407,22 +407,9 @@ static LONG hkRegQueryValueExW(HKEY hKey, LPCWSTR lpValueName, LPDWORD lpReserve
                 *lpcbData = oldCbData;
 
             const std::wstring spoofedValue = Config::Instance()->SpoofedDriver.value_or_default();
-            size_t spoofedValueSize = (spoofedValue.size() + 1) * sizeof(wchar_t);
-
-            if (lpData != nullptr && lpcbData != nullptr)
-            {
-                if (*lpcbData >= spoofedValueSize)
-                {
-                    std::memcpy(lpData, spoofedValue.c_str(), spoofedValueSize);
-                    *lpcbData = static_cast<DWORD>(spoofedValueSize);
-                    LOG_INFO("New DriverVersion: {}", wstring_to_string(spoofedValue));
-                }
-                else
-                {
-                    *lpcbData = static_cast<DWORD>(spoofedValueSize);
-                    result = ERROR_MORE_DATA;
-                }
-            }
+            auto spoofResult = SpoofRegSzW(lpData, lpcbData, lpType, spoofedValue, "DriverVersion");
+            if (spoofResult != ERROR_SUCCESS)
+                result = spoofResult;
         }
 
         if (valueName == L"DriverDesc")
@@ -575,22 +562,9 @@ LONG WINAPI hkRegQueryValueExA(HKEY hKey, LPCSTR lpValueName, LPDWORD lpReserved
                 *lpcbData = oldCbData;
 
             const std::string spoofedValue = wstring_to_string(Config::Instance()->SpoofedDriver.value_or_default());
-            size_t spoofedValueSize = (spoofedValue.size() + 1) * sizeof(char);
-
-            if (lpData != nullptr && lpcbData != nullptr)
-            {
-                if (*lpcbData >= spoofedValueSize)
-                {
-                    std::memcpy(lpData, spoofedValue.c_str(), spoofedValueSize);
-                    *lpcbData = static_cast<DWORD>(spoofedValueSize);
-                    LOG_INFO("New DriverVersion: {}", spoofedValue);
-                }
-                else
-                {
-                    *lpcbData = static_cast<DWORD>(spoofedValueSize);
-                    result = ERROR_MORE_DATA;
-                }
-            }
+            auto spoofResult = SpoofRegSzA(lpData, lpcbData, lpType, spoofedValue, "DriverVersion");
+            if (spoofResult != ERROR_SUCCESS)
+                result = spoofResult;
         }
 
         if (valueName == "DriverDesc")

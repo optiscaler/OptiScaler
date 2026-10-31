@@ -364,9 +364,9 @@ bool FSR31FeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* 
         params.flags = FFX_UPSCALE_FLAG_DRAW_DEBUG_VIEW;
 
     if (Config::Instance()->FsrNonLinearPQ.value_or_default())
-        params.flags = FFX_UPSCALE_FLAG_NON_LINEAR_COLOR_PQ;
+        params.flags |= FFX_UPSCALE_FLAG_NON_LINEAR_COLOR_PQ;
     else if (Config::Instance()->FsrNonLinearSRGB.value_or_default())
-        params.flags = FFX_UPSCALE_FLAG_NON_LINEAR_COLOR_SRGB;
+        params.flags |= FFX_UPSCALE_FLAG_NON_LINEAR_COLOR_SRGB;
 
     InParameters->Get(NVSDK_NGX_Parameter_Jitter_Offset_X, &params.jitterOffset.x);
     InParameters->Get(NVSDK_NGX_Parameter_Jitter_Offset_Y, &params.jitterOffset.y);

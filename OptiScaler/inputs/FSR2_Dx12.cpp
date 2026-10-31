@@ -218,15 +218,15 @@ static bool CreateDLSSContext20(Fsr212::FfxFsr2Context* handle, const FfxFsr20Di
 
     auto ratio = (float) initParams->displaySize.width / (float) pExecParams->renderSize.width;
 
-    if (ratio <= 3.0)
+    if (ratio <= 3.0 && ratio > 2.0)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_UltraPerformance);
-    else if (ratio <= 2.0)
+    else if (ratio <= 2.0 && ratio > 1.7)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_MaxPerf);
-    else if (ratio <= 1.7)
+    else if (ratio <= 1.7 && ratio > 1.5)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_Balanced);
-    else if (ratio <= 1.5)
+    else if (ratio <= 1.5 && ratio > 1.3)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_MaxQuality);
-    else if (ratio <= 1.3)
+    else if (ratio <= 1.3 && ratio > 1.0)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_UltraQuality);
     else
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_DLAA);
@@ -279,15 +279,15 @@ static bool CreateDLSSContextTiny(Fsr212::FfxFsr2Context* handle, const FfxFsr2T
 
     auto ratio = (float) initParams->displaySize.width / (float) pExecParams->renderSize.width;
 
-    if (ratio <= 3.0)
+    if (ratio <= 3.0 && ratio > 2.0)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_UltraPerformance);
-    else if (ratio <= 2.0)
+    else if (ratio <= 2.0 && ratio > 1.7)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_MaxPerf);
-    else if (ratio <= 1.7)
+    else if (ratio <= 1.7 && ratio > 1.5)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_Balanced);
-    else if (ratio <= 1.5)
+    else if (ratio <= 1.5 && ratio > 1.3)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_MaxQuality);
-    else if (ratio <= 1.3)
+    else if (ratio <= 1.3 && ratio > 1.0)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_UltraQuality);
     else
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_DLAA);

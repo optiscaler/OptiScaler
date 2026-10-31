@@ -1094,8 +1094,8 @@ bool IFeature_VkwDx12::ProcessVulkanTextures(VkCommandBuffer InCmdList, const NV
     if (!AutoExposure())
     {
         if (InParameters->Get(NVSDK_NGX_Parameter_ExposureTexture, (void**) &paramExposure) !=
-                NVSDK_NGX_Result_Success &&
-            !NvVkResourceNotValid(paramExposure))
+                NVSDK_NGX_Result_Success ||
+            NvVkResourceNotValid(paramExposure))
         {
             LOG_WARN("AutoExposure disabled but ExposureTexture is not exist, it may cause problems!!");
             State::Instance().AutoExposure = true;
@@ -1113,8 +1113,8 @@ bool IFeature_VkwDx12::ProcessVulkanTextures(VkCommandBuffer InCmdList, const NV
     if (!Config::Instance()->DisableReactiveMask.value_or(false))
     {
         if (InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void**) &paramReactiveMask) !=
-                NVSDK_NGX_Result_Success &&
-            !NvVkResourceNotValid(paramReactiveMask))
+                NVSDK_NGX_Result_Success ||
+            NvVkResourceNotValid(paramReactiveMask))
         {
             paramReactiveMask = nullptr;
         }
@@ -1248,6 +1248,11 @@ bool IFeature_VkwDx12::ProcessVulkanTextures(VkCommandBuffer InCmdList, const NV
 #endif
         }
     }
+    else
+    {
+        // Backends read the copy, last frame's must not be used
+        ReleaseSharedResource(vkExp);
+    }
 
     if (paramReactiveMask != nullptr)
     {
@@ -1271,6 +1276,10 @@ bool IFeature_VkwDx12::ProcessVulkanTextures(VkCommandBuffer InCmdList, const NV
                             (uint64_t) paramReactiveMask->Resource.ImageViewInfo.Image, "ReactiveMask");
 #endif
         }
+    }
+    else
+    {
+        ReleaseSharedResource(vkReactive);
     }
 
 #pragma endregion

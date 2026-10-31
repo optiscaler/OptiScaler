@@ -248,7 +248,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             else if (FsrNonLinearSRGB.has_value() && FsrNonLinearSRGB.value())
                 FsrNonLinearPQ.reset();
 
-            if (FsrNonLinearPQ.has_value() || FsrNonLinearPQ.has_value())
+            if (FsrNonLinearPQ.value_or_default() || FsrNonLinearSRGB.value_or_default())
                 FsrNonLinearColorSpace.set_volatile_value(true);
         }
 
@@ -567,7 +567,8 @@ bool Config::Reload(std::filesystem::path iniPath)
 
             SimulateWaitableObject.set_from_config(readBool("Hotfix", "SimulateWaitableObject"));
 
-            RoundInternalResolution.set_from_config(readInt("Hotfix", "RoundInternalResolution"));
+            if (auto setting = readInt("Hotfix", "RoundInternalResolution"); setting.has_value() && setting > 0)
+                RoundInternalResolution.set_from_config(setting);
 
             RestoreComputeSignature.set_from_config(readBool("Hotfix", "RestoreComputeSignature"));
             RestoreGraphicSignature.set_from_config(readBool("Hotfix", "RestoreGraphicSignature"));
@@ -587,7 +588,7 @@ bool Config::Reload(std::filesystem::path iniPath)
 
         // Dx11 with Dx12
         {
-            Dx11DelayedInit.set_from_config(readInt("Dx11withDx12", "UseDelayedInit"));
+            Dx11DelayedInit.set_from_config(readBool("Dx11withDx12", "UseDelayedInit"));
             DontUseNTShared.set_from_config(readBool("Dx11withDx12", "DontUseNTShared"));
         }
 
@@ -688,8 +689,8 @@ bool Config::Reload(std::filesystem::path iniPath)
             FfxVkPath.set_from_config(readWString("Libraries", "FfxVkPath"));
 
             XeSSLibrary.set_from_config(readWString("Libraries", "XeSSPath"));
-            XeSSLibrary.set_from_config(readWString("Libraries", "XeFGPath"));
-            XeSSLibrary.set_from_config(readWString("Libraries", "XeLLPath"));
+            XeFGLibrary.set_from_config(readWString("Libraries", "XeFGPath"));
+            XeLLLibrary.set_from_config(readWString("Libraries", "XeLLPath"));
             XeSSDx11Library.set_from_config(readWString("Libraries", "XeSSDx11Path"));
         }
 

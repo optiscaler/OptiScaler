@@ -1412,7 +1412,7 @@ static void CheckQuirks()
     if (quirks & GameQuirk::DisableFSR2Inputs && !Config::Instance()->EnableFsr2Inputs.has_value())
         Config::Instance()->EnableFsr2Inputs.set_volatile_value(false);
     else
-        quirks.reset(GameQuirk::DisableFSR3Inputs);
+        quirks.reset(GameQuirk::DisableFSR2Inputs);
 
     if (quirks & GameQuirk::DisableFFXInputs && !Config::Instance()->EnableFfxInputs.has_value())
         Config::Instance()->EnableFfxInputs.set_volatile_value(false);

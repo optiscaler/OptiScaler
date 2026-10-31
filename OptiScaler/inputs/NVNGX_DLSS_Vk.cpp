@@ -681,7 +681,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_GetFeatureRequirements(
     if (Config::Instance()->DLSSEnabled.value_or_default() && NVNGXProxy::NVNGXModule() == nullptr)
         NVNGXProxy::InitNVNGX();
 
-    if (Config::Instance()->DLSSEnabled.value_or_default() && NVNGXProxy::D3D12_GetFeatureRequirements() != nullptr)
+    if (Config::Instance()->DLSSEnabled.value_or_default() && NVNGXProxy::VULKAN_GetFeatureRequirements() != nullptr)
     {
         LOG_DEBUG("calling NVNGXProxy::VULKAN_GetFeatureRequirements");
         auto result = NVNGXProxy::VULKAN_GetFeatureRequirements()(VulkanInstance, PhysicalDevice, FeatureDiscoveryInfo,

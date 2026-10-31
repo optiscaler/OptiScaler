@@ -389,7 +389,7 @@ xess_result_t hk_xessGetVelocityScale(xess_context_handle_t hContext, float* pX,
     *pX = scales->x;
     *pY = scales->y;
 
-    return XESS_RESULT_ERROR_UNKNOWN;
+    return XESS_RESULT_SUCCESS;
 }
 
 xess_result_t hk_xessSetJitterScale(xess_context_handle_t hContext, float x, float y)

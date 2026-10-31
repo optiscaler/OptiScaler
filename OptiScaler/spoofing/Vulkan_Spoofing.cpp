@@ -76,7 +76,7 @@ inline static void hkvkGetPhysicalDeviceMemoryProperties2(VkPhysicalDevice physi
 inline static void hkvkGetPhysicalDeviceMemoryProperties2KHR(VkPhysicalDevice physicalDevice,
                                                              VkPhysicalDeviceMemoryProperties2* pMemoryProperties)
 {
-    o_vkGetPhysicalDeviceMemoryProperties2(physicalDevice, pMemoryProperties);
+    o_vkGetPhysicalDeviceMemoryProperties2KHR(physicalDevice, pMemoryProperties);
 
     if (pMemoryProperties == nullptr ||
         pMemoryProperties->sType != VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2_KHR)
@@ -118,7 +118,7 @@ inline static void hkvkGetPhysicalDeviceProperties(VkPhysicalDevice physical_dev
     if (!State::Instance().skipSpoofing && targetVendorIdMatches && targetDeviceIdMatches)
     {
         auto deviceName = wstring_to_string(Config::Instance()->SpoofedGPUName.value_or_default());
-        std::strcpy(properties->deviceName, deviceName.c_str());
+        strncpy_s(properties->deviceName, deviceName.c_str(), _TRUNCATE);
 
         properties->vendorID = Config::Instance()->SpoofedVendorId.value_or_default();
         properties->deviceID = Config::Instance()->SpoofedDeviceId.value_or_default();
@@ -157,7 +157,7 @@ inline static void hkvkGetPhysicalDeviceProperties2(VkPhysicalDevice phys_dev, V
     if (!State::Instance().skipSpoofing && targetVendorIdMatches && targetDeviceIdMatches)
     {
         auto deviceName = wstring_to_string(Config::Instance()->SpoofedGPUName.value_or_default());
-        std::strcpy(properties2->properties.deviceName, deviceName.c_str());
+        strncpy_s(properties2->properties.deviceName, deviceName.c_str(), _TRUNCATE);
         properties2->properties.vendorID = Config::Instance()->SpoofedVendorId.value_or_default();
         properties2->properties.deviceID = Config::Instance()->SpoofedDeviceId.value_or_default();
         properties2->properties.driverVersion = VK_MAKE_API_VERSION(999, 99, 0, 0);
@@ -215,7 +215,7 @@ inline static void hkvkGetPhysicalDeviceProperties2KHR(VkPhysicalDevice phys_dev
     if (!State::Instance().skipSpoofing && targetVendorIdMatches && targetDeviceIdMatches)
     {
         auto deviceName = wstring_to_string(Config::Instance()->SpoofedGPUName.value_or_default());
-        std::strcpy(properties2->properties.deviceName, deviceName.c_str());
+        strncpy_s(properties2->properties.deviceName, deviceName.c_str(), _TRUNCATE);
         properties2->properties.vendorID = Config::Instance()->SpoofedVendorId.value_or_default();
         properties2->properties.deviceID = Config::Instance()->SpoofedDeviceId.value_or_default();
         properties2->properties.driverVersion = VK_MAKE_API_VERSION(999, 99, 0, 0);

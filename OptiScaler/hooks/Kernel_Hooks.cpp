@@ -73,7 +73,10 @@ static inline HMODULE CheckLoad(const std::wstring& name)
 
         // skip loading of dll
         if (moduleHandle == (HMODULE) 1337)
-            break;
+        {
+            SetLastError(ERROR_MOD_NOT_FOUND);
+            return moduleHandle;
+        }
 
         if (moduleHandle != nullptr)
         {
@@ -280,7 +283,7 @@ HMODULE KernelHooks::hk_K32_LoadLibraryW(LPCWSTR lpLibFileName)
     auto result = CheckLoad(name);
 
     if (result != nullptr)
-        return result;
+        return result != (HMODULE) 1337 ? result : nullptr;
 
     return o_K32_LoadLibraryW(lpLibFileName);
 }
@@ -301,7 +304,7 @@ HMODULE KernelHooks::hk_K32_LoadLibraryA(LPCSTR lpLibFileName)
     auto result = CheckLoad(name);
 
     if (result != nullptr)
-        return result;
+        return result != (HMODULE) 1337 ? result : nullptr;
 
     return o_K32_LoadLibraryA(lpLibFileName);
 }
@@ -321,7 +324,7 @@ HMODULE KernelHooks::hk_K32_LoadLibraryExW(LPCWSTR lpLibFileName, HANDLE hFile, 
     auto result = CheckLoad(name);
 
     if (result != nullptr)
-        return result;
+        return result != (HMODULE) 1337 ? result : nullptr;
 
     return o_K32_LoadLibraryExW(lpLibFileName, hFile, dwFlags);
 }
@@ -342,7 +345,7 @@ HMODULE KernelHooks::hk_K32_LoadLibraryExA(LPCSTR lpLibFileName, HANDLE hFile, D
     auto result = CheckLoad(name);
 
     if (result != nullptr)
-        return result;
+        return result != (HMODULE) 1337 ? result : nullptr;
 
     return o_K32_LoadLibraryExA(lpLibFileName, hFile, dwFlags);
 }
@@ -362,7 +365,7 @@ HMODULE KernelHooks::hk_KB_LoadLibraryExW(LPCWSTR lpLibFileName, HANDLE hFile, D
     auto result = CheckLoad(name);
 
     if (result != nullptr)
-        return result;
+        return result != (HMODULE) 1337 ? result : nullptr;
 
     return o_KB_LoadLibraryExW(lpLibFileName, hFile, dwFlags);
 }
