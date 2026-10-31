@@ -711,12 +711,13 @@ void RCAS_Vk::UpdateDescriptorSetLCDA(VkCommandBuffer cmdList, int setIndex, VkI
                            0, nullptr);
 }
 
+// Vulkan RCAS runs after output scaling
 void RCAS_Vk::FillMotionConstants(InternalConstants& OutConstants, const RcasConstants& InConstants)
 {
     if (Config::Instance()->ContrastEnabled.value_or_default())
-        OutConstants.Contrast = Config::Instance()->Contrast.value_or_default() * -1.0f;
+        OutConstants.Contrast = Config::Instance()->Contrast.value_or_default();
     else
-        OutConstants.Contrast = -100.0f;
+        OutConstants.Contrast = 0.0f;
 
     auto feature = State::Instance().currentFeature;
 
@@ -725,8 +726,8 @@ void RCAS_Vk::FillMotionConstants(InternalConstants& OutConstants, const RcasCon
     OutConstants.MvScaleY = InConstants.MvScaleY;
     OutConstants.DisplaySizeMV = feature->LowResMV() ? 0 : 1;
 
-    OutConstants.DisplayWidth = feature->TargetWidth();
-    OutConstants.DisplayHeight = feature->TargetHeight();
+    OutConstants.DisplayWidth = feature->DisplayWidth();
+    OutConstants.DisplayHeight = feature->DisplayHeight();
     OutConstants.DynamicSharpenEnabled = Config::Instance()->MotionSharpnessEnabled.value_or_default() ? 1 : 0;
     OutConstants.MotionSharpness = Config::Instance()->MotionSharpness.value_or_default();
     OutConstants.Debug = Config::Instance()->MotionSharpnessDebug.value_or_default() ? 1 : 0;
@@ -735,7 +736,7 @@ void RCAS_Vk::FillMotionConstants(InternalConstants& OutConstants, const RcasCon
 
     if (feature->LowResMV())
     {
-        OutConstants.MotionTextureScale = (float) feature->RenderWidth() / (float) feature->TargetWidth();
+        OutConstants.MotionTextureScale = (float) feature->RenderWidth() / (float) feature->DisplayWidth();
     }
     else
     {
@@ -757,8 +758,8 @@ void RCAS_Vk::FillMotionConstants(InternalConstantsDA& OutConstants, const RcasC
     OutConstants.MotionSharpness = Config::Instance()->MotionSharpness.value_or_default();
     OutConstants.MotionThreshold = Config::Instance()->MotionThreshold.value_or_default();
     OutConstants.MotionScaleLimit = Config::Instance()->MotionScaleLimit.value_or_default();
-    OutConstants.DisplayWidth = feature->TargetWidth();
-    OutConstants.DisplayHeight = feature->TargetHeight();
+    OutConstants.DisplayWidth = feature->DisplayWidth();
+    OutConstants.DisplayHeight = feature->DisplayHeight();
 
     OutConstants.DepthIsLinear = Config::Instance()->DADepthIsLinear.value_or_default() ? 1 : 0;
     OutConstants.DepthIsReversed = feature->DepthInverted() ? 1 : 0;
@@ -781,14 +782,14 @@ void RCAS_Vk::FillMotionConstants(InternalConstantsDA& OutConstants, const RcasC
     }
     else
     {
-        OutConstants.MotionWidth = feature->TargetWidth();
-        OutConstants.MotionHeight = feature->TargetHeight();
+        OutConstants.MotionWidth = feature->DisplayWidth();
+        OutConstants.MotionHeight = feature->DisplayHeight();
     }
 
     OutConstants.DepthWidth = feature->RenderWidth();
     OutConstants.DepthHeight = feature->RenderHeight();
 
-    OutConstants.MotionTextureScale = (float) OutConstants.MotionWidth / (float) feature->TargetWidth();
+    OutConstants.MotionTextureScale = (float) OutConstants.MotionWidth / (float) feature->DisplayWidth();
 }
 
 bool RCAS_Vk::DispatchRCAS(VkDevice InDevice, VkCommandBuffer InCmdList, RcasConstants InConstants,

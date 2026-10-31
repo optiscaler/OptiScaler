@@ -156,7 +156,6 @@ bool DLSSFeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
             setBuffer = paramOutput;
 
         // RCAS sharpness & preperation
-        _sharpness = GetSharpness(InParameters);
 
         if (Config::Instance()->RcasEnabled.value_or(rcasEnabled) &&
             (_sharpness > 0.0f || (Config::Instance()->MotionSharpnessEnabled.value_or_default() &&

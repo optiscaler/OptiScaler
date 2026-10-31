@@ -71,8 +71,8 @@ void UpscalerInputsDx12::UpscaleStart(ID3D12GraphicsCommandList* InCmdList, NVSD
         if (Config::Instance()->FsrVerticalFov.has_value())
             cameraVFov = Config::Instance()->FsrVerticalFov.value() * 0.0174532925199433f;
         else if (Config::Instance()->FsrHorizontalFov.value_or_default() > 0.0f)
-            cameraVFov = 2.0f * atan((tan(Config::Instance()->FsrHorizontalFov.value() * 0.0174532925199433f) * 0.5f) /
-                                     (float) feature->TargetHeight() * (float) feature->TargetWidth());
+            cameraVFov = 2.0f * atan(tan(Config::Instance()->FsrHorizontalFov.value() * 0.0174532925199433f * 0.5f) *
+                                     (float) feature->TargetHeight() / (float) feature->TargetWidth());
         else
             cameraVFov = 1.0471975511966f;
     }

@@ -86,6 +86,11 @@ bool OS_Dx12::Dispatch(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCmdL
                State::Instance().currentFeature->TargetWidth(), State::Instance().currentFeature->TargetHeight(),
                State::Instance().currentFeature->DisplayWidth(), State::Instance().currentFeature->DisplayHeight());
 
+    // EASU only upscales, downscaling stays on the shader's bilinear path
+    fsr1Constants.squaredRadius =
+        State::Instance().currentFeature->TargetWidth() < State::Instance().currentFeature->DisplayWidth() ? UINT32_MAX
+                                                                                                           : 0;
+
     constants.srcWidth = State::Instance().currentFeature->TargetWidth();
     constants.srcHeight = State::Instance().currentFeature->TargetHeight();
     constants.destWidth = State::Instance().currentFeature->DisplayWidth();

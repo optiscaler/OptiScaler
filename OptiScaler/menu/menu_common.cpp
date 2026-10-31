@@ -3948,7 +3948,7 @@ bool MenuCommon::RenderMenu()
                         {
                             config->FGUIPremultipliedAlpha = uiPremultipliedAlpha;
                         }
-                        ShowHelpMarker("If UI is too faint, disable this option");
+                        ShowHelpMarker("If UI is too bright, disable this option");
 
                         ImGui::EndDisabled();
                     }

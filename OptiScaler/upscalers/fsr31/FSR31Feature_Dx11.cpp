@@ -439,8 +439,8 @@ bool FSR31FeatureDx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_
         params.cameraFovAngleVertical = Config::Instance()->FsrVerticalFov.value() * 0.0174532925199433f;
     else if (Config::Instance()->FsrHorizontalFov.value_or_default() > 0.0f)
         params.cameraFovAngleVertical =
-            2.0f * atan((tan(Config::Instance()->FsrHorizontalFov.value() * 0.0174532925199433f) * 0.5f) /
-                        (float) DisplayHeight() * (float) DisplayWidth());
+            2.0f * atan(tan(Config::Instance()->FsrHorizontalFov.value() * 0.0174532925199433f * 0.5f) *
+                        (float) DisplayHeight() / (float) DisplayWidth());
     else
         params.cameraFovAngleVertical = 1.0471975511966f;
 

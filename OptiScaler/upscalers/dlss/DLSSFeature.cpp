@@ -6,6 +6,9 @@
 
 void DLSSFeature::ProcessEvaluateParams(NVSDK_NGX_Parameter* InParameters)
 {
+    // Before the game's sharpness is cleared below
+    _sharpness = GetSharpness(InParameters);
+
     LOG_FUNC();
 
     // override sharpness
@@ -344,5 +347,6 @@ float DLSSFeature::GetSharpness(const NVSDK_NGX_Parameter* InParameters)
     float sharpness = 0.0f;
     InParameters->Get(NVSDK_NGX_Parameter_Sharpness, &sharpness);
 
-    return sharpness;
+    // DLSS range is -1..1, RCAS only sharpens
+    return std::clamp(sharpness, 0.0f, 1.0f);
 }

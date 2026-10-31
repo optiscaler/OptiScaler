@@ -1174,12 +1174,6 @@ void HookFSR2ExeInputs()
 
             LOG_DEBUG("ffxFsr2ContextDestroy_Pattern_Dx12: {:X}", (size_t) o_ffxFsr2ContextDestroy_Pattern_Dx12);
 
-            if (o_ffxFsr2ContextDestroy_Dx12 == nullptr && o_ffxFsr2ContextDestroy_Pattern_Dx12)
-            {
-                LOG_DEBUG("No ContextDestroy found, stopping pattern matching");
-                break;
-            }
-
             // DRG
             // Not receiving calls
             // Assumed FSR2.0
