@@ -408,7 +408,7 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         if (willPresent)
             DeferredRelease::Process();
 
-        if (presentResult == S_OK)
+        if (SUCCEEDED(presentResult))
         {
             LOG_TRACE("3 {}", (UINT) presentResult);
         }
@@ -474,7 +474,8 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
     if (willPresent)
         DeferredRelease::Process();
 
-    if (presentResult == S_OK)
+    // DXGI_STATUS_OCCLUDED etc. are not errors
+    if (SUCCEEDED(presentResult))
     {
         LOG_DEBUG("Original present result: {:X}", (UINT) presentResult);
     }
@@ -801,7 +802,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::SetFullscreenState(BOOL Fullsc
 
         result = _real->SetFullscreenState(Fullscreen, pTarget);
 
-        if (result != S_OK)
+        if (FAILED(result))
             LOG_ERROR("result: {:X}", (UINT) result);
         else
             LOG_DEBUG("result: {:X}", result);
@@ -956,7 +957,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
         ReadDxgiInfoQueue();
 #endif
 
-    if (result == S_OK && State::Instance().currentFeature == nullptr)
+    if (SUCCEEDED(result) && State::Instance().currentFeature == nullptr)
     {
         State::Instance().screenWidth = static_cast<float>(Width);
         State::Instance().screenHeight = static_cast<float>(Height);
@@ -1374,7 +1375,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
         ReadDxgiInfoQueue();
 #endif
 
-    if (result == S_OK && State::Instance().currentFeature == nullptr)
+    if (SUCCEEDED(result) && State::Instance().currentFeature == nullptr)
     {
         State::Instance().screenWidth = static_cast<float>(Width);
         State::Instance().screenHeight = static_cast<float>(Height);

@@ -40,7 +40,8 @@ void UpscalerTimeVk::ReadUpscalingTime(VkDevice device)
     if (_vkUpscaleTrig && _queryPool != VK_NULL_HANDLE)
     {
         // Retrieve timestamps
-        uint64_t timestamps[2];
+        // Stays zero (skipped below) when results are VK_NOT_READY
+        uint64_t timestamps[2] {};
         vkGetQueryPoolResults(device, _queryPool, 0, 2, sizeof(timestamps), timestamps, sizeof(uint64_t),
                               VK_QUERY_RESULT_64_BIT);
 

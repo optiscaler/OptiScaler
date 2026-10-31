@@ -299,7 +299,7 @@ ffxReturnCode_t ffxCreateContext_Dx12FG(ffxContext* context, ffxCreateContextDes
         auto result =
             cDesc->dxgiFactory->CreateSwapChain(cDesc->gameQueue, cDesc->desc, (IDXGISwapChain**) cDesc->swapchain);
 
-        if (result == S_OK)
+        if (SUCCEEDED(result))
         {
             LOG_INFO("Swapchain created");
 
@@ -349,7 +349,7 @@ ffxReturnCode_t ffxCreateContext_Dx12FG(ffxContext* context, ffxCreateContextDes
         auto result = factory->CreateSwapChainForHwnd(cDesc->gameQueue, cDesc->hwnd, cDesc->desc, cDesc->fullscreenDesc,
                                                       nullptr, (IDXGISwapChain1**) cDesc->swapchain);
 
-        if (result == S_OK)
+        if (SUCCEEDED(result))
         {
             LOG_INFO("Swapchain created");
 
