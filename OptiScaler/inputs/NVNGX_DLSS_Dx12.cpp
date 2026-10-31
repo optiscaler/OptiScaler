@@ -636,6 +636,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_CreateFeature(ID3D12GraphicsComma
         if (!FeatureProvider_Dx12::GetFeature(upscalerChoice, handleId, InParameters, &Dx12Contexts[handleId].feature))
         {
             LOG_ERROR("Upscaler can't created");
+            D3D12Hooks::SetRootSignatureTracking(true);
             return NVSDK_NGX_Result_Fail;
         }
     }
@@ -648,6 +649,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_CreateFeature(ID3D12GraphicsComma
         if (!FeatureProvider_Dx12::GetFeature("dlssd", handleId, InParameters, &Dx12Contexts[handleId].feature))
         {
             LOG_ERROR("DLSSD can't created");
+            D3D12Hooks::SetRootSignatureTracking(true);
             return NVSDK_NGX_Result_Fail;
         }
     }
@@ -669,6 +671,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_CreateFeature(ID3D12GraphicsComma
         if (deviceResult != S_OK || !D3D12Device)
         {
             LOG_ERROR("Can't get Dx12Device from InCmdList!");
+            D3D12Hooks::SetRootSignatureTracking(true);
             return NVSDK_NGX_Result_Fail;
         }
     }
