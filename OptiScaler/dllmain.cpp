@@ -1291,6 +1291,9 @@ static void printQuirks(flag_set<GameQuirk>& quirks)
     if (quirks & GameQuirk::CreateSLOnThe2ndDevice)
         stringQuirks.push_back("Create SL on the 2nd device");
 
+    if (quirks & GameQuirk::LazySLForD3D12)
+        stringQuirks.push_back("Init SL for D3D12 only when DLSSG Dx12 is created");
+
     if (quirks & GameQuirk::XeFGCameraMotionFill)
         stringQuirks.push_back("Fill XeFG input motion vectors with camera motion");
 
