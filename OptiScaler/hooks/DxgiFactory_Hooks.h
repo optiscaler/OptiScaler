@@ -11,6 +11,9 @@ class DxgiFactoryHooks
     static void HookToFactory(IDXGIFactory* pFactory);
     static void HookToDLSSGFactory(IDXGIFactory* pFactory);
 
+    // Swapchains of a marked factory are created natively, see misc/AuxiliaryModules.h
+    static void MarkAuxiliaryFactory(IUnknown* factory);
+
   private:
     using PFN_EnumAdapterByGpuPreference =
         rewrite_signature<decltype(&IDXGIFactory6::EnumAdapterByGpuPreference)>::type;
