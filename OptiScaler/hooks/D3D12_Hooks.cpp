@@ -19,6 +19,7 @@
 #include <detours/detours.h>
 
 #include <dxgi1_6.h>
+#include <d3d12shader.h>
 #include <misc/IdentifyGpu.h>
 
 #include "Hook_Utils.h"
@@ -36,6 +37,7 @@ using PFN_CreateCommittedResource = rewrite_signature<decltype(&ID3D12Device::Cr
 using PFN_CreatePlacedResource = rewrite_signature<decltype(&ID3D12Device::CreatePlacedResource)>::type;
 using PFN_SetResidencyPriority = rewrite_signature<decltype(&ID3D12Device1::SetResidencyPriority)>::type;
 using PFN_CreateRootSignature = rewrite_signature<decltype(&ID3D12Device::CreateRootSignature)>::type;
+using PFN_CreateComputePipelineState = rewrite_signature<decltype(&ID3D12Device::CreateComputePipelineState)>::type;
 
 // GetResourceAllocationInfo is a special case because of the struct return,
 // see comment on hkGetResourceAllocationInfo for details
@@ -57,6 +59,7 @@ static PFN_CreatePlacedResource o_CreatePlacedResource = nullptr;
 static PFN_SetResidencyPriority o_SetResidencyPriority = nullptr;
 static PFN_GetResourceAllocationInfo o_GetResourceAllocationInfo = nullptr;
 static PFN_CreateRootSignature o_CreateRootSignature = nullptr;
+static PFN_CreateComputePipelineState o_CreateComputePipelineState = nullptr;
 static PFN_D3D12GetInterface o_D3D12GetInterface = nullptr;
 static PFN_CreateDevice o_CreateDevice = nullptr;
 
@@ -1987,6 +1990,133 @@ hkGetResourceAllocationInfo(ID3D12Device* device, D3D12_RESOURCE_ALLOCATION_INFO
     return pResult;
 }
 
+// DXBC/DXIL container hash, MD5 with a custom final block, see DxilHash.cpp in DirectXShaderCompiler
+static void Md5Block(uint32_t state[4], const uint32_t x[16])
+{
+    static const uint8_t r[4][4] = { { 7, 12, 17, 22 }, { 5, 9, 14, 20 }, { 4, 11, 16, 23 }, { 6, 10, 15, 21 } };
+    uint32_t a = state[0], b = state[1], c = state[2], d = state[3];
+
+    for (int i = 0; i < 64; i++)
+    {
+        uint32_t f;
+        int g;
+
+        if (i < 16)
+            f = (b & c) | (~b & d), g = i;
+        else if (i < 32)
+            f = (d & b) | (~d & c), g = (5 * i + 1) & 15;
+        else if (i < 48)
+            f = b ^ c ^ d, g = (3 * i + 5) & 15;
+        else
+            f = c ^ (b | ~d), g = (7 * i) & 15;
+
+        f += a + (uint32_t) (std::fabs(std::sin(i + 1.0)) * 4294967296.0) + x[g];
+        a = d;
+        d = c;
+        c = b;
+        b += _rotl(f, r[i / 16][i % 4]);
+    }
+
+    state[0] += a;
+    state[1] += b;
+    state[2] += c;
+    state[3] += d;
+}
+
+static void DxbcHash(const uint8_t* data, uint32_t size, uint32_t state[4])
+{
+    state[0] = 0x67452301;
+    state[1] = 0xefcdab89;
+    state[2] = 0x98badcfe;
+    state[3] = 0x10325476;
+
+    uint32_t full = size & ~63u;
+    uint32_t x[16];
+
+    for (uint32_t i = 0; i < full; i += 64)
+    {
+        memcpy(x, data + i, 64);
+        Md5Block(state, x);
+    }
+
+    uint32_t left = size - full;
+    auto tail = (uint8_t*) x;
+    memset(x, 0, sizeof(x));
+
+    if (left < 56)
+    {
+        x[0] = size << 3;
+        memcpy(tail + 4, data + full, left);
+        tail[4 + left] = 0x80;
+    }
+    else
+    {
+        memcpy(tail, data + full, left);
+        tail[left] = 0x80;
+        Md5Block(state, x);
+        memset(x, 0, sizeof(x));
+        x[0] = size << 3;
+    }
+
+    x[15] = (size << 1) | 1;
+    Md5Block(state, x);
+}
+
+// D3D12 rejects shaders requiring native 16-bit ops when the device doesn't report them (Pascal),
+// while the driver compiles them fine. Clear the requirement from the feature info part and re-sign.
+static bool StripNative16BitRequirement(std::vector<uint8_t>& dxbc)
+{
+    if (dxbc.size() < 32 || memcmp(dxbc.data(), "DXBC", 4) != 0)
+        return false;
+
+    auto containerSize = *(uint32_t*) (dxbc.data() + 24);
+    auto partCount = *(uint32_t*) (dxbc.data() + 28);
+
+    if (containerSize > dxbc.size() || 32 + (uint64_t) partCount * 4 > containerSize)
+        return false;
+
+    for (uint32_t i = 0; i < partCount; i++)
+    {
+        auto offset = ((uint32_t*) (dxbc.data() + 32))[i];
+
+        if ((uint64_t) offset + 16 > containerSize || memcmp(dxbc.data() + offset, "SFI0", 4) != 0)
+            continue;
+
+        auto flags = (uint64_t*) (dxbc.data() + offset + 8);
+
+        if ((*flags & D3D_SHADER_REQUIRES_NATIVE_16BIT_OPS) == 0)
+            return false;
+
+        *flags &= ~(uint64_t) D3D_SHADER_REQUIRES_NATIVE_16BIT_OPS;
+        DxbcHash(dxbc.data() + 20, containerSize - 20, (uint32_t*) (dxbc.data() + 4));
+        return true;
+    }
+
+    return false;
+}
+
+VALIDATE_HOOK(hkCreateComputePipelineState, PFN_CreateComputePipelineState)
+static HRESULT hkCreateComputePipelineState(ID3D12Device* device, const D3D12_COMPUTE_PIPELINE_STATE_DESC* pDesc,
+                                            REFIID riid, void** ppPipelineState)
+{
+    auto result = o_CreateComputePipelineState(device, pDesc, riid, ppPipelineState);
+
+    if (SUCCEEDED(result) || pDesc == nullptr || pDesc->CS.pShaderBytecode == nullptr)
+        return result;
+
+    auto bytecode = (const uint8_t*) pDesc->CS.pShaderBytecode;
+    std::vector<uint8_t> cs(bytecode, bytecode + pDesc->CS.BytecodeLength);
+
+    if (!StripNative16BitRequirement(cs))
+        return result;
+
+    LOG_DEBUG("Retrying without the native 16-bit shader ops requirement");
+
+    auto desc = *pDesc;
+    desc.CS = { cs.data(), cs.size() };
+    return o_CreateComputePipelineState(device, &desc, riid, ppPipelineState);
+}
+
 VALIDATE_HOOK(hkCreateSampler, PFN_CreateSampler)
 static void hkCreateSampler(ID3D12Device* device, const D3D12_SAMPLER_DESC* pDesc,
                             D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor)
@@ -2225,6 +2355,7 @@ static void HookToDevice(ID3D12Device* InDevice)
     // hudless
     o_D3D12DeviceRelease = (PFN_Release) pVTable[2];
     o_CreateSampler = (PFN_CreateSampler) pVTable[22];
+    o_CreateComputePipelineState = (PFN_CreateComputePipelineState) pVTable[11];
     o_CheckFeatureSupport = (PFN_CheckFeatureSupport) pVTable[13];
     o_CreateRootSignature = (PFN_CreateRootSignature) pVTable[16];
     o_GetResourceAllocationInfo = (PFN_GetResourceAllocationInfo) pVTable[25];
@@ -2255,6 +2386,9 @@ static void HookToDevice(ID3D12Device* InDevice)
 
         if (o_CreateRootSignature != nullptr)
             DetourAttach(&(PVOID&) o_CreateRootSignature, hkCreateRootSignature);
+
+        if (o_CreateComputePipelineState != nullptr)
+            DetourAttach(&(PVOID&) o_CreateComputePipelineState, hkCreateComputePipelineState);
 
         // Will be used for tracking current d3d12 device too
         if (o_D3D12DeviceRelease != nullptr)
@@ -2288,6 +2422,7 @@ static void HookToDevice(ID3D12Device* InDevice)
             o_CreateSampler = nullptr;
             o_CheckFeatureSupport = nullptr;
             o_CreateRootSignature = nullptr;
+            o_CreateComputePipelineState = nullptr;
             o_CreateCommittedResource = nullptr;
             o_CreatePlacedResource = nullptr;
             o_D3D12DeviceRelease = nullptr;
@@ -2321,6 +2456,9 @@ static void UnhookDevice()
     if (o_CreateSampler != nullptr)
         DetourDetach(&(PVOID&) o_CreateSampler, hkCreateSampler);
 
+    if (o_CreateComputePipelineState != nullptr)
+        DetourDetach(&(PVOID&) o_CreateComputePipelineState, hkCreateComputePipelineState);
+
     if (o_CreateRootSignature != nullptr)
         DetourDetach(&(PVOID&) o_CreateRootSignature, hkCreateRootSignature);
 
@@ -2347,6 +2485,7 @@ static void UnhookDevice()
     else
     {
         o_CreateSampler = nullptr;
+        o_CreateComputePipelineState = nullptr;
         o_CheckFeatureSupport = nullptr;
         o_CreateCommittedResource = nullptr;
         o_CreatePlacedResource = nullptr;
@@ -2410,6 +2549,9 @@ void D3D12Hooks::Unhook()
     if (o_CreateSampler != nullptr)
         DetourDetach(&(PVOID&) o_CreateSampler, hkCreateSampler);
 
+    if (o_CreateComputePipelineState != nullptr)
+        DetourDetach(&(PVOID&) o_CreateComputePipelineState, hkCreateComputePipelineState);
+
     if (o_CheckFeatureSupport != nullptr)
         DetourDetach(&(PVOID&) o_CheckFeatureSupport, hkCheckFeatureSupport);
 
@@ -2433,6 +2575,7 @@ void D3D12Hooks::Unhook()
     else
     {
         o_CreateSampler = nullptr;
+        o_CreateComputePipelineState = nullptr;
         o_CheckFeatureSupport = nullptr;
         o_CreateCommittedResource = nullptr;
         o_CreatePlacedResource = nullptr;
