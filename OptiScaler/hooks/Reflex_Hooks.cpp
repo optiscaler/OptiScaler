@@ -423,7 +423,7 @@ void ReflexHooks::update(bool optiFg_FgState, bool isVulkan)
 void ReflexHooks::setFPSLimit(float fps)
 {
     LOG_INFO("Set FPS Limit to: {}", fps);
-    if (fps == 0.0)
+    if (fps <= 0.0)
         _minimumIntervalUs = 0;
     else
         _minimumIntervalUs = static_cast<uint32_t>(std::round(1'000'000 / fps));

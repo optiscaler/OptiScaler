@@ -53,6 +53,7 @@ StreamlineHooks::PFN_slSetConstants_sl1 StreamlineHooks::o_reflex_slSetConstants
 StreamlineHooks::PFN_slOnPluginLoad StreamlineHooks::o_reflex_slOnPluginLoad = nullptr;
 decltype(&slReflexSetOptions) StreamlineHooks::o_slReflexSetOptions = nullptr;
 sl::ReflexMode StreamlineHooks::reflexGamesLastMode = sl::ReflexMode::eOff;
+sl::ReflexOptions StreamlineHooks::reflexGamesLastOptions {};
 
 // PCL
 StreamlineHooks::PFN_slGetPluginFunction StreamlineHooks::o_pcl_slGetPluginFunction = nullptr;
@@ -905,6 +906,7 @@ bool StreamlineHooks::hkreflex_slOnPluginLoad(sl::param::IParameters* params, co
 sl::Result StreamlineHooks::hkslReflexSetOptions(const sl::ReflexOptions& options)
 {
     reflexGamesLastMode = options.mode;
+    reflexGamesLastOptions = options;
 
     sl::ReflexOptions newOptions = options;
 
@@ -1176,7 +1178,9 @@ void StreamlineHooks::updateForceReflex()
     // Not needed for Streamline v1 as slSetConstants is sent every frame
     if (o_slReflexSetOptions)
     {
-        sl::ReflexOptions options;
+        // Game's chain can point to its stack
+        sl::ReflexOptions options = reflexGamesLastOptions;
+        options.next = nullptr;
 
         auto forceReflex = Config::Instance()->FN_ForceReflex.value_or_default();
 

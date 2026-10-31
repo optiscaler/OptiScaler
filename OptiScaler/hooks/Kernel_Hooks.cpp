@@ -50,6 +50,12 @@ static inline bool IsInsideWindowsDirectory(const std::string& path)
     return false;
 }
 
+static inline bool IsDataFileLoad(DWORD dwFlags)
+{
+    return (dwFlags &
+            (LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE | LOAD_LIBRARY_AS_IMAGE_RESOURCE)) != 0;
+}
+
 static inline HMODULE CheckLoad(const std::wstring& name)
 {
     do
@@ -158,11 +164,18 @@ VALIDATE_HOOK(hk_K32_GetModuleHandleExW, Kernel32Proxy::PFN_GetModuleHandleExW)
 BOOL WINAPI KernelHooks::hk_K32_GetModuleHandleExW(DWORD dwFlags, LPCWSTR lpModuleName, HMODULE* phModule)
 {
     if (lpModuleName && dwFlags == GET_MODULE_HANDLE_EX_FLAG_PIN && lstrcmpW(L"nvapi64.dll", lpModuleName) == 0 &&
-        phModule)
+        phModule && Config::Instance()->OverrideNvapiDll.value_or_default())
     {
         LOG_TRACE("Suspected SpecialK call for nvapi64");
         *phModule = LibraryLoadHooks::LoadNvApi();
-        return true;
+
+        if (*phModule == nullptr)
+        {
+            SetLastError(ERROR_MOD_NOT_FOUND);
+            return FALSE;
+        }
+
+        return TRUE;
     }
 
     return o_K32_GetModuleHandleExW(dwFlags, lpModuleName, phModule);
@@ -221,14 +234,12 @@ HANDLE WINAPI KernelHooks::hk_K32_CreateFileW(LPCWSTR lpFileName, DWORD dwDesire
         auto path = wstring_to_string(std::wstring(lpFileName));
         to_lower_in_place(path);
 
-        static auto signedDll = Util::FindFilePath(Util::ExePath().remove_filename(), "nvngx_dlss.dll");
-
         if (path.contains("nvngx.dll") && !path.contains("_nvngx.dll") && // apply the override to just one path
-            !IsInsideWindowsDirectory(path) && signedDll.has_value())
+            !IsInsideWindowsDirectory(path))
         {
             LOG_DEBUG("Overriding CreateFileW for nvngx with a signed dll, original path: {}", path);
-            return o_K32_CreateFileW(signedDll.value().c_str(), dwDesiredAccess, dwShareMode, lpSecurityAttributes,
-                                     dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
+            return o_K32_CreateFileW(State::Instance().nvngxReplacement.value().c_str(), dwDesiredAccess, dwShareMode,
+                                     lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
         }
     }
 
@@ -315,6 +326,9 @@ HMODULE KernelHooks::hk_K32_LoadLibraryExW(LPCWSTR lpLibFileName, HANDLE hFile, 
     if (lpLibFileName == nullptr)
         return NULL;
 
+    if (IsDataFileLoad(dwFlags))
+        return o_K32_LoadLibraryExW(lpLibFileName, hFile, dwFlags);
+
     std::wstring name(lpLibFileName);
 
 #ifdef _DEBUG
@@ -334,6 +348,9 @@ HMODULE KernelHooks::hk_K32_LoadLibraryExA(LPCSTR lpLibFileName, HANDLE hFile, D
 {
     if (lpLibFileName == nullptr)
         return NULL;
+
+    if (IsDataFileLoad(dwFlags))
+        return o_K32_LoadLibraryExA(lpLibFileName, hFile, dwFlags);
 
     std::string nameA(lpLibFileName);
     std::wstring name = string_to_wstring(nameA);
@@ -355,6 +372,9 @@ HMODULE KernelHooks::hk_KB_LoadLibraryExW(LPCWSTR lpLibFileName, HANDLE hFile, D
 {
     if (lpLibFileName == nullptr)
         return NULL;
+
+    if (IsDataFileLoad(dwFlags))
+        return o_KB_LoadLibraryExW(lpLibFileName, hFile, dwFlags);
 
     std::wstring name(lpLibFileName);
 

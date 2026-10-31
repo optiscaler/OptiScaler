@@ -936,18 +936,24 @@ struct NVNGX_Parameters : public NVSDK_NGX_Parameter
 
     void Reset() override
     {
-        if (!m_values.empty())
+        {
+            const std::lock_guard<std::mutex> lock(m_mutex);
             m_values.clear();
+        }
 
         LOG_DEBUG("Start");
 
         InitNGXParameters(this);
+
+        // DestroyParameters checks it, all instances are allocated by Opti
+        Set("OptiScaler", 1);
 
         LOG_DEBUG("End");
     }
 
     std::vector<std::string> enumerate() const
     {
+        const std::lock_guard<std::mutex> lock(m_mutex);
         std::vector<std::string> keys;
         for (auto& value : m_values)
         {

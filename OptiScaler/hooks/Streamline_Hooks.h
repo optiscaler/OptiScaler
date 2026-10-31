@@ -166,6 +166,7 @@ class StreamlineHooks
 
     // Reflex
     static sl::ReflexMode reflexGamesLastMode;
+    static sl::ReflexOptions reflexGamesLastOptions;
     static PFN_slGetPluginFunction o_reflex_slGetPluginFunction;
     static PFN_slSetConstants_sl1 o_reflex_slSetConstants_sl1;
     static PFN_slOnPluginLoad o_reflex_slOnPluginLoad;

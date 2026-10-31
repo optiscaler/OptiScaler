@@ -311,7 +311,14 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
             auto filename = filePath.filename().wstring();
             to_lower_in_place(filename);
 
-            if (!_overlayMethodsCalled.contains(filename) && DxgiProxy::Module() != nullptr)
+            // Not held during the calls, they can load other dlls
+            bool methodsCalled;
+            {
+                std::scoped_lock lock(_overlayMutex);
+                methodsCalled = _overlayMethodsCalled.contains(filename);
+            }
+
+            if (!methodsCalled && DxgiProxy::Module() != nullptr)
             {
                 LOG_INFO("Calling CreateDxgiFactory methods for overlay!");
                 IDXGIFactory* factory = nullptr;
@@ -323,7 +330,11 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
                 if (ocResult == S_OK && factory != nullptr)
                 {
-                    _overlayMethodsCalled[filename] = true;
+                    {
+                        std::scoped_lock lock(_overlayMutex);
+                        _overlayMethodsCalled[filename] = true;
+                    }
+
                     LOG_DEBUG("CreateDxgiFactory ok");
                     factory->Release();
                 }
@@ -631,6 +642,9 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
 std::optional<NTSTATUS> LibraryLoadHooks::FreeLibrary(PVOID lpLibrary)
 {
+    static std::mutex freeMutex;
+    std::scoped_lock lock(freeMutex);
+
     std::optional<NTSTATUS> result;
 
     if (lpLibrary == dllModule)
