@@ -589,11 +589,13 @@ void IdentifyGpu::updateD3d12Capabilities(D3d12Proxy::PFN_D3D12CreateDevice o_D3
                             {
                                 res.fsr4Support = FSR4Support::INT8Lite;
                             }
-                            // Phoenix, Hawk Point, Krackan, Navi 10 and Navi 12, not officially supported, we are
-                            // adding support for them. Navi 14 lacks hardware INT8
+                            // Phoenix, Hawk Point, Krackan, Navi 12 and Navi 14, not officially supported, we are
+                            // adding support for them. Navi 10 lacks hardware INT8
                             else if ((card.generation == HwGeneration::kGfx11 && card.is_apu) ||
-                                     card.asic_type == AsicType::kGfx11_5_2 || card.asic_type == AsicType::kGfx10_1_0 ||
-                                     card.asic_type == AsicType::kGfx10_1_0Xl || card.asic_type == AsicType::kGfx10_1_1)
+                                     card.asic_type == AsicType::kGfx11_5_2 || card.asic_type == AsicType::kGfx10_1_1 ||
+                                     card.asic_type == AsicType::kGfx10_1_2 ||
+                                     card.asic_type == AsicType::kGfx10_1_2X ||
+                                     card.asic_type == AsicType::kGfx10_1_2Xt)
                             {
                                 res.fsr4Support = FSR4Support::INT8Lite;
                             }
@@ -849,8 +851,8 @@ FSR4Support IdentifyGpu::getFsr4ModelForAsic(uint32_t family, uint32_t revision,
         uint32_t family, min, max;
     };
 
-    constexpr Asic navi10 { familyNv, 0x01, 0x0A };
     constexpr Asic navi12 { familyNv, 0x0A, 0x14 };
+    constexpr Asic navi14 { familyNv, 0x14, 0x28 };
     constexpr Asic navi21 { familyNv, 0x28, 0x32 };
     constexpr Asic navi22 { familyNv, 0x32, 0x3C };
     constexpr Asic navi23 { familyNv, 0x3C, 0x46 };
@@ -887,8 +889,8 @@ FSR4Support IdentifyGpu::getFsr4ModelForAsic(uint32_t family, uint32_t revision,
         return FSR4Support::INT8Lite;
 
     // Not officially supported, we are adding support for them
-    // Navi 14 is left out as it lacks hardware INT8
-    if (is(phoenix1) || is(phoenix2) || is(hawkPoint1) || is(hawkPoint2) || is(krackan1) || is(navi10) || is(navi12))
+    // Navi 10 is left out as it lacks hardware INT8
+    if (is(phoenix1) || is(phoenix2) || is(hawkPoint1) || is(hawkPoint2) || is(krackan1) || is(navi12) || is(navi14))
         return FSR4Support::INT8Lite;
 
     return FSR4Support::None;
