@@ -74,6 +74,8 @@ class FSRFG_Dx12 : public virtual IFGFeature_Dx12
     bool HudlessFormatTransfer(int index, ID3D12Device* device, DXGI_FORMAT targetFormat, Dx12Resource* resource);
     bool UIFormatTransfer(int index, ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, DXGI_FORMAT targetFormat,
                           Dx12Resource* resource);
+    bool DrainFrameSlotLocked(int index);
+    void DrainPresentResources();
 
   protected:
     void ReleaseObjects() override final;

@@ -43,6 +43,57 @@ struct LockedDx12Resource
     explicit operator bool() const { return resource != nullptr; }
 };
 
+// Retains a selected FG input resource for as long as the backend may still
+// consume it, independently of the _frameResources cache-entry reuse. The
+// input's original validity contract only covers the caller's Present stack,
+// while FFX consumes hudless/UI resources through interpolation completion.
+struct PresentResourceReference
+{
+    ID3D12Resource* resource = nullptr;
+
+    PresentResourceReference() = default;
+    explicit PresentResourceReference(ID3D12Resource* res) { Acquire(res); }
+    ~PresentResourceReference() { Release(); }
+
+    void Acquire(ID3D12Resource* res)
+    {
+        Release();
+
+        resource = res;
+
+        if (resource != nullptr)
+            resource->AddRef();
+    }
+
+    void Release()
+    {
+        if (resource != nullptr)
+            resource->Release();
+
+        resource = nullptr;
+    }
+
+    PresentResourceReference(const PresentResourceReference&) = delete;
+    PresentResourceReference& operator=(const PresentResourceReference&) = delete;
+
+    PresentResourceReference(PresentResourceReference&& other) noexcept : resource(other.resource)
+    {
+        other.resource = nullptr;
+    }
+
+    PresentResourceReference& operator=(PresentResourceReference&& other) noexcept
+    {
+        if (this != &other)
+        {
+            Release();
+            resource = other.resource;
+            other.resource = nullptr;
+        }
+
+        return *this;
+    }
+};
+
 class IFGFeature_Dx12 : public virtual IFGFeature
 {
   private:
@@ -82,6 +133,8 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     std::unordered_map<FG_ResourceType, Dx12Resource> _frameResources[BUFFER_COUNT] {};
     std::unordered_map<FG_ResourceType, ID3D12Resource*> _resourceCopy[BUFFER_COUNT] {};
     std::shared_mutex _resourceMutex[BUFFER_COUNT];
+    // Selected resources retained across the extended consumption window
+    std::unordered_map<FG_ResourceType, PresentResourceReference> _presentResources[BUFFER_COUNT] {};
 
     std::unique_ptr<RF_Dx12> _mvFlip;
     std::unique_ptr<RF_Dx12> _depthFlip;

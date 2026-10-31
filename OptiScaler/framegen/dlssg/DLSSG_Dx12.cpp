@@ -720,6 +720,10 @@ bool DLSSG_Dx12::SetResource(Dx12Resource* inputResource)
 
         fResource->validity = FG_ResourceValidity::UntilPresent;
     }
+    // Retain the selected resource until it is replaced: Streamline consumes
+    // it during and after this frame's Present stack, past the caller's input
+    // validity window.
+    _presentResources[fIndex][type].Acquire(fResource->GetResource());
 
     if (type == FG_ResourceType::UIColor)
         _noUi[fIndex] = false;

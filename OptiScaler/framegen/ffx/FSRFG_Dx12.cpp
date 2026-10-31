@@ -28,6 +28,15 @@ using namespace DirectX;
                                                     FFX_FRAMEGENERATION_SWAPCHAIN_DX12_VERSION_PATCH)
 
 #define FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_VERSION_DX12 0x3000bu
+
+#ifndef FFX_API_DISPATCH_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_WAIT_FOR_PRESENTS_DX12
+#define FFX_API_DISPATCH_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_WAIT_FOR_PRESENTS_DX12 0x00030007u
+struct ffxDispatchDescFrameGenerationSwapChainWaitForPresentsDX12
+{
+    ffxDispatchDescHeader header;
+};
+#endif
+
 struct ffxCreateContextDescFrameGenerationSwapChainVersionDX12
 {
     ffxCreateContextDescHeader header; ///< Description header for frame generation swapchain version context creation.
@@ -1074,6 +1083,10 @@ void FSRFG_Dx12::DestroyFGContext()
 
     Deactivate();
 
+    // Outstanding presents must complete while the retained resources are
+    // still alive, before the FG context goes away.
+    DrainPresentResources();
+
     if (_fgContext != nullptr)
     {
         auto result = FfxApiProxy::D3D12_DestroyContext(&_fgContext, nullptr);
@@ -1090,6 +1103,10 @@ void FSRFG_Dx12::DestroyFGContext()
 bool FSRFG_Dx12::Shutdown()
 {
     Deactivate();
+
+    // Outstanding presents must complete while the retained resources are
+    // still alive, before the swapchain and objects go away.
+    DrainPresentResources();
 
     if (_swapChainContext != nullptr)
     {
@@ -1447,7 +1464,13 @@ void FSRFG_Dx12::Deactivate()
             result = FfxApiProxy::D3D12_Configure(&_fgContext, &fgConfig.header);
 
             if (result == FFX_API_RETURN_OK)
+            {
                 _isActive = false;
+
+                // Configuration cleared: drain outstanding presents before
+                // the retained resource references go away.
+                DrainPresentResources();
+            }
         }
         else
         {
@@ -1609,6 +1632,9 @@ void FSRFG_Dx12::ReleaseObjects()
 
 void FSRFG_Dx12::ReleaseResourceCopies()
 {
+    // Retained selected resources may be these copies: drain before cleanup
+    DrainPresentResources();
+
     std::lock_guard<std::mutex> callbackLock(_callbackResourceMutex);
 
     for (size_t i = 0; i < BUFFER_COUNT; i++)
@@ -1638,6 +1664,39 @@ bool FSRFG_Dx12::ExecuteCommandList(int index)
     }
 
     return true;
+}
+
+bool FSRFG_Dx12::DrainFrameSlotLocked(int index)
+{
+    if (_swapChainContext == nullptr)
+    {
+        _presentResources[index].clear();
+        return true;
+    }
+
+    ffxDispatchDescFrameGenerationSwapChainWaitForPresentsDX12 waitDesc {};
+    waitDesc.header.type = FFX_API_DISPATCH_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_WAIT_FOR_PRESENTS_DX12;
+
+    auto result = FfxApiProxy::D3D12_Dispatch(&_swapChainContext, &waitDesc.header);
+
+    if (result != FFX_API_RETURN_OK)
+    {
+        LOG_WARN("WaitForPresents dispatch failed: {} ({}), keeping present resource references",
+                 magic_enum::enum_name((FfxApiReturnCodes) result), (UINT) result);
+        return false;
+    }
+
+    _presentResources[index].clear();
+    return true;
+}
+
+void FSRFG_Dx12::DrainPresentResources()
+{
+    for (size_t i = 0; i < BUFFER_COUNT; i++)
+    {
+        std::unique_lock<std::shared_mutex> lock(_resourceMutex[i]);
+        DrainFrameSlotLocked((int) i);
+    }
 }
 
 bool FSRFG_Dx12::SetResource(Dx12Resource* inputResource)
@@ -1793,6 +1852,14 @@ bool FSRFG_Dx12::SetResource(Dx12Resource* inputResource)
         fResource->state = D3D12_RESOURCE_STATE_COPY_DEST;
         LOG_TRACE("Made a copy: {:X} of input: {:X}", (size_t) fResource->copy, (size_t) fResource->resource);
     }
+
+    // Retain the selected resource until it is replaced; FFX consumes the
+    // hudless/UI inputs through interpolation completion, past the caller's
+    // input validity window.
+    if (!_presentResources[fIndex].empty() && !DrainFrameSlotLocked(fIndex))
+        LOG_WARN("Keeping previous present resource references for slot {}", fIndex);
+    else
+        _presentResources[fIndex][type].Acquire(fResource->GetResource());
 
     SetResourceReady(type, fIndex);
 
