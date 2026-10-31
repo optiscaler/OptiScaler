@@ -151,6 +151,95 @@ bool FGHooks::IsOtherWindowThanFG(HWND hwnd)
     return State::Instance().currentFGSwapchain != nullptr && _hwnd != nullptr && hwnd != _hwnd;
 }
 
+// XeFG doesn't support exclusive fullscreen, it's emulated with a borderless window
+bool FGHooks::UseBorderless()
+{
+    return State::Instance().activeFgOutput == FGOutput::XeFG &&
+           Config::Instance()->FGXeFGForceBorderless.value_or_default();
+}
+
+// Sends window messages, call it without holding the FG mutex
+void FGHooks::ApplyBorderless(IDXGIOutput* target)
+{
+    if (_hwnd == nullptr)
+        return;
+
+    // Minimized window has no usable rect, done again on a later present
+    if (IsIconic(_hwnd))
+    {
+        _borderlessPending = true;
+        return;
+    }
+
+    Util::MonitorInfo info;
+
+    if (target != nullptr)
+        info = Util::GetMonitorInfoForOutput(target);
+    else
+        info = Util::GetMonitorInfoForWindow(_hwnd);
+
+    const LONG_PTR style = WS_POPUP | WS_VISIBLE;
+    const LONG_PTR exStyle = WS_EX_APPWINDOW;
+
+    RECT rect {};
+    GetWindowRect(_hwnd, &rect);
+
+    // Changing it again sends WM_SIZE and games resize again
+    if (GetWindowLongPtr(_hwnd, GWL_STYLE) == style && GetWindowLongPtr(_hwnd, GWL_EXSTYLE) == exStyle &&
+        rect.left == info.x && rect.top == info.y && rect.right - rect.left == info.width &&
+        rect.bottom - rect.top == info.height)
+    {
+        return;
+    }
+
+    if (!_windowSaved)
+    {
+        _savedStyle = GetWindowLongPtr(_hwnd, GWL_STYLE);
+        _savedExStyle = GetWindowLongPtr(_hwnd, GWL_EXSTYLE);
+        _savedRect = rect;
+        _windowSaved = true;
+    }
+
+    LOG_DEBUG("Overriding window size: {}x{}, and pos: {}x{} at monitor: {}", info.width, info.height, info.x, info.y,
+              wstring_to_string(info.name));
+
+    SetWindowLongPtr(_hwnd, GWL_STYLE, style);
+    SetWindowLongPtr(_hwnd, GWL_EXSTYLE, exStyle);
+    SetWindowPos(_hwnd, HWND_TOP, info.x, info.y, info.width, info.height, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+}
+
+void FGHooks::RestoreWindow(UINT width, UINT height)
+{
+    if (_hwnd == nullptr)
+        return;
+
+    if (IsIconic(_hwnd))
+    {
+        _borderlessPending = true;
+        return;
+    }
+
+    if (_windowSaved)
+    {
+        SetWindowLongPtr(_hwnd, GWL_STYLE, _savedStyle);
+        SetWindowLongPtr(_hwnd, GWL_EXSTYLE, _savedExStyle);
+        SetWindowPos(_hwnd, nullptr, _savedRect.left, _savedRect.top, _savedRect.right - _savedRect.left,
+                     _savedRect.bottom - _savedRect.top, SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOACTIVATE);
+        _windowSaved = false;
+        return;
+    }
+
+    // Client area has the swapchain's size
+    const DWORD style = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
+    RECT rect { 0, 0, static_cast<LONG>(width), static_cast<LONG>(height) };
+    AdjustWindowRectEx(&rect, style, FALSE, WS_EX_OVERLAPPEDWINDOW);
+
+    SetWindowLongPtr(_hwnd, GWL_STYLE, style);
+    SetWindowLongPtr(_hwnd, GWL_EXSTYLE, WS_EX_OVERLAPPEDWINDOW);
+    SetWindowPos(_hwnd, nullptr, 0, 0, rect.right - rect.left, rect.bottom - rect.top,
+                 SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOMOVE);
+}
+
 void FGHooks::ReleaseUnusableFGSwapchain(HWND hwnd, IUnknown* pDevice)
 {
     auto swapchain = State::Instance().currentFGSwapchain;
@@ -297,8 +386,13 @@ HRESULT FGHooks::CreateSwapChain(IDXGIFactory* pFactory, IUnknown* pDevice, DXGI
             _fgSwapchainBaseRefs = (*ppSwapChain)->Release() - 1;
         }
 
+        if (_hwnd != pDesc->OutputWindow)
+            _windowSaved = false;
+
         _hwnd = pDesc->OutputWindow;
         _fgSwapchainReleased = false;
+        State::Instance().SCExclusiveFullscreen = UseBorderless() && State::Instance().SCExclusiveFullscreenRequested;
+        _borderlessPending = UseBorderless();
         State::Instance().currentFGSwapchain = *ppSwapChain;
 
         HookFGSwapchain(*ppSwapChain);
@@ -425,8 +519,13 @@ HRESULT FGHooks::CreateSwapChainForHwnd(IDXGIFactory* pFactory, IUnknown* pDevic
             _fgSwapchainBaseRefs = (*ppSwapChain)->Release() - 1;
         }
 
+        if (_hwnd != hWnd)
+            _windowSaved = false;
+
         _hwnd = hWnd;
         _fgSwapchainReleased = false;
+        State::Instance().SCExclusiveFullscreen = UseBorderless() && State::Instance().SCExclusiveFullscreenRequested;
+        _borderlessPending = UseBorderless();
         State::Instance().currentFGSwapchain = *ppSwapChain;
 
         HookFGSwapchain(*ppSwapChain);
@@ -525,19 +624,17 @@ HRESULT FGHooks::hkSetFullscreenState(IDXGISwapChain* This, BOOL Fullscreen, IDX
     auto fg = State::Instance().currentFG;
     PauseFG(fg);
 
+    const bool borderless = UseBorderless();
     bool modeChanged = false;
-    bool orgFS = Fullscreen;
-    if (Config::Instance()->FGXeFGForceBorderless.value_or_default())
+    if (borderless)
     {
         if (Fullscreen)
         {
             Fullscreen = false;
 
-            if (!State::Instance().SCExclusiveFullscreen)
-            {
-                State::Instance().SCExclusiveFullscreen = true;
-                modeChanged = true;
-            }
+            // Also when created in emulated fullscreen, the window may not cover the screen yet
+            State::Instance().SCExclusiveFullscreen = true;
+            modeChanged = true;
 
             LOG_DEBUG("Prevented exclusive fullscreen");
         }
@@ -558,7 +655,7 @@ HRESULT FGHooks::hkSetFullscreenState(IDXGISwapChain* This, BOOL Fullscreen, IDX
 
     auto result = S_OK;
 
-    if (!Config::Instance()->FGXeFGForceBorderless.value_or_default())
+    if (!borderless)
     {
         result = o_FGSCSetFullscreenState(This, Fullscreen, pTarget);
         LOG_DEBUG("Fullscreen: {}, pTarget: {:X}, Result: {:X}", Fullscreen, (size_t) pTarget, (UINT) result);
@@ -568,32 +665,17 @@ HRESULT FGHooks::hkSetFullscreenState(IDXGISwapChain* This, BOOL Fullscreen, IDX
     {
         LOG_DEBUG("Mode changed");
 
-        DXGI_SWAP_CHAIN_DESC scDesc {};
-        This->GetDesc(&scDesc);
+        _borderlessPending = false;
 
         if (State::Instance().SCExclusiveFullscreen)
         {
-            SetWindowLongPtr(_hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
-            SetWindowLongPtr(_hwnd, GWL_EXSTYLE, WS_EX_APPWINDOW);
-
-            Util::MonitorInfo info;
-
-            if (pTarget != nullptr)
-                info = Util::GetMonitorInfoForOutput(pTarget);
-            else
-                info = Util::GetMonitorInfoForWindow(_hwnd);
-
-            LOG_DEBUG("Overriding window size: {}x{}, and pos: {}x{} at monitor: {}", info.width, info.height, info.x,
-                      info.y, wstring_to_string(info.name));
-
-            SetWindowPos(_hwnd, HWND_TOP, info.x, info.y, info.width, info.height, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+            ApplyBorderless(pTarget);
         }
         else
         {
-            SetWindowLongPtr(_hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
-            SetWindowLongPtr(_hwnd, GWL_EXSTYLE, WS_EX_OVERLAPPEDWINDOW);
-            SetWindowPos(_hwnd, nullptr, 0, 0, scDesc.BufferDesc.Width, scDesc.BufferDesc.Height,
-                         SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOACTIVATE);
+            DXGI_SWAP_CHAIN_DESC scDesc {};
+            This->GetDesc(&scDesc);
+            RestoreWindow(scDesc.BufferDesc.Width, scDesc.BufferDesc.Height);
         }
     }
 
@@ -628,11 +710,8 @@ HRESULT FGHooks::hkGetFullscreenDesc(IDXGISwapChain1* This, DXGI_SWAP_CHAIN_FULL
 {
     auto result = o_FGSCGetFullscreenDesc(This, pDesc);
 
-    if (result == S_OK && State::Instance().SCExclusiveFullscreen &&
-        Config::Instance()->FGXeFGForceBorderless.value_or_default())
-    {
+    if (result == S_OK && State::Instance().SCExclusiveFullscreen && UseBorderless())
         pDesc->Windowed = false;
-    }
 
     return result;
 }
@@ -641,10 +720,14 @@ HRESULT FGHooks::hkGetFullscreenState(IDXGISwapChain* This, BOOL* pFullscreen, I
 {
     auto result = o_FGSCGetFullscreenState(This, pFullscreen, ppTarget);
 
-    if (result == S_OK && State::Instance().SCExclusiveFullscreen &&
-        Config::Instance()->FGXeFGForceBorderless.value_or_default())
+    if (result == S_OK && State::Instance().SCExclusiveFullscreen && UseBorderless())
     {
-        *pFullscreen = true;
+        if (pFullscreen != nullptr)
+            *pFullscreen = true;
+
+        // Exclusive fullscreen reports its output, games use it
+        if (ppTarget != nullptr && *ppTarget == nullptr)
+            This->GetContainingOutput(ppTarget);
     }
 
     return result;
@@ -872,21 +955,9 @@ HRESULT FGHooks::hkResizeBuffers(IDXGISwapChain* This, UINT BufferCount, UINT Wi
     if (result == DXGI_ERROR_INVALID_CALL)
         LogBackBufferReferences(This);
 
-    // Resize window to cover the screen
-    if (result == S_OK && Config::Instance()->FGXeFGForceBorderless.value_or_default() &&
-        State::Instance().SCExclusiveFullscreen)
-    {
-        SetWindowLongPtr(_hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
-        SetWindowLongPtr(_hwnd, GWL_EXSTYLE, WS_EX_APPWINDOW);
-
-        Util::MonitorInfo info;
-        info = Util::GetMonitorInfoForWindow(_hwnd);
-
-        LOG_DEBUG("Overriding window size: {}x{}, and pos: {}x{} at monitor: {}", info.width, info.height, info.x,
-                  info.y, wstring_to_string(info.name));
-
-        SetWindowPos(_hwnd, HWND_TOP, info.x, info.y, info.width, info.height, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-    }
+    // Window is fixed on next present, it sends window messages and would resize again from here
+    if (SUCCEEDED(result) && UseBorderless() && State::Instance().SCExclusiveFullscreen)
+        _borderlessPending = true;
 
     State::Instance().FGResizing = false;
     _skipResize1 = false;
@@ -896,7 +967,8 @@ HRESULT FGHooks::hkResizeBuffers(IDXGISwapChain* This, UINT BufferCount, UINT Wi
 
 HRESULT FGHooks::hkResizeTarget(IDXGISwapChain* This, const DXGI_MODE_DESC* pNewTargetParameters)
 {
-    if (Config::Instance()->FGXeFGForceBorderless.value_or_default())
+    // Windowed games resize their window with it
+    if (UseBorderless() && State::Instance().SCExclusiveFullscreen)
     {
         LOG_DEBUG("Skipping resize target.");
         return S_OK;
@@ -1130,21 +1202,9 @@ HRESULT FGHooks::hkResizeBuffers1(IDXGISwapChain3* This, UINT BufferCount, UINT 
     if (result == DXGI_ERROR_INVALID_CALL)
         LogBackBufferReferences(This);
 
-    // Resize window to cover the screen
-    if (result == S_OK && Config::Instance()->FGXeFGForceBorderless.value_or_default() &&
-        State::Instance().SCExclusiveFullscreen)
-    {
-        SetWindowLongPtr(_hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
-        SetWindowLongPtr(_hwnd, GWL_EXSTYLE, WS_EX_APPWINDOW);
-
-        Util::MonitorInfo info;
-        info = Util::GetMonitorInfoForWindow(_hwnd);
-
-        LOG_DEBUG("Overriding window size: {}x{}, and pos: {}x{} at monitor: {}", info.width, info.height, info.x,
-                  info.y, wstring_to_string(info.name));
-
-        SetWindowPos(_hwnd, HWND_TOP, info.x, info.y, info.width, info.height, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-    }
+    // Window is fixed on next present, it sends window messages and would resize again from here
+    if (SUCCEEDED(result) && UseBorderless() && State::Instance().SCExclusiveFullscreen)
+        _borderlessPending = true;
 
     State::Instance().FGResizing = false;
     _skipResize = false;
@@ -1224,6 +1284,16 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
                            const DXGI_PRESENT_PARAMETERS* pPresentParameters)
 {
     _lastPresentFlags = Flags;
+
+    if (_borderlessPending)
+    {
+        _borderlessPending = false;
+
+        if (State::Instance().SCExclusiveFullscreen)
+            ApplyBorderless(nullptr);
+        else if (_windowSaved)
+            RestoreWindow(0, 0);
+    }
 
     if (State::Instance().isShuttingDown)
     {
@@ -1485,6 +1555,8 @@ void FGHooks::ReleaseFGSwapchain(IUnknown* swapchain, bool releaseReferences)
     LOG_DEBUG("FG Swapchain released, clearing currentFGSwapchain");
     State::Instance().currentFGSwapchain = nullptr;
     _fgSwapchainReleased = false;
+    _borderlessPending = false;
+    State::Instance().SCExclusiveFullscreen = false;
 
     if (State::Instance().currentSwapchain == swapchain)
         State::Instance().currentSwapchain = nullptr;

@@ -91,13 +91,8 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChain(IDXGIFactory* realFactory, Wrap
     if (State::Instance().activeFgOutput == FGOutput::XeFG &&
         Config::Instance()->FGXeFGForceBorderless.value_or_default())
     {
-        if (!localDesc.Windowed)
-        {
-            if (!FGHooks::IsOtherWindowThanFG(localDesc.OutputWindow))
-                State::Instance().SCExclusiveFullscreen = true;
-
-            localDesc.Windowed = true;
-        }
+        State::Instance().SCExclusiveFullscreenRequested = !localDesc.Windowed;
+        localDesc.Windowed = true;
 
         localDesc.Flags &= ~DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
         localDesc.BufferDesc.Scaling = DXGI_MODE_SCALING_STRETCHED;
@@ -261,7 +256,8 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChain(IDXGIFactory* realFactory, Wrap
             State::Instance().skipDxgiLoadChecks = false;
         }
 
-        if (result == S_OK)
+        // Success codes like DXGI_STATUS_OCCLUDED still return a valid swapchain
+        if (SUCCEEDED(result) && ppSwapChain != nullptr && *ppSwapChain != nullptr)
         {
             // Another window's swapchain (temporary or helper) must not replace the FG swapchain's state, FG reads its
             // back buffer format from there
@@ -381,13 +377,8 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChainForHwnd(IDXGIFactory2* realFacto
     if (State::Instance().activeFgOutput == FGOutput::XeFG &&
         Config::Instance()->FGXeFGForceBorderless.value_or_default())
     {
-        if (pFullscreenDesc != nullptr && !pFullscreenDesc->Windowed)
-        {
-            if (!FGHooks::IsOtherWindowThanFG(hWnd))
-                State::Instance().SCExclusiveFullscreen = true;
-
-            localFullscreenDesc.Windowed = true;
-        }
+        State::Instance().SCExclusiveFullscreenRequested = pFullscreenDesc != nullptr && !pFullscreenDesc->Windowed;
+        localFullscreenDesc.Windowed = true;
 
         localDesc.Flags &= ~DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
         localDesc.Scaling = DXGI_SCALING_STRETCH;
@@ -561,7 +552,7 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChainForHwnd(IDXGIFactory2* realFacto
             State::Instance().skipDxgiLoadChecks = false;
         }
 
-        if (result == S_OK)
+        if (SUCCEEDED(result) && ppSwapChain != nullptr && *ppSwapChain != nullptr)
         {
             // Another window's swapchain (temporary or helper) must not replace the FG swapchain's state, FG reads its
             // back buffer format from there
@@ -683,7 +674,7 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChainForCoreWindow(IDXGIFactory2* rea
         realFactory->CreateSwapChainForCoreWindow(pDevice, pWindow, &localDesc, pRestrictToOutput, ppSwapChain);
     State::Instance().skipDxgiLoadChecks = false;
 
-    if (result == S_OK)
+    if (SUCCEEDED(result) && ppSwapChain != nullptr && *ppSwapChain != nullptr)
     {
         // check for SL proxy
         IDXGISwapChain* realSC = nullptr;

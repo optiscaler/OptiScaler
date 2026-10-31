@@ -52,10 +52,18 @@ class FGHooks
     inline static UINT _lastPresentFlags = 0;
     inline static double _lastFGFrameTime = -1.0;
     inline static bool _skipReleaseChecks = false;
+    inline static bool _borderlessPending = false;
+    inline static bool _windowSaved = false;
+    inline static LONG_PTR _savedStyle = 0;
+    inline static LONG_PTR _savedExStyle = 0;
+    inline static RECT _savedRect {};
     inline static bool _fgSwapchainReleased = false;
     inline static ULONG _fgSwapchainBaseRefs = 0;
 
     static void HookFGSwapchain(IDXGISwapChain* pSwapChain);
+    static bool UseBorderless();
+    static void ApplyBorderless(IDXGIOutput* target);
+    static void RestoreWindow(UINT width, UINT height);
     static void ReleaseFGSwapchain(IUnknown* swapchain, bool releaseReferences);
 
     static HRESULT hkSetFullscreenState(IDXGISwapChain* This, BOOL Fullscreen, IDXGIOutput* pTarget);

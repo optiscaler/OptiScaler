@@ -278,6 +278,8 @@ class State
     float screenHeight = 450.0;
     bool realExclusiveFullscreen = false;
     bool SCExclusiveFullscreen = false;
+    // Requested by the swapchain being created, applied when it gets the FG swapchain
+    bool SCExclusiveFullscreenRequested = false;
     bool SCAllowTearing = false;
     UINT SCLastFlags = 0;
 
