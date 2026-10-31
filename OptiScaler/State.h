@@ -9,6 +9,7 @@
 #include <vulkan/vulkan.h>
 #include <ankerl/unordered_dense.h>
 #include <mutex>
+#include <shared_mutex>
 
 typedef enum WindowsVersion
 {
@@ -284,7 +285,6 @@ class State
     UINT SCLastFlags = 0;
 
     // HDR
-    std::vector<IUnknown*> SCbuffers;
     bool isHdrActive = false;
 
     std::string setInputApiName;
@@ -372,7 +372,23 @@ class State
     static std::string SkipDllName() { return _skipDllName; }
     static bool ServeOriginal() { return _serveOriginal; }
 
+    // Back buffers of the game's swapchain, read from view creation on any thread
+    bool IsSCBuffer(IUnknown* resource)
+    {
+        std::shared_lock<std::shared_mutex> lock(_scBuffersMutex);
+        return std::find(_scBuffers.begin(), _scBuffers.end(), resource) != _scBuffers.end();
+    }
+
+    void SetSCBuffers(std::vector<IUnknown*> buffers)
+    {
+        std::unique_lock<std::shared_mutex> lock(_scBuffersMutex);
+        _scBuffers = std::move(buffers);
+    }
+
   private:
+    std::vector<IUnknown*> _scBuffers;
+    std::shared_mutex _scBuffersMutex;
+
     inline static bool _skipChecks = false;
     inline static std::string _skipDllName = "";
     inline static UINT _skipOwner = 0;

@@ -4,6 +4,7 @@
 #include <Config.h>
 #include <State.h>
 #include <Util.h>
+#include <hooks/D3D12_Hooks.h>
 
 #include <menu/menu_overlay_dx.h>
 
@@ -462,21 +463,13 @@ void ResTrack_Dx12::hkCreateRenderTargetView(ID3D12Device* This, ID3D12Resource*
                                              D3D12_RENDER_TARGET_VIEW_DESC* pDesc,
                                              D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor)
 {
-    // force hdr for swapchain buffer
-    if (pResource != nullptr && pDesc != nullptr && Config::Instance()->ForceHDR.value_or_default())
+    // force hdr for swapchain buffer, the game's desc can be read only
+    D3D12_RENDER_TARGET_VIEW_DESC hdrDesc {};
+    if (pDesc != nullptr && D3D12Hooks::IsForcedHDRBuffer(pResource))
     {
-        for (size_t i = 0; i < State::Instance().SCbuffers.size(); i++)
-        {
-            if (State::Instance().SCbuffers[i] == pResource)
-            {
-                if (Config::Instance()->UseHDR10.value_or_default())
-                    pDesc->Format = DXGI_FORMAT_R10G10B10A2_UNORM;
-                else
-                    pDesc->Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-
-                break;
-            }
-        }
+        hdrDesc = *pDesc;
+        hdrDesc.Format = D3D12Hooks::ForcedHDRFormat();
+        pDesc = &hdrDesc;
     }
 
     o_CreateRenderTargetView(This, pResource, pDesc, DestDescriptor);
@@ -516,21 +509,13 @@ void ResTrack_Dx12::hkCreateShaderResourceView(ID3D12Device* This, ID3D12Resourc
                                                D3D12_SHADER_RESOURCE_VIEW_DESC* pDesc,
                                                D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor)
 {
-    // force hdr for swapchain buffer
-    if (pResource != nullptr && pDesc != nullptr && Config::Instance()->ForceHDR.value_or_default())
+    // force hdr for swapchain buffer, the game's desc can be read only
+    D3D12_SHADER_RESOURCE_VIEW_DESC hdrDesc {};
+    if (pDesc != nullptr && D3D12Hooks::IsForcedHDRBuffer(pResource))
     {
-        for (size_t i = 0; i < State::Instance().SCbuffers.size(); i++)
-        {
-            if (State::Instance().SCbuffers[i] == pResource)
-            {
-                if (Config::Instance()->UseHDR10.value_or_default())
-                    pDesc->Format = DXGI_FORMAT_R10G10B10A2_UNORM;
-                else
-                    pDesc->Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-
-                break;
-            }
-        }
+        hdrDesc = *pDesc;
+        hdrDesc.Format = D3D12Hooks::ForcedHDRFormat();
+        pDesc = &hdrDesc;
     }
 
     o_CreateShaderResourceView(This, pResource, pDesc, DestDescriptor);
@@ -571,20 +556,13 @@ void ResTrack_Dx12::hkCreateUnorderedAccessView(ID3D12Device* This, ID3D12Resour
                                                 D3D12_UNORDERED_ACCESS_VIEW_DESC* pDesc,
                                                 D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor)
 {
-    if (pResource != nullptr && pDesc != nullptr && Config::Instance()->ForceHDR.value_or_default())
+    // force hdr for swapchain buffer, the game's desc can be read only
+    D3D12_UNORDERED_ACCESS_VIEW_DESC hdrDesc {};
+    if (pDesc != nullptr && D3D12Hooks::IsForcedHDRBuffer(pResource))
     {
-        for (size_t i = 0; i < State::Instance().SCbuffers.size(); i++)
-        {
-            if (State::Instance().SCbuffers[i] == pResource)
-            {
-                if (Config::Instance()->UseHDR10.value_or_default())
-                    pDesc->Format = DXGI_FORMAT_R10G10B10A2_UNORM;
-                else
-                    pDesc->Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-
-                break;
-            }
-        }
+        hdrDesc = *pDesc;
+        hdrDesc.Format = D3D12Hooks::ForcedHDRFormat();
+        pDesc = &hdrDesc;
     }
 
     o_CreateUnorderedAccessView(This, pResource, pCounterResource, pDesc, DestDescriptor);

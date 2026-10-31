@@ -490,6 +490,48 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
     return presentResult;
 }
 
+static void UpdateSCBuffers(IDXGISwapChain* real, IDXGISwapChain1* real1, UINT bufferCount)
+{
+    if (bufferCount == 0 && real1 != nullptr)
+    {
+        DXGI_SWAP_CHAIN_DESC1 desc {};
+
+        if (real1->GetDesc1(&desc) == S_OK)
+            bufferCount = desc.BufferCount;
+    }
+
+    std::vector<IUnknown*> buffers;
+
+    for (UINT i = 0; i < bufferCount; i++)
+    {
+        IUnknown* buffer = nullptr;
+
+        // Same pointer the game creates its views with
+        if (real->GetBuffer(i, __uuidof(ID3D12Resource), (void**) &buffer) == S_OK)
+        {
+            buffers.push_back(buffer);
+            buffer->Release();
+        }
+    }
+
+    State::Instance().SetSCBuffers(std::move(buffers));
+}
+
+// Only D3D12 views of the buffers are forced to the new format
+static void ForceHDRFormat(IUnknown* device, DXGI_FORMAT& format)
+{
+    if (!Config::Instance()->ForceHDR.value_or_default() || device == nullptr)
+        return;
+
+    ID3D12CommandQueue* cq = nullptr;
+    if (device->QueryInterface(IID_PPV_ARGS(&cq)) != S_OK)
+        return;
+
+    cq->Release();
+    format = Config::Instance()->UseHDR10.value_or_default() ? DXGI_FORMAT_R10G10B10A2_UNORM
+                                                             : DXGI_FORMAT_R16G16B16A16_FLOAT;
+}
+
 WrappedIDXGISwapChain4::WrappedIDXGISwapChain4(IDXGISwapChain* real, IUnknown* pDevice, HWND hWnd, UINT flags,
                                                bool isUWP, IUnknown* owner)
     : _real(real), _owner(owner != nullptr ? owner : real), _device(pDevice), _handle(hWnd), _refcount(1), _uwp(isUWP)
@@ -671,6 +713,9 @@ ULONG STDMETHODCALLTYPE WrappedIDXGISwapChain4::Release()
 
             if (isCurrent && State::Instance().currentCommandQueue == _device)
                 State::Instance().currentCommandQueue = nullptr;
+
+            if (isCurrent)
+                State::Instance().SetSCBuffers({});
 
             auto fg = State::Instance().currentFG;
             if (isCurrent && fg != nullptr && fg->Mutex.getOwner() != 1 && fg->SwapchainContext() != nullptr)
@@ -943,6 +988,9 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
 #endif
 #endif
 
+    if (IsCurrentSwapchain(this))
+        ForceHDRFormat(_device, NewFormat);
+
     if (Config::Instance()->FGDontUseSwapchainBuffers.value_or_default())
     {
         ScopedSkipHeapCapture skipHeapCapture {};
@@ -974,7 +1022,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
 
     // Crude implementation of EndlesslyFlowering's AutoHDR-ReShade
     // https://github.com/EndlesslyFlowering/AutoHDR-ReShade
-    if (Config::Instance()->ForceHDR.value_or_default())
+    if (SUCCEEDED(result) && Config::Instance()->ForceHDR.value_or_default())
     {
         LOG_INFO("Force HDR on");
 
@@ -983,20 +1031,16 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
             if (_real3 == nullptr)
                 break;
 
-            NewFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
             DXGI_COLOR_SPACE_TYPE hdrCS = DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709;
 
             if (Config::Instance()->UseHDR10.value_or_default())
-            {
-                NewFormat = DXGI_FORMAT_R10G10B10A2_UNORM;
                 hdrCS = DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
-            }
 
             if (!Config::Instance()->SkipColorSpace.value_or_default())
             {
                 UINT css = 0;
 
-                result = _real3->CheckColorSpaceSupport(hdrCS, &css);
+                auto result = _real3->CheckColorSpaceSupport(hdrCS, &css);
 
                 if (result != S_OK)
                 {
@@ -1015,32 +1059,14 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
                     }
                 }
 
-                LOG_INFO("HDR format and color space are set");
+                LOG_INFO("HDR color space is set");
             }
 
         } while (false);
     }
 
-    State::Instance().SCbuffers.clear();
-    UINT bc = BufferCount;
-    if (bc == 0 && _real1 != nullptr)
-    {
-        DXGI_SWAP_CHAIN_DESC1 desc {};
-
-        if (_real1->GetDesc1(&desc) == S_OK)
-            bc = desc.BufferCount;
-    }
-
-    for (UINT i = 0; i < bc; i++)
-    {
-        IUnknown* buffer;
-
-        if (_real->GetBuffer(i, IID_PPV_ARGS(&buffer)) == S_OK)
-        {
-            State::Instance().SCbuffers.push_back(buffer);
-            buffer->Release();
-        }
-    }
+    if (SUCCEEDED(result) && Config::Instance()->ForceHDR.value_or_default() && IsCurrentSwapchain(this))
+        UpdateSCBuffers(_real, _real1, BufferCount);
 
     LOG_DEBUG("result: {0:X}", (UINT) result);
 
@@ -1281,6 +1307,9 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
     LOG_DEBUG("BufferCount: {}, Width: {}, Height: {}, NewFormat: {}, SwapChainFlags: {:X}", BufferCount, Width, Height,
               (UINT) Format, SwapChainFlags);
 
+    if (IsCurrentSwapchain(this))
+        ForceHDRFormat(_device, Format);
+
     bool skResized = false;
 
     // Release swapchain backbuffers to prevent errors when resizing
@@ -1399,20 +1428,16 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
 
     // Crude implementation of EndlesslyFlowering's AutoHDR-ReShade
     // https://github.com/EndlesslyFlowering/AutoHDR-ReShade
-    if (Config::Instance()->ForceHDR.value_or_default())
+    if (SUCCEEDED(result) && Config::Instance()->ForceHDR.value_or_default())
     {
         LOG_INFO("Force HDR on");
 
         do
         {
-            Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
             DXGI_COLOR_SPACE_TYPE hdrCS = DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709;
 
             if (Config::Instance()->UseHDR10.value_or_default())
-            {
-                Format = DXGI_FORMAT_R10G10B10A2_UNORM;
                 hdrCS = DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
-            }
 
             if (!Config::Instance()->SkipColorSpace.value_or_default())
             {
@@ -1437,32 +1462,14 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
                     }
                 }
 
-                LOG_INFO("HDR format and color space are set");
+                LOG_INFO("HDR color space is set");
             }
 
         } while (false);
     }
 
-    State::Instance().SCbuffers.clear();
-    UINT bc = BufferCount;
-    if (bc == 0 && _real1 != nullptr)
-    {
-        DXGI_SWAP_CHAIN_DESC1 desc {};
-
-        if (_real1->GetDesc1(&desc) == S_OK)
-            bc = desc.BufferCount;
-    }
-
-    for (UINT i = 0; i < bc; i++)
-    {
-        IUnknown* buffer;
-
-        if (_real->GetBuffer(i, IID_PPV_ARGS(&buffer)) == S_OK)
-        {
-            State::Instance().SCbuffers.push_back(buffer);
-            buffer->Release();
-        }
-    }
+    if (SUCCEEDED(result) && Config::Instance()->ForceHDR.value_or_default() && IsCurrentSwapchain(this))
+        UpdateSCBuffers(_real, _real1, BufferCount);
 
     LOG_DEBUG("result: {0:X}", (UINT) result);
 

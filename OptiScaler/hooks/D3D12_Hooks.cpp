@@ -31,6 +31,9 @@ using PFN_CreateCommittedResource = rewrite_signature<decltype(&ID3D12Device::Cr
 using PFN_CreatePlacedResource = rewrite_signature<decltype(&ID3D12Device::CreatePlacedResource)>::type;
 using PFN_SetResidencyPriority = rewrite_signature<decltype(&ID3D12Device1::SetResidencyPriority)>::type;
 using PFN_CreateRootSignature = rewrite_signature<decltype(&ID3D12Device::CreateRootSignature)>::type;
+using PFN_CreateShaderResourceView = rewrite_signature<decltype(&ID3D12Device::CreateShaderResourceView)>::type;
+using PFN_CreateUnorderedAccessView = rewrite_signature<decltype(&ID3D12Device::CreateUnorderedAccessView)>::type;
+using PFN_CreateRenderTargetView = rewrite_signature<decltype(&ID3D12Device::CreateRenderTargetView)>::type;
 
 // GetResourceAllocationInfo is a special case because of the struct return,
 // see comment on hkGetResourceAllocationInfo for details
@@ -46,6 +49,9 @@ using PFN_CreateDevice = rewrite_signature<decltype(&ID3D12DeviceFactory::Create
 using PFN_Release = rewrite_signature<decltype(&IUnknown::Release)>::type;
 
 static PFN_CreateSampler o_CreateSampler = nullptr;
+static PFN_CreateShaderResourceView o_CreateShaderResourceView = nullptr;
+static PFN_CreateUnorderedAccessView o_CreateUnorderedAccessView = nullptr;
+static PFN_CreateRenderTargetView o_CreateRenderTargetView = nullptr;
 static PFN_CreateSampler2 o_CreateSampler2 = nullptr;
 static PFN_CheckFeatureSupport o_CheckFeatureSupport = nullptr;
 static PFN_CreateCommittedResource o_CreateCommittedResource = nullptr;
@@ -1860,6 +1866,64 @@ static HRESULT hkCreateRootSignature(ID3D12Device* device, UINT nodeMask, const 
     return result;
 }
 
+// Swapchain buffers get the HDR format on resize, their views must match it
+bool D3D12Hooks::IsForcedHDRBuffer(ID3D12Resource* resource)
+{
+    if (resource == nullptr || !Config::Instance()->ForceHDR.value_or_default() ||
+        !State::Instance().IsSCBuffer(resource))
+    {
+        return false;
+    }
+
+    // A failed resize keeps the old format
+    return resource->GetDesc().Format == ForcedHDRFormat();
+}
+
+DXGI_FORMAT D3D12Hooks::ForcedHDRFormat()
+{
+    return Config::Instance()->UseHDR10.value_or_default() ? DXGI_FORMAT_R10G10B10A2_UNORM
+                                                           : DXGI_FORMAT_R16G16B16A16_FLOAT;
+}
+
+VALIDATE_HOOK(hkCreateShaderResourceView, PFN_CreateShaderResourceView)
+static void hkCreateShaderResourceView(ID3D12Device* device, ID3D12Resource* pResource,
+                                       const D3D12_SHADER_RESOURCE_VIEW_DESC* pDesc,
+                                       D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor)
+{
+    if (pDesc == nullptr || !D3D12Hooks::IsForcedHDRBuffer(pResource))
+        return o_CreateShaderResourceView(device, pResource, pDesc, DestDescriptor);
+
+    auto desc = *pDesc;
+    desc.Format = D3D12Hooks::ForcedHDRFormat();
+    o_CreateShaderResourceView(device, pResource, &desc, DestDescriptor);
+}
+
+VALIDATE_HOOK(hkCreateUnorderedAccessView, PFN_CreateUnorderedAccessView)
+static void hkCreateUnorderedAccessView(ID3D12Device* device, ID3D12Resource* pResource,
+                                        ID3D12Resource* pCounterResource, const D3D12_UNORDERED_ACCESS_VIEW_DESC* pDesc,
+                                        D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor)
+{
+    if (pDesc == nullptr || !D3D12Hooks::IsForcedHDRBuffer(pResource))
+        return o_CreateUnorderedAccessView(device, pResource, pCounterResource, pDesc, DestDescriptor);
+
+    auto desc = *pDesc;
+    desc.Format = D3D12Hooks::ForcedHDRFormat();
+    o_CreateUnorderedAccessView(device, pResource, pCounterResource, &desc, DestDescriptor);
+}
+
+VALIDATE_HOOK(hkCreateRenderTargetView, PFN_CreateRenderTargetView)
+static void hkCreateRenderTargetView(ID3D12Device* device, ID3D12Resource* pResource,
+                                     const D3D12_RENDER_TARGET_VIEW_DESC* pDesc,
+                                     D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor)
+{
+    if (pDesc == nullptr || !D3D12Hooks::IsForcedHDRBuffer(pResource))
+        return o_CreateRenderTargetView(device, pResource, pDesc, DestDescriptor);
+
+    auto desc = *pDesc;
+    desc.Format = D3D12Hooks::ForcedHDRFormat();
+    o_CreateRenderTargetView(device, pResource, &desc, DestDescriptor);
+}
+
 VALIDATE_HOOK(hkD3D12GetInterface, PFN_D3D12GetInterface)
 static HRESULT hkD3D12GetInterface(REFCLSID rclsid, REFIID riid, void** ppvDebug)
 {
@@ -1998,7 +2062,30 @@ static void HookToDevice(ID3D12Device* InDevice)
     HookToCommandList(InDevice);
 
     if (State::Instance().activeFgInput == FGInput::Upscaler && !Config::Instance()->FGDisableHUDFix.value_or_default())
+    {
         ResTrack_Dx12::HookDevice(InDevice);
+    }
+    else if (Config::Instance()->ForceHDR.value_or_default() && o_CreateShaderResourceView == nullptr)
+    {
+        // ResTrack forces these itself
+        o_CreateShaderResourceView = (PFN_CreateShaderResourceView) pVTable[18];
+        o_CreateUnorderedAccessView = (PFN_CreateUnorderedAccessView) pVTable[19];
+        o_CreateRenderTargetView = (PFN_CreateRenderTargetView) pVTable[20];
+
+        DetourTransactionBegin();
+        DetourUpdateThread(GetCurrentThread());
+        DetourAttach(&(PVOID&) o_CreateShaderResourceView, hkCreateShaderResourceView);
+        DetourAttach(&(PVOID&) o_CreateUnorderedAccessView, hkCreateUnorderedAccessView);
+        DetourAttach(&(PVOID&) o_CreateRenderTargetView, hkCreateRenderTargetView);
+
+        if (DetourTransactionCommit() != NO_ERROR)
+        {
+            LOG_ERROR("Failed to detour view creation for ForceHDR");
+            o_CreateShaderResourceView = nullptr;
+            o_CreateUnorderedAccessView = nullptr;
+            o_CreateRenderTargetView = nullptr;
+        }
+    }
 }
 
 static void UnhookDevice()

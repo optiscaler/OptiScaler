@@ -882,7 +882,7 @@ HRESULT FGHooks::hkResizeBuffers(IDXGISwapChain* This, UINT BufferCount, UINT Wi
 
     // Force HDR10 for XeFG if HDR16 is used
     if (State::Instance().activeFgOutput == FGOutput::XeFG && NewFormat >= DXGI_FORMAT_R16G16B16A16_TYPELESS &&
-        NewFormat <= DXGI_FORMAT_R16G16B16A16_SINT && !Config::Instance()->ForceHDR.has_value())
+        NewFormat <= DXGI_FORMAT_R16G16B16A16_SINT && (!Config::Instance()->ForceHDR.has_value() || _forcedHdrForXeFG))
     {
         if (!Config::Instance()->ForceHDR.has_value())
         {
@@ -893,7 +893,7 @@ HRESULT FGHooks::hkResizeBuffers(IDXGISwapChain* This, UINT BufferCount, UINT Wi
             _forcedHdrForXeFG = true;
         }
     }
-    else if (_forcedHdrForXeFG)
+    else if (_forcedHdrForXeFG && NewFormat != DXGI_FORMAT_UNKNOWN)
     {
         LOG_INFO("Disabling forced HDR10");
         Config::Instance()->ForceHDR.reset();
@@ -1128,7 +1128,7 @@ HRESULT FGHooks::hkResizeBuffers1(IDXGISwapChain3* This, UINT BufferCount, UINT 
 
     // Force HDR10 for XeFG if HDR16 is used
     if (State::Instance().activeFgOutput == FGOutput::XeFG && Format >= DXGI_FORMAT_R16G16B16A16_TYPELESS &&
-        Format <= DXGI_FORMAT_R16G16B16A16_SINT && !Config::Instance()->ForceHDR.has_value())
+        Format <= DXGI_FORMAT_R16G16B16A16_SINT && (!Config::Instance()->ForceHDR.has_value() || _forcedHdrForXeFG))
     {
         if (!Config::Instance()->ForceHDR.has_value())
         {
@@ -1139,7 +1139,7 @@ HRESULT FGHooks::hkResizeBuffers1(IDXGISwapChain3* This, UINT BufferCount, UINT 
             _forcedHdrForXeFG = true;
         }
     }
-    else if (_forcedHdrForXeFG)
+    else if (_forcedHdrForXeFG && Format != DXGI_FORMAT_UNKNOWN)
     {
         LOG_INFO("Disabling forced HDR10");
         Config::Instance()->ForceHDR.reset();
