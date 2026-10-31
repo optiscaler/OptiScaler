@@ -28,6 +28,10 @@ static VkInstance _instance = VK_NULL_HANDLE;
 static VkPhysicalDevice _PD = VK_NULL_HANDLE;
 static HWND _hwnd = nullptr;
 
+// Swapchains take the window of their surface, the last created one can be a probe
+static std::unordered_map<VkSurfaceKHR, HWND> _surfaceWindows;
+static std::mutex _surfaceMutex;
+
 static std::mutex _vkPresentMutex;
 
 PFN_vkCreateDevice o_vkCreateDevice = nullptr;
@@ -98,6 +102,9 @@ static VkResult hkvkCreateWin32SurfaceKHR(VkInstance instance, const VkWin32Surf
         LOG_DEBUG("_instance captured: {0:X}", (UINT64) _instance);
         _hwnd = pCreateInfo->hwnd;
         LOG_DEBUG("_hwnd captured: {0:X}", (UINT64) _hwnd);
+
+        std::lock_guard<std::mutex> lock(_surfaceMutex);
+        _surfaceWindows[*pSurface] = pCreateInfo->hwnd;
     }
 
     LOG_FUNC_RESULT(result);
@@ -206,7 +213,10 @@ static void hkvkDestroyDevice(VkDevice device, const VkAllocationCallbacks* pAll
 
     // Objects created on the device have to go before it
     if (device != VK_NULL_HANDLE)
+    {
+        MenuOverlayVk::ReleaseDevice(device);
         DeferredRelease::ReleaseOwner((uint64_t) device);
+    }
 
     o_vkDestroyDevice(device, pAllocator);
 }
@@ -277,7 +287,16 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
         _device = device;
         LOG_DEBUG("_device captured: {0:X}", (UINT64) _device);
 
-        MenuOverlayVk::CreateSwapchain(device, _PD, _instance, _hwnd, pCreateInfo, pAllocator, pSwapchain);
+        auto hwnd = _hwnd;
+
+        {
+            std::lock_guard<std::mutex> lock(_surfaceMutex);
+
+            if (auto it = _surfaceWindows.find(pCreateInfo->surface); it != _surfaceWindows.end())
+                hwnd = it->second;
+        }
+
+        MenuOverlayVk::CreateSwapchain(device, _PD, _instance, hwnd, pCreateInfo, pAllocator, pSwapchain);
     }
 
     LOG_FUNC_RESULT(result);

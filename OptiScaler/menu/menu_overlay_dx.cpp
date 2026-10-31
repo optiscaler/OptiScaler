@@ -5,6 +5,7 @@
 #include <Util.h>
 #include <Logger.h>
 #include <Config.h>
+#include <misc/DeferredRelease.h>
 
 #include <imgui/imgui_impl_dx11.h>
 #include <imgui/imgui_impl_dx12.h>
@@ -19,6 +20,7 @@ static bool _dx12Device = false;
 
 // for dx11
 static ID3D11Device* g_pd3dDevice = nullptr;
+static ID3D11Device* g_pd3dBackendDevice = nullptr;
 static ID3D11DeviceContext* g_pd3dDeviceContext = nullptr;
 static ID3D11RenderTargetView* g_pd3dRenderTarget = nullptr;
 
@@ -30,6 +32,10 @@ static DescriptorHeapAllocator g_pd3dSrvDescHeapAlloc;
 static ID3D12CommandQueue* g_pd3dCommandQueue = nullptr;
 static ID3D12GraphicsCommandList* g_pd3dCommandList = nullptr;
 static ID3D12CommandAllocator* g_commandAllocators[NUM_BACK_BUFFERS] = {};
+static ID3D12Fence* g_pd3dFence = nullptr;
+static HANDLE g_fenceEvent = nullptr;
+static UINT64 g_fenceValue = 0;
+static UINT64 g_allocatorFenceValues[NUM_BACK_BUFFERS] = {};
 static ID3D12Resource* g_mainRenderTargetResource[NUM_BACK_BUFFERS] = {};
 static D3D12_CPU_DESCRIPTOR_HANDLE g_mainRenderTargetDescriptor[NUM_BACK_BUFFERS] = {};
 
@@ -75,6 +81,27 @@ static int GetCorrectDXGIFormat(int eCurrentFormat)
     }
 
     return eCurrentFormat;
+}
+
+static void WaitForMenuFence(UINT64 value)
+{
+    if (g_pd3dFence == nullptr)
+        return;
+
+    // A timed out wait leaves a signal on the event, completion is checked again
+    for (int i = 0; i < 2 && g_pd3dFence->GetCompletedValue() < value; i++)
+    {
+        if (g_pd3dFence->SetEventOnCompletion(value, g_fenceEvent) != S_OK)
+            break;
+
+        WaitForSingleObject(g_fenceEvent, 500);
+    }
+}
+
+static bool IsRendererBackend(const char* name)
+{
+    auto backend = ImGui::GetCurrentContext() != nullptr ? ImGui::GetIO().BackendRendererName : nullptr;
+    return backend != nullptr && strcmp(backend, name) == 0;
 }
 
 static void CreateRenderTargetDx12(ID3D12Device* device, IDXGISwapChain* pSwapChain)
@@ -139,8 +166,11 @@ static void CleanupRenderTargetDx12(bool clearQueue)
 
     if (clearQueue)
     {
+        // Menu's last command lists can still be running
+        WaitForMenuFence(g_fenceValue);
+
         if (MenuOverlayBase::IsInited() && g_pd3dDeviceParam != nullptr && g_pd3dSrvDescHeap != nullptr &&
-            ImGui::GetIO().BackendRendererUserData)
+            IsRendererBackend("imgui_impl_dx12"))
         {
             // std::this_thread::sleep_for(std::chrono::milliseconds(500));
             ImGui_ImplDX12_Shutdown(false);
@@ -175,6 +205,22 @@ static void CleanupRenderTargetDx12(bool clearQueue)
 
         if (g_pd3dCommandQueue != nullptr)
             g_pd3dCommandQueue = nullptr;
+
+        if (g_pd3dFence != nullptr)
+        {
+            g_pd3dFence->Release();
+            g_pd3dFence = nullptr;
+        }
+
+        // The fence can still signal it if the wait above timed out
+        if (g_fenceEvent != nullptr)
+        {
+            DeferredRelease::Enqueue([event = g_fenceEvent]() { CloseHandle(event); });
+            g_fenceEvent = nullptr;
+        }
+
+        g_fenceValue = 0;
+        memset(g_allocatorFenceValues, 0, sizeof(g_allocatorFenceValues));
 
         g_pd3dSrvDescHeapAlloc.Destroy();
 
@@ -260,6 +306,10 @@ static void RenderImGui_DX11(IDXGISwapChain* pSwapChain)
     ImGuiIO& io = ImGui::GetIO();
     (void) io;
 
+    // The game can recreate its device on the same window
+    if (IsRendererBackend("imgui_impl_dx11") && g_pd3dBackendDevice != g_pd3dDevice)
+        ImGui_ImplDX11_Shutdown(false);
+
     if (io.BackendRendererUserData == nullptr)
     {
         if (pSwapChain->GetDevice(IID_PPV_ARGS(&g_pd3dDevice)) == S_OK)
@@ -267,7 +317,9 @@ static void RenderImGui_DX11(IDXGISwapChain* pSwapChain)
             g_pd3dDevice->Release();
             g_pd3dDevice->GetImmediateContext(&g_pd3dDeviceContext);
             g_pd3dDeviceContext->Release();
-            ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
+
+            if (ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext))
+                g_pd3dBackendDevice = g_pd3dDevice;
         }
     }
 
@@ -285,8 +337,29 @@ static void RenderImGui_DX11(IDXGISwapChain* pSwapChain)
             {
                 ImGui::Render();
 
+                ID3D11RenderTargetView* gameRtvs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
+                ID3D11DepthStencilView* gameDsv = nullptr;
+                g_pd3dDeviceContext->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, gameRtvs, &gameDsv);
+
                 g_pd3dDeviceContext->OMSetRenderTargets(1, &g_pd3dRenderTarget, NULL);
                 ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+
+                // Game can rely on its bindings, a bound back buffer also fails its ResizeBuffers.
+                // Only the slots it used, UAVs share the output slots
+                UINT gameRtvCount = D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT;
+                while (gameRtvCount > 1 && gameRtvs[gameRtvCount - 1] == nullptr)
+                    gameRtvCount--;
+
+                g_pd3dDeviceContext->OMSetRenderTargets(gameRtvCount, gameRtvs, gameDsv);
+
+                for (auto rtv : gameRtvs)
+                {
+                    if (rtv != nullptr)
+                        rtv->Release();
+                }
+
+                if (gameDsv != nullptr)
+                    gameDsv->Release();
             }
         }
     }
@@ -429,6 +502,18 @@ static void RenderImGui_DX12(IDXGISwapChain* pSwapChainPlain)
             return;
         }
 
+        result = device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&g_pd3dFence));
+        g_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+
+        if (result != S_OK || g_fenceEvent == nullptr)
+        {
+            LOG_ERROR("CreateFence: {0:X}", (unsigned long) result);
+            MenuOverlayBase::HideMenu();
+            CleanupRenderTargetDx12(true);
+            pSwapChain->Release();
+            return;
+        }
+
         DXGI_SWAP_CHAIN_DESC scDesc;
         pSwapChain->GetDesc(&scDesc);
 
@@ -436,7 +521,8 @@ static void RenderImGui_DX12(IDXGISwapChain* pSwapChainPlain)
         initInfo.Device = device;
         initInfo.CommandQueue = (ID3D12CommandQueue*) currentSCCommandQueue;
         initInfo.NumFramesInFlight = NUM_BACK_BUFFERS;
-        initInfo.RTVFormat = scDesc.BufferDesc.Format;
+        // Same format as the render target views
+        initInfo.RTVFormat = static_cast<DXGI_FORMAT>(GetCorrectDXGIFormat(scDesc.BufferDesc.Format));
         initInfo.DSVFormat = DXGI_FORMAT_UNKNOWN;
         initInfo.SrvDescriptorHeap = g_pd3dSrvDescHeap;
         initInfo.SrvDescriptorAllocFn = [](ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_handle,
@@ -481,7 +567,10 @@ static void RenderImGui_DX12(IDXGISwapChain* pSwapChainPlain)
             {
                 ImGui::Render();
 
-                ID3D12CommandAllocator* commandAllocator = g_commandAllocators[backBufferIdx];
+                // Allocators follow submissions, the swapchain can have fewer buffers than frames in flight
+                auto allocatorIdx = (g_fenceValue + 1) % NUM_BACK_BUFFERS;
+                ID3D12CommandAllocator* commandAllocator = g_commandAllocators[allocatorIdx];
+                WaitForMenuFence(g_allocatorFenceValues[allocatorIdx]);
 
                 auto result = commandAllocator->Reset();
                 if (result != S_OK)
@@ -529,6 +618,9 @@ static void RenderImGui_DX12(IDXGISwapChain* pSwapChainPlain)
 
                 ID3D12CommandList* ppCommandLists[] = { g_pd3dCommandList };
                 ((ID3D12CommandQueue*) currentSCCommandQueue)->ExecuteCommandLists(1, ppCommandLists);
+
+                if (((ID3D12CommandQueue*) currentSCCommandQueue)->Signal(g_pd3dFence, ++g_fenceValue) == S_OK)
+                    g_allocatorFenceValues[allocatorIdx] = g_fenceValue;
             }
         }
         else
@@ -610,7 +702,17 @@ void MenuOverlayDx::Present(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         LOG_DEBUG("Handle changed {:X} -> {:X}", (size_t) MenuOverlayBase::Handle(), (size_t) hWnd);
 
         if (MenuOverlayBase::IsInited())
+        {
+            // Renderer backends belong to the old window's context
+            if (IsRendererBackend("imgui_impl_dx11"))
+                ImGui_ImplDX11_Shutdown(false);
+
+            // Dx11 cleanup clears _isInited that Dx12 cleanup needs
+            CleanupRenderTargetDx12(true);
+            CleanupRenderTargetDx11(false);
+
             MenuOverlayBase::Shutdown();
+        }
 
         MenuOverlayBase::Init(hWnd, isUWP);
 
@@ -633,7 +735,10 @@ void MenuOverlayDx::Present(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         else if (_dx12Device && (g_pd3dDeviceParam != nullptr || device12 != nullptr))
         {
             if (g_pd3dDeviceParam != nullptr && device12 == nullptr)
+            {
                 device12 = g_pd3dDeviceParam;
+                device12->AddRef();
+            }
 
             CleanupRenderTargetDx12(true);
 

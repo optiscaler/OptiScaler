@@ -5,6 +5,7 @@
 
 #include "Config.h"
 #include "menu_common.h"
+#include <misc/DeferredRelease.h>
 #include <imgui/imgui_impl_dx12.h>
 #include <imgui/imgui_impl_win32.h>
 
@@ -50,6 +51,9 @@ bool Menu_Dx12::Render(ID3D12GraphicsCommandList* pCmdList, ID3D12Resource* outT
 
     frameCounter++;
 
+    // Presents may not be hooked without the overlay menu
+    DeferredRelease::Collect();
+
     // if (!IsVisible())
     //	return true;
 
@@ -74,7 +78,7 @@ bool Menu_Dx12::Render(ID3D12GraphicsCommandList* pCmdList, ID3D12Resource* outT
         IM_ASSERT(SUCCEEDED(hr));
 
         initInfo.NumFramesInFlight = 2;
-        initInfo.RTVFormat = outDesc.Format;
+        initInfo.RTVFormat = TranslateTypelessFormats(outDesc.Format);
         initInfo.DSVFormat = DXGI_FORMAT_UNKNOWN;
         initInfo.SrvDescriptorHeap = _srvDescHeap;
         initInfo.SrvDescriptorAllocFn = [](ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_handle,
@@ -100,7 +104,7 @@ bool Menu_Dx12::Render(ID3D12GraphicsCommandList* pCmdList, ID3D12Resource* outT
     auto backbuf = frameCounter % 2;
 
     D3D12_RENDER_TARGET_VIEW_DESC rtDesc = {};
-    rtDesc.Format = outDesc.Format;
+    rtDesc.Format = TranslateTypelessFormats(outDesc.Format);
     rtDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 
     if ((outDesc.Flags & D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET) > 0)
@@ -284,12 +288,12 @@ void Menu_Dx12::CreateRenderTarget(const D3D12_RESOURCE_DESC& InDesc)
     {
         auto rtDesc = _renderTargetResource[0]->GetDesc();
 
-        if (InDesc.Width != rtDesc.Width || InDesc.Height != rtDesc.Height || InDesc.Format != rtDesc.Format)
+        if (InDesc.Width != rtDesc.Width || InDesc.Height != rtDesc.Height ||
+            TranslateTypelessFormats(InDesc.Format) != rtDesc.Format)
         {
-            _renderTargetResource[0]->Release();
-            _renderTargetResource[0] = nullptr;
-            _renderTargetResource[1]->Release();
-            _renderTargetResource[1] = nullptr;
+            // Last frames' copies can still be running
+            DeferredRelease::Release(_renderTargetResource[0]);
+            DeferredRelease::Release(_renderTargetResource[1]);
         }
         else
             return;
@@ -321,7 +325,7 @@ void Menu_Dx12::CreateRenderTarget(const D3D12_RESOURCE_DESC& InDesc)
             renderTarget->SetName(L"Imgui_Dx12_renderTarget");
 
             D3D12_RENDER_TARGET_VIEW_DESC rtDesc = {};
-            rtDesc.Format = InDesc.Format;
+            rtDesc.Format = desc.Format;
             rtDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 
             _device->CreateRenderTargetView(renderTarget, &rtDesc, _renderTargetDescriptor[i]);
