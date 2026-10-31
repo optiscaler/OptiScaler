@@ -4,6 +4,7 @@
 #include "Config.h"
 
 #include "xess.h"
+#include "xess_debug.h"
 
 xess_result_t hk_xessGetVersion(xess_version_t* pVersion);
 xess_result_t hk_xessGetVersionDx11(xess_version_t* pVersion);
@@ -32,3 +33,6 @@ xess_result_t hk_xessSetContextParameterF();
 xess_result_t hk_xessAILGetDecision();
 xess_result_t hk_xessAILGetVersion();
 xess_result_t hk_xessGetPipelineBuildStatus(xess_context_handle_t hContext);
+xess_result_t hk_xessSetMaxResponsiveMaskValue(xess_context_handle_t hContext, float value);
+xess_result_t hk_xessGetMaxResponsiveMaskValue(xess_context_handle_t hContext, float* pValue);
+xess_result_t hk_xessGetProfilingData(xess_context_handle_t hContext, xess_profiling_data_t** pProfilingData);

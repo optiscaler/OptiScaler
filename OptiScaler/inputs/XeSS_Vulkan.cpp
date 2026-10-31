@@ -362,6 +362,10 @@ xess_result_t hk_xessVKGetResourcesToDump(xess_context_handle_t hContext,
                                           xess_vk_resources_to_dump_t** pResourcesToDump)
 {
     LOG_DEBUG("");
+
+    if (pResourcesToDump != nullptr)
+        *pResourcesToDump = nullptr;
+
     return XESS_RESULT_SUCCESS;
 }
 

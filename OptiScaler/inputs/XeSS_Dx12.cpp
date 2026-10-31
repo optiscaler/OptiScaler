@@ -281,11 +281,19 @@ xess_result_t hk_xessD3D12GetResourcesToDump(xess_context_handle_t hContext,
                                              xess_resources_to_dump_t** pResourcesToDump)
 {
     LOG_DEBUG("");
+
+    if (pResourcesToDump != nullptr)
+        *pResourcesToDump = nullptr;
+
     return XESS_RESULT_SUCCESS;
 }
 
 xess_result_t hk_xessD3D12GetProfilingData(xess_context_handle_t hContext, xess_profiling_data_t** pProfilingData)
 {
     LOG_DEBUG("");
+
+    if (pProfilingData != nullptr)
+        *pProfilingData = nullptr;
+
     return XESS_RESULT_SUCCESS;
 }

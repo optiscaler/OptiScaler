@@ -69,6 +69,9 @@ static std::optional<float> GetQualityOverrideRatio(const xess_quality_settings_
     return output;
 }
 
+// Not used by the backends, kept for the getter
+static std::unordered_map<xess_context_handle_t, float> _maxResponsiveMaskValues;
+
 xess_result_t hk_xessGetVersion(xess_version_t* pVersion)
 {
     LOG_DEBUG("");
@@ -146,6 +149,7 @@ xess_result_t hk_xessDestroyContext(xess_context_handle_t hContext)
 
     _contexts.erase(hContext);
     _nvParams.erase(hContext);
+    _maxResponsiveMaskValues.erase(hContext);
 
     return XESS_RESULT_SUCCESS;
 }
@@ -434,5 +438,46 @@ xess_result_t hk_xessAILGetVersion()
 xess_result_t hk_xessGetPipelineBuildStatus(xess_context_handle_t hContext)
 {
     LOG_DEBUG("");
+    return XESS_RESULT_SUCCESS;
+}
+
+xess_result_t hk_xessSetMaxResponsiveMaskValue(xess_context_handle_t hContext, float value)
+{
+    LOG_DEBUG("value: {}", value);
+
+    if (!_nvParams.contains(hContext))
+        return XESS_RESULT_ERROR_INVALID_CONTEXT;
+
+    if (value < 0.0f || value > 1.0f)
+        return XESS_RESULT_ERROR_INVALID_ARGUMENT;
+
+    _maxResponsiveMaskValues[hContext] = value;
+
+    return XESS_RESULT_SUCCESS;
+}
+
+xess_result_t hk_xessGetMaxResponsiveMaskValue(xess_context_handle_t hContext, float* pValue)
+{
+    LOG_DEBUG("");
+
+    if (!_nvParams.contains(hContext))
+        return XESS_RESULT_ERROR_INVALID_CONTEXT;
+
+    if (pValue == nullptr)
+        return XESS_RESULT_ERROR_INVALID_ARGUMENT;
+
+    auto it = _maxResponsiveMaskValues.find(hContext);
+    *pValue = it != _maxResponsiveMaskValues.end() ? it->second : 1.0f;
+
+    return XESS_RESULT_SUCCESS;
+}
+
+xess_result_t hk_xessGetProfilingData(xess_context_handle_t hContext, xess_profiling_data_t** pProfilingData)
+{
+    LOG_DEBUG("");
+
+    if (pProfilingData != nullptr)
+        *pProfilingData = nullptr;
+
     return XESS_RESULT_SUCCESS;
 }
