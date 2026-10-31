@@ -66,9 +66,7 @@ bool IFeature_Dx11wDx12::CopyTextureFrom11To12(ID3D11Resource* InResource, D3D11
             {
                 OutResource->SharedTexture->Release();
 
-                if (OutResource->Dx12Handle != NULL &&
-                    (OutResource->Desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_NTHANDLE))
-                    CloseHandle(OutResource->Dx12Handle);
+                OutResource->CloseNtHandle();
 
                 OutResource->Dx11Handle = NULL;
                 OutResource->Dx12Handle = NULL;
@@ -94,6 +92,7 @@ bool IFeature_Dx11wDx12::CopyTextureFrom11To12(ID3D11Resource* InResource, D3D11
             if (result != S_OK)
             {
                 LOG_ERROR("QueryInterface(resource) error: {0:x}", result);
+                SAFE_RELEASE(OutResource->SharedTexture);
                 return false;
             }
 
@@ -110,8 +109,11 @@ bool IFeature_Dx11wDx12::CopyTextureFrom11To12(ID3D11Resource* InResource, D3D11
             if (result != S_OK)
             {
                 LOG_ERROR("GetSharedHandle error: {0:x}", result);
+                SAFE_RELEASE(OutResource->SharedTexture);
                 return false;
             }
+
+            OutResource->NtHandle = true;
         }
 
         if (InCopy && OutResource->SharedTexture != nullptr)
@@ -141,12 +143,12 @@ bool IFeature_Dx11wDx12::CopyTextureFrom11To12(ID3D11Resource* InResource, D3D11
                 resource->Release();
 
                 // Get shared handle
+                OutResource->CloseNtHandle();
                 result = resource->GetSharedHandle(&OutResource->Dx11Handle);
 
                 if (result != S_OK)
                 {
                     LOG_ERROR("GetSharedHandle error: {0:x}", result);
-                    resource->Release();
                     return false;
                 }
             }
@@ -162,9 +164,7 @@ bool IFeature_Dx11wDx12::CopyTextureFrom11To12(ID3D11Resource* InResource, D3D11
                 {
                     OutResource->SharedTexture->Release();
 
-                    if (OutResource->Dx12Handle != NULL &&
-                        (OutResource->Desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_NTHANDLE))
-                        CloseHandle(OutResource->Dx12Handle);
+                    OutResource->CloseNtHandle();
 
                     OutResource->Dx11Handle = NULL;
                     OutResource->Dx12Handle = NULL;
@@ -179,24 +179,32 @@ bool IFeature_Dx11wDx12::CopyTextureFrom11To12(ID3D11Resource* InResource, D3D11
 
                 result = Dx11Device->CreateTexture2D(&desc, nullptr, &OutResource->SharedTexture);
 
+                if (result != S_OK)
+                {
+                    LOG_ERROR("CreateTexture2D error: {0:x}", result);
+                    return false;
+                }
+
                 IDXGIResource1* resource;
                 result = OutResource->SharedTexture->QueryInterface(IID_PPV_ARGS(&resource));
 
                 if (result != S_OK)
                 {
                     LOG_ERROR("QueryInterface(resource) error: {0:x}", result);
+                    SAFE_RELEASE(OutResource->SharedTexture);
                     return false;
                 }
 
                 resource->Release();
 
                 // Get shared handle
+                OutResource->CloseNtHandle();
                 result = resource->GetSharedHandle(&OutResource->Dx11Handle);
 
                 if (result != S_OK)
                 {
                     LOG_ERROR("GetSharedHandle error: {0:x}", result);
-                    resource->Release();
+                    SAFE_RELEASE(OutResource->SharedTexture);
                     return false;
                 }
             }
@@ -221,6 +229,8 @@ bool IFeature_Dx11wDx12::CopyTextureFrom11To12(ID3D11Resource* InResource, D3D11
 
             resource->Release();
 
+            OutResource->CloseNtHandle();
+
             // Get shared handle
             if ((desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED) != 0 &&
                 (desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_NTHANDLE) != 0)
@@ -243,9 +253,12 @@ bool IFeature_Dx11wDx12::CopyTextureFrom11To12(ID3D11Resource* InResource, D3D11
                 return false;
             }
 
+            OutResource->NtHandle = (desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_NTHANDLE) != 0 &&
+                                    (desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED) != 0;
             InResource->AddRef();
             SAFE_RELEASE(OutResource->SharedTexture);
             OutResource->SharedTexture = (ID3D11Texture2D*) InResource;
+            OutResource->Desc = {};
         }
     }
 
@@ -268,6 +281,12 @@ void IFeature_Dx11wDx12::ReleaseSharedResources()
     SAFE_RELEASE(dx11Depth.SharedTexture);
     SAFE_RELEASE(dx11Reactive.SharedTexture);
     SAFE_RELEASE(dx11Exp.SharedTexture);
+    dx11Color.CloseNtHandle();
+    dx11Mv.CloseNtHandle();
+    dx11Out.CloseNtHandle();
+    dx11Depth.CloseNtHandle();
+    dx11Reactive.CloseNtHandle();
+    dx11Exp.CloseNtHandle();
     DeferredRelease::Release(dx11Color.Dx12Resource);
     DeferredRelease::Release(dx11Mv.Dx12Resource);
     DeferredRelease::Release(dx11Out.Dx12Resource);
@@ -740,9 +759,6 @@ bool IFeature_Dx11wDx12::ProcessDx11Textures(const NVSDK_NGX_Parameter* InParame
     {
         SAFE_RELEASE(dx11Color.Dx12Resource);
 
-        if (dx11Color.Dx12Handle != NULL)
-            CloseHandle(dx11Color.Dx12Handle);
-
         result = _dx11on12Device->OpenSharedHandle(dx11Color.Dx11Handle, IID_PPV_ARGS(&dx11Color.Dx12Resource));
 
         if (result != S_OK)
@@ -757,9 +773,6 @@ bool IFeature_Dx11wDx12::ProcessDx11Textures(const NVSDK_NGX_Parameter* InParame
     if (paramMv && dx11Mv.Dx12Handle != dx11Mv.Dx11Handle)
     {
         SAFE_RELEASE(dx11Mv.Dx12Resource);
-
-        if (dx11Mv.Dx12Handle != NULL)
-            CloseHandle(dx11Mv.Dx12Handle);
 
         result = _dx11on12Device->OpenSharedHandle(dx11Mv.Dx11Handle, IID_PPV_ARGS(&dx11Mv.Dx12Resource));
 
@@ -776,9 +789,6 @@ bool IFeature_Dx11wDx12::ProcessDx11Textures(const NVSDK_NGX_Parameter* InParame
     {
         SAFE_RELEASE(dx11Out.Dx12Resource);
 
-        if (dx11Out.Dx12Handle != NULL)
-            CloseHandle(dx11Out.Dx12Handle);
-
         result = _dx11on12Device->OpenSharedHandle(dx11Out.Dx11Handle, IID_PPV_ARGS(&dx11Out.Dx12Resource));
 
         if (result != S_OK)
@@ -793,9 +803,6 @@ bool IFeature_Dx11wDx12::ProcessDx11Textures(const NVSDK_NGX_Parameter* InParame
     if (paramDepth && dx11Depth.Dx12Handle != dx11Depth.Dx11Handle)
     {
         SAFE_RELEASE(dx11Depth.Dx12Resource);
-
-        if (dx11Depth.Dx12Handle != NULL)
-            CloseHandle(dx11Depth.Dx12Handle);
 
         result = _dx11on12Device->OpenSharedHandle(dx11Depth.Dx11Handle, IID_PPV_ARGS(&dx11Depth.Dx12Resource));
 
@@ -818,9 +825,6 @@ bool IFeature_Dx11wDx12::ProcessDx11Textures(const NVSDK_NGX_Parameter* InParame
     {
         SAFE_RELEASE(dx11Exp.Dx12Resource);
 
-        if (dx11Exp.Dx12Handle != NULL)
-            CloseHandle(dx11Exp.Dx12Handle);
-
         result = _dx11on12Device->OpenSharedHandle(dx11Exp.Dx11Handle, IID_PPV_ARGS(&dx11Exp.Dx12Resource));
 
         if (result != S_OK)
@@ -836,9 +840,6 @@ bool IFeature_Dx11wDx12::ProcessDx11Textures(const NVSDK_NGX_Parameter* InParame
         dx11Reactive.Dx12Handle != dx11Reactive.Dx11Handle)
     {
         SAFE_RELEASE(dx11Reactive.Dx12Resource);
-
-        if (dx11Reactive.Dx12Handle != NULL)
-            CloseHandle(dx11Reactive.Dx12Handle);
 
         result = _dx11on12Device->OpenSharedHandle(dx11Reactive.Dx11Handle, IID_PPV_ARGS(&dx11Reactive.Dx12Resource));
 

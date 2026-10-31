@@ -104,7 +104,10 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChain(IDXGIFactory* realFactory, IUnk
         Config::Instance()->OverrideVsync.set_volatile_value(false);
     }
 
-    if (Config::Instance()->OverrideVsync.value_or_default())
+    // Flip model doesn't support MSAA or sRGB buffers
+    if (Config::Instance()->OverrideVsync.value_or_default() && localDesc.SampleDesc.Count <= 1 &&
+        localDesc.BufferDesc.Format != DXGI_FORMAT_R8G8B8A8_UNORM_SRGB &&
+        localDesc.BufferDesc.Format != DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)
     {
         localDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
         localDesc.Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
@@ -376,7 +379,9 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChainForHwnd(IDXGIFactory2* realFacto
         Config::Instance()->OverrideVsync.set_volatile_value(false);
     }
 
-    if (Config::Instance()->OverrideVsync.value_or_default())
+    // Flip model doesn't support MSAA or sRGB buffers
+    if (Config::Instance()->OverrideVsync.value_or_default() && localDesc.SampleDesc.Count <= 1 &&
+        localDesc.Format != DXGI_FORMAT_R8G8B8A8_UNORM_SRGB && localDesc.Format != DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)
     {
         localDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
         localDesc.Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;

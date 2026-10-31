@@ -33,6 +33,21 @@ class IFeature_Dx11wDx12 : public virtual IFeature_Dx11
         ID3D12Resource* Dx12Resource = nullptr;
         HANDLE Dx11Handle = NULL;
         HANDLE Dx12Handle = NULL;
+        bool NtHandle = false;
+
+        // NT handles have to be closed, legacy shared handles can't be. A new handle can get the same value
+        void CloseNtHandle()
+        {
+            if (!NtHandle)
+                return;
+
+            if (Dx11Handle != NULL)
+                CloseHandle(Dx11Handle);
+
+            Dx11Handle = NULL;
+            Dx12Handle = NULL;
+            NtHandle = false;
+        }
     };
 
     // D3D11

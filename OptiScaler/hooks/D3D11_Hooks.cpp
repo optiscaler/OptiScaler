@@ -7,6 +7,7 @@
 #include <proxies/KernelBase_Proxy.h>
 
 #include <wrapped/wrapped_swapchain.h>
+#include <hooks/FG_Hooks.h>
 
 #include <detours/detours.h>
 
@@ -198,6 +199,9 @@ static HRESULT hkD3D11CreateDevice(IDXGIAdapter* pAdapter, D3D_DRIVER_TYPE Drive
         }
     }
 
+    auto gameFeatureLevels = pFeatureLevels;
+    auto gameFeatureLevelCount = FeatureLevels;
+
     if (!(State::Instance().gameQuirks & GameQuirk::SkipD3D11FeatureLevelElevation))
     {
         static const D3D_FEATURE_LEVEL levels[] = {
@@ -229,6 +233,14 @@ static HRESULT hkD3D11CreateDevice(IDXGIAdapter* pAdapter, D3D_DRIVER_TYPE Drive
         ScopedSkipParentWrapping skipParentWrapping {};
         result = o_D3D11CreateDevice(pAdapter, DriverType, Software, Flags, pFeatureLevels, FeatureLevels, SDKVersion,
                                      ppDevice, pFeatureLevel, ppImmediateContext);
+
+        if (FAILED(result) && pFeatureLevels != gameFeatureLevels)
+        {
+            LOG_WARN("D3D_FEATURE_LEVEL_11_1 failed, using game's feature levels");
+            result =
+                o_D3D11CreateDevice(pAdapter, DriverType, Software, Flags, gameFeatureLevels, gameFeatureLevelCount,
+                                    SDKVersion, ppDevice, pFeatureLevel, ppImmediateContext);
+        }
     }
 
     _skipDx11Create = false;
@@ -308,6 +320,9 @@ static HRESULT hkD3D11CreateDeviceAndSwapChain(IDXGIAdapter* pAdapter, D3D_DRIVE
         }
     }
 
+    auto gameFeatureLevels = pFeatureLevels;
+    auto gameFeatureLevelCount = FeatureLevels;
+
     if (!(State::Instance().gameQuirks & GameQuirk::SkipD3D11FeatureLevelElevation))
     {
         static const D3D_FEATURE_LEVEL levels[] = {
@@ -364,7 +379,10 @@ static HRESULT hkD3D11CreateDeviceAndSwapChain(IDXGIAdapter* pAdapter, D3D_DRIVE
             Config::Instance()->OverrideVsync.set_volatile_value(false);
         }
 
-        if (Config::Instance()->OverrideVsync.value_or_default())
+        // Flip model doesn't support MSAA or sRGB buffers
+        if (Config::Instance()->OverrideVsync.value_or_default() && localDesc.SampleDesc.Count <= 1 &&
+            localDesc.BufferDesc.Format != DXGI_FORMAT_R8G8B8A8_UNORM_SRGB &&
+            localDesc.BufferDesc.Format != DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)
         {
             localDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
             localDesc.Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
@@ -379,6 +397,14 @@ static HRESULT hkD3D11CreateDeviceAndSwapChain(IDXGIAdapter* pAdapter, D3D_DRIVE
     auto result = o_D3D11CreateDeviceAndSwapChain(pAdapter, DriverType, Software, Flags, pFeatureLevels, FeatureLevels,
                                                   SDKVersion, pSwapChainDesc != nullptr ? &localDesc : nullptr,
                                                   ppSwapChain, ppDevice, pFeatureLevel, ppImmediateContext);
+
+    if (FAILED(result) && pFeatureLevels != gameFeatureLevels)
+    {
+        LOG_WARN("D3D_FEATURE_LEVEL_11_1 failed, using game's feature levels");
+        result = o_D3D11CreateDeviceAndSwapChain(
+            pAdapter, DriverType, Software, Flags, gameFeatureLevels, gameFeatureLevelCount, SDKVersion,
+            pSwapChainDesc != nullptr ? &localDesc : nullptr, ppSwapChain, ppDevice, pFeatureLevel, ppImmediateContext);
+    }
     _skipDx11Create = false;
 
     // Success codes like DXGI_STATUS_OCCLUDED still return a valid device and swapchain
@@ -389,41 +415,53 @@ static HRESULT hkD3D11CreateDeviceAndSwapChain(IDXGIAdapter* pAdapter, D3D_DRIVE
         HookToDeviceLocal(*ppDevice);
     }
 
-    if (SUCCEEDED(result) && pSwapChainDesc != nullptr && ppSwapChain != nullptr && *ppSwapChain != nullptr &&
-        ppDevice != nullptr && *ppDevice != nullptr)
+    WrappedIDXGISwapChain4* wrapped = nullptr;
+    if (SUCCEEDED(result) && ppSwapChain != nullptr && *ppSwapChain != nullptr &&
+        (*ppSwapChain)->QueryInterface(__uuidof(WrappedIDXGISwapChain4), (void**) &wrapped) == S_OK)
     {
+        LOG_DEBUG("Swapchain is wrapped by the factory hooks");
+        wrapped->Release();
+    }
+    else if (SUCCEEDED(result) && pSwapChainDesc != nullptr && ppSwapChain != nullptr && *ppSwapChain != nullptr &&
+             ppDevice != nullptr && *ppDevice != nullptr)
+    {
+        const bool otherWindow = FGHooks::IsOtherWindowThanFG(pSwapChainDesc->OutputWindow);
+
         // check for SL proxy
         IDXGISwapChain* realSC = nullptr;
         if (!Util::CheckForRealObject(__FUNCTION__, *ppSwapChain, (IUnknown**) &realSC))
             realSC = *ppSwapChain;
 
-        State::Instance().currentRealSwapchain = realSC;
+        if (!otherWindow)
+            State::Instance().currentRealSwapchain = realSC;
 
         IUnknown* realDevice = nullptr;
         if (!Util::CheckForRealObject(__FUNCTION__, *ppDevice, (IUnknown**) &realDevice))
             realDevice = *ppDevice;
 
-        State::Instance().screenWidth = static_cast<float>(pSwapChainDesc->BufferDesc.Width);
-        State::Instance().screenHeight = static_cast<float>(pSwapChainDesc->BufferDesc.Height);
+        if (!otherWindow)
+        {
+            State::Instance().screenWidth = static_cast<float>(pSwapChainDesc->BufferDesc.Width);
+            State::Instance().screenHeight = static_cast<float>(pSwapChainDesc->BufferDesc.Height);
+        }
 
         LOG_DEBUG("Created new swapchain: {0:X}, hWnd: {1:X}", (UINT64) *ppSwapChain,
                   (UINT64) pSwapChainDesc->OutputWindow);
 
-        if (State::Instance().currentWrappedSwapchain == *ppSwapChain)
-        {
-            LOG_DEBUG("Same as current wrapped swapchain, skipping wrapping");
-        }
-        else
-        {
-            *ppSwapChain = new WrappedIDXGISwapChain4(realSC, realDevice, pSwapChainDesc->OutputWindow,
-                                                      pSwapChainDesc->Flags, false, *ppSwapChain);
+        *ppSwapChain = new WrappedIDXGISwapChain4(realSC, realDevice, pSwapChainDesc->OutputWindow,
+                                                  pSwapChainDesc->Flags, false, *ppSwapChain);
 
+        if (!otherWindow)
+        {
             State::Instance().currentSwapchain = *ppSwapChain;
             State::Instance().currentWrappedSwapchain = *ppSwapChain;
-
-            LOG_DEBUG("Created new WrappedIDXGISwapChain4: {0:X}, pDevice: {1:X}", (UINT64) *ppSwapChain,
-                      (UINT64) *ppDevice);
+            State::Instance().SCAllowTearing = (localDesc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) > 0;
+            State::Instance().SCLastFlags = localDesc.Flags;
+            State::Instance().realExclusiveFullscreen = !localDesc.Windowed;
         }
+
+        LOG_DEBUG("Created new WrappedIDXGISwapChain4: {0:X}, pDevice: {1:X}", (UINT64) *ppSwapChain,
+                  (UINT64) *ppDevice);
     }
 
     if (SUCCEEDED(result) && ppDevice != nullptr && *ppDevice != nullptr)

@@ -380,7 +380,12 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         {
             SyncInterval = 0;
 
-            if (State::Instance().SCAllowTearing && !State::Instance().realExclusiveFullscreen)
+            // This swapchain's flags, the global ones can belong to a released or another swapchain
+            DXGI_SWAP_CHAIN_DESC scDesc {};
+            bool allowTearing = pSwapChain->GetDesc(&scDesc) == S_OK &&
+                                (scDesc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) != 0 && scDesc.Windowed;
+
+            if (allowTearing && !State::Instance().realExclusiveFullscreen)
             {
                 LOG_DEBUG("Adding DXGI_PRESENT_ALLOW_TEARING");
                 Flags |= DXGI_PRESENT_ALLOW_TEARING;
