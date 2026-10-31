@@ -23,9 +23,10 @@ ASI plugins loaded by OptiScaler can add their own tabs to the OptiScaler menu a
 
 ## Drawing
 
-Inside a draw callback you can use `Section`, `Text`, `Checkbox`, `SliderFloat`/`SliderInt`, `Combo`, `InputText`, `ColorEdit`, `Button`, `SameLine`, `Disabled` and `ItemTooltip`.
+Inside a draw callback you can use `Section`, `Text`, `Checkbox`, `SliderFloat`/`SliderInt`, `Combo`/`ComboEx`, `InputText`, `ColorEdit`, `Button`, `SameLine`, `Disabled`, `ItemTooltip` and `ItemDeactivatedAfterEdit`.
 
 - `Section` starts a card like the ones in OptiScaler's own tabs.
+- `ComboEx` is a combo whose items can be greyed out. `ItemDeactivatedAfterEdit` is true on the frame a slider is released, for values that should apply once instead of on every frame of a drag.
 - Cards, disabled blocks and IDs are closed by OptiScaler after the callback, so a plugin can't leave ImGui in a broken state.
 - Widget functions do nothing when called outside a draw callback or from another thread.
 - Draw callbacks run on the render thread while the menu is open. Keep them fast, don't call D3D/Vulkan from them, and protect any data you share with your own threads.

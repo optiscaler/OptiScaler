@@ -268,7 +268,8 @@ bool Api_SliderInt(const char* label, int32_t* value, int32_t min, int32_t max, 
     return ImGui::SliderInt(label, value, min, max, format != nullptr ? format : "%d", ImGuiSliderFlags_AlwaysClamp);
 }
 
-bool Api_Combo(const char* label, int32_t* current, const char* const* items, int32_t itemCount)
+bool Api_ComboEx(const char* label, int32_t* current, const char* const* items, int32_t itemCount,
+                 uint32_t disabledItems)
 {
     if (_draw == nullptr || label == nullptr || current == nullptr || (items == nullptr && itemCount > 0))
         return false;
@@ -283,6 +284,9 @@ bool Api_Combo(const char* label, int32_t* current, const char* const* items, in
         {
             ImGui::PushID(i);
 
+            const bool disabled = i < 32 && (disabledItems & (1u << i)) != 0;
+            ImGui::BeginDisabled(disabled);
+
             const bool selected = *current == i;
             if (ImGui::Selectable(items[i] != nullptr ? items[i] : "", selected) && !selected)
             {
@@ -293,6 +297,7 @@ bool Api_Combo(const char* label, int32_t* current, const char* const* items, in
             if (selected)
                 ImGui::SetItemDefaultFocus();
 
+            ImGui::EndDisabled();
             ImGui::PopID();
         }
 
@@ -301,6 +306,13 @@ bool Api_Combo(const char* label, int32_t* current, const char* const* items, in
 
     return changed;
 }
+
+bool Api_Combo(const char* label, int32_t* current, const char* const* items, int32_t itemCount)
+{
+    return Api_ComboEx(label, current, items, itemCount, 0);
+}
+
+bool Api_ItemDeactivatedAfterEdit() { return _draw != nullptr && ImGui::IsItemDeactivatedAfterEdit(); }
 
 bool Api_InputText(const char* label, char* buffer, size_t bufferSize)
 {
@@ -463,6 +475,9 @@ const OptiPluginApi _api = {
     .SaveSettings = Api_SaveSettings,
 
     .Log = Api_Log,
+
+    .ComboEx = Api_ComboEx,
+    .ItemDeactivatedAfterEdit = Api_ItemDeactivatedAfterEdit,
 };
 } // namespace
 
