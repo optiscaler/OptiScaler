@@ -1376,11 +1376,14 @@ bool XeFG_Dx12::SetResource(Dx12Resource* inputResource)
     static auto version = Version();
 
     // SDK version 2.1.1 fixed this
-    // The inverted copy takes the input's state, depth states are only valid on depth stencil resources
     if (version < feature_version { 1, 2, 2 } && _device != nullptr && type == FG_ResourceType::Depth &&
-        !Config::Instance()->FGXeFGDepthInverted.value_or_default() &&
-        (fResource->state & (D3D12_RESOURCE_STATE_DEPTH_READ | D3D12_RESOURCE_STATE_DEPTH_WRITE)) == 0)
+        !Config::Instance()->FGXeFGDepthInverted.value_or_default())
     {
+        // Depth states are only valid on depth stencil resources
+        auto copyState = (fResource->state & (D3D12_RESOURCE_STATE_DEPTH_READ | D3D12_RESOURCE_STATE_DEPTH_WRITE)) != 0
+                             ? D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+                             : fResource->state;
+
         if (_depthInvert.get() == nullptr)
         {
             _depthInvert = std::make_unique<DI_Dx12>("DepthInvert", _device);
@@ -1388,19 +1391,31 @@ bool XeFG_Dx12::SetResource(Dx12Resource* inputResource)
         else if (_depthInvert->IsInit())
         {
             if (_depthInvert->CreateBufferResource(_device, fResource->GetResource(), fResource->width,
-                                                   fResource->height, fResource->state) &&
+                                                   fResource->height, copyState) &&
                 _depthInvert->Buffer() != nullptr)
             {
                 auto cmdList = (fResource->cmdList != nullptr) ? fResource->cmdList : GetUICommandList(fIndex);
 
                 _depthInvert->SetBufferState(cmdList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-                if (_depthInvert->Dispatch(_device, cmdList, fResource->GetResource(), _depthInvert->Buffer()))
+                // Shader reads the input as SRV
+                auto inResource = fResource->GetResource();
+                auto inState = fResource->state;
+                auto inNeedsBarrier = (inState & D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) == 0;
+
+                if (inNeedsBarrier)
+                    ResourceBarrier(cmdList, inResource, inState, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+                if (_depthInvert->Dispatch(_device, cmdList, inResource, _depthInvert->Buffer()))
                 {
                     fResource->copy = _depthInvert->Buffer();
+                    fResource->state = copyState;
                 }
 
-                _depthInvert->SetBufferState(cmdList, fResource->state);
+                if (inNeedsBarrier)
+                    ResourceBarrier(cmdList, inResource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, inState);
+
+                _depthInvert->SetBufferState(cmdList, copyState);
             }
         }
     }

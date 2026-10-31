@@ -105,6 +105,10 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
         memset(_ImVulkan_Semaphores, 0, sizeof(VkSemaphore) * _scImageCount);
     }
 
+    // Destroy can free a half finished creation
+    _ImVulkan_Info.Device = device;
+    _ImVulkan_Info.ImageCount = _scImageCount;
+
     // Select queue family.
     uint32_t queueFamily = 0;
     {
@@ -159,6 +163,8 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
             LOG_ERROR("vkCreateDescriptorPool error: {0:X}", (UINT) result);
             return;
         }
+
+        _ImVulkan_Info.DescriptorPool = pool;
     }
 
     // Create the render pass
@@ -657,7 +663,7 @@ void MenuOverlayVk::CreateSwapchain(VkDevice device, VkPhysicalDevice pd, VkInst
 
     CreateVulkanObjects(device, pd, instance, hwnd, pCreateInfo, pSwapchain);
 
-    if (_ImVulkan_Info.Device != VK_NULL_HANDLE)
+    if (_vulkanObjectsCreated)
     {
         _isInited = true;
         MenuOverlayBase::VulkanReady();

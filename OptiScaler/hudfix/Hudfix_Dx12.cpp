@@ -6,6 +6,7 @@
 #include <Config.h>
 
 #include <framegen/IFGFeature_Dx12.h>
+#include <misc/DeferredRelease.h>
 
 inline static int GetFormatGroup(DXGI_FORMAT format)
 {
@@ -775,8 +776,9 @@ bool Hudfix_Dx12::CheckForHudless(ID3D12GraphicsCommandList* cmdList, ResourceIn
             {
                 LOG_DEBUG("Format change, recreate the FormatTransfer");
 
+                // Previous frame's dispatch can still use it
                 if (_formatTransfer[fIndex] != nullptr)
-                    delete _formatTransfer[fIndex];
+                    DeferredRelease::Enqueue([ft = _formatTransfer[fIndex]]() { delete ft; });
 
                 _formatTransfer[fIndex] = nullptr;
 

@@ -158,6 +158,9 @@ static void CleanupRenderTargetDx12(bool clearQueue)
 
     LOG_TRACE("clearQueue: {}", clearQueue);
 
+    // Menu's last command lists can still be running
+    WaitForMenuFence(g_fenceValue);
+
     for (UINT i = 0; i < NUM_BACK_BUFFERS; ++i)
     {
         if (g_mainRenderTargetResource[i])
@@ -166,9 +169,6 @@ static void CleanupRenderTargetDx12(bool clearQueue)
 
     if (clearQueue)
     {
-        // Menu's last command lists can still be running
-        WaitForMenuFence(g_fenceValue);
-
         if (MenuOverlayBase::IsInited() && g_pd3dDeviceParam != nullptr && g_pd3dSrvDescHeap != nullptr &&
             IsRendererBackend("imgui_impl_dx12"))
         {

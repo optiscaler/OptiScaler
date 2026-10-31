@@ -156,8 +156,7 @@ bool FSRFG_Dx12::HudlessFormatTransfer(int index, ID3D12Device* device, DXGI_FOR
     {
         LOG_DEBUG("Format change, recreate the FormatTransfer");
 
-        if (_hudlessTransfer[index].get() != nullptr)
-            _hudlessTransfer[index].reset();
+        DeferredRelease::Release(_hudlessTransfer[index]);
 
         _hudlessTransfer[index] = std::make_unique<FT_Dx12>("FormatTransfer", device, targetFormat);
 
@@ -220,8 +219,7 @@ bool FSRFG_Dx12::UIFormatTransfer(int index, ID3D12Device* device, ID3D12Graphic
     {
         LOG_DEBUG("Format change, recreate the FormatTransfer");
 
-        if (_uiTransfer[index].get() != nullptr)
-            _uiTransfer[index].reset();
+        DeferredRelease::Release(_uiTransfer[index]);
 
         _uiTransfer[index] = std::make_unique<FT_Dx12>("FormatTransfer", device, targetFormat);
 
@@ -796,6 +794,37 @@ bool FSRFG_Dx12::Shutdown()
     return true;
 }
 
+// Older FG dlls reject newer swapchain APIs, Dx12 swapchain structs are the same since FSR 3.1
+static ffxReturnCode_t CreateSwapchainContext(ffxContext* context, ffxCreateContextDescHeader* header)
+{
+    // 0: dlls from before the version desc
+    static const uint32_t versions[] = { FFX_FRAMEGENERATION_SWAPCHAIN_DX12_VERSION,
+                                         FFX_FRAMEGENERATION_SWAPCHAIN_DX12_MAKE_VERSION(3, 1, 7),
+                                         FFX_FRAMEGENERATION_SWAPCHAIN_DX12_MAKE_VERSION(3, 1, 6), 0 };
+
+    ffxCreateContextDescFrameGenerationSwapChainVersionDX12 versionDesc {};
+    versionDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_VERSION_DX12;
+
+    ffxReturnCode_t result = FFX_API_RETURN_ERROR;
+
+    for (auto version : versions)
+    {
+        versionDesc.version = version;
+        header->pNext = version != 0 ? &versionDesc.header : nullptr;
+
+        result = FfxApiProxy::D3D12_CreateContext(context, header, nullptr);
+
+        if (result == FFX_API_RETURN_OK)
+            break;
+
+        LOG_WARN("Swapchain API {}.{}.{} failed: {}", version >> 22, (version >> 12) & 0x3FF, version & 0xFFF,
+                 FfxApiProxy::ReturnCodeToString(result));
+    }
+
+    header->pNext = nullptr;
+    return result;
+}
+
 bool FSRFG_Dx12::CreateSwapchain(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue, DXGI_SWAP_CHAIN_DESC* desc,
                                  IDXGISwapChain** swapChain, bool readyToRelease)
 {
@@ -846,13 +875,7 @@ bool FSRFG_Dx12::CreateSwapchain(IDXGIFactory* factory, ID3D12CommandQueue* cmdQ
     createSwapChainDesc.desc = desc;
     createSwapChainDesc.swapchain = (IDXGISwapChain4**) swapChain;
 
-    ffxCreateContextDescFrameGenerationSwapChainVersionDX12 versionDesc {};
-    versionDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_VERSION_DX12;
-    versionDesc.version = FFX_FRAMEGENERATION_SWAPCHAIN_DX12_VERSION;
-
-    createSwapChainDesc.header.pNext = &versionDesc.header;
-
-    auto result = FfxApiProxy::D3D12_CreateContext(&_swapChainContext, &createSwapChainDesc.header, nullptr);
+    auto result = CreateSwapchainContext(&_swapChainContext, &createSwapChainDesc.header);
 
     if (result == FFX_API_RETURN_OK)
     {
@@ -920,13 +943,7 @@ bool FSRFG_Dx12::CreateSwapchain1(IDXGIFactory* factory, ID3D12CommandQueue* cmd
     createSwapChainDesc.desc = desc;
     createSwapChainDesc.swapchain = (IDXGISwapChain4**) swapChain;
 
-    ffxCreateContextDescFrameGenerationSwapChainVersionDX12 versionDesc {};
-    versionDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_VERSION_DX12;
-    versionDesc.version = FFX_FRAMEGENERATION_SWAPCHAIN_DX12_VERSION;
-
-    createSwapChainDesc.header.pNext = &versionDesc.header;
-
-    auto result = FfxApiProxy::D3D12_CreateContext(&_swapChainContext, &createSwapChainDesc.header, nullptr);
+    auto result = CreateSwapchainContext(&_swapChainContext, &createSwapChainDesc.header);
 
     if (result == FFX_API_RETURN_OK)
     {

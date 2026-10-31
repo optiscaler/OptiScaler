@@ -122,6 +122,10 @@ bool FeatureProvider_Dx12::ChangeFeature(std::string upscalerName, ID3D12Device*
 
             auto dc = contextData->feature.get();
 
+            // A retry after a failed init still has the previous ones
+            if (contextData->ownsCreateParams)
+                delete static_cast<NVNGX_Parameters*>(contextData->createParams);
+
             if (State::Instance().newBackend != "dlssd" && State::Instance().newBackend != "dlss")
                 contextData->createParams = GetNGXParameters("OptiDx12");
             else
