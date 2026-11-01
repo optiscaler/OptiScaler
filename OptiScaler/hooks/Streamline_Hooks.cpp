@@ -1536,6 +1536,7 @@ sl::Result StreamlineHooks::hkslReflexSetOptions(const sl::ReflexOptions& option
         return sl::Result::eErrorFeatureMissing;
 
     reflexGamesLastMode = options.mode;
+    reflexGamesLastOptions = options;
 
     sl::ReflexOptions newOptions = options;
 
@@ -1928,7 +1929,9 @@ void StreamlineHooks::updateForceReflex()
     // Not needed for Streamline v1 as slSetConstants is sent every frame
     if (o_slReflexSetOptions)
     {
-        sl::ReflexOptions options;
+        // Game's chain can point to its stack
+        sl::ReflexOptions options = reflexGamesLastOptions;
+        options.next = nullptr;
 
         auto forceReflex = Config::Instance()->FN_ForceReflex.value_or_default();
 

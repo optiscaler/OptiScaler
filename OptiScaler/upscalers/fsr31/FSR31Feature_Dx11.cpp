@@ -130,9 +130,9 @@ bool FSR31FeatureDx11::EvaluateInternal(ID3D11DeviceContext* DeviceContext, NVSD
         params.flags = Fsr31::FFX_FSR3_UPSCALER_FLAG_DRAW_DEBUG_VIEW;
 
     if (Config::Instance()->FsrNonLinearPQ.value_or_default())
-        params.flags = FFX_UPSCALE_FLAG_NON_LINEAR_COLOR_PQ;
+        params.flags |= FFX_UPSCALE_FLAG_NON_LINEAR_COLOR_PQ;
     else if (Config::Instance()->FsrNonLinearSRGB.value_or_default())
-        params.flags = FFX_UPSCALE_FLAG_NON_LINEAR_COLOR_SRGB;
+        params.flags |= FFX_UPSCALE_FLAG_NON_LINEAR_COLOR_SRGB;
 
     InParameters->Get(NVSDK_NGX_Parameter_Jitter_Offset_X, &params.jitterOffset.x);
     InParameters->Get(NVSDK_NGX_Parameter_Jitter_Offset_Y, &params.jitterOffset.y);
@@ -152,7 +152,7 @@ bool FSR31FeatureDx11::EvaluateInternal(ID3D11DeviceContext* DeviceContext, NVSD
 
     params.commandList = Fsr31::ffxGetCommandListDX11(DeviceContext);
 
-    ID3D11Resource* paramColor;
+    ID3D11Resource* paramColor = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_Color, &paramColor) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_Color, (void**) &paramColor);
 
@@ -179,7 +179,7 @@ bool FSR31FeatureDx11::EvaluateInternal(ID3D11DeviceContext* DeviceContext, NVSD
         return false;
     }
 
-    ID3D11Resource* paramVelocity;
+    ID3D11Resource* paramVelocity = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, &paramVelocity) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, (void**) &paramVelocity);
 
@@ -195,7 +195,7 @@ bool FSR31FeatureDx11::EvaluateInternal(ID3D11DeviceContext* DeviceContext, NVSD
         return false;
     }
 
-    ID3D11Resource* paramOutput;
+    ID3D11Resource* paramOutput = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_Output, &paramOutput) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_Output, (void**) &paramOutput);
 
@@ -210,7 +210,7 @@ bool FSR31FeatureDx11::EvaluateInternal(ID3D11DeviceContext* DeviceContext, NVSD
         return false;
     }
 
-    ID3D11Resource* paramDepth;
+    ID3D11Resource* paramDepth = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_Depth, &paramDepth) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_Depth, (void**) &paramDepth);
 
@@ -404,6 +404,7 @@ FSR31FeatureDx11::~FSR31FeatureDx11()
             spdlog::error("FSR31FeatureDx11::~FSR31FeatureDx11 ffxFsr3ContextDestroy error: {0:x}", errorCode);
 
         free(_upscalerContextDesc.backendInterfaceUpscaling.scratchBuffer);
+        ReleaseResources();
     }
 
     SetInit(false);

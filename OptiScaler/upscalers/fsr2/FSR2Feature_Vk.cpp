@@ -169,7 +169,7 @@ bool FSR2FeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Para
 
     params.commandList = ffxGetCommandListVK(InCmdBuffer);
 
-    NVSDK_NGX_Resource_VK* paramColor;
+    NVSDK_NGX_Resource_VK* paramColor = nullptr;
     InParameters->Get(NVSDK_NGX_Parameter_Color, (void**) &paramColor);
 
     if (paramColor)
@@ -187,7 +187,7 @@ bool FSR2FeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Para
         return false;
     }
 
-    NVSDK_NGX_Resource_VK* paramVelocity;
+    NVSDK_NGX_Resource_VK* paramVelocity = nullptr;
     InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, (void**) &paramVelocity);
 
     if (paramVelocity)
@@ -206,7 +206,7 @@ bool FSR2FeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Para
         return false;
     }
 
-    NVSDK_NGX_Resource_VK* paramOutput;
+    NVSDK_NGX_Resource_VK* paramOutput = nullptr;
     InParameters->Get(NVSDK_NGX_Parameter_Output, (void**) &paramOutput);
 
     if (paramOutput)
@@ -224,7 +224,7 @@ bool FSR2FeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Para
         return false;
     }
 
-    NVSDK_NGX_Resource_VK* paramDepth;
+    NVSDK_NGX_Resource_VK* paramDepth = nullptr;
     InParameters->Get(NVSDK_NGX_Parameter_Depth, (void**) &paramDepth);
 
     if (paramDepth)

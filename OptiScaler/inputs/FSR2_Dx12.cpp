@@ -5,6 +5,7 @@
 #include "Config.h"
 #include "resource.h"
 #include "NVNGX_Parameter.h"
+#include <proxies/NVNGX_Proxy.h>
 
 #include <proxies/KernelBase_Proxy.h>
 
@@ -160,7 +161,7 @@ static bool CreateDLSSContext(Fsr212::FfxFsr2Context* handle, const Fsr212::FfxF
 
     auto ratio = (float) initParams->displaySize.width / (float) pExecParams->renderSize.width;
 
-    if (ratio <= 3.0 && ratio > 2.0)
+    if (ratio > 2.0)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_UltraPerformance);
     else if (ratio <= 2.0 && ratio > 1.7)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_MaxPerf);
@@ -222,15 +223,15 @@ static bool CreateDLSSContext20(Fsr212::FfxFsr2Context* handle, const FfxFsr20Di
 
     auto ratio = (float) initParams->displaySize.width / (float) pExecParams->renderSize.width;
 
-    if (ratio <= 3.0)
+    if (ratio > 2.0)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_UltraPerformance);
-    else if (ratio <= 2.0)
+    else if (ratio <= 2.0 && ratio > 1.7)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_MaxPerf);
-    else if (ratio <= 1.7)
+    else if (ratio <= 1.7 && ratio > 1.5)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_Balanced);
-    else if (ratio <= 1.5)
+    else if (ratio <= 1.5 && ratio > 1.3)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_MaxQuality);
-    else if (ratio <= 1.3)
+    else if (ratio <= 1.3 && ratio > 1.0)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_UltraQuality);
     else
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_DLAA);
@@ -285,15 +286,15 @@ static bool CreateDLSSContextTiny(Fsr212::FfxFsr2Context* handle, const FfxFsr2T
 
     auto ratio = (float) initParams->displaySize.width / (float) pExecParams->renderSize.width;
 
-    if (ratio <= 3.0)
+    if (ratio > 2.0)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_UltraPerformance);
-    else if (ratio <= 2.0)
+    else if (ratio <= 2.0 && ratio > 1.7)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_MaxPerf);
-    else if (ratio <= 1.7)
+    else if (ratio <= 1.7 && ratio > 1.5)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_Balanced);
-    else if (ratio <= 1.5)
+    else if (ratio <= 1.5 && ratio > 1.3)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_MaxQuality);
-    else if (ratio <= 1.3)
+    else if (ratio <= 1.3 && ratio > 1.0)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_UltraQuality);
     else
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_DLAA);
@@ -897,7 +898,11 @@ static Fsr212::FfxErrorCode ffxFsr2ContextDestroy_Dx12(Fsr212::FfxFsr2Context* c
         NVSDK_NGX_D3D12_ReleaseFeature(_contexts[context]);
 
     _contexts.erase(context);
-    _nvParams.erase(context);
+    if (auto it = _nvParams.find(context); it != _nvParams.end())
+    {
+        TryDestroyNGXParameters(it->second, NVNGXProxy::D3D12_DestroyParameters());
+        _nvParams.erase(it);
+    }
     _initParams.erase(context);
 
     _skipDestroy = true;
@@ -918,7 +923,11 @@ static Fsr212::FfxErrorCode ffxFsr2ContextDestroy_Pattern_Dx12(Fsr212::FfxFsr2Co
         NVSDK_NGX_D3D12_ReleaseFeature(_contexts[context]);
 
     _contexts.erase(context);
-    _nvParams.erase(context);
+    if (auto it = _nvParams.find(context); it != _nvParams.end())
+    {
+        TryDestroyNGXParameters(it->second, NVNGXProxy::D3D12_DestroyParameters());
+        _nvParams.erase(it);
+    }
     _initParams.erase(context);
 
     auto cdResult = o_ffxFsr2ContextDestroy_Pattern_Dx12(context);
@@ -1178,12 +1187,6 @@ void HookFSR2ExeInputs()
                 DetourAttach(&(PVOID&) o_ffxFsr2ContextDestroy_Pattern_Dx12, ffxFsr2ContextDestroy_Pattern_Dx12);
 
             LOG_DEBUG("ffxFsr2ContextDestroy_Pattern_Dx12: {:X}", (size_t) o_ffxFsr2ContextDestroy_Pattern_Dx12);
-
-            if (o_ffxFsr2ContextDestroy_Dx12 == nullptr && o_ffxFsr2ContextDestroy_Pattern_Dx12)
-            {
-                LOG_DEBUG("No ContextDestroy found, stopping pattern matching");
-                break;
-            }
 
             // DRG
             // Not receiving calls

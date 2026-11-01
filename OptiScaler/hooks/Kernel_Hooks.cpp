@@ -50,6 +50,12 @@ static inline bool IsInsideWindowsDirectory(const std::string& path)
     return false;
 }
 
+static inline bool IsDataFileLoad(DWORD dwFlags)
+{
+    return (dwFlags &
+            (LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE | LOAD_LIBRARY_AS_IMAGE_RESOURCE)) != 0;
+}
+
 static inline HMODULE CheckLoad(const std::wstring& name)
 {
     do
@@ -73,7 +79,10 @@ static inline HMODULE CheckLoad(const std::wstring& name)
 
         // skip loading of dll
         if (moduleHandle == (HMODULE) 1337)
-            break;
+        {
+            SetLastError(ERROR_MOD_NOT_FOUND);
+            return moduleHandle;
+        }
 
         if (moduleHandle != nullptr)
         {
@@ -218,7 +227,14 @@ BOOL WINAPI KernelHooks::hk_K32_GetModuleHandleExW(DWORD dwFlags, LPCWSTR lpModu
     {
         LOG_TRACE("Suspected SpecialK call for nvapi64");
         *phModule = LibraryLoadHooks::LoadNvApi();
-        return true;
+
+        if (*phModule == nullptr)
+        {
+            SetLastError(ERROR_MOD_NOT_FOUND);
+            return FALSE;
+        }
+
+        return TRUE;
     }
 
     return o_K32_GetModuleHandleExW(dwFlags, lpModuleName, phModule);
@@ -342,7 +358,7 @@ HMODULE KernelHooks::hk_K32_LoadLibraryW(LPCWSTR lpLibFileName)
     auto result = CheckLoad(name);
 
     if (result != nullptr)
-        return result;
+        return result != (HMODULE) 1337 ? result : nullptr;
 
     return o_K32_LoadLibraryW(lpLibFileName);
 }
@@ -363,7 +379,7 @@ HMODULE KernelHooks::hk_K32_LoadLibraryA(LPCSTR lpLibFileName)
     auto result = CheckLoad(name);
 
     if (result != nullptr)
-        return result;
+        return result != (HMODULE) 1337 ? result : nullptr;
 
     return o_K32_LoadLibraryA(lpLibFileName);
 }
@@ -374,6 +390,9 @@ HMODULE KernelHooks::hk_K32_LoadLibraryExW(LPCWSTR lpLibFileName, HANDLE hFile, 
     if (lpLibFileName == nullptr)
         return NULL;
 
+    if (IsDataFileLoad(dwFlags))
+        return o_K32_LoadLibraryExW(lpLibFileName, hFile, dwFlags);
+
     std::wstring name(lpLibFileName);
 
 #ifdef _DEBUG
@@ -383,7 +402,7 @@ HMODULE KernelHooks::hk_K32_LoadLibraryExW(LPCWSTR lpLibFileName, HANDLE hFile, 
     auto result = CheckLoad(name);
 
     if (result != nullptr)
-        return result;
+        return result != (HMODULE) 1337 ? result : nullptr;
 
     return o_K32_LoadLibraryExW(lpLibFileName, hFile, dwFlags);
 }
@@ -393,6 +412,9 @@ HMODULE KernelHooks::hk_K32_LoadLibraryExA(LPCSTR lpLibFileName, HANDLE hFile, D
 {
     if (lpLibFileName == nullptr)
         return NULL;
+
+    if (IsDataFileLoad(dwFlags))
+        return o_K32_LoadLibraryExA(lpLibFileName, hFile, dwFlags);
 
     std::string nameA(lpLibFileName);
     std::wstring name = string_to_wstring(nameA);
@@ -404,7 +426,7 @@ HMODULE KernelHooks::hk_K32_LoadLibraryExA(LPCSTR lpLibFileName, HANDLE hFile, D
     auto result = CheckLoad(name);
 
     if (result != nullptr)
-        return result;
+        return result != (HMODULE) 1337 ? result : nullptr;
 
     return o_K32_LoadLibraryExA(lpLibFileName, hFile, dwFlags);
 }
@@ -415,6 +437,9 @@ HMODULE KernelHooks::hk_KB_LoadLibraryExW(LPCWSTR lpLibFileName, HANDLE hFile, D
     if (lpLibFileName == nullptr)
         return NULL;
 
+    if (IsDataFileLoad(dwFlags))
+        return o_KB_LoadLibraryExW(lpLibFileName, hFile, dwFlags);
+
     std::wstring name(lpLibFileName);
 
 #ifdef _DEBUG
@@ -424,7 +449,7 @@ HMODULE KernelHooks::hk_KB_LoadLibraryExW(LPCWSTR lpLibFileName, HANDLE hFile, D
     auto result = CheckLoad(name);
 
     if (result != nullptr)
-        return result;
+        return result != (HMODULE) 1337 ? result : nullptr;
 
     return o_KB_LoadLibraryExW(lpLibFileName, hFile, dwFlags);
 }

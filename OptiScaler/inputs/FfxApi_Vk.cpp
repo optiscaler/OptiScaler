@@ -5,6 +5,7 @@
 #include <Config.h>
 #include <resource.h>
 #include <NVNGX_Parameter.h>
+#include <proxies/NVNGX_Proxy.h>
 
 #include <proxies/FfxApi_Proxy.h>
 
@@ -456,7 +457,11 @@ ffxReturnCode_t ffxDestroyContext_Vk(ffxContext* context, const ffxAllocationCal
         NVSDK_NGX_VULKAN_ReleaseFeature(_contexts[*context]);
 
     _contexts.erase(*context);
-    _nvParams.erase(*context);
+    if (auto it = _nvParams.find(*context); it != _nvParams.end())
+    {
+        TryDestroyNGXParameters(it->second, NVNGXProxy::VULKAN_DestroyParameters());
+        _nvParams.erase(it);
+    }
     _initParams.erase(*context);
 
     if (upscalerContext && !Config::Instance()->EnableHotSwapping.value_or_default())

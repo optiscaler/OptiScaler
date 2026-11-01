@@ -420,7 +420,7 @@ xefg_swapchain_result_t XeFGInputs::SetEnabled(xefg_swapchain_handle_t, uint32_t
     // The game stops tagging frames once it disables FG, so the FG output has to stop now
     if (auto fg = State::Instance().currentFG; !_enabled && fg != nullptr && fg->IsActive())
     {
-        fg->Deactivate();
+        fg->Disable();
         fg->ResetCounters();
     }
 
@@ -500,7 +500,7 @@ xefg_swapchain_result_t XeFGInputs::TagFrameConstants(xefg_swapchain_handle_t, u
     }
     else if (!_enabled && fg->IsActive())
     {
-        fg->Deactivate();
+        fg->Disable();
         fg->ResetCounters();
     }
 
@@ -621,7 +621,7 @@ xefg_swapchain_result_t XeFGInputs::Destroy(xefg_swapchain_handle_t)
     LOG_INFO("XeFG input: game context destroyed");
 
     if (auto fg = State::Instance().currentFG; fg != nullptr && fg->IsActive())
-        fg->Deactivate();
+        fg->Disable();
 
     if (_swapChain != nullptr)
         _swapChain->Release();

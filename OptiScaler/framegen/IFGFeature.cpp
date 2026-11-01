@@ -163,6 +163,12 @@ int IFGFeature::GetDispatchIndex(UINT64& willDispatchFrame)
 
 bool IFGFeature::IsActive() { return _isActive || _waitingNewFrameData; }
 
+void IFGFeature::Disable()
+{
+    Deactivate();
+    _waitingNewFrameData = false;
+}
+
 bool IFGFeature::IsPaused() { return _targetFrame != 0 && _targetFrame >= _frameCount; }
 
 bool IFGFeature::IsDispatched() { return _lastDispatchedFrame == _frameCount; }

@@ -59,7 +59,7 @@ static bool CreateDLSSContext(xess_context_handle_t handle, ID3D11DeviceContext*
         break;
 
     case XESS_QUALITY_SETTING_PERFORMANCE:
-        params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_MaxQuality);
+        params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_MaxPerf);
         break;
 
     case XESS_QUALITY_SETTING_BALANCED:
@@ -168,7 +168,7 @@ xess_result_t hk_xessD3D11Execute(xess_context_handle_t hContext, const xess_d3d
 
     NVSDK_NGX_Parameter* params = _nvParams[hContext];
     NVSDK_NGX_Handle* handle = _contexts[hContext];
-    xess_d3d12_init_params_t* initParams = &_d3d12InitParams[hContext];
+    xess_d3d11_init_params_t* initParams = &_d3d11InitParams[hContext];
 
     if (_motionScales.contains(hContext))
     {
@@ -253,7 +253,7 @@ xess_result_t hk_xessD3D11GetInitParams(xess_context_handle_t hContext, xess_d3d
     if (!_d3d11InitParams.contains(hContext))
         return XESS_RESULT_ERROR_INVALID_CONTEXT;
 
-    auto ip = &_d3d12InitParams[hContext];
+    auto ip = &_d3d11InitParams[hContext];
 
     pInitParams->initFlags = ip->initFlags;
     pInitParams->outputResolution = ip->outputResolution;

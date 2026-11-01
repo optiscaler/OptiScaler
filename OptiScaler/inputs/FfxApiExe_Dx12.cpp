@@ -5,6 +5,7 @@
 
 #include "resource.h"
 #include "NVNGX_Parameter.h"
+#include <proxies/NVNGX_Proxy.h>
 
 #include <proxies/KernelBase_Proxy.h>
 
@@ -249,7 +250,11 @@ static ffxReturnCode_t ffxDestroyContext_Dx12(ffxContext* context, const ffxAllo
         NVSDK_NGX_D3D12_ReleaseFeature(_contexts[*context]);
 
     _contexts.erase(*context);
-    _nvParams.erase(*context);
+    if (auto it = _nvParams.find(*context); it != _nvParams.end())
+    {
+        TryDestroyNGXParameters(it->second, NVNGXProxy::D3D12_DestroyParameters());
+        _nvParams.erase(it);
+    }
     _initParams.erase(*context);
 
     return FFX_API_RETURN_OK;

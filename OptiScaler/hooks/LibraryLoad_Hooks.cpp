@@ -64,10 +64,11 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
     // exe path
     auto exePath = Util::ExePath().parent_path().wstring();
 
-    for (size_t i = 0; i < exePath.size(); i++)
-        exePath[i] = std::tolower(exePath[i]);
+    to_lower_in_place(exePath);
 
-    auto pos = libName.rfind(exePath);
+    auto lowerName = libName;
+    to_lower_in_place(lowerName);
+    auto pos = lowerName.rfind(exePath);
 
     if (Config::Instance()->EnableDlssInputs.value_or_default() && CheckDllNameW(&libName, &nvngxNamesW) &&
         (!Config::Instance()->HookOriginalNvngxOnly.value_or_default() || pos == std::string::npos))
@@ -134,7 +135,7 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
     {
         LOG_INFO("{} call!", libNameA);
 
-        return LibraryLoadHooks::LoadNvApi();
+        return LibraryLoadHooks::LoadNvApi(lpLibFullPath);
     }
 
     // Hook SL from local path if using Nvngx FG (and probably upgrading SL for it)
@@ -398,7 +399,7 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
     if (!State::Instance().skipDxgiLoadChecks && CheckDllNameW(&libName, &dxgiNamesW))
     {
-        auto module = NtdllProxy::LoadLibraryExW_Ldr(libName.c_str(), NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+        auto module = NtdllProxy::LoadLibraryExW_Ldr(libName.c_str(), NULL, 0);
 
         if (module != nullptr)
         {
@@ -834,7 +835,7 @@ void LibraryLoadHooks::AfterLoadLibrary(HMODULE library)
     }
 }
 
-HMODULE LibraryLoadHooks::LoadNvApi()
+HMODULE LibraryLoadHooks::LoadNvApi(LPCWSTR requestedName)
 {
     LOG_FUNC();
 
@@ -851,9 +852,9 @@ HMODULE LibraryLoadHooks::LoadNvApi()
             LOG_WARN("nvapi64.dll is loaded when Nvidia is not the primary GPU");
     }
 
-    // Try to load nvapi only from system32, like the original call would
+    // Same name and search order as the original call, a requested full path stays full
     if (nvapi == nullptr)
-        nvapi = NtdllProxy::LoadLibraryExW_Ldr(L"nvapi64.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+        nvapi = NtdllProxy::LoadLibraryExW_Ldr(requestedName, NULL, 0);
 
     // Fallback for Nvidia, doubt it's helpful
     if (Config::Instance()->UseFakenvapi.value_or_default() && nvapi == nullptr)

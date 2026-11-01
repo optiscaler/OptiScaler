@@ -4803,7 +4803,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
             {
                 config->FGUIPremultipliedAlpha = uiPremultipliedAlpha;
             }
-            ShowTooltip("If UI is too faint, disable this option");
+            ShowTooltip("If UI is too bright, disable this option");
 
             ImGui::EndDisabled();
         }

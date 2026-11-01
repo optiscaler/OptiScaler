@@ -70,7 +70,7 @@ static bool CreateDLSSContext(xess_context_handle_t handle, VkCommandBuffer comm
         break;
 
     case XESS_QUALITY_SETTING_PERFORMANCE:
-        params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_MaxQuality);
+        params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_MaxPerf);
         break;
 
     case XESS_QUALITY_SETTING_BALANCED:

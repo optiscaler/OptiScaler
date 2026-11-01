@@ -83,9 +83,10 @@ RUI_Dx12::RUI_Dx12(std::string InName, ID3D12Device* InDevice, bool preMultiplie
     D3D12_GRAPHICS_PIPELINE_STATE_DESC graphicsPsoDesc {};
     graphicsPsoDesc.pRootSignature = _rootSignature;
 
+    // render_ui_pm shaders blend straight alpha, render_ui ones premultiplied
     if (Config::Instance()->UsePrecompiledShaders.value_or_default())
     {
-        if (!preMultipliedAlpha)
+        if (preMultipliedAlpha)
         {
             graphicsPsoDesc.VS =
                 CD3DX12_SHADER_BYTECODE(reinterpret_cast<const void*>(render_ui_VS_cso), sizeof(render_ui_VS_cso));
@@ -102,7 +103,7 @@ RUI_Dx12::RUI_Dx12(std::string InName, ID3D12Device* InDevice, bool preMultiplie
     }
     else
     {
-        if (!preMultipliedAlpha)
+        if (preMultipliedAlpha)
         {
             vs = CompileShader(ruiCode.c_str(), "VSMain", "vs_5_1");
             if (vs != nullptr)

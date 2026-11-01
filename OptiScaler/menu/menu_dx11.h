@@ -11,6 +11,7 @@ class Menu_Dx11 : public MenuDxBase
 
     ID3D11Texture2D* _renderTargetTexture = nullptr;
     ID3D11RenderTargetView* _renderTargetView = nullptr;
+    ID3D11Resource* _renderTargetOutput = nullptr;
 
     void CreateRenderTarget(ID3D11Resource* out);
 

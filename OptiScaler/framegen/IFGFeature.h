@@ -114,6 +114,8 @@ class IFGFeature
     virtual bool Present() = 0;
     virtual void Activate() = 0;
     virtual void Deactivate() = 0;
+    // Deactivate and drop a pending resume, for when the game turns FG off
+    void Disable();
     virtual void DestroyFGContext() = 0;
     virtual bool ReleaseSwapchain(HWND hwnd) = 0;
     virtual bool Shutdown() = 0;

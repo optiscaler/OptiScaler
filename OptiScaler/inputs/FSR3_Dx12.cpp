@@ -6,6 +6,7 @@
 
 #include "resource.h"
 #include "NVNGX_Parameter.h"
+#include <proxies/NVNGX_Proxy.h>
 
 #include <proxies/KernelBase_Proxy.h>
 
@@ -400,7 +401,11 @@ static Fsr3::FfxErrorCode ffxFsr3ContextDestroy_Dx12(Fsr3::FfxFsr3UpscalerContex
         NVSDK_NGX_D3D12_ReleaseFeature(_contexts[pContext]);
 
     _contexts.erase(pContext);
-    _nvParams.erase(pContext);
+    if (auto it = _nvParams.find(pContext); it != _nvParams.end())
+    {
+        TryDestroyNGXParameters(it->second, NVNGXProxy::D3D12_DestroyParameters());
+        _nvParams.erase(it);
+    }
     _initParams.erase(pContext);
 
     _skipDestroy = true;
@@ -596,7 +601,11 @@ static Fsr3::FfxErrorCode ffxFsr3ContextDestroy_Pattern_Dx12(Fsr3::FfxFsr3Upscal
         NVSDK_NGX_D3D12_ReleaseFeature(_contexts[pContext]);
 
     _contexts.erase(pContext);
-    _nvParams.erase(pContext);
+    if (auto it = _nvParams.find(pContext); it != _nvParams.end())
+    {
+        TryDestroyNGXParameters(it->second, NVNGXProxy::D3D12_DestroyParameters());
+        _nvParams.erase(it);
+    }
     _initParams.erase(pContext);
 
     auto cdResult = o_ffxFsr3UpscalerContextDestroy_Pattern_Dx12(pContext);

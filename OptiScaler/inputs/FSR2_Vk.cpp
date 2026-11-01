@@ -5,6 +5,7 @@
 #include "Config.h"
 #include "resource.h"
 #include "NVNGX_Parameter.h"
+#include <proxies/NVNGX_Proxy.h>
 
 #include <proxies/KernelBase_Proxy.h>
 
@@ -555,7 +556,11 @@ static FfxErrorCode ffxFsr2ContextDestroy_Vk(FfxFsr2Context* context)
         NVSDK_NGX_VULKAN_ReleaseFeature(_contexts[context]);
 
     _contexts.erase(context);
-    _nvParams.erase(context);
+    if (auto it = _nvParams.find(context); it != _nvParams.end())
+    {
+        TryDestroyNGXParameters(it->second, NVNGXProxy::VULKAN_DestroyParameters());
+        _nvParams.erase(it);
+    }
     _initParams.erase(context);
 
     _skipDestroy = true;

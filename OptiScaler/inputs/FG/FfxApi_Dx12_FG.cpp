@@ -280,6 +280,14 @@ ffxReturnCode_t ffxCreateContext_Dx12FG(ffxContext* context, ffxCreateContextDes
                 s.currentFG->DestroyFGContext();
             }
 
+            // A new context can start its frame ids from a lower value
+            {
+                std::scoped_lock lock(_frameBoundaryMutex);
+                _currentFrameId = 0;
+                _currentIndex = -1;
+                std::fill(std::begin(_frameIdIndex), std::end(_frameIdIndex), UINT64_MAX);
+            }
+
             auto ccDesc = (ffxCreateContextDescFrameGeneration*) desc;
 
             _fgConst = {};
@@ -540,7 +548,7 @@ ffxReturnCode_t ffxConfigure_Dx12FG(ffxContext* context, ffxConfigureDescHeader*
         }
         else if (!cDesc->frameGenerationEnabled && fg->IsActive())
         {
-            fg->Deactivate();
+            fg->Disable();
             fg->ResetCounters();
         }
 

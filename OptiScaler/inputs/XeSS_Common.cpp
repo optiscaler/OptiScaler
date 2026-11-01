@@ -3,6 +3,8 @@
 #include "XeSS_Base.h"
 
 #include <proxies/XeSS_Proxy.h>
+#include <proxies/NVNGX_Proxy.h>
+#include <NVNGX_Parameter.h>
 #include <nvsdk_ngx_vk.h>
 
 static std::optional<float> GetQualityOverrideRatio(const xess_quality_settings_t input)
@@ -126,6 +128,9 @@ xess_result_t hk_xessDestroyContext(xess_context_handle_t hContext)
     if (!_contexts.contains(hContext))
         return XESS_RESULT_ERROR_INVALID_CONTEXT;
 
+    // Vulkan contexts get Vulkan params, D3D11 and D3D12 ones get D3D12 params
+    const bool vkContext = _vkInitParams.contains(hContext);
+
     if (_d3d12InitParams.contains(hContext))
     {
         NVSDK_NGX_D3D12_ReleaseFeature(_contexts[hContext]);
@@ -145,7 +150,13 @@ xess_result_t hk_xessDestroyContext(xess_context_handle_t hContext)
     }
 
     _contexts.erase(hContext);
-    _nvParams.erase(hContext);
+
+    if (auto it = _nvParams.find(hContext); it != _nvParams.end())
+    {
+        TryDestroyNGXParameters(it->second, vkContext ? NVNGXProxy::VULKAN_DestroyParameters()
+                                                      : NVNGXProxy::D3D12_DestroyParameters());
+        _nvParams.erase(it);
+    }
 
     return XESS_RESULT_SUCCESS;
 }
@@ -389,7 +400,7 @@ xess_result_t hk_xessGetVelocityScale(xess_context_handle_t hContext, float* pX,
     *pX = scales->x;
     *pY = scales->y;
 
-    return XESS_RESULT_ERROR_UNKNOWN;
+    return XESS_RESULT_SUCCESS;
 }
 
 xess_result_t hk_xessSetJitterScale(xess_context_handle_t hContext, float x, float y)
@@ -420,6 +431,9 @@ xess_result_t hk_xessSetMaxResponsiveMaskValue(xess_context_handle_t hContext, f
     if (!_nvParams.contains(hContext))
         return XESS_RESULT_ERROR_INVALID_CONTEXT;
 
+    if (value < 0.0f || value > 1.0f)
+        return XESS_RESULT_ERROR_INVALID_ARGUMENT;
+
     _nvParams[hContext]->Set("XeSS.MaxResponsiveMaskValue", value);
 
     return XESS_RESULT_SUCCESS;
@@ -432,8 +446,12 @@ xess_result_t hk_xessGetMaxResponsiveMaskValue(xess_context_handle_t hContext, f
     if (!_nvParams.contains(hContext))
         return XESS_RESULT_ERROR_INVALID_CONTEXT;
 
+    if (pValue == nullptr)
+        return XESS_RESULT_ERROR_INVALID_ARGUMENT;
+
+    // Not set means no clipping
     if (_nvParams[hContext]->Get("XeSS.MaxResponsiveMaskValue", pValue) != NVSDK_NGX_Result_Success)
-        *pValue = 0.0f;
+        *pValue = 1.0f;
 
     return XESS_RESULT_SUCCESS;
 }
@@ -459,5 +477,15 @@ xess_result_t hk_xessAILGetVersion()
 xess_result_t hk_xessGetPipelineBuildStatus(xess_context_handle_t hContext)
 {
     LOG_DEBUG("");
+    return XESS_RESULT_SUCCESS;
+}
+
+xess_result_t hk_xessGetProfilingData(xess_context_handle_t hContext, xess_profiling_data_t** pProfilingData)
+{
+    LOG_DEBUG("");
+
+    if (pProfilingData != nullptr)
+        *pProfilingData = nullptr;
+
     return XESS_RESULT_SUCCESS;
 }

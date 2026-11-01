@@ -372,8 +372,6 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Shutdown(void)
     shutdown = true;
     State::Instance().nvngxDx12Inited = false;
 
-    D3D12Device = nullptr;
-
     if (const auto feature = State::Instance().currentFeature)
     {
         const bool usesDx12Dlss = feature->GetUpscalerType() == Upscaler::DLSS && feature->Api() == API::DX12;
@@ -385,6 +383,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Shutdown(void)
         }
     }
 
+    D3D12Device = nullptr;
     State::Instance().currentFeature = nullptr;
 
     // Unhooking and cleaning stuff causing issues during shutdown.
