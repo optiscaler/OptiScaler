@@ -19,6 +19,10 @@ OptiPlugin* self = nullptr;
 const char* const qualityNames[] = { "Low", "Medium", "High", "Ultra" };
 constexpr int32_t qualityCount = sizeof(qualityNames) / sizeof(qualityNames[0]);
 
+// Ultra needs at least this many samples
+constexpr int32_t ultraQuality = 3;
+constexpr int32_t ultraMinSamples = 8;
+
 const char* const logLevelNames[] = { "Debug", "Info", "Warn", "Error" };
 constexpr int32_t logLevelCount = sizeof(logLevelNames) / sizeof(logLevelNames[0]);
 
@@ -105,11 +109,19 @@ void DrawMainTab(void* /*userData*/)
     if (api->SliderInt("Samples", &settings.samples, 1, 16, nullptr))
     {
         api->SetInt(self, "Samples", settings.samples);
+
+        // Too few samples for Ultra, step down to High
+        if (settings.samples < ultraMinSamples && settings.quality == ultraQuality)
+        {
+            settings.quality = ultraQuality - 1;
+            api->SetInt(self, "Quality", settings.quality);
+        }
+
         unsaved = true;
     }
 
-    // Ultra needs 8 samples, below that it stays in the list but can't be picked
-    const uint32_t disabledQualities = settings.samples < 8 ? 1u << 3 : 0u;
+    // With too few samples Ultra stays in the list but can't be picked
+    const uint64_t disabledQualities = settings.samples < ultraMinSamples ? 1ull << ultraQuality : 0;
 
     if (api->ComboEx("Quality", &settings.quality, qualityNames, qualityCount, disabledQualities))
     {

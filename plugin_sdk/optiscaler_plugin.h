@@ -138,10 +138,10 @@ extern "C"
 
         // More widgets, only inside a draw callback ---------------------------------------------------------
 
-        // Combo with greyed out items, bit i of disabledItems disables items[i] (the first 32 items).
+        // Combo with greyed out items, bit i of disabledItemsMask disables items[i] (the first 64 items).
         // The selected item is shown even when it's disabled.
         bool (*ComboEx)(const char* label, int32_t* current, const char* const* items, int32_t itemCount,
-                        uint32_t disabledItems);
+                        uint64_t disabledItemsMask);
         // True on the frame the previous widget stopped being edited, a slider was released for example.
         // Lets a plugin apply a value once instead of on every frame of a drag.
         bool (*ItemDeactivatedAfterEdit)(void);

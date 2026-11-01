@@ -269,7 +269,7 @@ bool Api_SliderInt(const char* label, int32_t* value, int32_t min, int32_t max, 
 }
 
 bool Api_ComboEx(const char* label, int32_t* current, const char* const* items, int32_t itemCount,
-                 uint32_t disabledItems)
+                 uint64_t disabledItemsMask)
 {
     if (_draw == nullptr || label == nullptr || current == nullptr || (items == nullptr && itemCount > 0))
         return false;
@@ -284,7 +284,7 @@ bool Api_ComboEx(const char* label, int32_t* current, const char* const* items, 
         {
             ImGui::PushID(i);
 
-            const bool disabled = i < 32 && (disabledItems & (1u << i)) != 0;
+            const bool disabled = i < 64 && (disabledItemsMask & (1ull << i)) != 0;
             ImGui::BeginDisabled(disabled);
 
             const bool selected = *current == i;
