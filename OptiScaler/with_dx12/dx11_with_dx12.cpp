@@ -5,6 +5,7 @@
 
 #include <State.h>
 #include <Util.h>
+#include <misc/DeferredRelease.h>
 
 #define ASSIGN_DESC(dest, src)                                                                                         \
     dest.Width = src.Width;                                                                                            \
@@ -64,7 +65,8 @@ void Dx11WithDx12::ReleaseSharedTexture(D3D11_TEXTURE2D_RESOURCE_C* resource)
     if (resource == nullptr)
         return;
 
-    SAFE_RELEASE(resource->Dx12Resource);
+    // D3D12 queue can still be using it
+    DeferredRelease::Release(resource->Dx12Resource);
 
     if (resource->Dx11Handle != NULL && resource->UsesNTHandle)
         CloseHandle(resource->Dx11Handle);

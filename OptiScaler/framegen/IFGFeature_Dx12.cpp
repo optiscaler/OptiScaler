@@ -177,6 +177,21 @@ ID3D12GraphicsCommandList* IFGFeature_Dx12::GetUICommandList(int index)
     return _uiCommandList[index];
 }
 
+void IFGFeature_Dx12::ReleaseUIFence()
+{
+    // Recreated with the objects, so it is never signaled from another device's queue
+    DeferredRelease::Release(_uiFence);
+
+    if (_uiFenceEvent != nullptr)
+    {
+        DeferredRelease::Enqueue([event = _uiFenceEvent]() { CloseHandle(event); });
+        _uiFenceEvent = nullptr;
+    }
+
+    _uiFenceValue = 0;
+    memset(_uiAllocatorFenceValues, 0, sizeof(_uiAllocatorFenceValues));
+}
+
 ID3D12GraphicsCommandList* IFGFeature_Dx12::GetSCCommandList(int index)
 {
     if (index < 0)
@@ -478,8 +493,8 @@ void IFGFeature_Dx12::DestroyCopyCmdList()
 {
     for (size_t i = 0; i < BUFFER_COUNT; i++)
     {
-        SAFE_RELEASE(_copyCommandAllocator[i]);
-        SAFE_RELEASE(_copyCommandList[i]);
+        DeferredRelease::Release(_copyCommandAllocator[i]);
+        DeferredRelease::Release(_copyCommandList[i]);
     }
 }
 

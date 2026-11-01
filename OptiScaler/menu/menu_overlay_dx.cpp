@@ -5,6 +5,7 @@
 #include <Util.h>
 #include <Logger.h>
 #include <Config.h>
+#include <misc/DeferredRelease.h>
 
 #include <imgui/imgui_impl_dx11.h>
 #include <imgui/imgui_impl_dx12.h>
@@ -89,6 +90,21 @@ static int GetCorrectDXGIFormat(int eCurrentFormat)
     return eCurrentFormat;
 }
 
+static void WaitForMenuFence(UINT64 value)
+{
+    if (g_menuFence == nullptr)
+        return;
+
+    // A timed out wait leaves a signal on the event, completion is checked again
+    for (int i = 0; i < 2 && g_menuFence->GetCompletedValue() < value; i++)
+    {
+        if (g_menuFence->SetEventOnCompletion(value, g_menuFenceEvent) != S_OK)
+            break;
+
+        WaitForSingleObject(g_menuFenceEvent, 500);
+    }
+}
+
 static void CreateRenderTargetDx12(ID3D12Device* device, IDXGISwapChain* pSwapChain)
 {
     LOG_FUNC();
@@ -138,6 +154,9 @@ static void CleanupRenderTargetDx12(bool clearQueue)
     if (!_isInited || !_dx12Device || State::Instance().isShuttingDown)
         return;
 
+    // Menu's last command lists can still be running
+    WaitForMenuFence(*std::max_element(std::begin(g_allocatorFenceValues), std::end(g_allocatorFenceValues)));
+
     for (UINT i = 0; i < NUM_BACK_BUFFERS; ++i)
     {
         SAFE_RELEASE(g_mainRenderTargetResource[i]);
@@ -158,21 +177,23 @@ static void CleanupRenderTargetDx12(bool clearQueue)
             ImGui_ImplDX12_Shutdown(false);
         }
 
-        SAFE_RELEASE(g_pd3dRtvDescHeap);
-        SAFE_RELEASE(g_pd3dSrvDescHeap);
+        // The wait above can time out
+        DeferredRelease::Release(g_pd3dRtvDescHeap);
+        DeferredRelease::Release(g_pd3dSrvDescHeap);
 
         for (UINT i = 0; i < NUM_BACK_BUFFERS; ++i)
         {
-            SAFE_RELEASE(g_commandAllocators[i]);
+            DeferredRelease::Release(g_commandAllocators[i]);
         }
 
-        SAFE_RELEASE(g_pd3dCommandList);
+        DeferredRelease::Release(g_pd3dCommandList);
 
         SAFE_RELEASE(g_menuFence);
 
+        // The fence can still signal it if the wait above timed out
         if (g_menuFenceEvent != nullptr)
         {
-            CloseHandle(g_menuFenceEvent);
+            DeferredRelease::Enqueue([event = g_menuFenceEvent]() { CloseHandle(event); });
             g_menuFenceEvent = nullptr;
         }
 

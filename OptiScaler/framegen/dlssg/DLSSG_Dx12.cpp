@@ -10,6 +10,7 @@
 
 #include <hooks/DxgiFactory_Hooks.h>
 
+#include <misc/DeferredRelease.h>
 #include <magic_enum.hpp>
 
 HWND DLSSG_Dx12::Hwnd() { return _hwnd; }
@@ -329,11 +330,11 @@ void DLSSG_Dx12::ReleaseObjects()
 {
     for (size_t i = 0; i < BUFFER_COUNT; i++)
     {
-        SAFE_RELEASE(_uiCommandAllocator[i]);
-        SAFE_RELEASE(_uiCommandList[i]);
-        SAFE_RELEASE(_scCommandAllocator[i]);
-        SAFE_RELEASE(_scCommandList[i]);
-        SAFE_RELEASE(dlssgFence[i]);
+        DeferredRelease::Release(_uiCommandAllocator[i]);
+        DeferredRelease::Release(_uiCommandList[i]);
+        DeferredRelease::Release(_scCommandAllocator[i]);
+        DeferredRelease::Release(_scCommandList[i]);
+        DeferredRelease::Release(dlssgFence[i]);
 
         // Reset command list state
         _scCommandListResetted[i] = false;
@@ -342,6 +343,8 @@ void DLSSG_Dx12::ReleaseObjects()
         _uiCommandListResetted[i] = false;
         _uiAllocatorFenceValues[i] = 0;
     }
+
+    ReleaseUIFence();
 
     _renderUI.reset();
     _hudlessCompare.reset();

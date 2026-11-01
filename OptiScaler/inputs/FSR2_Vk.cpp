@@ -16,6 +16,7 @@
 
 #include <nvsdk_ngx_vk.h>
 #include <nvsdk_ngx_helpers_vk.h>
+#include <misc/DeferredRelease.h>
 
 typedef FfxErrorCode (*PFN_ffxFsr2ContextCreate)(FfxFsr2Context* context,
                                                  const FfxFsr2ContextDescription* contextDescription);
@@ -413,29 +414,29 @@ static FfxErrorCode ffxFsr2ContextDispatch_Vk(FfxFsr2Context* context,
 
     // Clear last frames image views
     LOG_DEBUG("Clear last frames image views");
-    if (depthImageView != nullptr)
-        vkDestroyImageView(_vkDevice, depthImageView, nullptr);
+    // The GPU can still be using them
+    std::array<VkImageView, 8> lastViews { depthImageView, expImageView,    biasImageView,   colorImageView,
+                                           mvImageView,    outputImageView, fsrReactiveView, fsrTransparencyView };
 
-    if (expImageView != nullptr)
-        vkDestroyImageView(_vkDevice, expImageView, nullptr);
+    DeferredRelease::Enqueue(
+        [device = _vkDevice, lastViews]()
+        {
+            for (auto view : lastViews)
+            {
+                if (view != VK_NULL_HANDLE)
+                    vkDestroyImageView(device, view, nullptr);
+            }
+        },
+        (uint64_t) _vkDevice);
 
-    if (biasImageView != nullptr)
-        vkDestroyImageView(_vkDevice, biasImageView, nullptr);
-
-    if (colorImageView != nullptr)
-        vkDestroyImageView(_vkDevice, colorImageView, nullptr);
-
-    if (mvImageView != nullptr)
-        vkDestroyImageView(_vkDevice, mvImageView, nullptr);
-
-    if (outputImageView != nullptr)
-        vkDestroyImageView(_vkDevice, outputImageView, nullptr);
-
-    if (fsrReactiveView != nullptr)
-        vkDestroyImageView(_vkDevice, fsrReactiveView, nullptr);
-
-    if (fsrTransparencyView != nullptr)
-        vkDestroyImageView(_vkDevice, fsrTransparencyView, nullptr);
+    depthImageView = VK_NULL_HANDLE;
+    expImageView = VK_NULL_HANDLE;
+    biasImageView = VK_NULL_HANDLE;
+    colorImageView = VK_NULL_HANDLE;
+    mvImageView = VK_NULL_HANDLE;
+    outputImageView = VK_NULL_HANDLE;
+    fsrReactiveView = VK_NULL_HANDLE;
+    fsrTransparencyView = VK_NULL_HANDLE;
 
     // generate new ones with nvidia resource infos
     if (dispatchDescription->depth.resource == nullptr ||
@@ -454,11 +455,19 @@ static FfxErrorCode ffxFsr2ContextDispatch_Vk(FfxFsr2Context* context,
     {
         params->Set(NVSDK_NGX_Parameter_ExposureTexture, &expNVRes);
     }
+    else
+    {
+        params->Set(NVSDK_NGX_Parameter_ExposureTexture, (void*) nullptr);
+    }
 
     if (dispatchDescription->reactive.resource != nullptr &&
         CreateIVandNVRes(dispatchDescription->reactive, &biasImageView, &biasNVRes))
     {
         params->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, &biasNVRes);
+    }
+    else
+    {
+        params->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void*) nullptr);
     }
 
     if (dispatchDescription->color.resource == nullptr ||

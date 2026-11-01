@@ -86,19 +86,30 @@ bool IFeature_Dx11wDx12::CreateD3D12Objects()
 
 void IFeature_Dx11wDx12::ReleaseSharedResources()
 {
+    // The last upscale can still be running on the GPU, only successful signals update the allocator values
+    const auto lastFenceValue =
+        *std::max_element(std::begin(Dx12CommandAllocatorFenceValue), std::end(Dx12CommandAllocatorFenceValue));
+
+    if (Dx12Fence != nullptr && Dx12FenceEvent != nullptr && Dx12Fence->GetCompletedValue() < lastFenceValue &&
+        Dx12Fence->SetEventOnCompletion(lastFenceValue, Dx12FenceEvent) == S_OK)
+    {
+        WaitForSingleObject(Dx12FenceEvent, 1000);
+    }
+
     for (size_t i = 0; i < DX11WDX12_COMMAND_BUFFER_COUNT; i++)
     {
-        SAFE_RELEASE(Dx12CommandList[i]);
-        SAFE_RELEASE(Dx12CommandAllocator[i]);
+        DeferredRelease::Release(Dx12CommandList[i]);
+        DeferredRelease::Release(Dx12CommandAllocator[i]);
         Dx12CommandAllocatorFenceValue[i] = 0;
     }
 
-    SAFE_RELEASE(Dx12Fence);
+    DeferredRelease::Release(Dx12Fence);
     Dx12FenceValue = 0;
 
+    // The fence can still signal it if the wait above timed out
     if (Dx12FenceEvent)
     {
-        CloseHandle(Dx12FenceEvent);
+        DeferredRelease::Enqueue([event = Dx12FenceEvent]() { CloseHandle(event); });
         Dx12FenceEvent = nullptr;
     }
 

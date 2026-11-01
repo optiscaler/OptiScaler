@@ -23,6 +23,9 @@ void Collect();
 // destroying the objects then would be invalid, leaking them is the safe option.
 void DropOwnersExcept(uint64_t keep);
 
+// Runs the owner's entries now, for a device that is being destroyed and so is idle
+void ReleaseOwner(uint64_t owner);
+
 template <typename T> void Release(T*& object)
 {
     if (object == nullptr)

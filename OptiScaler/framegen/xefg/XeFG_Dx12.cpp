@@ -5,6 +5,7 @@
 #include <hudfix/Hudfix_Dx12.h>
 
 #include <menu/menu_overlay_dx.h>
+#include <misc/DeferredRelease.h>
 #include <resource_tracking/ResTrack_dx12.h>
 
 #include <magic_enum.hpp>
@@ -1101,10 +1102,11 @@ void XeFG_Dx12::ReleaseObjects()
 {
     for (size_t i = 0; i < BUFFER_COUNT; i++)
     {
-        SAFE_RELEASE(_uiCommandAllocator[i]);
-        SAFE_RELEASE(_uiCommandList[i]);
-        SAFE_RELEASE(_scCommandAllocator[i]);
-        SAFE_RELEASE(_scCommandList[i]);
+        // GPU can still be executing them
+        DeferredRelease::Release(_uiCommandAllocator[i]);
+        DeferredRelease::Release(_uiCommandList[i]);
+        DeferredRelease::Release(_scCommandAllocator[i]);
+        DeferredRelease::Release(_scCommandList[i]);
 
         // Reset command list state
         _scCommandListResetted[i] = false;
@@ -1113,6 +1115,8 @@ void XeFG_Dx12::ReleaseObjects()
         _uiCommandListResetted[i] = false;
         _uiAllocatorFenceValues[i] = 0;
     }
+
+    ReleaseUIFence();
 
     _renderUI.reset();
     _hudlessCompare.reset();

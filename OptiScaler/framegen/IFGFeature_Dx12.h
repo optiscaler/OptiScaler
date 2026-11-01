@@ -112,6 +112,7 @@ class IFGFeature_Dx12 : public virtual IFGFeature
 
   protected:
     virtual void ReleaseObjects() = 0;
+    void ReleaseUIFence();
     virtual void CreateObjects(ID3D12Device* InDevice) = 0;
 
   public:

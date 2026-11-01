@@ -51,6 +51,42 @@ void DeferredRelease::DropOwnersExcept(uint64_t keep)
         LOG_WARN("Dropped {} deferred objects of a previous device", dropped);
 }
 
+void DeferredRelease::ReleaseOwner(uint64_t owner)
+{
+    size_t released = 0;
+
+    // Destroying an entry can enqueue new ones for the same owner
+    while (true)
+    {
+        std::vector<std::function<void()>> ready;
+
+        {
+            std::lock_guard lock(mutex);
+
+            std::erase_if(entries,
+                          [&](Entry& entry)
+                          {
+                              if (entry.owner != owner)
+                                  return false;
+
+                              ready.push_back(std::move(entry.destroy));
+                              return true;
+                          });
+        }
+
+        if (ready.empty())
+            break;
+
+        for (auto& destroy : ready)
+            destroy();
+
+        released += ready.size();
+    }
+
+    if (released > 0)
+        LOG_DEBUG("Released {} deferred objects of a destroyed device", released);
+}
+
 static void ReleaseReady(bool present)
 {
     if (State::Instance().isShuttingDown)

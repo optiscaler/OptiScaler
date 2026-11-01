@@ -56,6 +56,7 @@ PFN_vkCreateDevice o_vkCreateDevice = nullptr;
 PFN_vkCreateInstance o_vkCreateInstance = nullptr;
 PFN_vkCreateWin32SurfaceKHR o_vkCreateWin32SurfaceKHR = nullptr;
 static PFN_vkDestroyInstance o_vkDestroyInstance = nullptr;
+static PFN_vkDestroyDevice o_vkDestroyDevice = nullptr;
 PFN_vkQueuePresentKHR o_QueuePresentKHR = nullptr;
 PFN_vkCreateSwapchainKHR o_CreateSwapchainKHR = nullptr;
 static PFN_vkDestroySwapchainKHR o_DestroySwapchainKHR = nullptr;
@@ -583,6 +584,21 @@ static void hkvkDestroyInstance(VkInstance instance, const VkAllocationCallbacks
 {
     UntrackInstance(instance);
     o_vkDestroyInstance(instance, pAllocator);
+}
+
+VALIDATE_HOOK(hkvkDestroyDevice, PFN_vkDestroyDevice)
+static void hkvkDestroyDevice(VkDevice device, const VkAllocationCallbacks* pAllocator)
+{
+    LOG_FUNC();
+
+    // Objects created on the device have to go before it
+    if (device != VK_NULL_HANDLE)
+    {
+        MenuOverlayVk::ReleaseDevice(device);
+        DeferredRelease::ReleaseOwner((uint64_t) device);
+    }
+
+    o_vkDestroyDevice(device, pAllocator);
 }
 
 VALIDATE_HOOK(hkvkCreateDevice, PFN_vkCreateDevice)
@@ -1140,6 +1156,10 @@ PFN_vkVoidFunction hkvkGetInstanceProcAddr(VkInstance instance, const char* pNam
         LOG_DEBUG("vkCreateDevice");
         return (PFN_vkVoidFunction) hkvkCreateDevice;
     }
+    else if (procName == std::string("vkDestroyDevice") && o_vkDestroyDevice != nullptr)
+    {
+        return (PFN_vkVoidFunction) hkvkDestroyDevice;
+    }
 
     if (auto direct = StreamlineSwapchainFunction(pName, _ReturnAddress()))
         return direct;
@@ -1179,6 +1199,10 @@ PFN_vkVoidFunction hkvkGetDeviceProcAddr(VkDevice device, const char* pName)
 
         LOG_DEBUG("vkCreateDevice");
         return (PFN_vkVoidFunction) hkvkCreateDevice;
+    }
+    else if (procName == std::string("vkDestroyDevice") && o_vkDestroyDevice != nullptr)
+    {
+        return (PFN_vkVoidFunction) hkvkDestroyDevice;
     }
 
     if (auto direct = StreamlineSwapchainFunction(pName, _ReturnAddress()))
@@ -1317,6 +1341,7 @@ void VulkanHooks::Hook(HMODULE vulkan1)
     o_vkCreateDevice = (PFN_vkCreateDevice) KernelBaseProxy::GetProcAddress_()(vulkan1, "vkCreateDevice");
     o_vkCreateInstance = (PFN_vkCreateInstance) KernelBaseProxy::GetProcAddress_()(vulkan1, "vkCreateInstance");
     o_vkDestroyInstance = (PFN_vkDestroyInstance) KernelBaseProxy::GetProcAddress_()(vulkan1, "vkDestroyInstance");
+    o_vkDestroyDevice = (PFN_vkDestroyDevice) KernelBaseProxy::GetProcAddress_()(vulkan1, "vkDestroyDevice");
 
     address = KernelBaseProxy::GetProcAddress_()(vulkan1, "vkGetInstanceProcAddr");
     o_vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr) address;
@@ -1351,6 +1376,9 @@ void VulkanHooks::Hook(HMODULE vulkan1)
     if (o_vkCreateDevice != nullptr)
         DetourAttach(&(PVOID&) o_vkCreateDevice, hkvkCreateDevice);
 
+    if (o_vkDestroyDevice != nullptr)
+        DetourAttach(&(PVOID&) o_vkDestroyDevice, hkvkDestroyDevice);
+
     if (o_vkGetInstanceProcAddr != nullptr)
         DetourAttach(&(PVOID&) o_vkGetInstanceProcAddr, hkvkGetInstanceProcAddr);
 
@@ -1383,6 +1411,7 @@ void VulkanHooks::Hook(HMODULE vulkan1)
     {
         LOG_ERROR("Failed to hook Vulkan, error code: {:X}", detourResult);
         o_vkCreateDevice = nullptr;
+        o_vkDestroyDevice = nullptr;
         o_vkCreateInstance = nullptr;
         o_vkDestroyInstance = nullptr;
         o_vkGetInstanceProcAddr = nullptr;
@@ -1434,6 +1463,9 @@ void VulkanHooks::Unhook()
     if (o_vkCreateDevice != nullptr)
         DetourDetach(&(PVOID&) o_vkCreateDevice, hkvkCreateDevice);
 
+    if (o_vkDestroyDevice != nullptr)
+        DetourDetach(&(PVOID&) o_vkDestroyDevice, hkvkDestroyDevice);
+
     if (o_vkEnumeratePhysicalDevices != nullptr)
         DetourDetach(&(PVOID&) o_vkEnumeratePhysicalDevices, hkvkEnumeratePhysicalDevices);
 
@@ -1472,6 +1504,7 @@ void VulkanHooks::Unhook()
         o_WaitForPresentKHR = nullptr;
         o_WaitForPresent2KHR = nullptr;
         o_vkCreateDevice = nullptr;
+        o_vkDestroyDevice = nullptr;
         o_vkCreateInstance = nullptr;
         o_vkDestroyInstance = nullptr;
         o_vkGetInstanceProcAddr = nullptr;
