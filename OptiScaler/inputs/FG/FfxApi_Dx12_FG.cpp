@@ -911,7 +911,9 @@ ffxReturnCode_t ffxQuery_Dx12FG(ffxContext* context, ffxQueryDescHeader* desc)
     else if (desc->type == FFX_API_QUERY_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_INTERPOLATIONTEXTURE_DX12)
     {
         auto fg = State::Instance().currentFG;
-        if (fg != nullptr)
+
+        // The game's FG context can outlive the FG swapchain
+        if (fg != nullptr && State::Instance().currentFGSwapchain != nullptr)
         {
             auto cDesc = (ffxQueryDescFrameGenerationSwapChainInterpolationTextureDX12*) desc;
             auto fIndex = fg->GetIndexWillBeDispatched();

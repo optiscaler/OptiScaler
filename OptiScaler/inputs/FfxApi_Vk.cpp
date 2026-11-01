@@ -810,11 +810,19 @@ ffxReturnCode_t ffxDispatch_Vk(ffxContext* context, ffxDispatchDescHeader* desc)
     {
         params->Set("FSR.transparencyAndComposition", &fsrTransparencyNVRes);
     }
+    else
+    {
+        params->Set("FSR.transparencyAndComposition", (void*) nullptr);
+    }
 
     if (dispatchDesc->reactive.resource != nullptr &&
         CreateIVandNVRes(dispatchDesc->reactive, &fsrReactiveView, &fsrReactiveNVRes))
     {
         params->Set("FSR.reactive", &fsrReactiveNVRes);
+    }
+    else
+    {
+        params->Set("FSR.reactive", (void*) nullptr);
     }
 
     params->Set("FSR.cameraNear", dispatchDesc->cameraNear);

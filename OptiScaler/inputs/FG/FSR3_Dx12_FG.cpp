@@ -450,7 +450,7 @@ static Fsr3::FfxErrorCode hkffxRegisterFrameinterpolationUiResourceDX12(Fsr3::Ff
     auto& s = State::Instance();
     auto fg = s.currentFG;
 
-    if (fg->FrameGenerationContext() != nullptr && uiResource.resource != nullptr)
+    if (fg != nullptr && fg->FrameGenerationContext() != nullptr && uiResource.resource != nullptr)
     {
         auto fIndex = fg->GetIndexWillBeDispatched();
         if (fIndex < 0)
@@ -502,7 +502,8 @@ static Fsr3::FfxResource hkffxGetFrameinterpolationTextureDX12(Fsr3::FfxSwapchai
 
     auto fg = State::Instance().currentFG;
 
-    if (fg == nullptr)
+    // The game's FG context can outlive the FG swapchain
+    if (fg == nullptr || State::Instance().currentFGSwapchain == nullptr)
         return {};
 
     auto fIndex = fg->GetIndexWillBeDispatched();

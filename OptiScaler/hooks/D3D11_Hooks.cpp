@@ -148,7 +148,7 @@ static HRESULT hkD3D11On12CreateDevice(IUnknown* pDevice, UINT Flags, const D3D_
     // Assuming RTSS is creating a D3D11on12 device, not sure why but sometimes RTSS tries to create
     // it's D3D11on12 device with old CommandQueue which results crash
     // I am changing it's CommandQueue with current swapchain's command queue
-    if (State::Instance().currentCommandQueue != nullptr &&
+    if (State::Instance().currentCommandQueue != nullptr && !copyCommandQueues.empty() &&
         copyCommandQueues[0] != State::Instance().currentCommandQueue &&
         GetModuleHandle(L"RTSSHooks64.dll") != nullptr && pDevice == State::Instance().currentD3D12Device)
     {
@@ -168,13 +168,14 @@ static HRESULT hkD3D11On12CreateDevice(IUnknown* pDevice, UINT Flags, const D3D_
                                          ppImmediateContext, pChosenFeatureLevel);
     }
 
-    if (result == S_OK && *ppDevice != nullptr && !rtss && State::Instance().currentD3D12Device == nullptr)
+    if (result == S_OK && ppDevice != nullptr && *ppDevice != nullptr && !rtss &&
+        State::Instance().currentD3D12Device == nullptr)
     {
         LOG_INFO("Device captured, D3D11Device: {0:X}", (UINT64) *ppDevice);
         HookToDeviceLocal(*ppDevice);
     }
 
-    if (result == S_OK && *ppDevice != nullptr)
+    if (result == S_OK && ppDevice != nullptr && *ppDevice != nullptr)
         State::Instance().d3d11Devices.push_back(*ppDevice);
 
     LOG_FUNC_RESULT(result);
@@ -270,7 +271,8 @@ static HRESULT hkD3D11CreateDevice(IDXGIAdapter* pAdapter, D3D_DRIVER_TYPE Drive
 
     _skipDx11Create = false;
 
-    if (result == S_OK && *ppDevice != nullptr && State::Instance().currentD3D12Device == nullptr)
+    if (result == S_OK && ppDevice != nullptr && *ppDevice != nullptr &&
+        State::Instance().currentD3D12Device == nullptr)
     {
         LOG_INFO("Device captured");
         HookToDeviceLocal(*ppDevice);
@@ -409,7 +411,8 @@ static HRESULT hkD3D11CreateDeviceAndSwapChain(IDXGIAdapter* pAdapter, D3D_DRIVE
                                                   ppSwapChain, ppDevice, pFeatureLevel, ppImmediateContext);
     _skipDx11Create = false;
 
-    if (result == S_OK && *ppDevice != nullptr && State::Instance().currentD3D12Device == nullptr)
+    if (result == S_OK && ppDevice != nullptr && *ppDevice != nullptr &&
+        State::Instance().currentD3D12Device == nullptr)
     {
         LOG_INFO("Device captured");
         HookToDeviceLocal(*ppDevice);
@@ -442,7 +445,7 @@ static HRESULT hkD3D11CreateDeviceAndSwapChain(IDXGIAdapter* pAdapter, D3D_DRIVE
         else
         {
             *ppSwapChain = new WrappedIDXGISwapChain4(realSC, realDevice, pSwapChainDesc->OutputWindow,
-                                                      pSwapChainDesc->Flags, false);
+                                                      pSwapChainDesc->Flags, false, *ppSwapChain);
 
             State::Instance().currentSwapchain = *ppSwapChain;
             State::Instance().currentWrappedSwapchain = *ppSwapChain;

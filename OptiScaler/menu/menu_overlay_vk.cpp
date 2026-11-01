@@ -153,6 +153,8 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
     {
         _ImVulkan_Frames = (ImGui_ImplVulkanH_Frame*) IM_ALLOC(sizeof(ImGui_ImplVulkanH_Frame) * _scImageCount);
         _ImVulkan_Semaphores = (VkSemaphore*) IM_ALLOC(sizeof(VkSemaphore) * _scImageCount);
+        memset(_ImVulkan_Frames, 0, sizeof(ImGui_ImplVulkanH_Frame) * _scImageCount);
+        memset(_ImVulkan_Semaphores, 0, sizeof(VkSemaphore) * _scImageCount);
     }
 
     // Select queue family.
@@ -165,8 +167,8 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
         // get queues
         if (count > 0)
         {
-            VkQueueFamilyProperties queues[8];
-            vkGetPhysicalDeviceQueueFamilyProperties(pd, &count, queues);
+            std::vector<VkQueueFamilyProperties> queues(count);
+            vkGetPhysicalDeviceQueueFamilyProperties(pd, &count, queues.data());
 
             // find graphic queue
             for (uint32_t i = 0; i < count; i++)
@@ -541,6 +543,12 @@ void MenuOverlayVk::DestroyVulkanObjects(bool shutdown)
         }
     }
 
+    // Allocated again with the next swapchain's image count
+    IM_FREE(_ImVulkan_Frames);
+    IM_FREE(_ImVulkan_Semaphores);
+    _ImVulkan_Frames = nullptr;
+    _ImVulkan_Semaphores = nullptr;
+
     _ImVulkan_Info = {};
 
     _vkCleanMutex.unlock();
@@ -677,15 +685,15 @@ bool MenuOverlayVk::QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo)
             // Submit queue and semaphores
             LOG_DEBUG("waitSemaphoreCount: {0}", pPresentInfo->waitSemaphoreCount);
             // Blur copies the image with a transfer, so everything has to wait for the game
-            VkPipelineStageFlags waitStages[8];
-            std::fill(std::begin(waitStages), std::end(waitStages),
-                      blurMenu ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            std::vector<VkPipelineStageFlags> waitStages(pPresentInfo->waitSemaphoreCount,
+                                                         blurMenu ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
+                                                                  : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
             VkSubmitInfo submit_info = {};
             submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
             submit_info.commandBufferCount = 1;
             submit_info.pCommandBuffers = &fd->CommandBuffer;
-            submit_info.pWaitDstStageMask = waitStages;
+            submit_info.pWaitDstStageMask = waitStages.data();
             submit_info.waitSemaphoreCount = pPresentInfo->waitSemaphoreCount;
             submit_info.pWaitSemaphores = pPresentInfo->pWaitSemaphores;
             submit_info.signalSemaphoreCount = 1;

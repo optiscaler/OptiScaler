@@ -674,7 +674,8 @@ bool Config::Reload(std::filesystem::path iniPath)
 
             SimulateWaitableObject.set_from_config(readBool("Hotfix", "SimulateWaitableObject"));
 
-            RoundInternalResolution.set_from_config(readInt("Hotfix", "RoundInternalResolution"));
+            if (auto setting = readInt("Hotfix", "RoundInternalResolution"); setting.has_value() && setting > 0)
+                RoundInternalResolution.set_from_config(setting);
 
             RestoreComputeSignature.set_from_config(readBool("Hotfix", "RestoreComputeSignature"));
             RestoreGraphicSignature.set_from_config(readBool("Hotfix", "RestoreGraphicSignature"));

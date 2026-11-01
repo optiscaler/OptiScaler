@@ -1826,7 +1826,8 @@ static ULONG hkD3D12DeviceRelease(IUnknown* device)
 
         o_D3D12DeviceRelease(device);
     }
-    else if (State::Instance().currentD3D12Device == device)
+
+    if (State::Instance().currentD3D12Device == device)
     {
         device->AddRef();
         auto refCount = o_D3D12DeviceRelease(device);
@@ -2311,7 +2312,8 @@ static HRESULT hkD3D12GetInterface(REFCLSID rclsid, REFIID riid, void** ppvDebug
 
     auto result = o_D3D12GetInterface(rclsid, riid, ppvDebug);
 
-    if (rclsid == CLSID_D3D12DeviceFactory && o_CreateDevice == nullptr)
+    if (SUCCEEDED(result) && ppvDebug != nullptr && *ppvDebug != nullptr && rclsid == CLSID_D3D12DeviceFactory &&
+        o_CreateDevice == nullptr)
     {
         auto deviceFactory = (ID3D12DeviceFactory*) *ppvDebug;
 

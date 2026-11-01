@@ -727,7 +727,10 @@ void MenuOverlayDx::Present(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         else if (_dx12Device && (g_pd3dDeviceParam != nullptr || device12 != nullptr))
         {
             if (g_pd3dDeviceParam != nullptr && device12 == nullptr)
+            {
                 device12 = g_pd3dDeviceParam;
+                device12->AddRef();
+            }
 
             CleanupRenderTargetDx12(true);
 

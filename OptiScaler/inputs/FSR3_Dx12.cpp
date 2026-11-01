@@ -309,7 +309,7 @@ static Fsr3::FfxErrorCode ffxFsr3ContextDispatch_Dx12(Fsr3::FfxFsr3UpscalerConte
         return result;
     }
 
-    if (_d3d12Device == nullptr)
+    if (_d3d12Device == nullptr || !_nvParams.contains(pContext))
     {
         _skipDispatch = true;
         auto result = o_ffxFsr3UpscalerContextDispatch_Dx12(pContext, pDispatchDescription);
@@ -508,10 +508,10 @@ ffxFsr3ContextDispatch_Pattern_Dx12(Fsr3::FfxFsr3UpscalerContext* pContext,
 {
     // Skip OptiScaler stuff
     if (!Config::Instance()->UseFsr3Inputs.value_or_default() || _skipDispatch)
-        return o_ffxFsr3UpscalerContextDispatch_Dx12(pContext, pDispatchDescription);
+        return o_ffxFsr3UpscalerContextDispatch_Pattern_Dx12(pContext, pDispatchDescription);
 
-    if (_d3d12Device == nullptr)
-        return o_ffxFsr3UpscalerContextDispatch_Dx12(pContext, pDispatchDescription);
+    if (_d3d12Device == nullptr || !_nvParams.contains(pContext))
+        return o_ffxFsr3UpscalerContextDispatch_Pattern_Dx12(pContext, pDispatchDescription);
 
     if (pDispatchDescription == nullptr || pContext == nullptr || pDispatchDescription->commandList == nullptr)
         return Fsr3::FFX_ERROR_BACKEND_API_ERROR;
@@ -599,7 +599,7 @@ static Fsr3::FfxErrorCode ffxFsr3ContextDestroy_Pattern_Dx12(Fsr3::FfxFsr3Upscal
     _nvParams.erase(pContext);
     _initParams.erase(pContext);
 
-    auto cdResult = o_ffxFsr3UpscalerContextDestroy_Dx12(pContext);
+    auto cdResult = o_ffxFsr3UpscalerContextDestroy_Pattern_Dx12(pContext);
     LOG_INFO("result: {:X}", (UINT) cdResult);
 
     return Fsr3::FFX_OK;
@@ -838,7 +838,7 @@ void HookFSR3Inputs(HMODULE module)
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());
 
-        if (o_ffxFSR3GetInterfaceDX12 == nullptr)
+        if (o_ffxFsr3UpscalerContextCreate_Dx12 == nullptr)
         {
             o_ffxFsr3UpscalerContextCreate_Dx12 = (PFN_ffxFsr3UpscalerContextCreate) KernelBaseProxy::GetProcAddress_()(
                 module, "ffxFsr3UpscalerContextCreate");

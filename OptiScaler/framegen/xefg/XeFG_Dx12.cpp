@@ -547,6 +547,15 @@ void XeFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
 {
     LOG_DEBUG("");
 
+    if (device == nullptr)
+    {
+        static bool logged = false;
+        if (!std::exchange(logged, true))
+            LOG_ERROR("No D3D12 device");
+
+        return;
+    }
+
     _device = device;
     CreateObjects(device);
 

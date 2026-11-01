@@ -256,7 +256,7 @@ static FfxErrorCode ffxFsr2ContextDispatch_Dx11(FfxFsr2Context* context,
     LOG_DEBUG("");
 
     // Skip OptiScaler stuff
-    if (!Config::Instance()->UseFsr2Inputs.value_or_default())
+    if (!Config::Instance()->UseFsr2Inputs.value_or_default() || !_nvParams.contains(context))
     {
         _skipDispatch = true;
         LOG_DEBUG("UseFsr2Inputs not enabled, skipping");

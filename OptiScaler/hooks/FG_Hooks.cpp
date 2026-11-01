@@ -1523,6 +1523,9 @@ ULONG FGHooks::hkFGRelease(IUnknown* This)
             LOG_DEBUG("FG Swapchain released, clearing currentFGSwapchain");
             State::Instance().currentFGSwapchain = nullptr;
 
+            if (State::Instance().currentSwapchain == This)
+                State::Instance().currentSwapchain = nullptr;
+
             if (State::Instance().currentWrappedSwapchain != nullptr &&
                 State::Instance().currentSwapchainDesc.OutputWindow == _hwnd)
             {

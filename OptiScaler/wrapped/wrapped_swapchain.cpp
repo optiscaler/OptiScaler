@@ -542,8 +542,8 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
 }
 
 WrappedIDXGISwapChain4::WrappedIDXGISwapChain4(IDXGISwapChain* real, IUnknown* pDevice, HWND hWnd, UINT flags,
-                                               bool isUWP)
-    : _real(real), _device(pDevice), _handle(hWnd), _refcount(1), _uwp(isUWP)
+                                               bool isUWP, IUnknown* owner)
+    : _real(real), _owner(owner != nullptr ? owner : real), _device(pDevice), _handle(hWnd), _refcount(1), _uwp(isUWP)
 {
     _id = ++scCount;
     _lastFlags = flags;
@@ -688,51 +688,59 @@ ULONG STDMETHODCALLTYPE WrappedIDXGISwapChain4::Release()
 
     if (ret == 0)
     {
+        {
 #ifdef USE_LOCAL_MUTEX
-        OwnedLockGuard lock(_localMutex, 999);
+            OwnedLockGuard lock(_localMutex, 999);
 #endif
 
-        MenuOverlayDx::CleanupRenderTarget(true, _handle);
+            const bool isCurrent =
+                State::Instance().currentSwapchain == this || State::Instance().currentWrappedSwapchain == this;
 
-        if (State::Instance().currentSwapchain == this)
-            State::Instance().currentSwapchain = nullptr;
+            MenuOverlayDx::CleanupRenderTarget(true, _handle);
 
-        if (State::Instance().currentRealSwapchain == this)
-            State::Instance().currentRealSwapchain = nullptr;
+            if (State::Instance().currentSwapchain == this)
+                State::Instance().currentSwapchain = nullptr;
 
-        auto fg = State::Instance().currentFG;
-        if (fg != nullptr && fg->Mutex.getOwner() != 1 && fg->SwapchainContext() != nullptr)
-        {
-            fg->Deactivate();
-            fg->ReleaseSwapchain(_handle);
+            if (State::Instance().currentWrappedSwapchain == this)
+                State::Instance().currentWrappedSwapchain = nullptr;
 
-            if (State::Instance().currentFGSwapchain != nullptr)
-                State::Instance().currentFGSwapchain = nullptr;
-        }
+            if (State::Instance().currentRealSwapchain == _real)
+                State::Instance().currentRealSwapchain = nullptr;
 
-        auto refCount = _real->Release();
-
-        // Disabled for now, cause issues with some games
-        /*
-        IDXGISwapChain* skSC = nullptr;
-        if (_real->QueryInterface(IID_IUnwrappedDXGISwapChain, (void**) &skSC) == S_OK && skSC != nullptr)
-        {
-            skSC->Release();
-            LOG_DEBUG("Found SK swapchain, skip releasing of main swapchain");
-        }
-        else
-        {
-            // Release real swapchain, otherwise it can cause issues when re-creating swapchain with same handle
-            while (refCount > 0)
+            auto fg = State::Instance().currentFG;
+            if (isCurrent && fg != nullptr && fg->Mutex.getOwner() != 1 && fg->SwapchainContext() != nullptr)
             {
-                LOG_DEBUG("Waiting for real swapchain to be released, refCount: {}", refCount);
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                refCount = _real->Release();
-            }
-        }
-        */
+                fg->Deactivate();
+                fg->ReleaseSwapchain(_handle);
 
-        LOG_DEBUG("Real swapchain released, refCount: {}", refCount);
+                if (State::Instance().currentFGSwapchain != nullptr)
+                    State::Instance().currentFGSwapchain = nullptr;
+            }
+
+            auto refCount = _owner->Release();
+
+            // Disabled for now, cause issues with some games
+            /*
+            IDXGISwapChain* skSC = nullptr;
+            if (_real->QueryInterface(IID_IUnwrappedDXGISwapChain, (void**) &skSC) == S_OK && skSC != nullptr)
+            {
+                skSC->Release();
+                LOG_DEBUG("Found SK swapchain, skip releasing of main swapchain");
+            }
+            else
+            {
+                // Release real swapchain, otherwise it can cause issues when re-creating swapchain with same handle
+                while (refCount > 0)
+                {
+                    LOG_DEBUG("Waiting for real swapchain to be released, refCount: {}", refCount);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    refCount = _real->Release();
+                }
+            }
+            */
+
+            LOG_DEBUG("Owner released, refCount: {}", refCount);
+        }
 
         delete this;
     }
@@ -1273,7 +1281,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
     }
 #endif
 
-    if (*ppPresentQueue != nullptr)
+    if (ppPresentQueue != nullptr && *ppPresentQueue != nullptr)
     {
         auto state = &State::Instance();
         state->currentCommandQueue = (ID3D12CommandQueue*) *ppPresentQueue;

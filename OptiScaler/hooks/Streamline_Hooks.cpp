@@ -632,7 +632,9 @@ sl::Result StreamlineHooks::hkslEvaluateFeature(sl::Feature feature, const sl::F
 {
     LOG_DEBUG("frameIndex: {}", static_cast<uint32_t>(frame));
 
-    if (State::Instance().activeFgInput == FGInput::DLSSG && numInputs > 0 && inputs != nullptr)
+    // D3D11 resources aren't supported, same as the tag hooks
+    if (State::Instance().activeFgInput == FGInput::DLSSG && numInputs > 0 && inputs != nullptr &&
+        renderApi != sl::RenderAPI::eD3D11)
     {
         for (uint32_t i = 0; i < numInputs; i++)
         {
@@ -1758,11 +1760,15 @@ sl::Result StreamlineHooks::hkslPCLSetMarker(sl::PCLMarker marker, const sl::Fra
             sl::FrameToken* newFramePointer {};
             auto result = o_slGetNewFrameToken(newFramePointer, &newFrameId);
 
-            LOG_WARN("Simulation start marker sent after end marker, offset: {}", correction_offset);
-            InputCollection::getInstance().startCollectingForFrame(newFrameId);
+            // On failure send the marker uncorrected
+            if (result == sl::Result::eOk && newFramePointer != nullptr)
+            {
+                LOG_WARN("Simulation start marker sent after end marker, offset: {}", correction_offset);
+                InputCollection::getInstance().startCollectingForFrame(newFrameId);
 
-            result = o_slPCLSetMarker(marker, *newFramePointer);
-            return result;
+                result = o_slPCLSetMarker(marker, *newFramePointer);
+                return result;
+            }
         }
     }
 
