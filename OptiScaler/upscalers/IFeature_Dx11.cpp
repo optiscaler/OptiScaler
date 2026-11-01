@@ -273,6 +273,8 @@ bool IFeature_Dx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_Par
 
     UpscalerTime->End(InDeviceContext);
 
+    InParameters->Set(NVSDK_NGX_Parameter_Output, paramOutput);
+
     if (!evalResult)
         result = false;
 
@@ -309,9 +311,6 @@ bool IFeature_Dx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_Par
                 Imgui = std::make_unique<Menu_Dx11>(GetForegroundWindow(), Device);
         }
     }
-
-    if (evalResult && !pipelineFailed)
-        InParameters->Set(NVSDK_NGX_Parameter_Output, paramOutput);
 
     // restore compute shader resources
     for (UINT i = 0; i < D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT; i++)

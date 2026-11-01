@@ -73,6 +73,7 @@ static bool _d3d12Captured = false;
 static LUID _lastAdapterLuid = {};
 
 using PFN_Reset = rewrite_signature<decltype(&ID3D12GraphicsCommandList::Reset)>::type;
+using PFN_Close = rewrite_signature<decltype(&ID3D12GraphicsCommandList::Close)>::type;
 
 // Common
 using PFN_SetDescriptorHeaps = rewrite_signature<decltype(&ID3D12GraphicsCommandList::SetDescriptorHeaps)>::type;
@@ -113,6 +114,7 @@ using PFN_SetGraphicsRootUnorderedAccessView =
 // ID3D12GraphicsCommandList vtable indices
 namespace CmdListVTable
 {
+constexpr int Close = 9;
 constexpr int Reset = 10;
 constexpr int SetPipelineState = 25;
 constexpr int SetDescriptorHeaps = 28;
@@ -235,6 +237,7 @@ static std::shared_mutex s_rootSigLayoutsMutex;
 static ankerl::unordered_dense::map<ID3D12RootSignature*, std::shared_ptr<const RootSigLayout>> s_rootSigLayouts;
 
 static RootRestoreHook<PFN_Reset> s_Reset {};
+static RootRestoreHook<PFN_Close> s_Close {};
 static RootRestoreHook<PFN_SetDescriptorHeaps> s_SetDescriptorHeaps {};
 static RootRestoreHook<PFN_SetPipelineState> s_SetPipelineState {};
 
@@ -415,6 +418,16 @@ static void RecordReset(ID3D12GraphicsCommandList* commandList, ID3D12PipelineSt
     state->pipelineState = pInitialState;
 }
 
+// A new list can reuse a released list's address and starts recording without a Reset
+static void RecordClose(ID3D12GraphicsCommandList* commandList)
+{
+    if (commandList == nullptr || t_suppressRecording > 0)
+        return;
+
+    if (auto* state = GetCmdListState(commandList, false))
+        state->Clear();
+}
+
 static void RecordPipelineState(ID3D12GraphicsCommandList* commandList, ID3D12PipelineState* pPipelineState)
 {
     if (!ShouldRecord(commandList) || pPipelineState == nullptr ||
@@ -575,6 +588,14 @@ static HRESULT hkReset(ID3D12GraphicsCommandList* commandList, ID3D12CommandAllo
     return result;
 }
 
+VALIDATE_HOOK(hkClose, PFN_Close)
+static HRESULT hkClose(ID3D12GraphicsCommandList* commandList)
+{
+    auto result = s_Close.o_earlyHook(commandList);
+    RecordClose(commandList);
+    return result;
+}
+
 VALIDATE_HOOK(hkSetPipelineState, PFN_SetPipelineState)
 static void hkSetPipelineState(ID3D12GraphicsCommandList* commandList, ID3D12PipelineState* pPipelineState)
 {
@@ -721,6 +742,19 @@ static HRESULT hkResetLate(ID3D12GraphicsCommandList* commandList, ID3D12Command
     if (SUCCEEDED(result))
         RecordReset(commandList, pInitialState);
 
+    return result;
+}
+
+VALIDATE_HOOK(hkCloseLate, PFN_Close)
+static HRESULT hkCloseLate(ID3D12GraphicsCommandList* commandList)
+{
+    HRESULT result;
+    {
+        SuppressRecordingScope suppress;
+        result = s_Close.o_lateHook(commandList);
+    }
+
+    RecordClose(commandList);
     return result;
 }
 
@@ -876,6 +910,7 @@ static void hkSetGraphicsRootUnorderedAccessViewLate(ID3D12GraphicsCommandList* 
 template <typename F> static void ForEachCmdListHook(F&& f)
 {
     f(s_Reset);
+    f(s_Close);
     f(s_SetPipelineState);
     f(s_SetDescriptorHeaps);
     f(s_SetComputeRootSignature);
@@ -904,6 +939,7 @@ static void LoadCmdListHooks(PVOID* vtable, bool late)
 
     using namespace CmdListVTable;
     load(s_Reset, Reset);
+    load(s_Close, Close);
     load(s_SetPipelineState, SetPipelineState);
     load(s_SetDescriptorHeaps, SetDescriptorHeaps);
     load(s_SetComputeRootSignature, SetComputeRootSignature);
@@ -972,6 +1008,7 @@ void D3D12Hooks::HookToCommandListLate(ID3D12GraphicsCommandList* commandList)
 
     // Common
     AttachIf(c.restoreCompute || c.restoreGraphics, s_Reset.o_lateHook, hkResetLate);
+    AttachIf(c.restoreCompute || c.restoreGraphics, s_Close.o_lateHook, hkCloseLate);
     AttachIf(c.extended, s_SetPipelineState.o_lateHook, hkSetPipelineStateLate);
     AttachIf(c.hookDescriptorHeaps, s_SetDescriptorHeaps.o_lateHook, hkSetDescriptorHeapsLate);
 
@@ -1029,6 +1066,7 @@ static void HookToCommandList(ID3D12Device* InDevice)
 
         // Common
         AttachIf(c.restoreCompute || c.restoreGraphics, s_Reset.o_earlyHook, hkReset);
+        AttachIf(c.restoreCompute || c.restoreGraphics, s_Close.o_earlyHook, hkClose);
         AttachIf(c.extended, s_SetPipelineState.o_earlyHook, hkSetPipelineState);
         AttachIf(c.hookDescriptorHeaps, s_SetDescriptorHeaps.o_earlyHook, hkSetDescriptorHeaps);
 
@@ -1210,10 +1248,10 @@ static void RestoreBindings(ID3D12GraphicsCommandList* cmdList, const RootBindin
 
 void D3D12Hooks::SetRootSignatureTracking(bool enable) { t_upscalerActive = !enable; }
 
+// A known list with nothing bound since Reset is restorable, there is just nothing to restore
 bool D3D12Hooks::CanRestoreRootSignature(ID3D12GraphicsCommandList* cmdList)
 {
-    auto* state = GetCmdListState(cmdList, false);
-    return state != nullptr && (state->compute.signature != nullptr || state->graphics.signature != nullptr);
+    return GetCmdListState(cmdList, false) != nullptr;
 }
 
 void D3D12Hooks::RestoreRoot(ID3D12GraphicsCommandList* cmdList)
@@ -1226,14 +1264,16 @@ void D3D12Hooks::RestoreRoot(ID3D12GraphicsCommandList* cmdList)
         return;
 
     auto* state = GetCmdListState(cmdList, false);
-    const bool hasCompute = restoreCompute && state != nullptr && state->compute.signature != nullptr;
-    const bool hasGraphics = restoreGraphics && state != nullptr && state->graphics.signature != nullptr;
 
-    if (!hasCompute && !hasGraphics)
+    if (state == nullptr)
     {
         LOG_TRACE("Can't restore Root Signature for CmdList: {:X}", (UINT64) cmdList);
         return;
     }
+
+    // Heaps and PSO are restored even when no root signature was set
+    const bool hasCompute = restoreCompute && state->compute.signature != nullptr;
+    const bool hasGraphics = restoreGraphics && state->graphics.signature != nullptr;
 
     // Restore calls must not be recorded (and must not take locks if they hit a chained hook)
     SuppressRecordingScope suppress;
@@ -1246,7 +1286,7 @@ void D3D12Hooks::RestoreRoot(ID3D12GraphicsCommandList* cmdList)
         if (RestoreDescriptorHeaps(cmdList, *state))
             LOG_TRACE("Restored DescriptorHeaps for CmdList: {:X}", (UINT64) cmdList);
         else
-            LOG_WARN("Can't restore DescriptorHeaps for CmdList: {:X}", (UINT64) cmdList);
+            LOG_TRACE("Can't restore DescriptorHeaps for CmdList: {:X}", (UINT64) cmdList);
     }
 
     if (hasCompute)

@@ -101,7 +101,22 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
 
     params.commandList = InCommandList;
 
-    ID3D12Resource* paramColor;
+    // Forward barriers on game resources, undone by restoreStates on every exit
+    std::vector<std::tuple<ID3D12Resource*, D3D12_RESOURCE_STATES, D3D12_RESOURCE_STATES>> transitions;
+
+    auto forwardBarrier = [&](ID3D12Resource* resource, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after)
+    {
+        ResourceBarrier(InCommandList, resource, before, after);
+        transitions.emplace_back(resource, before, after);
+    };
+
+    auto restoreStates = [&]()
+    {
+        for (const auto& [resource, before, after] : transitions | std::views::reverse)
+            ResourceBarrier(InCommandList, resource, after, before);
+    };
+
+    ID3D12Resource* paramColor = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_Color, &paramColor) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_Color, (void**) &paramColor);
 
@@ -111,17 +126,16 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
 
         if (Config::Instance()->ColorResourceBarrier.has_value())
         {
-            ResourceBarrier(InCommandList, paramColor,
-                            (D3D12_RESOURCE_STATES) Config::Instance()->ColorResourceBarrier.value(),
-                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            forwardBarrier(paramColor, (D3D12_RESOURCE_STATES) Config::Instance()->ColorResourceBarrier.value(),
+                           D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
         else if (State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
                  State::Instance().gameEngine == GameEngineType::Unreal ||
                  State::Instance().gameQuirks & GameQuirk::ForceUnrealEngine)
         {
             Config::Instance()->ColorResourceBarrier.set_volatile_value(D3D12_RESOURCE_STATE_RENDER_TARGET);
-            ResourceBarrier(InCommandList, paramColor, D3D12_RESOURCE_STATE_RENDER_TARGET,
-                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            forwardBarrier(paramColor, D3D12_RESOURCE_STATE_RENDER_TARGET,
+                           D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
 
         params.color = ffxApiGetResourceDX12(paramColor, FFX_API_RESOURCE_STATE_COMPUTE_READ);
@@ -132,7 +146,7 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
         return false;
     }
 
-    ID3D12Resource* paramVelocity;
+    ID3D12Resource* paramVelocity = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, &paramVelocity) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, (void**) &paramVelocity);
 
@@ -142,17 +156,16 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
 
         if (Config::Instance()->MVResourceBarrier.has_value())
         {
-            ResourceBarrier(InCommandList, paramVelocity,
-                            (D3D12_RESOURCE_STATES) Config::Instance()->MVResourceBarrier.value(),
-                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            forwardBarrier(paramVelocity, (D3D12_RESOURCE_STATES) Config::Instance()->MVResourceBarrier.value(),
+                           D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
         else if (State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
                  State::Instance().gameEngine == GameEngineType::Unreal ||
                  State::Instance().gameQuirks & GameQuirk::ForceUnrealEngine)
         {
             Config::Instance()->MVResourceBarrier.set_volatile_value(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-            ResourceBarrier(InCommandList, paramVelocity, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            forwardBarrier(paramVelocity, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                           D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
 
         params.motionVectors = ffxApiGetResourceDX12(paramVelocity, FFX_API_RESOURCE_STATE_COMPUTE_READ);
@@ -160,10 +173,11 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
     else
     {
         LOG_ERROR("MotionVectors not exist!!");
+        restoreStates();
         return false;
     }
 
-    ID3D12Resource* paramOutput;
+    ID3D12Resource* paramOutput = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_Output, &paramOutput) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_Output, (void**) &paramOutput);
 
@@ -172,19 +186,19 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
         LOG_DEBUG("Output exist..");
 
         if (Config::Instance()->OutputResourceBarrier.has_value())
-            ResourceBarrier(InCommandList, paramOutput,
-                            (D3D12_RESOURCE_STATES) Config::Instance()->OutputResourceBarrier.value(),
-                            D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            forwardBarrier(paramOutput, (D3D12_RESOURCE_STATES) Config::Instance()->OutputResourceBarrier.value(),
+                           D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
         params.output = ffxApiGetResourceDX12(paramOutput, FFX_API_RESOURCE_STATE_UNORDERED_ACCESS);
     }
     else
     {
         LOG_ERROR("Output not exist!!");
+        restoreStates();
         return false;
     }
 
-    ID3D12Resource* paramDepth;
+    ID3D12Resource* paramDepth = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_Depth, &paramDepth) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_Depth, (void**) &paramDepth);
 
@@ -193,9 +207,8 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
         LOG_DEBUG("Depth exist..");
 
         if (Config::Instance()->DepthResourceBarrier.has_value())
-            ResourceBarrier(InCommandList, paramDepth,
-                            (D3D12_RESOURCE_STATES) Config::Instance()->DepthResourceBarrier.value(),
-                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            forwardBarrier(paramDepth, (D3D12_RESOURCE_STATES) Config::Instance()->DepthResourceBarrier.value(),
+                           D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
         params.depth = ffxApiGetResourceDX12(paramDepth, FFX_API_RESOURCE_STATE_COMPUTE_READ);
     }
@@ -204,7 +217,10 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
         LOG_ERROR("Depth not exist!!");
 
         if (LowResMV())
+        {
+            restoreStates();
             return false;
+        }
     }
 
     ID3D12Resource* paramExp = nullptr;
@@ -222,9 +238,8 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
             LOG_DEBUG("ExposureTexture exist..");
 
             if (Config::Instance()->ExposureResourceBarrier.has_value())
-                ResourceBarrier(InCommandList, paramExp,
-                                (D3D12_RESOURCE_STATES) Config::Instance()->ExposureResourceBarrier.value(),
-                                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                forwardBarrier(paramExp, (D3D12_RESOURCE_STATES) Config::Instance()->ExposureResourceBarrier.value(),
+                               D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
             params.exposure = ffxApiGetResourceDX12(paramExp, FFX_API_RESOURCE_STATE_COMPUTE_READ);
         }
@@ -233,16 +248,17 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
             LOG_DEBUG("AutoExposure disabled but ExposureTexture is not exist, it may cause problems!!");
             State::Instance().autoExposure = true;
             State::Instance().changeBackend[Handle()->Id] = true;
+            restoreStates();
             return true;
         }
     }
 
     ID3D12Resource* paramTransparency = nullptr;
-    if (InParameters->Get("FSR.transparencyAndComposition", &paramTransparency) == NVSDK_NGX_Result_Success)
+    if (InParameters->Get("FSR.transparencyAndComposition", &paramTransparency) != NVSDK_NGX_Result_Success)
         InParameters->Get("FSR.transparencyAndComposition", (void**) &paramTransparency);
 
     ID3D12Resource* paramReactiveMask = nullptr;
-    if (InParameters->Get("FSR.reactive", &paramReactiveMask) == NVSDK_NGX_Result_Success)
+    if (InParameters->Get("FSR.reactive", &paramReactiveMask) != NVSDK_NGX_Result_Success)
         InParameters->Get("FSR.reactive", (void**) &paramReactiveMask);
 
     ID3D12Resource* paramReactiveMask2 = nullptr;
@@ -263,6 +279,12 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
         if (paramReactiveMask != nullptr)
         {
             LOG_DEBUG("Using FSR reactive mask..");
+
+            if (Config::Instance()->MaskResourceBarrier.has_value())
+                forwardBarrier(paramReactiveMask,
+                               (D3D12_RESOURCE_STATES) Config::Instance()->MaskResourceBarrier.value(),
+                               D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
             params.reactive = ffxApiGetResourceDX12(paramReactiveMask, FFX_API_RESOURCE_STATE_COMPUTE_READ);
         }
         else
@@ -273,9 +295,9 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
                 Config::Instance()->DisableReactiveMask.set_volatile_value(false);
 
                 if (Config::Instance()->MaskResourceBarrier.has_value())
-                    ResourceBarrier(InCommandList, paramReactiveMask2,
-                                    (D3D12_RESOURCE_STATES) Config::Instance()->MaskResourceBarrier.value(),
-                                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                    forwardBarrier(paramReactiveMask2,
+                                   (D3D12_RESOURCE_STATES) Config::Instance()->MaskResourceBarrier.value(),
+                                   D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
                 if (paramTransparency == nullptr && Config::Instance()->FsrUseMaskForTransparency.value_or_default())
                     params.transparencyAndComposition =
@@ -504,33 +526,11 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
             State::Instance().changeBackend[Handle()->Id] = true;
         }
 
+        restoreStates();
         return false;
     }
 
-    // restore resource states
-    if (paramColor && Config::Instance()->ColorResourceBarrier.has_value())
-        ResourceBarrier(InCommandList, paramColor, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-                        (D3D12_RESOURCE_STATES) Config::Instance()->ColorResourceBarrier.value());
-
-    if (paramVelocity && Config::Instance()->MVResourceBarrier.has_value())
-        ResourceBarrier(InCommandList, paramVelocity, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-                        (D3D12_RESOURCE_STATES) Config::Instance()->MVResourceBarrier.value());
-
-    if (paramOutput && Config::Instance()->OutputResourceBarrier.has_value())
-        ResourceBarrier(InCommandList, paramOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                        (D3D12_RESOURCE_STATES) Config::Instance()->OutputResourceBarrier.value());
-
-    if (paramDepth && Config::Instance()->DepthResourceBarrier.has_value())
-        ResourceBarrier(InCommandList, paramDepth, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-                        (D3D12_RESOURCE_STATES) Config::Instance()->DepthResourceBarrier.value());
-
-    if (paramExp && Config::Instance()->ExposureResourceBarrier.has_value())
-        ResourceBarrier(InCommandList, paramExp, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-                        (D3D12_RESOURCE_STATES) Config::Instance()->ExposureResourceBarrier.value());
-
-    if (paramReactiveMask && Config::Instance()->MaskResourceBarrier.has_value())
-        ResourceBarrier(InCommandList, paramReactiveMask, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-                        (D3D12_RESOURCE_STATES) Config::Instance()->MaskResourceBarrier.value());
+    restoreStates();
 
     _frameCount++;
 

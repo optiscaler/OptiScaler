@@ -61,7 +61,22 @@ bool XeSSFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
 
     LOG_DEBUG("Input Resolution: {0}x{1}", params.inputWidth, params.inputHeight);
 
-    ID3D12Resource* paramColor;
+    // Forward barriers on game resources, undone by restoreStates on every exit
+    std::vector<std::tuple<ID3D12Resource*, D3D12_RESOURCE_STATES, D3D12_RESOURCE_STATES>> transitions;
+
+    auto forwardBarrier = [&](ID3D12Resource* resource, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after)
+    {
+        ResourceBarrier(InCommandList, resource, before, after);
+        transitions.emplace_back(resource, before, after);
+    };
+
+    auto restoreStates = [&]()
+    {
+        for (const auto& [resource, before, after] : transitions | std::views::reverse)
+            ResourceBarrier(InCommandList, resource, after, before);
+    };
+
+    ID3D12Resource* paramColor = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_Color, &paramColor) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_Color, (void**) &paramColor);
 
@@ -72,17 +87,16 @@ bool XeSSFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
 
         if (Config::Instance()->ColorResourceBarrier.has_value())
         {
-            ResourceBarrier(InCommandList, paramColor,
-                            (D3D12_RESOURCE_STATES) Config::Instance()->ColorResourceBarrier.value(),
-                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            forwardBarrier(paramColor, (D3D12_RESOURCE_STATES) Config::Instance()->ColorResourceBarrier.value(),
+                           D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
         else if (State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
                  State::Instance().gameEngine == GameEngineType::Unreal ||
                  State::Instance().gameQuirks & GameQuirk::ForceUnrealEngine)
         {
             Config::Instance()->ColorResourceBarrier.set_volatile_value(D3D12_RESOURCE_STATE_RENDER_TARGET);
-            ResourceBarrier(InCommandList, paramColor, D3D12_RESOURCE_STATE_RENDER_TARGET,
-                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            forwardBarrier(paramColor, D3D12_RESOURCE_STATE_RENDER_TARGET,
+                           D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
 
         params.pColorTexture = paramColor;
@@ -103,26 +117,27 @@ bool XeSSFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
 
         if (Config::Instance()->MVResourceBarrier.has_value())
         {
-            ResourceBarrier(InCommandList, params.pVelocityTexture,
-                            (D3D12_RESOURCE_STATES) Config::Instance()->MVResourceBarrier.value(),
-                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            forwardBarrier(params.pVelocityTexture,
+                           (D3D12_RESOURCE_STATES) Config::Instance()->MVResourceBarrier.value(),
+                           D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
         else if (State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
                  State::Instance().gameEngine == GameEngineType::Unreal ||
                  State::Instance().gameQuirks & GameQuirk::ForceUnrealEngine)
         {
             Config::Instance()->MVResourceBarrier.set_volatile_value(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-            ResourceBarrier(InCommandList, params.pVelocityTexture, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            forwardBarrier(params.pVelocityTexture, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                           D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
     }
     else
     {
         LOG_ERROR("MotionVectors not exist!!");
+        restoreStates();
         return false;
     }
 
-    ID3D12Resource* paramOutput;
+    ID3D12Resource* paramOutput = nullptr;
 
     if (InParameters->Get(NVSDK_NGX_Parameter_Output, &paramOutput) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_Output, (void**) &paramOutput);
@@ -134,9 +149,8 @@ bool XeSSFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
 
         if (Config::Instance()->OutputResourceBarrier.has_value())
         {
-            ResourceBarrier(InCommandList, paramOutput,
-                            (D3D12_RESOURCE_STATES) Config::Instance()->OutputResourceBarrier.value(),
-                            D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            forwardBarrier(paramOutput, (D3D12_RESOURCE_STATES) Config::Instance()->OutputResourceBarrier.value(),
+                           D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         }
 
         params.pOutputTexture = paramOutput;
@@ -144,6 +158,7 @@ bool XeSSFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
     else
     {
         LOG_ERROR("Output not exist!!");
+        restoreStates();
         return false;
     }
 
@@ -158,13 +173,14 @@ bool XeSSFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
             params.pDepthTexture->SetName(L"params.pDepthTexture");
 
             if (Config::Instance()->DepthResourceBarrier.has_value())
-                ResourceBarrier(InCommandList, params.pDepthTexture,
-                                (D3D12_RESOURCE_STATES) Config::Instance()->DepthResourceBarrier.value(),
-                                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                forwardBarrier(params.pDepthTexture,
+                               (D3D12_RESOURCE_STATES) Config::Instance()->DepthResourceBarrier.value(),
+                               D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
         else
         {
             LOG_ERROR("Depth not exist!!");
+            restoreStates();
             return false;
         }
     }
@@ -180,15 +196,16 @@ bool XeSSFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
             LOG_DEBUG("ExposureTexture exist..");
 
             if (Config::Instance()->ExposureResourceBarrier.has_value())
-                ResourceBarrier(InCommandList, params.pExposureScaleTexture,
-                                (D3D12_RESOURCE_STATES) Config::Instance()->ExposureResourceBarrier.value(),
-                                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                forwardBarrier(params.pExposureScaleTexture,
+                               (D3D12_RESOURCE_STATES) Config::Instance()->ExposureResourceBarrier.value(),
+                               D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
         else
         {
             LOG_WARN("AutoExposure disabled but ExposureTexture is not exist, it may cause problems!!");
             State::Instance().autoExposure = true;
             State::Instance().changeBackend[_handle->Id] = true;
+            restoreStates();
             return true;
         }
     }
@@ -208,11 +225,17 @@ bool XeSSFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
                 Config::Instance()->DisableReactiveMask = false;
                 LOG_WARN("Reactive mask exist but not enabled, enabling it!");
                 State::Instance().changeBackend[_handle->Id] = true;
+                restoreStates();
                 return true;
             }
 
             LOG_DEBUG("Using FSR reactive mask");
             params.pResponsivePixelMaskTexture = paramReactiveMask;
+
+            if (Config::Instance()->MaskResourceBarrier.has_value())
+                forwardBarrier(paramReactiveMask,
+                               (D3D12_RESOURCE_STATES) Config::Instance()->MaskResourceBarrier.value(),
+                               D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
     }
     else
@@ -230,13 +253,14 @@ bool XeSSFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
                 Config::Instance()->DisableReactiveMask = false;
                 LOG_WARN("Reactive mask exist but not enabled, enabling it!");
                 State::Instance().changeBackend[_handle->Id] = true;
+                restoreStates();
                 return true;
             }
 
             if (Config::Instance()->MaskResourceBarrier.has_value())
-                ResourceBarrier(InCommandList, params.pResponsivePixelMaskTexture,
-                                (D3D12_RESOURCE_STATES) Config::Instance()->MaskResourceBarrier.value(),
-                                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                forwardBarrier(paramReactiveMask,
+                               (D3D12_RESOURCE_STATES) Config::Instance()->MaskResourceBarrier.value(),
+                               D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
             if (Config::Instance()->DlssReactiveMaskBias.value_or_default() > 0.0f && Bias->IsInit() &&
                 Bias->CreateBufferResource(Device, paramReactiveMask, D3D12_RESOURCE_STATE_UNORDERED_ACCESS) &&
@@ -259,6 +283,7 @@ bool XeSSFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
         LOG_WARN("Bias mask not exist and its enabled in config, it may cause problems!!");
         Config::Instance()->DisableReactiveMask = true;
         State::Instance().changeBackend[_handle->Id] = true;
+        restoreStates();
         return true;
     }
 
@@ -280,6 +305,7 @@ bool XeSSFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
         if (xessResult != XESS_RESULT_SUCCESS)
         {
             LOG_ERROR("xessSetVelocityScale: {0}", ResultToString(xessResult));
+            restoreStates();
             return false;
         }
     }
@@ -316,34 +342,11 @@ bool XeSSFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
     if (xessResult != XESS_RESULT_SUCCESS)
     {
         LOG_ERROR("xessD3D12Execute error: {0}", ResultToString(xessResult));
+        restoreStates();
         return false;
     }
 
-    // restore resource states
-    if (params.pColorTexture && Config::Instance()->ColorResourceBarrier.has_value())
-        ResourceBarrier(InCommandList, params.pColorTexture, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-                        (D3D12_RESOURCE_STATES) Config::Instance()->ColorResourceBarrier.value());
-
-    if (params.pVelocityTexture && Config::Instance()->MVResourceBarrier.has_value())
-        ResourceBarrier(InCommandList, params.pVelocityTexture, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-                        (D3D12_RESOURCE_STATES) Config::Instance()->MVResourceBarrier.value());
-
-    if (paramOutput && Config::Instance()->OutputResourceBarrier.has_value())
-        ResourceBarrier(InCommandList, paramOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                        (D3D12_RESOURCE_STATES) Config::Instance()->OutputResourceBarrier.value());
-
-    if (params.pDepthTexture && Config::Instance()->DepthResourceBarrier.has_value())
-        ResourceBarrier(InCommandList, params.pDepthTexture, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-                        (D3D12_RESOURCE_STATES) Config::Instance()->DepthResourceBarrier.value());
-
-    if (params.pExposureScaleTexture && Config::Instance()->ExposureResourceBarrier.has_value())
-        ResourceBarrier(InCommandList, params.pExposureScaleTexture, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-                        (D3D12_RESOURCE_STATES) Config::Instance()->ExposureResourceBarrier.value());
-
-    if (params.pResponsivePixelMaskTexture && Config::Instance()->MaskResourceBarrier.has_value())
-        ResourceBarrier(InCommandList, params.pResponsivePixelMaskTexture,
-                        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-                        (D3D12_RESOURCE_STATES) Config::Instance()->MaskResourceBarrier.value());
+    restoreStates();
 
     _frameCount++;
 

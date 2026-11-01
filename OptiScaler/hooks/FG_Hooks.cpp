@@ -813,21 +813,16 @@ HRESULT FGHooks::hkResizeBuffers(IDXGISwapChain* This, UINT BufferCount, UINT Wi
 
                         auto cmdList = fgDx12->GetUICommandList();
 
-                        if (cmdList != nullptr)
+                        ID3D12Resource* backBuffer = nullptr;
+                        if (cmdList != nullptr &&
+                            swapchain->GetBuffer(swapchainIndex, IID_PPV_ARGS(&backBuffer)) == S_OK)
                         {
-                            for (size_t i = 0; i < desc.BufferCount; i++)
-                            {
-                                ID3D12Resource* backBuffer = nullptr;
-                                if (swapchain->GetBuffer(swapchainIndex, IID_PPV_ARGS(&backBuffer)) == S_OK)
-                                {
-                                    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-                                        backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COMMON);
+                            auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+                                backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COMMON);
 
-                                    cmdList->ResourceBarrier(1, &barrier);
+                            cmdList->ResourceBarrier(1, &barrier);
 
-                                    backBuffer->Release();
-                                }
-                            }
+                            backBuffer->Release();
                         }
                     }
 
@@ -1046,21 +1041,16 @@ HRESULT FGHooks::hkResizeBuffers1(IDXGISwapChain3* This, UINT BufferCount, UINT 
                         LOG_INFO("Trying to change backbuffer state to COMMON");
 
                         auto cmdList = fgDx12->GetUICommandList();
-                        if (cmdList != nullptr)
+                        ID3D12Resource* backBuffer = nullptr;
+                        if (cmdList != nullptr &&
+                            swapchain->GetBuffer(swapchainIndex, IID_PPV_ARGS(&backBuffer)) == S_OK)
                         {
-                            for (size_t i = 0; i < desc.BufferCount; i++)
-                            {
-                                ID3D12Resource* backBuffer = nullptr;
-                                if (swapchain->GetBuffer(swapchainIndex, IID_PPV_ARGS(&backBuffer)) == S_OK)
-                                {
-                                    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-                                        backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COMMON);
+                            auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+                                backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COMMON);
 
-                                    cmdList->ResourceBarrier(1, &barrier);
+                            cmdList->ResourceBarrier(1, &barrier);
 
-                                    backBuffer->Release();
-                                }
-                            }
+                            backBuffer->Release();
                         }
                     }
 

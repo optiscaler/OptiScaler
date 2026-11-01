@@ -251,6 +251,8 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
 
     UpscalerTime->End(InCommandList);
 
+    InParameters->Set(NVSDK_NGX_Parameter_Output, paramOutput);
+
     if (!evalResult)
         return false;
 
@@ -284,8 +286,6 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
                 Imgui = std::make_unique<Menu_Dx12>(GetForegroundWindow(), Device);
         }
     }
-
-    InParameters->Set(NVSDK_NGX_Parameter_Output, paramOutput);
 
     return evalResult;
 }

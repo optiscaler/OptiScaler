@@ -1489,26 +1489,44 @@ bool XeFG_Dx12::SetResource(Dx12Resource* inputResource)
     if (version < feature_version { 1, 2, 2 } && _device != nullptr && type == FG_ResourceType::Depth &&
         !Config::Instance()->FGXeFGDepthInverted.value_or_default())
     {
+        // Depth states are only valid on depth stencil resources
+        auto copyState = (fResource->state & (D3D12_RESOURCE_STATE_DEPTH_READ | D3D12_RESOURCE_STATE_DEPTH_WRITE)) != 0
+                             ? D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+                             : fResource->state;
+
         if (_depthInvert.get() == nullptr)
         {
             _depthInvert = std::make_unique<DI_Dx12>("DepthInvert", _device);
         }
         else if (_depthInvert->IsInit())
         {
-            if (_depthInvert->CreateBufferResource(_device, fResource->GetResource(), fResource->width,
-                                                   fResource->height, fResource->state) &&
+            auto cmdList = (fResource->cmdList != nullptr) ? fResource->cmdList : GetUICommandList(fIndex);
+
+            if (cmdList != nullptr &&
+                _depthInvert->CreateBufferResource(_device, fResource->GetResource(), fResource->width,
+                                                   fResource->height, copyState) &&
                 _depthInvert->Buffer() != nullptr)
             {
-                auto cmdList = (fResource->cmdList != nullptr) ? fResource->cmdList : GetUICommandList(fIndex);
-
                 _depthInvert->SetBufferState(cmdList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-                if (_depthInvert->Dispatch(cmdList, fResource->GetResource(), _depthInvert->Buffer()))
+                // Shader reads the input as SRV
+                auto inResource = fResource->GetResource();
+                auto inState = fResource->state;
+                auto inNeedsBarrier = (inState & D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) == 0;
+
+                if (inNeedsBarrier)
+                    ResourceBarrier(cmdList, inResource, inState, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+                if (_depthInvert->Dispatch(cmdList, inResource, _depthInvert->Buffer()))
                 {
                     fResource->copy = _depthInvert->Buffer();
+                    fResource->state = copyState;
                 }
 
-                _depthInvert->SetBufferState(cmdList, fResource->state);
+                if (inNeedsBarrier)
+                    ResourceBarrier(cmdList, inResource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, inState);
+
+                _depthInvert->SetBufferState(cmdList, copyState);
             }
         }
     }
@@ -1558,6 +1576,7 @@ bool XeFG_Dx12::SetResource(Dx12Resource* inputResource)
 
             if (lastFormat[fIndex] != DXGI_FORMAT_UNKNOWN && lastFormat[fIndex] != desc.Format)
             {
+                std::fill_n(lastFormat, BUFFER_COUNT, desc.Format);
                 State::Instance().fgChanged = true;
                 return false;
             }
@@ -1566,6 +1585,8 @@ bool XeFG_Dx12::SetResource(Dx12Resource* inputResource)
         }
 
         xefg_swapchain_d3d12_resource_data_t resourceParam = GetResourceData(type, fIndex);
+        auto taggedState = resourceParam.incomingState;
+        bool movedToCopyDest = false;
 
         // SDK version 2.1.1 fixes those issues
         if (version < feature_version { 1, 2, 2 })
@@ -1579,12 +1600,14 @@ bool XeFG_Dx12::SetResource(Dx12Resource* inputResource)
             // HACK: XeFG seems to crash if the resource is in COPY_SOURCE state
             // even though the docs say it's the preferred state
             // https://github.com/intel/xess/issues/47
-            if (inputResource->state == D3D12_RESOURCE_STATE_COPY_SOURCE)
+            // Tagged resource can be our flip or invert copy
+            if (taggedState == D3D12_RESOURCE_STATE_COPY_SOURCE && inputResource->cmdList != nullptr)
             {
-                ResourceBarrier(inputResource->cmdList, inputResource->resource, inputResource->state,
+                ResourceBarrier(inputResource->cmdList, resourceParam.pResource, taggedState,
                                 D3D12_RESOURCE_STATE_COPY_DEST);
 
                 resourceParam.incomingState = D3D12_RESOURCE_STATE_COPY_DEST;
+                movedToCopyDest = true;
             }
         }
 
@@ -1592,31 +1615,32 @@ bool XeFG_Dx12::SetResource(Dx12Resource* inputResource)
         if (indexDiff < 0)
             indexDiff += BUFFER_COUNT;
 
+        auto result = XEFG_SWAPCHAIN_RESULT_SUCCESS;
+
         // We will us UI color later with Render UI
         if (type != FG_ResourceType::UIColor ||
             (XeFGProxy::SetUiCompositionState() != nullptr || Config::Instance()->FGDrawUIOverFG.value_or_default()))
         {
             auto frameId = static_cast<uint32_t>(_frameCount - indexDiff);
-            auto result =
-                XeFGProxy::D3D12TagFrameResource()(_swapChainContext, fResource->cmdList, frameId, &resourceParam);
+            result = XeFGProxy::D3D12TagFrameResource()(_swapChainContext, fResource->cmdList, frameId, &resourceParam);
             LOG_DEBUG("D3D12TagFrameResource, frameId: {}, type: {} result: {} ({})", frameId,
                       magic_enum::enum_name(type), magic_enum::enum_name(result), (int32_t) result);
-
-            if (result != XEFG_SWAPCHAIN_RESULT_SUCCESS)
-            {
-                State::Instance().fgChanged = true;
-                UpdateTarget();
-                Deactivate();
-
-                return false;
-            }
         }
 
         // Potentially we don't need to restore but do it just to be safe
-        if (inputResource->state == D3D12_RESOURCE_STATE_COPY_SOURCE)
+        if (movedToCopyDest)
         {
-            ResourceBarrier(inputResource->cmdList, inputResource->resource, D3D12_RESOURCE_STATE_COPY_DEST,
-                            inputResource->state);
+            ResourceBarrier(inputResource->cmdList, resourceParam.pResource, D3D12_RESOURCE_STATE_COPY_DEST,
+                            taggedState);
+        }
+
+        if (result != XEFG_SWAPCHAIN_RESULT_SUCCESS)
+        {
+            State::Instance().fgChanged = true;
+            UpdateTarget();
+            Deactivate();
+
+            return false;
         }
 
         SetResourceReady(type, fIndex);
