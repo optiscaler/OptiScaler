@@ -27,6 +27,10 @@ class IFeature_Dx12 : public virtual IFeature
         ID3D12Resource* outputBuffer = nullptr;
     };
 
+    std::vector<std::tuple<ID3D12Resource*, D3D12_RESOURCE_STATES, D3D12_RESOURCE_STATES>> _barrierTransitions;
+
+    void RestoreBarriers(ID3D12GraphicsCommandList* InCommandList);
+
   protected:
     ID3D12Device* Device = nullptr;
     static inline std::unique_ptr<Menu_Dx12> Imgui = nullptr;
@@ -39,6 +43,10 @@ class IFeature_Dx12 : public virtual IFeature
 
     void ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
                          D3D12_RESOURCE_STATES InBeforeState, D3D12_RESOURCE_STATES InAfterState) const;
+
+    // Recorded transitions are undone by Evaluate after the shader passes
+    void ForwardBarrier(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
+                        D3D12_RESOURCE_STATES InBeforeState, D3D12_RESOURCE_STATES InAfterState);
 
     virtual bool InitInternal(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters) = 0;
     virtual bool EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters) = 0;

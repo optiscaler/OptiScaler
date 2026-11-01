@@ -22,6 +22,21 @@ void IFeature_Dx12::ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID
     InCommandList->ResourceBarrier(1, &barrier);
 }
 
+void IFeature_Dx12::ForwardBarrier(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
+                                   D3D12_RESOURCE_STATES InBeforeState, D3D12_RESOURCE_STATES InAfterState)
+{
+    ResourceBarrier(InCommandList, InResource, InBeforeState, InAfterState);
+    _barrierTransitions.emplace_back(InResource, InBeforeState, InAfterState);
+}
+
+void IFeature_Dx12::RestoreBarriers(ID3D12GraphicsCommandList* InCommandList)
+{
+    for (const auto& [resource, before, after] : _barrierTransitions | std::views::reverse)
+        ResourceBarrier(InCommandList, resource, after, before);
+
+    _barrierTransitions.clear();
+}
+
 bool IFeature_Dx12::Init(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCommandList,
                          NVSDK_NGX_Parameter* InParameters)
 {
@@ -247,6 +262,17 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
 
     UpscalerTime->Start(InCommandList);
 
+    _barrierTransitions.clear();
+
+    // Game's real output, our pass buffers track their own state
+    if (paramOutput && Config::Instance()->OutputResourceBarrier.has_value() && upscaler != Upscaler::DLSS &&
+        upscaler != Upscaler::DLSSD)
+    {
+        ForwardBarrier(InCommandList, paramOutput,
+                       (D3D12_RESOURCE_STATES) Config::Instance()->OutputResourceBarrier.value(),
+                       D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    }
+
     auto evalResult = EvaluateInternal(InCommandList, InParameters);
 
     UpscalerTime->End(InCommandList);
@@ -254,7 +280,10 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     InParameters->Set(NVSDK_NGX_Parameter_Output, paramOutput);
 
     if (!evalResult)
+    {
+        RestoreBarriers(InCommandList);
         return false;
+    }
 
     // Iterate FORWARDS to execute the shaders in the defined order
     for (auto& pass : pipeline)
@@ -263,6 +292,7 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
         {
             if (!pass.Dispatch(pass.inputBuffer, pass.outputBuffer))
             {
+                RestoreBarriers(InCommandList);
                 return true;
             }
         }
@@ -286,6 +316,9 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
                 Imgui = std::make_unique<Menu_Dx12>(GetForegroundWindow(), Device);
         }
     }
+
+    // After Imgui, which expects the output in UAV
+    RestoreBarriers(InCommandList);
 
     return evalResult;
 }
