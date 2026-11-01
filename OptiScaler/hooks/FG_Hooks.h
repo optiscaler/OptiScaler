@@ -24,6 +24,9 @@ class FGHooks
     static void ClearDx12InteropPresentSC(IUnknown* pSwapChain);
     static bool IsDx12InteropPresentSC(IUnknown* pSwapChain);
 
+    // True while FG runs on another window, this window gets no FG and leaves the current swapchain state alone
+    static bool IsOtherWindowThanFG(HWND hwnd);
+
   private:
     using PFN_Present = rewrite_signature<decltype(&IDXGISwapChain::Present)>::type;
     using PFN_Present1 = rewrite_signature<decltype(&IDXGISwapChain1::Present1)>::type;
@@ -57,8 +60,16 @@ class FGHooks
     inline static UINT _lastPresentFlags = 0;
     inline static double _lastFGFrameTime = -1.0;
     inline static std::shared_mutex _resizeMutex;
+    inline static bool _borderlessPending = false;
+    inline static bool _windowSaved = false;
+    inline static LONG_PTR _savedStyle = 0;
+    inline static LONG_PTR _savedExStyle = 0;
+    inline static RECT _savedRect {};
 
     static void HookFGSwapchain(IDXGISwapChain* pSwapChain);
+    static bool UseBorderless();
+    static void ApplyBorderless(IDXGIOutput* target);
+    static void RestoreWindow(UINT width, UINT height);
 
     static HRESULT hkSetFullscreenState(IDXGISwapChain* This, BOOL Fullscreen, IDXGIOutput* pTarget);
     static HRESULT hkGetFullscreenDesc(IDXGISwapChain1* This, DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pDesc);

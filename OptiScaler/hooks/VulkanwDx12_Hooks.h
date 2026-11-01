@@ -27,10 +27,17 @@ class Vulkan_wDx12
         uint64_t copyBackValue = 0;
         VkCommandBuffer copyBackCommandBuffer = VK_NULL_HANDLE;
         VkCommandBuffer barrierCommandBuffer = VK_NULL_HANDLE;
+
+        // D3D12 doesn't wait for it anymore, only the commands recorded after Evaluate are submitted
+        bool aborted = false;
     };
 
     static bool RegisterPendingSubmission(const PendingSubmission& submission);
     static void CancelPendingSubmission(VkCommandBuffer commandBuffer);
+    // The commands recorded after Evaluate are still submitted with the command buffer
+    static size_t AbortPendingSubmissions(ID3D12Fence* resourceCopyFence);
+    // The redirect target is about to be reused
+    static void DropPendingSubmissions(VkCommandBuffer barrierCommandBuffer);
     static bool RegisterVirtualCommandBuffer(VkCommandBuffer commandBuffer, VkCommandBuffer virtualCommandBuffer);
     static VkCommandBuffer RemoveVirtualCommandBuffer(VkCommandBuffer commandBuffer);
     static VkCommandBuffer GetVirtualCommandBuffer(VkCommandBuffer commandBuffer);
@@ -59,9 +66,11 @@ class Vulkan_wDx12
     static PFN_vkVoidFunction GetAddress(const PFN_vkVoidFunction original, const char* pName);
     static void InitializeStateTrackerFunctionTable();
     static bool TakePendingSubmission(VkCommandBuffer commandBuffer, PendingSubmission& submission);
+    static void DiscardPendingInterop(VkCommandBuffer commandBuffer);
 
     inline static std::mutex pendingSubmissionMutex;
     inline static std::unordered_map<VkCommandBuffer, PendingSubmission> pendingSubmissions;
+    inline static std::atomic<size_t> pendingSubmissionCount { 0 };
 
 #pragma region Command Buffer Hooks
 
@@ -918,6 +927,8 @@ struct LegacySplitSubmit
     std::vector<VkCommandBuffer> commandBuffers;
     std::vector<VkSemaphore> signalSemaphores;
     std::vector<uint64_t> signalValues;
+    std::vector<uint32_t> deviceMasks;
+    VkDeviceGroupSubmitInfo deviceGroup {};
     VkTimelineSemaphoreSubmitInfo timeline {};
     VkSubmitInfo submit {};
 

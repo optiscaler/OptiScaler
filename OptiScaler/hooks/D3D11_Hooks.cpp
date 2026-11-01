@@ -16,6 +16,7 @@
 #include <d3d11on12.h>
 #include <dxgi1_6.h>
 
+#include "FG_Hooks.h"
 #include "Hook_Utils.h"
 
 #pragma intrinsic(_ReturnAddress)
@@ -418,41 +419,49 @@ static HRESULT hkD3D11CreateDeviceAndSwapChain(IDXGIAdapter* pAdapter, D3D_DRIVE
         HookToDeviceLocal(*ppDevice);
     }
 
-    if (result == S_OK && pSwapChainDesc != nullptr && ppSwapChain != nullptr && *ppSwapChain != nullptr &&
-        ppDevice != nullptr && *ppDevice != nullptr)
+    // Factory hooks wrap it already, they don't make other windows' swapchains current
+    WrappedIDXGISwapChain4* wrapped = nullptr;
+    if (result == S_OK && ppSwapChain != nullptr && *ppSwapChain != nullptr &&
+        (*ppSwapChain)->QueryInterface(IID_PPV_ARGS(&wrapped)) == S_OK)
     {
+        LOG_DEBUG("Swapchain is wrapped by the factory hooks");
+        wrapped->Release();
+    }
+    else if (result == S_OK && pSwapChainDesc != nullptr && ppSwapChain != nullptr && *ppSwapChain != nullptr &&
+             ppDevice != nullptr && *ppDevice != nullptr)
+    {
+        const bool otherWindow = FGHooks::IsOtherWindowThanFG(pSwapChainDesc->OutputWindow);
+
         // check for SL proxy
         IDXGISwapChain* realSC = nullptr;
         if (!Util::CheckForRealObject(__FUNCTION__, *ppSwapChain, (IUnknown**) &realSC))
             realSC = *ppSwapChain;
 
-        State::Instance().currentRealSwapchain = realSC;
-
         IUnknown* realDevice = nullptr;
         if (!Util::CheckForRealObject(__FUNCTION__, *ppDevice, (IUnknown**) &realDevice))
             realDevice = *ppDevice;
 
-        State::Instance().screenWidth = static_cast<float>(pSwapChainDesc->BufferDesc.Width);
-        State::Instance().screenHeight = static_cast<float>(pSwapChainDesc->BufferDesc.Height);
+        if (!otherWindow)
+        {
+            State::Instance().currentRealSwapchain = realSC;
+            State::Instance().screenWidth = static_cast<float>(pSwapChainDesc->BufferDesc.Width);
+            State::Instance().screenHeight = static_cast<float>(pSwapChainDesc->BufferDesc.Height);
+        }
 
         LOG_DEBUG("Created new swapchain: {0:X}, hWnd: {1:X}", (UINT64) *ppSwapChain,
                   (UINT64) pSwapChainDesc->OutputWindow);
 
-        if (State::Instance().currentWrappedSwapchain == *ppSwapChain)
-        {
-            LOG_DEBUG("Same as current wrapped swapchain, skipping wrapping");
-        }
-        else
-        {
-            *ppSwapChain = new WrappedIDXGISwapChain4(realSC, realDevice, pSwapChainDesc->OutputWindow,
-                                                      pSwapChainDesc->Flags, false, *ppSwapChain);
+        *ppSwapChain = new WrappedIDXGISwapChain4(realSC, realDevice, pSwapChainDesc->OutputWindow,
+                                                  pSwapChainDesc->Flags, false, *ppSwapChain);
 
+        if (!otherWindow)
+        {
             State::Instance().currentSwapchain = *ppSwapChain;
             State::Instance().currentWrappedSwapchain = *ppSwapChain;
-
-            LOG_DEBUG("Created new WrappedIDXGISwapChain4: {0:X}, pDevice: {1:X}", (UINT64) *ppSwapChain,
-                      (UINT64) *ppDevice);
         }
+
+        LOG_DEBUG("Created new WrappedIDXGISwapChain4: {0:X}, pDevice: {1:X}", (UINT64) *ppSwapChain,
+                  (UINT64) *ppDevice);
     }
 
     if (result == S_OK && ppDevice != nullptr && *ppDevice != nullptr)

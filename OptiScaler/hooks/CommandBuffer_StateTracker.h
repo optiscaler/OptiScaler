@@ -1097,6 +1097,18 @@ class CommandBufferStateTracker
         return true;
     }
 
+    std::vector<VkCommandBuffer> GetPoolCommandBuffers(VkCommandPool pool) const
+    {
+        std::vector<VkCommandBuffer> result;
+        std::shared_lock mapLock(_statesMapMutex);
+        for (const auto& [cmd, cmdPool] : _cmdBufferToPool)
+        {
+            if (cmdPool == pool)
+                result.push_back(cmd);
+        }
+        return result;
+    }
+
     void SetFunctionTable(const VulkanCmdFns& fns)
     {
         _cachedFns = fns;
