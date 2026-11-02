@@ -57,7 +57,10 @@ static ULONG hkD3D11DeviceRelease(IUnknown* device)
     auto result = o_D3D11DeviceRelease(device);
 
     if (result == 0)
+    {
+        State::Instance().RemoveD3D11Device(device);
         ReflexHooks::deviceDestroyed(device);
+    }
 
     return result;
 }
@@ -150,7 +153,7 @@ static HRESULT hkD3D11On12CreateDevice(IUnknown* pDevice, UINT Flags, const D3D_
     }
 
     if (result == S_OK && ppDevice != nullptr && *ppDevice != nullptr)
-        State::Instance().d3d11Devices.push_back(*ppDevice);
+        State::Instance().AddD3D11Device(*ppDevice);
 
     LOG_FUNC_RESULT(result);
 
@@ -265,7 +268,7 @@ static HRESULT hkD3D11CreateDevice(IDXGIAdapter* pAdapter, D3D_DRIVER_TYPE Drive
     LOG_FUNC_RESULT(result);
 
     if (result == S_OK && ppDevice != nullptr && *ppDevice != nullptr)
-        State::Instance().d3d11Devices.push_back(*ppDevice);
+        State::Instance().AddD3D11Device(*ppDevice);
 
     return result;
 }
@@ -466,7 +469,7 @@ static HRESULT hkD3D11CreateDeviceAndSwapChain(IDXGIAdapter* pAdapter, D3D_DRIVE
     }
 
     if (SUCCEEDED(result) && ppDevice != nullptr && *ppDevice != nullptr)
-        State::Instance().d3d11Devices.push_back(*ppDevice);
+        State::Instance().AddD3D11Device(*ppDevice);
 
     LOG_FUNC_RESULT(result);
     return result;

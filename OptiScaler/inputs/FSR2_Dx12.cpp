@@ -114,7 +114,7 @@ static PFN_ffxFsr2GetInterfaceDX12 o_ffxFsr2GetInterfaceDX12 = nullptr;
 static std::unordered_map<Fsr212::FfxFsr2Context*, Fsr212::FfxFsr2ContextDescription> _initParams;
 static std::unordered_map<Fsr212::FfxFsr2Context*, NVSDK_NGX_Parameter*> _nvParams;
 static std::unordered_map<Fsr212::FfxFsr2Context*, NVSDK_NGX_Handle*> _contexts;
-static ID3D12Device* _d3d12Device = nullptr;
+static std::atomic<ID3D12Device*> _d3d12Device { nullptr };
 static bool _nvnxgInited = false;
 static bool _skipCreate = false;
 static bool _skipDispatch = false;
@@ -968,6 +968,12 @@ static Fsr212::FfxErrorCode hk_ffxFsr2GetInterfaceDX12(Fsr212::FfxFsr2Interface2
     LOG_DEBUG("");
     _d3d12Device = device;
     return o_ffxFsr2GetInterfaceDX12(fsr2Interface, device, scratchBuffer, scratchBufferSize);
+}
+
+void FSR2Dx12DeviceDestroyed(IUnknown* device)
+{
+    ID3D12Device* expected = (ID3D12Device*) device;
+    _d3d12Device.compare_exchange_strong(expected, nullptr);
 }
 
 void HookFSR2ExeInputs()

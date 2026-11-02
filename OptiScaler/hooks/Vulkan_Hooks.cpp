@@ -50,8 +50,6 @@ static std::unordered_map<VkPhysicalDevice, VkInstance> _physicalDeviceInstances
 static std::mutex _surfaceWindowsMutex;
 static std::unordered_map<VkSurfaceKHR, HWND> _surfaceWindows;
 
-static std::mutex _vkPresentMutex;
-
 PFN_vkCreateDevice o_vkCreateDevice = nullptr;
 PFN_vkCreateInstance o_vkCreateInstance = nullptr;
 PFN_vkCreateWin32SurfaceKHR o_vkCreateWin32SurfaceKHR = nullptr;
@@ -379,8 +377,6 @@ static VkResult hkvkCreateWin32SurfaceKHR(VkInstance instance, const VkWin32Surf
 
         if (!MenuOverlayVk::OnOtherWindow(pCreateInfo->hwnd))
         {
-            MenuOverlayVk::DestroyVulkanObjects(false);
-
             _hwnd = pCreateInfo->hwnd;
             LOG_DEBUG("_hwnd captured: {0:X}", (UINT64) _hwnd);
         }
@@ -893,6 +889,18 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
     LOG_FUNC();
 
     ScopedVulkanCreatingSC scopedVulkanCreatingSC {};
+
+    // Overlays and probes use tiny swapchains, they get no menu, FG or tracking like on DXGI
+    // A recreate keeps its chain, oldSwapchain can be an FG handle
+    if (pCreateInfo != nullptr && pCreateInfo->oldSwapchain == VK_NULL_HANDLE &&
+        Util::IsOverlaySwapchain(VulkanHooks::SurfaceWindow(pCreateInfo->surface), pCreateInfo->imageExtent.width,
+                                 pCreateInfo->imageExtent.height))
+    {
+        LOG_WARN("Overlay swapchain {}x{}", pCreateInfo->imageExtent.width, pCreateInfo->imageExtent.height);
+
+        ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
+        return o_CreateSwapchainKHR(device, pCreateInfo, pAllocator, pSwapchain);
+    }
 
     // dxvk/vkd3d-proton swapchains get the menu on the DXGI swapchain
     const bool dxgiBacked = IsDxgiBackedCaller(_ReturnAddress());

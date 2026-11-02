@@ -16,6 +16,8 @@
 #include <proxies/Streamline_Proxy.h>
 #include <proxies/KernelBase_Proxy.h>
 #include <hooks/Reflex_Hooks.h>
+#include <inputs/FSR2_Dx12.h>
+#include <inputs/FSR3_Dx12.h>
 
 #include <detours/detours.h>
 
@@ -1698,6 +1700,8 @@ static ULONG hkD3D12DeviceRelease(IUnknown* device)
     {
         State::Instance().RemoveD3D12Device(device);
         ReflexHooks::deviceDestroyed(device);
+        FSR2Dx12DeviceDestroyed(device);
+        FSR3Dx12DeviceDestroyed(device);
     }
 
     return result;

@@ -48,7 +48,7 @@ static PFN_ffxFSR3GetInterfaceDX12 o_ffxFSR3GetInterfaceDX12 = nullptr;
 static std::unordered_map<Fsr3::FfxFsr3UpscalerContext*, Fsr3::FfxFsr3UpscalerContextDescription> _initParams;
 static std::unordered_map<Fsr3::FfxFsr3UpscalerContext*, NVSDK_NGX_Parameter*> _nvParams;
 static std::unordered_map<Fsr3::FfxFsr3UpscalerContext*, NVSDK_NGX_Handle*> _contexts;
-static ID3D12Device* _d3d12Device = nullptr;
+static std::atomic<ID3D12Device*> _d3d12Device { nullptr };
 static bool _nvnxgInited = false;
 static bool _skipCreate = false;
 static bool _skipDispatch = false;
@@ -647,6 +647,12 @@ static Fsr3::FfxErrorCode hk_ffxFsr3GetInterfaceDX12(Fsr3::FfxInterface* backend
     _d3d12Device = (ID3D12Device*) device;
     auto result = o_ffxFSR3GetInterfaceDX12(backendInterface, device, scratchBuffer, scratchBufferSize, maxContexts);
     return result;
+}
+
+void FSR3Dx12DeviceDestroyed(IUnknown* device)
+{
+    ID3D12Device* expected = (ID3D12Device*) device;
+    _d3d12Device.compare_exchange_strong(expected, nullptr);
 }
 
 void HookFSR3ExeInputs()

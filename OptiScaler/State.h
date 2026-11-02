@@ -450,8 +450,6 @@ class State
     VkDevice currentVkDevice = nullptr;
     DXGI_SWAP_CHAIN_DESC currentSwapchainDesc {};
 
-    std::vector<ID3D11Device*> d3d11Devices;
-
     // The FG output of whichever API the game uses
     IFGFeature* CurrentFG() const
     {
@@ -578,6 +576,31 @@ class State
         return _d3d12DeviceCreated;
     }
 
+    // The game's D3D11 devices, removed only when the device Release hook is installed
+    void AddD3D11Device(ID3D11Device* device)
+    {
+        std::scoped_lock lock(_d3d11DevicesMutex);
+        _d3d11Devices.push_back(device);
+    }
+
+    void RemoveD3D11Device(IUnknown* device)
+    {
+        std::scoped_lock lock(_d3d11DevicesMutex);
+        std::erase(_d3d11Devices, device);
+    }
+
+    bool IsD3D11Device(IUnknown* device)
+    {
+        std::scoped_lock lock(_d3d11DevicesMutex);
+        return std::find(_d3d11Devices.begin(), _d3d11Devices.end(), device) != _d3d11Devices.end();
+    }
+
+    ID3D11Device* LastD3D11Device()
+    {
+        std::scoped_lock lock(_d3d11DevicesMutex);
+        return _d3d11Devices.empty() ? nullptr : _d3d11Devices.back();
+    }
+
   private:
     std::vector<IUnknown*> _scBuffers;
     std::shared_mutex _scBuffersMutex;
@@ -585,6 +608,9 @@ class State
     std::vector<ID3D12Device*> _d3d12Devices;
     std::mutex _d3d12DevicesMutex;
     bool _d3d12DeviceCreated = false;
+
+    std::vector<ID3D11Device*> _d3d11Devices;
+    std::mutex _d3d11DevicesMutex;
 
     inline static bool _skipChecks = false;
     inline static std::map<UINT, std::string> _skipDllName;

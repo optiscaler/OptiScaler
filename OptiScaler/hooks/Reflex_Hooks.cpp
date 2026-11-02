@@ -13,7 +13,6 @@
 #include <misc/FrameLimit.h>
 
 static inline uint64_t _lastFrameId[20] = { 0 };
-static inline IUnknown* _lastDev[20] = { 0 };
 
 // #define LOG_REFLEX_CALLS
 
@@ -127,8 +126,8 @@ NvAPI_Status ReflexHooks::processGameMarker(IUnknown* pDev, NV_LATENCY_MARKER_PA
     State::Instance().reflexFrameId = pSetLatencyMarkerParams->frameID;
 
     // if (pSetLatencyMarkerParams->markerType == PRESENT_END)
-    _lastFrameId[pSetLatencyMarkerParams->markerType] = pSetLatencyMarkerParams->frameID;
-    _lastDev[pSetLatencyMarkerParams->markerType] = pDev;
+    if (pSetLatencyMarkerParams->markerType < std::size(_lastFrameId))
+        _lastFrameId[pSetLatencyMarkerParams->markerType] = pSetLatencyMarkerParams->frameID;
 
     if (pSetLatencyMarkerParams->markerType == SIMULATION_START)
     {

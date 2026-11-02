@@ -190,26 +190,24 @@ static FfxErrorCode ffxFsr2ContextCreate_Dx11(FfxFsr2Context* context, FfxFsr2Co
         }
     }
 
+    // Cached device was destroyed
+    if (_d3d11Device != nullptr && !state.IsD3D11Device(_d3d11Device))
+        _d3d11Device = nullptr;
+
     // check for d3d11 device
     // to prevent crashes when game is using custom interface and
     if (_d3d11Device == nullptr)
     {
         auto bDevice = (ID3D11Device*) contextDescription->device;
 
-        for (size_t i = 0; i < state.d3d11Devices.size(); i++)
-        {
-            if (state.d3d11Devices[i] == bDevice)
-            {
-                _d3d11Device = bDevice;
-                break;
-            }
-        }
+        if (state.IsD3D11Device(bDevice))
+            _d3d11Device = bDevice;
     }
 
     // if still no device use latest created one
     // Might fixed TLOU but FMF2 still crashes
-    if (_d3d11Device == nullptr && state.d3d11Devices.size() > 0)
-        _d3d11Device = state.d3d11Devices[state.d3d11Devices.size() - 1];
+    if (_d3d11Device == nullptr)
+        _d3d11Device = state.LastD3D11Device();
 
     if (_d3d11Device == nullptr)
     {
