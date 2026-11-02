@@ -5,7 +5,7 @@
 #include <d3d12.h>
 #include <d3dx/d3dx12.h>
 
-#define OS_NUM_OF_HEAPS 2
+#define OS_NUM_OF_HEAPS 3
 
 class OS_Dx12 : public Shader_Dx12
 {

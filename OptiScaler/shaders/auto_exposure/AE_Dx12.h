@@ -4,7 +4,7 @@
 #include <shaders/Shader_Dx12Utils.h>
 #include <shaders/Shader_Dx12.h>
 
-#define AE_NUM_OF_HEAPS 2
+#define AE_NUM_OF_HEAPS 3
 
 // Computes an FSR2 style auto exposure from the renderSize part of color into a 1x1 R32_FLOAT texture
 class AE_Dx12 : public Shader_Dx12

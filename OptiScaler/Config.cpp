@@ -549,7 +549,7 @@ bool Config::Reload(std::filesystem::path iniPath)
 
             ContrastEnabled.set_from_config(readBool("CAS", "ContrastEnabled"));
             if (auto setting = readFloat("CAS", "Contrast"); setting.has_value())
-                Contrast.set_from_config(std::clamp(setting.value(), -2.0f, 2.0f));
+                Contrast.set_from_config(std::clamp(setting.value(), 0.0f, 2.0f));
 
             DADepthScale.set_from_config(readFloat("CAS", "DADepthScale"));
             DADepthBias.set_from_config(readFloat("CAS", "DADepthBias"));

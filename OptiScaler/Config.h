@@ -365,7 +365,7 @@ class Config
     // RCAS
     CustomOptional<bool> RcasEnabled { false };
     CustomOptional<bool> ContrastEnabled { false };
-    CustomOptional<float> Contrast { -0.3f };
+    CustomOptional<float> Contrast { 0.0f };
 
     // DA Sharpening
     CustomOptional<float, NoDefault> DADepthScale;

@@ -8,6 +8,7 @@ class OS_Dx11 : public Shader_Dx11
 {
   private:
     bool _upsample = false;
+    ID3D11SamplerState* _sampler = nullptr;
 
     uint32_t InNumThreadsX = 16;
     uint32_t InNumThreadsY = 16;
@@ -22,4 +23,5 @@ class OS_Dx11 : public Shader_Dx11
     bool IsUpsampling() const { return _upsample; }
 
     OS_Dx11(std::string InName, ID3D11Device* InDevice, bool InUpsample);
+    ~OS_Dx11();
 };

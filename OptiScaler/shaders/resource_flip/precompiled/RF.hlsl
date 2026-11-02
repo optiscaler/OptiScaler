@@ -41,7 +41,7 @@ void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID)
     if (dispatchThreadID.y < offset || dispatchThreadID.y > (height + offset))
         return;
 
-    uint2 pixelCoord = uint2(dispatchThreadID.x, height - dispatchThreadID.y - offset);
+    uint2 pixelCoord = uint2(dispatchThreadID.x, height - (dispatchThreadID.y - offset));
 
     if (velocity == 0)
     {
