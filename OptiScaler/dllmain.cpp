@@ -1763,6 +1763,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         };
 
         bool possibleNvidia = isNvidiaViaNvapi();
+        IdentifyGpu::setNvidiaHint(possibleNvidia);
 
         spdlog::info("");
         spdlog::info("Check for DLSS files");

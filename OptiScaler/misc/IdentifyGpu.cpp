@@ -371,6 +371,20 @@ bool IdentifyGpu::isDetecting() { return isFetching; }
 
 GpuInformation IdentifyGpu::getPrimaryGpu()
 {
+    // Detection creates DXGI factories, hooks of other mods can start nvapi, NGX or Streamline from inside it
+    if (isFetching)
+    {
+        GpuInformation gpu {};
+
+        if (nvidiaHint)
+        {
+            gpu.vendorId = VendorId::Nvidia;
+            gpu.dlssCapable = Config::Instance()->DLSSEnabled.value_or_default();
+        }
+
+        return gpu;
+    }
+
     auto allGpus = getAllGpus();
     return !allGpus.empty() ? allGpus.front() : GpuInformation {};
 }
