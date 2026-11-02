@@ -157,12 +157,12 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
             { // Setup
               [&](ID3D12Resource* nextOutput) -> ID3D12Resource*
               {
-                  // Disable any built-in sharpness shaders
-                  InParameters->Set(NVSDK_NGX_Parameter_Sharpness, 0.0f);
-                  _sharpness = 0.0f;
-
                   if (RCAS->CreateBufferResource(Device, nextOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
                   {
+                      // Disable any built-in sharpness shaders
+                      InParameters->Set(NVSDK_NGX_Parameter_Sharpness, 0.0f);
+                      _sharpness = 0.0f;
+
                       RCAS->SetBufferState(InCommandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
                       return RCAS->Buffer();
                   }

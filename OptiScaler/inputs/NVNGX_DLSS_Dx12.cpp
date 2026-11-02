@@ -465,7 +465,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_GetParameters(NVSDK_NGX_Parameter
 
     // If DLSS is enabled and the real DLSS module is loaded, get native NGX table
     if (Config::Instance()->DLSSEnabled.value_or_default() && NVNGXProxy::NVNGXModule() != nullptr &&
-        NVNGXProxy::D3D12_GetParameters() != nullptr)
+        NVNGXProxy::IsDx12Inited() && NVNGXProxy::D3D12_GetParameters() != nullptr)
     {
         LOG_INFO("Calling NVNGXProxy::D3D12_GetParameters");
         auto result = NVNGXProxy::D3D12_GetParameters()(OutParameters);

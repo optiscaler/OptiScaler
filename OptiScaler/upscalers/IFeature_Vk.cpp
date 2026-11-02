@@ -145,12 +145,13 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
             { // Setup
               [&](const VkImageInfo& nextOutput) -> VkImageInfo
               {
-                  InParameters->Set(NVSDK_NGX_Parameter_Sharpness, 0.0f);
-                  _sharpness = 0.0f;
-
                   if (RCAS->CreateImageResource(Device, PhysicalDevice, nextOutput.Width, nextOutput.Height,
                                                 nextOutput.Format, intermediateUsage))
                   {
+                      // Disable any built-in sharpness shaders
+                      InParameters->Set(NVSDK_NGX_Parameter_Sharpness, 0.0f);
+                      _sharpness = 0.0f;
+
                       RCAS->SetImageLayout(InCmdBuffer, RCAS->GetImage(), VK_IMAGE_LAYOUT_UNDEFINED,
                                            VK_IMAGE_LAYOUT_GENERAL, nextOutput.SubresourceRange);
 

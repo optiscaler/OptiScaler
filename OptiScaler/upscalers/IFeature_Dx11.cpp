@@ -170,12 +170,12 @@ bool IFeature_Dx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_Par
         pipeline.push_back({ // Setup
                              [&](ID3D11Resource* nextOutput) -> ID3D11Resource*
                              {
-                                 // Disable any built-in sharpness shaders
-                                 InParameters->Set(NVSDK_NGX_Parameter_Sharpness, 0.0f);
-                                 _sharpness = 0.0f;
-
                                  if (RCAS->CreateBufferResource(Device, nextOutput))
                                  {
+                                     // Disable any built-in sharpness shaders
+                                     InParameters->Set(NVSDK_NGX_Parameter_Sharpness, 0.0f);
+                                     _sharpness = 0.0f;
+
                                      return RCAS->Buffer();
                                  }
                                  return nullptr;

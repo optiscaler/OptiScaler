@@ -428,7 +428,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_GetParameters(NVSDK_NGX_Parameter
         return NVSDK_NGX_Result_FAIL_InvalidParameter;
 
     if (Config::Instance()->DLSSEnabled.value_or_default() && NVNGXProxy::NVNGXModule() != nullptr &&
-        NVNGXProxy::D3D11_GetParameters() != nullptr)
+        NVNGXProxy::IsDx11Inited() && NVNGXProxy::D3D11_GetParameters() != nullptr)
     {
         LOG_INFO("calling NVNGXProxy::D3D11_GetParameters");
 

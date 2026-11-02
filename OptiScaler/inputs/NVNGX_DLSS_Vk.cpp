@@ -446,7 +446,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_GetParameters(NVSDK_NGX_Paramete
         return NVSDK_NGX_Result_FAIL_InvalidParameter;
 
     if (Config::Instance()->DLSSEnabled.value_or_default() && NVNGXProxy::NVNGXModule() != nullptr &&
-        NVNGXProxy::VULKAN_GetParameters() != nullptr)
+        NVNGXProxy::IsVulkanInited() && NVNGXProxy::VULKAN_GetParameters() != nullptr)
     {
         LOG_INFO("calling NVNGXProxy::VULKAN_GetParameters");
         auto result = NVNGXProxy::VULKAN_GetParameters()(OutParameters);
