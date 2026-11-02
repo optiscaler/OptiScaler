@@ -306,11 +306,9 @@ bool XeSSFeature::InitXeSS(ID3D12Device* device, const NVSDK_NGX_Parameter* InPa
 
         LOG_DEBUG("xessD3D12Init!");
 
-        if (Config::Instance()->NetworkModel.has_value() && Config::Instance()->NetworkModel.value() >= 0 &&
-            Config::Instance()->NetworkModel.value() <= 5)
+        if (auto networkModel = Config::Instance()->NetworkModel.value_or(-1); networkModel >= 0 && networkModel <= 5)
         {
-            ret = XeSSProxy::SelectNetworkModel()(_xessContext,
-                                                  (xess_network_model_t) Config::Instance()->NetworkModel.value());
+            ret = XeSSProxy::SelectNetworkModel()(_xessContext, (xess_network_model_t) networkModel);
             LOG_ERROR("xessSelectNetworkModel result: {0}", ResultToString(ret));
         }
 

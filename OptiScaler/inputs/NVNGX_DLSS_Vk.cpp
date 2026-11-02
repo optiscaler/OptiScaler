@@ -1086,6 +1086,13 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_EvaluateFeature(VkCommandBuffer 
     }
 
     deviceContext = VkContexts[handleId].feature.get();
+
+    if (deviceContext == nullptr)
+    {
+        LOG_DEBUG("trying to use released handle, returning NVSDK_NGX_Result_Success");
+        return NVSDK_NGX_Result_Success;
+    }
+
     state.currentFeature = deviceContext;
 
     UpscalerInputsVk::UpscaleStart(InCmdList, InParameters, deviceContext);

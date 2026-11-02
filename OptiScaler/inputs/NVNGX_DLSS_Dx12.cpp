@@ -1040,6 +1040,17 @@ static NVSDK_NGX_Result TryEvaluateOptiFeature(ID3D12GraphicsCommandList* InCmdL
         }
     }
 
+    if (feature == nullptr)
+    {
+        LOG_DEBUG("trying to use released handle, returning NVSDK_NGX_Result_Success");
+
+        if (shouldRestoreSigs)
+            D3D12Hooks::RestoreRoot(InCmdList);
+
+        D3D12Hooks::SetRootSignatureTracking(true);
+        return NVSDK_NGX_Result_Success;
+    }
+
     // Fallback to FSR 2.1.2 if feature failed to initialize and user didn't explicitly request it
     if (!feature->IsInited() && cfg.Dx12Upscaler.value_or_default() != Upscaler::FSR21)
     {

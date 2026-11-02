@@ -33,10 +33,11 @@ bool OS_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InSou
 {
     auto resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
+    auto oldBuffer = _buffer;
     auto result =
         Shader_Dx12::CreateBufferResource(InDevice, InSource, InState, &_buffer, resourceFlags, InWidth, InHeight);
 
-    if (result)
+    if (result && _buffer != oldBuffer)
     {
         _buffer->SetName(L"OS_Buffer");
         _bufferState = InState;

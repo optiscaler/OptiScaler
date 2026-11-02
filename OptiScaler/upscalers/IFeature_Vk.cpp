@@ -138,18 +138,21 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
               } });
     }
 
-    _actualSharpness = _sharpness;
+    _actualSharpness.reset();
     if (useRcas)
     {
         pipeline.push_back(
             { // Setup
               [&](const VkImageInfo& nextOutput) -> VkImageInfo
               {
-                  if (RCAS->CreateImageResource(Device, PhysicalDevice, nextOutput.Width, nextOutput.Height,
+                  // Same checks as Dispatch, a skipped pass must not take over the output
+                  if (paramMotion && paramOutput && RCAS->CanRender() &&
+                      RCAS->CreateImageResource(Device, PhysicalDevice, nextOutput.Width, nextOutput.Height,
                                                 nextOutput.Format, intermediateUsage))
                   {
                       // Disable any built-in sharpness shaders
                       InParameters->Set(NVSDK_NGX_Parameter_Sharpness, 0.0f);
+                      _actualSharpness = _sharpness;
                       _sharpness = 0.0f;
 
                       RCAS->SetImageLayout(InCmdBuffer, RCAS->GetImage(), VK_IMAGE_LAYOUT_UNDEFINED,
@@ -218,7 +221,9 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
             { // Setup
               [&](const VkImageInfo& nextOutput) -> VkImageInfo
               {
-                  if (Magnifier->CreateImageResource(Device, PhysicalDevice, nextOutput.Width, nextOutput.Height,
+                  // Same checks as Dispatch, a skipped pass must not take over the output
+                  if (paramMotion && paramOutput && Magnifier->CanRender() &&
+                      Magnifier->CreateImageResource(Device, PhysicalDevice, nextOutput.Width, nextOutput.Height,
                                                      nextOutput.Format, intermediateUsage))
                   {
                       Magnifier->SetImageLayout(InCmdBuffer, Magnifier->GetImage(), VK_IMAGE_LAYOUT_UNDEFINED,

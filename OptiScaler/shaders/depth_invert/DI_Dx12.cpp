@@ -15,10 +15,11 @@ bool DI_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InSou
 
     auto resourceFormat = DXGI_FORMAT_R32_FLOAT;
 
+    auto oldBuffer = _buffer;
     auto result = Shader_Dx12::CreateBufferResource(InDevice, InSource, InState, &_buffer, resourceFlags, InWidth,
                                                     InHeight, resourceFormat);
 
-    if (result)
+    if (result && _buffer != oldBuffer)
     {
         _buffer->SetName(L"DI_Buffer");
         _bufferState = InState;

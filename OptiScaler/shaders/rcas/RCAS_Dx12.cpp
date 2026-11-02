@@ -102,9 +102,10 @@ bool RCAS_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InS
 {
     auto resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
+    auto oldBuffer = _buffer;
     auto result = Shader_Dx12::CreateBufferResource(InDevice, InSource, InState, &_buffer, resourceFlags);
 
-    if (result)
+    if (result && _buffer != oldBuffer)
     {
         _buffer->SetName(L"RCAS_DA_Buffer");
         _bufferState = InState;

@@ -109,10 +109,9 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
     {
         LOG_DEBUG("Color exist..");
 
-        if (Config::Instance()->ColorResourceBarrier.has_value())
+        if (std::optional<int32_t> barrier = Config::Instance()->ColorResourceBarrier; barrier.has_value())
         {
-            ForwardBarrier(InCommandList, paramColor,
-                           (D3D12_RESOURCE_STATES) Config::Instance()->ColorResourceBarrier.value(),
+            ForwardBarrier(InCommandList, paramColor, (D3D12_RESOURCE_STATES) barrier.value(),
                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
         else if (State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
@@ -140,10 +139,9 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
     {
         LOG_DEBUG("MotionVectors exist..");
 
-        if (Config::Instance()->MVResourceBarrier.has_value())
+        if (std::optional<int32_t> barrier = Config::Instance()->MVResourceBarrier; barrier.has_value())
         {
-            ForwardBarrier(InCommandList, paramVelocity,
-                           (D3D12_RESOURCE_STATES) Config::Instance()->MVResourceBarrier.value(),
+            ForwardBarrier(InCommandList, paramVelocity, (D3D12_RESOURCE_STATES) barrier.value(),
                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
         else if (State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
@@ -187,9 +185,8 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
     {
         LOG_DEBUG("Depth exist..");
 
-        if (Config::Instance()->DepthResourceBarrier.has_value())
-            ForwardBarrier(InCommandList, paramDepth,
-                           (D3D12_RESOURCE_STATES) Config::Instance()->DepthResourceBarrier.value(),
+        if (std::optional<int32_t> barrier = Config::Instance()->DepthResourceBarrier; barrier.has_value())
+            ForwardBarrier(InCommandList, paramDepth, (D3D12_RESOURCE_STATES) barrier.value(),
                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
         params.depth = ffxApiGetResourceDX12(paramDepth, FFX_API_RESOURCE_STATE_COMPUTE_READ);
@@ -218,9 +215,8 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
         {
             LOG_DEBUG("ExposureTexture exist..");
 
-            if (Config::Instance()->ExposureResourceBarrier.has_value())
-                ForwardBarrier(InCommandList, paramExp,
-                               (D3D12_RESOURCE_STATES) Config::Instance()->ExposureResourceBarrier.value(),
+            if (std::optional<int32_t> barrier = Config::Instance()->ExposureResourceBarrier; barrier.has_value())
+                ForwardBarrier(InCommandList, paramExp, (D3D12_RESOURCE_STATES) barrier.value(),
                                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
             params.exposure = ffxApiGetResourceDX12(paramExp, FFX_API_RESOURCE_STATE_COMPUTE_READ);
@@ -261,9 +257,8 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
         {
             LOG_DEBUG("Using FSR reactive mask..");
 
-            if (Config::Instance()->MaskResourceBarrier.has_value())
-                ForwardBarrier(InCommandList, paramReactiveMask,
-                               (D3D12_RESOURCE_STATES) Config::Instance()->MaskResourceBarrier.value(),
+            if (std::optional<int32_t> barrier = Config::Instance()->MaskResourceBarrier; barrier.has_value())
+                ForwardBarrier(InCommandList, paramReactiveMask, (D3D12_RESOURCE_STATES) barrier.value(),
                                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
             params.reactive = ffxApiGetResourceDX12(paramReactiveMask, FFX_API_RESOURCE_STATE_COMPUTE_READ);
@@ -275,9 +270,8 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
                 LOG_DEBUG("Input Bias mask exist..");
                 Config::Instance()->DisableReactiveMask.set_volatile_value(false);
 
-                if (Config::Instance()->MaskResourceBarrier.has_value())
-                    ForwardBarrier(InCommandList, paramReactiveMask2,
-                                   (D3D12_RESOURCE_STATES) Config::Instance()->MaskResourceBarrier.value(),
+                if (std::optional<int32_t> barrier = Config::Instance()->MaskResourceBarrier; barrier.has_value())
+                    ForwardBarrier(InCommandList, paramReactiveMask2, (D3D12_RESOURCE_STATES) barrier.value(),
                                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
                 if (paramTransparency == nullptr && Config::Instance()->FsrUseMaskForTransparency.value_or_default())

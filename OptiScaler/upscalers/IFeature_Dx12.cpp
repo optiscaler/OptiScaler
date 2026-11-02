@@ -150,17 +150,21 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
               } });
     }
 
-    _actualSharpness = _sharpness;
+    _actualSharpness.reset();
     if (useRcas)
     {
         pipeline.push_back(
             { // Setup
               [&](ID3D12Resource* nextOutput) -> ID3D12Resource*
               {
-                  if (RCAS->CreateBufferResource(Device, nextOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
+                  // Same checks as Dispatch, a skipped pass must not take over the output
+                  if (paramMotion && paramOutput &&
+                      RCAS->CreateBufferResource(Device, nextOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS) &&
+                      RCAS->CanRender())
                   {
                       // Disable any built-in sharpness shaders
                       InParameters->Set(NVSDK_NGX_Parameter_Sharpness, 0.0f);
+                      _actualSharpness = _sharpness;
                       _sharpness = 0.0f;
 
                       RCAS->SetBufferState(InCommandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -223,7 +227,10 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
             { // Setup
               [&](ID3D12Resource* nextOutput) -> ID3D12Resource*
               {
-                  if (Magnifier->CreateBufferResource(Device, nextOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
+                  // Same checks as Dispatch, a skipped pass must not take over the output
+                  if (paramMotion && paramOutput &&
+                      Magnifier->CreateBufferResource(Device, nextOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS) &&
+                      Magnifier->CanRender())
                   {
                       Magnifier->SetBufferState(InCommandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
                       return Magnifier->Buffer();
@@ -270,11 +277,10 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     _barrierTransitions.clear();
 
     // Game's real output, our pass buffers track their own state
-    if (paramOutput && Config::Instance()->OutputResourceBarrier.has_value() && upscaler != Upscaler::DLSS &&
-        upscaler != Upscaler::DLSSD)
+    std::optional<int32_t> outputBarrier = Config::Instance()->OutputResourceBarrier;
+    if (paramOutput && outputBarrier.has_value() && upscaler != Upscaler::DLSS && upscaler != Upscaler::DLSSD)
     {
-        ForwardBarrier(InCommandList, paramOutput,
-                       (D3D12_RESOURCE_STATES) Config::Instance()->OutputResourceBarrier.value(),
+        ForwardBarrier(InCommandList, paramOutput, (D3D12_RESOURCE_STATES) outputBarrier.value(),
                        D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     }
 

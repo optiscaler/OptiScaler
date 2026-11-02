@@ -892,7 +892,12 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChainForCoreWindow(IDXGIFactory2* rea
     }
 
     // No FG swapchain for CoreWindow, so this is another window if one exists
-    if (!FGHooks::IsOtherWindowThanFG((HWND) pWindow))
+    if (!_skipFGSwapChainCreation)
+        FGHooks::ReleaseUnusableFGSwapchain((HWND) pWindow, pDevice);
+
+    const bool otherWindow = FGHooks::IsOtherWindowThanFG((HWND) pWindow);
+
+    if (!otherWindow)
     {
         State::Instance().SCAllowTearing = (localDesc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) > 0;
         State::Instance().SCLastFlags = localDesc.Flags;
@@ -909,8 +914,11 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChainForCoreWindow(IDXGIFactory2* rea
         if (!Util::CheckForRealObject(__FUNCTION__, cq, (IUnknown**) &realQ))
             realQ = cq;
 
-        State::Instance().currentCommandQueue = realQ;
-        D3D12Hooks::CaptureDevice(realQ);
+        if (!otherWindow)
+        {
+            State::Instance().currentCommandQueue = realQ;
+            D3D12Hooks::CaptureDevice(realQ);
+        }
     }
 
     State::Instance().skipDxgiLoadChecks = true;
@@ -925,24 +933,33 @@ HRESULT DxgiFactoryWrappedCalls::CreateSwapChainForCoreWindow(IDXGIFactory2* rea
         if (!Util::CheckForRealObject(__FUNCTION__, *ppSwapChain, (IUnknown**) &realSC))
             realSC = *ppSwapChain;
 
-        State::Instance().currentRealSwapchain = realSC;
-        realSC->GetDesc(&State::Instance().currentSwapchainDesc);
+        if (!otherWindow)
+        {
+            State::Instance().currentRealSwapchain = realSC;
+            realSC->GetDesc(&State::Instance().currentSwapchainDesc);
+        }
 
         IUnknown* readDevice = nullptr;
         if (!Util::CheckForRealObject(__FUNCTION__, pDevice, (IUnknown**) &readDevice))
             readDevice = pDevice;
 
-        State::Instance().screenWidth = static_cast<float>(localDesc.Width);
-        State::Instance().screenHeight = static_cast<float>(localDesc.Height);
+        if (!otherWindow)
+        {
+            State::Instance().screenWidth = static_cast<float>(localDesc.Width);
+            State::Instance().screenHeight = static_cast<float>(localDesc.Height);
+        }
 
         LOG_DEBUG("Created new swapchain: {0:X}, hWnd: {1:X}", (UINT64) *ppSwapChain, (UINT64) pWindow);
         *ppSwapChain =
             new WrappedIDXGISwapChain4(realSC, readDevice, (HWND) pWindow, localDesc.Flags, true, *ppSwapChain);
 
-        if (!_skipFGSwapChainCreation)
-            State::Instance().currentSwapchain = *ppSwapChain;
+        if (!otherWindow)
+        {
+            if (!_skipFGSwapChainCreation)
+                State::Instance().currentSwapchain = *ppSwapChain;
 
-        State::Instance().currentWrappedSwapchain = *ppSwapChain;
+            State::Instance().currentWrappedSwapchain = *ppSwapChain;
+        }
 
         LOG_DEBUG("Created new WrappedIDXGISwapChain4: {0:X}, pDevice: {1:X}", (UINT64) *ppSwapChain, (UINT64) pDevice);
     }

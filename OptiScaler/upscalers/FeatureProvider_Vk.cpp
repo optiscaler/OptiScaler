@@ -203,6 +203,18 @@ bool FeatureProvider_Vk::ChangeFeature(Upscaler upscaler, VkInstance instance, V
         if (!GetFeature(state.newBackend, handleId, contextData->createParams, &contextData->feature))
         {
             LOG_ERROR("Upscaler can't created");
+
+            // End the change, phase 3 would Init a null feature
+            contextData->feature.reset();
+            state.newBackend = Upscaler::Reset;
+            state.changeBackend[handleId] = false;
+
+            if (!contextData->createParamsFromGame)
+                TryDestroyNGXParameters(contextData->createParams, NVNGXProxy::VULKAN_DestroyParameters());
+
+            contextData->createParams = nullptr;
+            contextData->changeBackendCounter = 0;
+
             return false;
         }
 

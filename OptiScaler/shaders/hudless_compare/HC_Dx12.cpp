@@ -91,9 +91,10 @@ bool HC_Dx12::CreateBufferResource(UINT index, ID3D12Device* InDevice, ID3D12Res
 
     auto resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
+    auto oldBuffer = _buffer[index];
     auto result = Shader_Dx12::CreateBufferResource(InDevice, InSource, InState, &_buffer[index], resourceFlags);
 
-    if (result)
+    if (result && _buffer[index] != oldBuffer)
     {
         _buffer[index]->SetName(L"HC_Buffer");
         _bufferState[index] = InState;

@@ -164,16 +164,19 @@ bool IFeature_Dx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_Par
               } });
     }
 
-    _actualSharpness = _sharpness;
+    _actualSharpness.reset();
     if (useRcas)
     {
         pipeline.push_back({ // Setup
                              [&](ID3D11Resource* nextOutput) -> ID3D11Resource*
                              {
-                                 if (RCAS->CreateBufferResource(Device, nextOutput))
+                                 // Same checks as Dispatch, a skipped pass must not take over the output
+                                 if (paramMotion && paramOutput && RCAS->CreateBufferResource(Device, nextOutput) &&
+                                     RCAS->CanRender())
                                  {
                                      // Disable any built-in sharpness shaders
                                      InParameters->Set(NVSDK_NGX_Parameter_Sharpness, 0.0f);
+                                     _actualSharpness = _sharpness;
                                      _sharpness = 0.0f;
 
                                      return RCAS->Buffer();
@@ -234,7 +237,9 @@ bool IFeature_Dx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_Par
         pipeline.push_back({ // Setup
                              [&](ID3D11Resource* nextOutput) -> ID3D11Resource*
                              {
-                                 if (Magnifier->CreateBufferResource(Device, nextOutput))
+                                 // Same checks as Dispatch, a skipped pass must not take over the output
+                                 if (paramMotion && paramOutput &&
+                                     Magnifier->CreateBufferResource(Device, nextOutput) && Magnifier->CanRender())
                                      return Magnifier->Buffer();
 
                                  return nullptr;
