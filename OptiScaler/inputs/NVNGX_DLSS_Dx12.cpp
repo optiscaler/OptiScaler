@@ -378,8 +378,8 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Shutdown(void)
 
         if (usesDx12Dlss)
         {
-            const auto dlssFeature = dynamic_cast<DLSSFeatureDx12*>(feature);
-            dlssFeature->Shutdown(D3D12Device);
+            if (const auto dlssFeature = dynamic_cast<DLSSFeatureDx12*>(feature))
+                dlssFeature->Shutdown(D3D12Device);
         }
     }
 
@@ -1029,6 +1029,9 @@ static NVSDK_NGX_Result TryEvaluateOptiFeature(ID3D12GraphicsCommandList* InCmdL
 
         if (ctxData.changeBackendCounter != 0 || !successfulPhase)
         {
+            if (shouldRestoreSigs)
+                D3D12Hooks::RestoreRoot(InCmdList);
+
             D3D12Hooks::SetRootSignatureTracking(true);
             return NVSDK_NGX_Result_Success;
         }
@@ -1042,6 +1045,9 @@ static NVSDK_NGX_Result TryEvaluateOptiFeature(ID3D12GraphicsCommandList* InCmdL
 
         state.newBackend = Upscaler::FSR21;
         state.changeBackend[handleId] = true;
+
+        if (shouldRestoreSigs)
+            D3D12Hooks::RestoreRoot(InCmdList);
 
         D3D12Hooks::SetRootSignatureTracking(true);
 

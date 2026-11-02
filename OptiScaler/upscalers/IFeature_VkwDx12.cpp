@@ -2225,14 +2225,7 @@ bool IFeature_VkwDx12::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter
         return false;
     }
 
-    // Not restoring the original values of NVSDK_NGX_Parameter_Color etc.
-    // Unsure if that's a potential problem but in theory the game should only be setting those
-    InParameters->Set(NVSDK_NGX_Parameter_Color, (void*) nullptr);
-    InParameters->Set(NVSDK_NGX_Parameter_MotionVectors, (void*) nullptr);
-    InParameters->Set(NVSDK_NGX_Parameter_Output, (void*) nullptr);
-    InParameters->Set(NVSDK_NGX_Parameter_Depth, (void*) nullptr);
-    InParameters->Set(NVSDK_NGX_Parameter_ExposureTexture, (void*) nullptr);
-    InParameters->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void*) nullptr);
+    RestoreVulkanParameters();
 
     _frameCount++;
 

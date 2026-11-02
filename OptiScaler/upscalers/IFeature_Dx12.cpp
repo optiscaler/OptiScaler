@@ -244,6 +244,11 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
               } });
     }
 
+    // RCAS setup and DLSS zero the game's sharpness, restored after EvaluateInternal
+    float originalSharpness = 0.0f;
+    bool hasSharpness =
+        InParameters->Get(NVSDK_NGX_Parameter_Sharpness, &originalSharpness) == NVSDK_NGX_Result_Success;
+
     // Iterate BACKWARDS to establish where each shader needs to pull its input from
     ID3D12Resource* currentTarget = paramOutput;
     for (auto it = pipeline.rbegin(); it != pipeline.rend(); ++it)
@@ -278,6 +283,9 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     UpscalerTime->End(InCommandList);
 
     InParameters->Set(NVSDK_NGX_Parameter_Output, paramOutput);
+
+    if (hasSharpness)
+        InParameters->Set(NVSDK_NGX_Parameter_Sharpness, originalSharpness);
 
     if (!evalResult)
     {

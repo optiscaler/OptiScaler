@@ -1073,17 +1073,20 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
     // Menu's last command list can still be running
     WaitForGPUIdle(_device);
 
-    if (Config::Instance()->IsFGEnabled())
+    if (IsCurrentSwapchain(this))
     {
-        State::Instance().fgResetCapturedResources = true;
-        State::Instance().fgOnlyUseCapturedResources = false;
-        State::Instance().fgChanged = true;
+        if (Config::Instance()->IsFGEnabled())
+        {
+            State::Instance().fgResetCapturedResources = true;
+            State::Instance().fgOnlyUseCapturedResources = false;
+            State::Instance().fgChanged = true;
+        }
+
+        State::Instance().scChanged = true;
     }
 
     if (HasMenu(this, _handle))
         MenuOverlayDx::CleanupRenderTarget(true, _handle);
-
-    State::Instance().scChanged = true;
 
     if (Config::Instance()->OverrideVsync.value_or_default() && !State::Instance().SCExclusiveFullscreen &&
         State::Instance().currentFG == nullptr)
@@ -1431,17 +1434,20 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
     DXGI_SWAP_CHAIN_DESC desc {};
     _real->GetDesc(&desc);
 
-    if (Config::Instance()->IsFGEnabled())
+    if (IsCurrentSwapchain(this))
     {
-        State::Instance().fgResetCapturedResources = true;
-        State::Instance().fgOnlyUseCapturedResources = false;
-        State::Instance().fgChanged = true;
+        if (Config::Instance()->IsFGEnabled())
+        {
+            State::Instance().fgResetCapturedResources = true;
+            State::Instance().fgOnlyUseCapturedResources = false;
+            State::Instance().fgChanged = true;
+        }
+
+        State::Instance().scChanged = true;
     }
 
     if (HasMenu(this, _handle))
         MenuOverlayDx::CleanupRenderTarget(true, _handle);
-
-    State::Instance().scChanged = true;
 
     if (Config::Instance()->OverrideVsync.value_or_default() && !State::Instance().SCExclusiveFullscreen &&
         State::Instance().currentFG == nullptr)

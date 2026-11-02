@@ -150,6 +150,7 @@ xess_result_t hk_xessVKCreateContext(VkInstance instance, VkPhysicalDevice physi
         return XESS_RESULT_ERROR_INVALID_ARGUMENT;
 
     _nvParams[*phContext] = params;
+    _vkContexts.insert(*phContext);
     _motionScales[*phContext] = { 1.0f, 1.0f };
 
     LOG_DEBUG("Created context: {}", (size_t) *phContext);

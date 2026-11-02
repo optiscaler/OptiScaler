@@ -125,31 +125,32 @@ xess_result_t hk_xessDestroyContext(xess_context_handle_t hContext)
 {
     LOG_DEBUG("hContext: {}", (size_t) hContext);
 
-    if (!_contexts.contains(hContext))
+    // Tracked from create, the NGX feature (_contexts) only exists after the first execute
+    if (!_nvParams.contains(hContext))
         return XESS_RESULT_ERROR_INVALID_CONTEXT;
 
     // Vulkan contexts get Vulkan params, D3D11 and D3D12 ones get D3D12 params
-    const bool vkContext = _vkInitParams.contains(hContext);
+    const bool vkContext = _vkContexts.erase(hContext) > 0;
 
-    if (_d3d12InitParams.contains(hContext))
+    if (auto it = _contexts.find(hContext); it != _contexts.end())
     {
-        NVSDK_NGX_D3D12_ReleaseFeature(_contexts[hContext]);
-        _d3d12InitParams.erase(hContext);
+        if (_d3d12InitParams.contains(hContext))
+            NVSDK_NGX_D3D12_ReleaseFeature(it->second);
+
+        if (_d3d11InitParams.contains(hContext))
+            NVSDK_NGX_D3D11_ReleaseFeature(it->second);
+
+        if (vkContext)
+            NVSDK_NGX_VULKAN_ReleaseFeature(it->second);
+
+        _contexts.erase(it);
     }
 
-    if (_d3d11InitParams.contains(hContext))
-    {
-        NVSDK_NGX_D3D11_ReleaseFeature(_contexts[hContext]);
-        _d3d11InitParams.erase(hContext);
-    }
-
-    if (_vkInitParams.contains(hContext))
-    {
-        NVSDK_NGX_VULKAN_ReleaseFeature(_contexts[hContext]);
-        _vkInitParams.erase(hContext);
-    }
-
-    _contexts.erase(hContext);
+    _d3d12InitParams.erase(hContext);
+    _d3d11InitParams.erase(hContext);
+    _vkInitParams.erase(hContext);
+    _motionScales.erase(hContext);
+    _jitterScales.erase(hContext);
 
     if (auto it = _nvParams.find(hContext); it != _nvParams.end())
     {

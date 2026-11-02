@@ -248,6 +248,11 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
               } });
     }
 
+    // RCAS setup and DLSS zero the game's sharpness, restored after EvaluateInternal
+    float originalSharpness = 0.0f;
+    bool hasSharpness =
+        InParameters->Get(NVSDK_NGX_Parameter_Sharpness, &originalSharpness) == NVSDK_NGX_Result_Success;
+
     // Iterate BACKWARDS to establish where each shader needs to pull its input from
     VkImageInfo currentTarget = originalOutput;
     for (auto it = pipeline.rbegin(); it != pipeline.rend(); ++it)
@@ -289,6 +294,9 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
         paramOutput->Resource.ImageViewInfo.Width = originalOutput.Width;
         paramOutput->Resource.ImageViewInfo.Height = originalOutput.Height;
     }
+
+    if (hasSharpness)
+        InParameters->Set(NVSDK_NGX_Parameter_Sharpness, originalSharpness);
 
     if (!evalResult)
         return false;
