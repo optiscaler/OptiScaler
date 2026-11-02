@@ -189,26 +189,39 @@ static void RunAgilityUpgrade(HMODULE dx12Module)
 
             if (!pathSet)
             {
-                std::wstring widePath = Config::Instance()->MainDllPath.value();
-                widePath = std::filesystem::relative(widePath, Util::ExePath().parent_path());
-                widePath = widePath + L"\\D3D12_OptiScaler\\";
+                std::error_code ec;
+                std::wstring widePath = std::filesystem::relative(Config::Instance()->MainDllPath.value(),
+                                                                  Util::ExePath().parent_path(), ec);
 
-                // Properly convert wstring → string
-                int size = WideCharToMultiByte(CP_UTF8, 0, widePath.c_str(), -1, nullptr, 0, nullptr, nullptr);
-                path.resize(size - 1);
-                WideCharToMultiByte(CP_UTF8, 0, widePath.c_str(), -1, path.data(), size, nullptr, nullptr);
+                // SDK path must be relative to the exe, not possible across drives
+                if (!widePath.empty())
+                {
+                    widePath = widePath + L"\\D3D12_OptiScaler\\";
+
+                    // Properly convert wstring → string
+                    int size = WideCharToMultiByte(CP_UTF8, 0, widePath.c_str(), -1, nullptr, 0, nullptr, nullptr);
+                    path.resize(size - 1);
+                    WideCharToMultiByte(CP_UTF8, 0, widePath.c_str(), -1, path.data(), size, nullptr, nullptr);
+                }
 
                 pathSet = true;
             }
 
-            hr = sdkConfig->SetSDKVersion(customD3D12SDKVersion, reinterpret_cast<LPCSTR>(path.c_str()));
-            if (FAILED(hr))
+            if (path.empty())
             {
-                LOG_ERROR("Failed to upgrade Agility SDK: {0}", hr);
+                LOG_ERROR("Can't upgrade Agility SDK, Opti folder isn't reachable from the exe folder");
             }
             else
             {
-                LOG_INFO("Agility SDK upgraded successfully");
+                hr = sdkConfig->SetSDKVersion(customD3D12SDKVersion, reinterpret_cast<LPCSTR>(path.c_str()));
+                if (FAILED(hr))
+                {
+                    LOG_ERROR("Failed to upgrade Agility SDK: {0}", hr);
+                }
+                else
+                {
+                    LOG_INFO("Agility SDK upgraded successfully");
+                }
             }
         }
         else
@@ -1563,14 +1576,14 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 
         if (std::filesystem::path mainDllPath(Config::Instance()->MainDllPath.value()); mainDllPath.is_relative())
         {
-            Config::Instance()->MainDllPath.set_volatile_value(Util::ExePath().parent_path() / mainDllPath);
+            Config::Instance()->MainDllPath.set_volatile_value(Util::DllPath().parent_path() / mainDllPath);
         }
 
-        // If path is invalid or doesn't exist, use the exe folder as main
+        // If path is invalid or doesn't exist, use Opti's folder as main
         if (!std::filesystem::exists(Config::Instance()->MainDllPath.value()) ||
             !std::filesystem::is_directory(Config::Instance()->MainDllPath.value()))
         {
-            Config::Instance()->MainDllPath.set_volatile_value(Util::ExePath().parent_path());
+            Config::Instance()->MainDllPath.set_volatile_value(Util::DllPath().parent_path());
         }
 
         // Clean up path
@@ -1757,30 +1770,55 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         auto exePath = Util::ExePath().remove_filename();
         auto optiDllPath = std::filesystem::path(Config::Instance()->MainDllPath.value());
 
+        std::vector<std::filesystem::path> dllFolders { optiDllPath };
+
+        if (Config::Instance()->DLSSFeaturePath.has_value())
+            dllFolders.push_back(Config::Instance()->DLSSFeaturePath.value());
+
+        // Only the game folder is searched recursively
+        auto findDll = [&](const wchar_t* name) -> std::optional<std::filesystem::path>
+        {
+            for (const auto& folder : dllFolders)
+            {
+                std::error_code ec;
+
+                if (auto path = folder / name; std::filesystem::is_regular_file(path, ec))
+                {
+                    LOG_INFO(L"{} found at {}", name, folder.wstring());
+                    return path;
+                }
+            }
+
+            return Util::FindFilePath(exePath, name);
+        };
+
         if (Config::Instance()->NVNGX_DLSS_Library.has_value())
         {
             std::filesystem::path dlssPath(Config::Instance()->NVNGX_DLSS_Library.value());
+            std::error_code ec;
 
-            if (std::filesystem::is_directory(dlssPath) && std::filesystem::exists(dlssPath))
+            // Accepts the dll or its folder
+            if (std::filesystem::is_directory(dlssPath, ec))
+                dlssPath /= L"nvngx_dlss.dll";
+
+            if (std::filesystem::is_regular_file(dlssPath, ec))
             {
-                State::Instance().NVNGX_DLSS_Path = dlssPath;
-                LOG_DEBUG("nvngx_dlss.dll found at {}", dlssPath.string());
+                Config::Instance()->NVNGX_DLSS_Library.set_volatile_value(dlssPath.wstring());
+                State::Instance().NVNGX_DLSS_Path = dlssPath.wstring();
+                LOG_INFO("nvngx_dlss.dll override found at {}", wstring_to_string(dlssPath.wstring()));
+            }
+            else
+            {
+                LOG_WARN("nvngx_dlss.dll override not found at {}, ignoring it", wstring_to_string(dlssPath.wstring()));
+                Config::Instance()->NVNGX_DLSS_Library.reset_volatile();
             }
         }
 
         if (!State::Instance().NVNGX_DLSS_Path.has_value())
-            State::Instance().NVNGX_DLSS_Path = Util::FindFilePath(optiDllPath, "nvngx_dlss.dll");
+            State::Instance().NVNGX_DLSS_Path = findDll(L"nvngx_dlss.dll");
 
-        if (!State::Instance().NVNGX_DLSS_Path.has_value())
-            State::Instance().NVNGX_DLSS_Path = Util::FindFilePath(exePath, "nvngx_dlss.dll");
-
-        State::Instance().NVNGX_DLSSD_Path = Util::FindFilePath(optiDllPath, "nvngx_dlssd.dll");
-        if (!State::Instance().NVNGX_DLSSD_Path.has_value())
-            State::Instance().NVNGX_DLSSD_Path = Util::FindFilePath(exePath, "nvngx_dlssd.dll");
-
-        State::Instance().NVNGX_DLSSG_Path = Util::FindFilePath(optiDllPath, "nvngx_dlssg.dll");
-        if (!State::Instance().NVNGX_DLSSG_Path.has_value())
-            State::Instance().NVNGX_DLSSG_Path = Util::FindFilePath(exePath, "nvngx_dlssg.dll");
+        State::Instance().NVNGX_DLSSD_Path = findDll(L"nvngx_dlssd.dll");
+        State::Instance().NVNGX_DLSSG_Path = findDll(L"nvngx_dlssg.dll");
 
         // Not 100% accurate for Nvidia cards without DLSS
         if (Config::Instance()->DLSSEnabled.value_or_default() && possibleNvidia)

@@ -23,7 +23,6 @@ static ankerl::unordered_dense::map<unsigned int, ContextData<IFeature_Dx11>> Dx
 static int evalCounter = 0;
 static bool shutdown = false;
 static bool _skipInit = false;
-static wchar_t const** paths;
 
 class ScopedInitDx11
 {
@@ -83,98 +82,13 @@ static bool IsFGSourceFeature(unsigned int handleId)
 
 static void UpdateInitPaths(NVSDK_NGX_FeatureCommonInfo* InFeatureInfo)
 {
-    State::Instance().NVNGX_FeatureInfo_Paths.clear();
+    auto& gamePaths = State::Instance().NVNGX_Game_Paths;
+    gamePaths.clear();
 
-    if (InFeatureInfo != nullptr)
-    {
-        auto exePath = Util::ExePath().remove_filename();
+    for (size_t i = 0; i < InFeatureInfo->PathListInfo.Length; i++)
+        gamePaths.push_back(InFeatureInfo->PathListInfo.Path[i]);
 
-        std::optional<std::filesystem::path> nvngxDlssPath = std::nullopt;
-        std::optional<std::filesystem::path> nvngxDlssDPath = std::nullopt;
-        std::optional<std::filesystem::path> nvngxDlssGPath = std::nullopt;
-
-        // Check DLSS path
-        if (State::Instance().NVNGX_DLSS_Path.has_value())
-        {
-            nvngxDlssPath = std::filesystem::path(State::Instance().NVNGX_DLSS_Path.value());
-        }
-        else
-        {
-            auto path = Util::FindFilePath(exePath, "nvngx_dlss.dll");
-
-            if (path.has_value())
-                nvngxDlssPath = path.value();
-        }
-
-        // Check DLSS-D path
-        if (State::Instance().NVNGX_DLSSD_Path.has_value())
-        {
-            nvngxDlssDPath = std::filesystem::path(State::Instance().NVNGX_DLSSD_Path.value());
-        }
-        else
-        {
-            auto path = Util::FindFilePath(exePath, "nvngx_dlssd.dll");
-
-            if (path.has_value())
-                nvngxDlssDPath = path.value();
-        }
-
-        // Check DLSS-G path
-        if (State::Instance().NVNGX_DLSSG_Path.has_value())
-        {
-            nvngxDlssGPath = std::filesystem::path(State::Instance().NVNGX_DLSSG_Path.value());
-        }
-        else
-        {
-            auto path = Util::FindFilePath(exePath, "nvngx_dlssg.dll");
-
-            if (path.has_value())
-                nvngxDlssGPath = path.value();
-        }
-
-        // Override locations
-        if (Config::Instance()->DLSSFeaturePath.has_value())
-            State::Instance().NVNGX_FeatureInfo_Paths.push_back(Config::Instance()->DLSSFeaturePath.value());
-
-        // If DLSS path is overriden
-        if (Config::Instance()->NVNGX_DLSS_Library.has_value() && nvngxDlssPath.has_value())
-            State::Instance().NVNGX_FeatureInfo_Paths.push_back(nvngxDlssPath.value().parent_path().wstring());
-
-        // OptiDll Path
-        State::Instance().NVNGX_FeatureInfo_Paths.push_back(Config::Instance()->MainDllPath.value());
-
-        // Original paths from NVNGX
-        for (size_t i = 0; i < InFeatureInfo->PathListInfo.Length; i++)
-        {
-            const wchar_t* path = InFeatureInfo->PathListInfo.Path[i];
-            State::Instance().NVNGX_FeatureInfo_Paths.push_back(std::wstring(path));
-        }
-
-        // Exe path
-        State::Instance().NVNGX_FeatureInfo_Paths.push_back(exePath.wstring());
-
-        // If DLSS path is not overriden
-        if (!Config::Instance()->NVNGX_DLSS_Library.has_value() && nvngxDlssPath.has_value())
-            State::Instance().NVNGX_FeatureInfo_Paths.push_back(nvngxDlssPath.value().parent_path().wstring());
-
-        // Add found locations
-        if (nvngxDlssDPath.has_value())
-            State::Instance().NVNGX_FeatureInfo_Paths.push_back(nvngxDlssDPath.value().parent_path().wstring());
-
-        if (nvngxDlssGPath.has_value())
-            State::Instance().NVNGX_FeatureInfo_Paths.push_back(nvngxDlssGPath.value().parent_path().wstring());
-
-        // Build pointer array
-        paths = new const wchar_t*[State::Instance().NVNGX_FeatureInfo_Paths.size()];
-        for (size_t i = 0; i < State::Instance().NVNGX_FeatureInfo_Paths.size(); ++i)
-        {
-            paths[i] = State::Instance().NVNGX_FeatureInfo_Paths[i].c_str();
-            LOG_DEBUG("Feature Path [{}]: {}", i, wstring_to_string(State::Instance().NVNGX_FeatureInfo_Paths[i]));
-        }
-
-        InFeatureInfo->PathListInfo.Path = paths;
-        InFeatureInfo->PathListInfo.Length = (int) State::Instance().NVNGX_FeatureInfo_Paths.size();
-    }
+    NVNGXProxy::SetFeaturePaths(InFeatureInfo);
 }
 
 #pragma region NVSDK_NGX_D3D11_Init

@@ -244,6 +244,7 @@ class State
     NVSDK_NGX_Version NVNGX_Version {};
     const NVSDK_NGX_FeatureCommonInfo* NVNGX_FeatureInfo = nullptr;
     std::vector<std::wstring> NVNGX_FeatureInfo_Paths;
+    std::vector<std::wstring> NVNGX_Game_Paths;
     NVSDK_NGX_LoggingInfo NVNGX_Logger { nullptr, NVSDK_NGX_LOGGING_LEVEL_OFF, false };
     NVSDK_NGX_EngineType NVNGX_Engine = NVSDK_NGX_ENGINE_TYPE_CUSTOM;
     std::string NVNGX_EngineVersion;

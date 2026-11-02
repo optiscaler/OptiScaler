@@ -837,6 +837,15 @@ bool Config::Reload(std::filesystem::path iniPath)
             XeSSDx11Library.set_from_config(readWString("Libraries", "XeSSDx11Path"));
         }
 
+        // Relative paths are based on Opti's folder
+        for (auto path : { &MainDllPath, &NvngxPath, &NVNGX_DLSS_Library, &DLSSFeaturePath, &NvapiDllPath, &FfxDx12Path,
+                           &FfxDx12SRPath, &FfxDx12FGPath, &FfxDx12RRPath, &FfxDx12RCPath, &FfxVkPath, &FfxVkSRPath,
+                           &FfxVkFGPath, &XeSSLibrary, &XeFGLibrary, &XeLLLibrary, &XeSSDx11Library, &PluginPath })
+        {
+            if (path->has_value() && !path->value().empty() && std::filesystem::path(path->value()).is_relative())
+                path->set_volatile_value((Util::DllPath().parent_path() / path->value()).wstring());
+        }
+
         // Reading old configs for compatibility reasons
         {
             _DONTUSE_Fsr4ForceEnableInt8.set_from_config(readBool("FSR", "Fsr4ForceEnableInt8"));
