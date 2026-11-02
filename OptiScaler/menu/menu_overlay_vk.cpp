@@ -11,6 +11,7 @@
 
 #include "menu_common.h"
 #include <shaders/menu_blur/MenuBlur_Vk.h>
+#include <misc/DeferredRelease.h>
 
 // Vulkan overlay code adopted from here:
 // https://gist.github.com/mem99/0ec31ca302927457f86b1d6756aaa8c4
@@ -394,7 +395,7 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
         }
     }
 
-    // Initialize ImGui and upload fonts
+    // Initialize ImGui, textures are uploaded while rendering
     {
         _ImVulkan_Info.Instance = instance;
         _ImVulkan_Info.PhysicalDevice = pd;
@@ -413,56 +414,6 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
 
         if (!initResult)
             return;
-
-        // Upload Fonts
-        // Use any command queue
-        VkCommandPool command_pool = _ImVulkan_Frames[0].CommandPool;
-        VkCommandBuffer command_buffer = _ImVulkan_Frames[0].CommandBuffer;
-        result = vkResetCommandPool(device, command_pool, 0);
-        if (result != VK_SUCCESS)
-        {
-            LOG_ERROR("vkBeginCommandBuffer error: {0:X}", (UINT) result);
-            return;
-        }
-
-        VkCommandBufferBeginInfo begin_info = {};
-        begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        begin_info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        result = vkBeginCommandBuffer(command_buffer, &begin_info);
-        if (result != VK_SUCCESS)
-        {
-            LOG_ERROR("vkBeginCommandBuffer error: {0:X}", (UINT) result);
-            return;
-        }
-
-        // initResult = ImGui_ImplVulkan_CreateFontsTexture();
-        // LOG_DEBUG("ImGui_ImplVulkan_CreateFontsTexture result: {}", initResult);
-
-        VkSubmitInfo end_info = {};
-        end_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        end_info.commandBufferCount = 1;
-        end_info.pCommandBuffers = &command_buffer;
-
-        result = vkEndCommandBuffer(command_buffer);
-        if (result != VK_SUCCESS)
-        {
-            LOG_ERROR("vkEndCommandBuffer error: {0:X}", (UINT) result);
-            return;
-        }
-
-        result = vkQueueSubmit(queue, 1, &end_info, VK_NULL_HANDLE);
-        if (result != VK_SUCCESS)
-        {
-            LOG_ERROR("vkQueueSubmit error: {0:X}", (UINT) result);
-            return;
-        }
-
-        result = vkDeviceWaitIdle(device);
-        if (result != VK_SUCCESS)
-        {
-            LOG_ERROR("vkDeviceWaitIdle error: {0:X}", (UINT) result);
-            return;
-        }
     }
 
     // Present reads both under the lock
@@ -493,9 +444,21 @@ void MenuOverlayVk::DestroyVulkanObjects(bool shutdown, VkDevice device, VkSwapc
         return;
     }
 
-    auto result = vkDeviceWaitIdle(_ImVulkan_Info.Device);
-    if (result != VK_SUCCESS && !shutdown)
-        LOG_WARN("vkDeviceWaitIdle error: {0:X}", (UINT) result);
+    // Only the menu's own submits use these, waiting the whole device would touch the game's queues
+    std::vector<VkFence> fences;
+    for (uint32_t i = 0; i < _ImVulkan_Info.ImageCount; i++)
+    {
+        if (_ImVulkan_Frames != nullptr && _ImVulkan_Frames[i].Fence != VK_NULL_HANDLE)
+            fences.push_back(_ImVulkan_Frames[i].Fence);
+    }
+
+    if (!fences.empty())
+    {
+        auto result = vkWaitForFences(_ImVulkan_Info.Device, static_cast<uint32_t>(fences.size()), fences.data(),
+                                      VK_TRUE, UINT64_MAX);
+        if (result != VK_SUCCESS && !shutdown)
+            LOG_WARN("vkWaitForFences error: {0:X}", (UINT) result);
+    }
 
     if (!shutdown)
         DestroyMenuBlur();
@@ -549,9 +512,12 @@ void MenuOverlayVk::DestroyVulkanObjects(bool shutdown, VkDevice device, VkSwapc
             fd->Framebuffer = VK_NULL_HANDLE;
         }
 
+        // A present can still be waiting on it
         if (_ImVulkan_Semaphores[i] != VK_NULL_HANDLE)
         {
-            vkDestroySemaphore(_ImVulkan_Info.Device, _ImVulkan_Semaphores[i], VK_NULL_HANDLE);
+            DeferredRelease::Enqueue([vkDevice = _ImVulkan_Info.Device, semaphore = _ImVulkan_Semaphores[i]]()
+                                     { vkDestroySemaphore(vkDevice, semaphore, VK_NULL_HANDLE); },
+                                     (uint64_t) _ImVulkan_Info.Device);
             _ImVulkan_Semaphores[i] = VK_NULL_HANDLE;
         }
     }
@@ -664,14 +630,15 @@ bool MenuOverlayVk::QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo)
             ImGui_ImplVulkanH_Frame* fd = &_ImVulkan_Frames[idx];
             const bool blurMenu = blurReady && MenuCommon::BackgroundBlurUsed();
 
+            if (fd->Fence == VK_NULL_HANDLE)
+                return true;
+
             if (auto wResult = vkWaitForFences(_ImVulkan_Info.Device, 1, &fd->Fence, VK_TRUE, UINT64_MAX);
                 wResult != VK_SUCCESS)
             {
                 LOG_ERROR("vkWaitForFences error: {}", (int32_t) wResult);
                 return true;
             }
-
-            vkResetFences(_ImVulkan_Info.Device, 1, &fd->Fence);
 
             {
                 vkResetCommandPool(_ImVulkan_Info.Device, fd->CommandPool, 0);
@@ -723,10 +690,22 @@ bool MenuOverlayVk::QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo)
             submit_info.signalSemaphoreCount = 1;
             submit_info.pSignalSemaphores = &_ImVulkan_Semaphores[semaphoreIndex];
 
+            // Reset only when a submit follows, destroy waits on it
+            vkResetFences(_ImVulkan_Info.Device, 1, &fd->Fence);
             auto qResult = vkQueueSubmit(menuQueue, 1, &submit_info, fd->Fence);
             if (qResult != VK_SUCCESS)
             {
                 LOG_ERROR("vkQueueSubmit error: {0:X}", (UINT) qResult);
+
+                // Failed submit leaves the fence unsignaled, waits on it would never return
+                VkFenceCreateInfo fenceInfo {};
+                fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+                fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+                vkDestroyFence(_ImVulkan_Info.Device, fd->Fence, VK_NULL_HANDLE);
+                if (vkCreateFence(_ImVulkan_Info.Device, &fenceInfo, VK_NULL_HANDLE, &fd->Fence) != VK_SUCCESS)
+                    fd->Fence = VK_NULL_HANDLE;
+
                 return false;
             }
 
