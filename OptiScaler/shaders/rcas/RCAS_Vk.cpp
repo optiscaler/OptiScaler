@@ -244,6 +244,11 @@ bool RCAS_Vk::Dispatch(VkDevice InDevice, VkCommandBuffer InCmdList, RcasConstan
     ScopedGpuTime_Vk scopedGpuTime(GpuTime.get(), InCmdList);
 
     auto sharpnessShader = Config::Instance()->SharpnessShader.value_or_default();
+
+    // Depth aware shaders fall back to plain RCAS without depth
+    if (InDepthInfo == nullptr &&
+        (sharpnessShader == SharpenShader::LocalContrastDepthAware || sharpnessShader == SharpenShader::DepthAware))
+        sharpnessShader = SharpenShader::RCAS;
     if (sharpnessShader == SharpenShader::LocalContrastDepthAware)
     {
         return DispatchDepthAdaptive(InCmdList, InConstants, InResourceInfo, InMotionVectorsInfo, OutResourceInfo,

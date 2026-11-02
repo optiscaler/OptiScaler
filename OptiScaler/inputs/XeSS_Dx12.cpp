@@ -16,7 +16,7 @@ static bool CreateDLSSContext(xess_context_handle_t handle, ID3D12GraphicsComman
 {
     LOG_DEBUG("");
 
-    if (!_nvParams.contains(handle))
+    if (!_nvParams.contains(handle) || !_d3d12InitParams.contains(handle))
         return false;
 
     NVSDK_NGX_Handle* nvHandle = nullptr;

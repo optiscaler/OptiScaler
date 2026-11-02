@@ -499,8 +499,11 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_AllocateParameters(NVSDK_NGX_Para
 {
     LOG_FUNC();
 
+    if (OutParameters == nullptr)
+        return NVSDK_NGX_Result_FAIL_InvalidParameter;
+
     if (Config::Instance()->DLSSEnabled.value_or_default() && NVNGXProxy::NVNGXModule() != nullptr &&
-        NVNGXProxy::D3D11_AllocateParameters() != nullptr)
+        NVNGXProxy::IsDx11Inited() && NVNGXProxy::D3D11_AllocateParameters() != nullptr)
     {
         LOG_INFO("calling NVNGXProxy::D3D11_AllocateParameters");
 

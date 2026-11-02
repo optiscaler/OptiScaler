@@ -552,7 +552,7 @@ static Fsr212::FfxErrorCode ffxFsr2ContextDispatch_Dx12(Fsr212::FfxFsr2Context* 
     LOG_DEBUG("");
 
     // HACK, try to detected when we hooked FSR 2.0 call as FSR2.1/2.2
-    if (std::labs(dispatchDescription->renderSize.width) > 20000)
+    if (dispatchDescription != nullptr && std::labs(dispatchDescription->renderSize.width) > 20000)
     {
         return ffxFsr20ContextDispatch_Dx12(context, (FfxFsr20DispatchDescription*) dispatchDescription);
     }

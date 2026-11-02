@@ -200,9 +200,9 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
 
                   // In Vulkan we pass the Info structs instead of raw resources
                   VkImageInfo mvInfo = *(VkImageInfo*) &paramMotion->Resource.ImageViewInfo;
-                  VkImageInfo depthInfo = *(VkImageInfo*) &paramDepth->Resource.ImageViewInfo;
+                  VkImageInfo* depthInfo = paramDepth ? (VkImageInfo*) &paramDepth->Resource.ImageViewInfo : nullptr;
 
-                  if (!RCAS->Dispatch(Device, InCmdBuffer, rcasConstants, input, mvInfo, output, &depthInfo))
+                  if (!RCAS->Dispatch(Device, InCmdBuffer, rcasConstants, input, mvInfo, output, depthInfo))
                   {
                       Config::Instance()->RcasEnabled.set_volatile_value(false);
                       return false;
@@ -234,15 +234,11 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
               // Dispatch
               [&](const VkImageInfo& input, const VkImageInfo& output) -> bool
               {
-                  if (!Magnifier->CanRender())
+                  if (!Magnifier->CanRender() || !paramMotion || !paramOutput)
                       return true;
 
                   Magnifier->SetImageLayout(InCmdBuffer, input.Image, VK_IMAGE_LAYOUT_GENERAL,
                                             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, input.SubresourceRange);
-
-                  // In Vulkan we pass the Info structs instead of raw resources
-                  VkImageInfo mvInfo = *(VkImageInfo*) &paramMotion->Resource.ImageViewInfo;
-                  VkImageInfo depthInfo = *(VkImageInfo*) &paramDepth->Resource.ImageViewInfo;
 
                   return Magnifier->Dispatch(InCmdBuffer, input, output);
               } });
@@ -306,10 +302,9 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
     {
         if (pass.inputBuffer.Image != VK_NULL_HANDLE && pass.outputBuffer.Image != VK_NULL_HANDLE)
         {
+            // Upscale succeeded, a failed pass only drops the remaining passes
             if (!pass.Dispatch(pass.inputBuffer, pass.outputBuffer))
-            {
-                return false;
-            }
+                break;
         }
     }
 

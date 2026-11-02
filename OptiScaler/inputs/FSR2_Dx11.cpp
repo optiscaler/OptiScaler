@@ -89,7 +89,7 @@ static bool CreateDLSSContext(FfxFsr2Context* handle, const FfxFsr2DispatchDescr
 
     auto ratio = (float) initParams->displaySize.width / (float) pExecParams->renderSize.width;
 
-    if (ratio <= 3.0 && ratio > 2.0)
+    if (ratio > 2.0)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_UltraPerformance);
     else if (ratio <= 2.0 && ratio > 1.7)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_MaxPerf);

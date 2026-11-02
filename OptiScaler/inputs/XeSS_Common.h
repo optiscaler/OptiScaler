@@ -14,7 +14,6 @@ xess_result_t hk_xessSetLoggingCallback(xess_context_handle_t hContext, xess_log
 xess_result_t hk_xessGetProperties(xess_context_handle_t hContext, const xess_2d_t* pOutputResolution,
                                    xess_properties_t* pBindingProperties);
 xess_result_t hk_xessDestroyContext(xess_context_handle_t hContext);
-xess_result_t hk_xessDestroyContextDx11(xess_context_handle_t hContext);
 xess_result_t hk_xessSetVelocityScale(xess_context_handle_t hContext, float x, float y);
 xess_result_t hk_xessForceLegacyScaleFactors(xess_context_handle_t hContext, bool force);
 xess_result_t hk_xessGetExposureMultiplier(xess_context_handle_t hContext, float* pScale);

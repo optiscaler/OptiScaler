@@ -26,7 +26,7 @@ static bool CreateDLSSContext(xess_context_handle_t handle, VkCommandBuffer comm
 {
     LOG_DEBUG("");
 
-    if (!_nvParams.contains(handle))
+    if (!_nvParams.contains(handle) || !_vkInitParams.contains(handle))
         return false;
 
     NVSDK_NGX_Handle* nvHandle = nullptr;
