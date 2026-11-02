@@ -176,12 +176,17 @@ static void UpdateOutputColorSpace(DXGI_COLOR_SPACE_TYPE colorSpace)
              magic_enum::enum_name(info.model), info.valid);
 }
 
+// FG and the swapchain state belong to the game's swapchain, not to other windows' swapchains
+static bool IsCurrentSwapchain(IDXGISwapChain* swapchain)
+{
+    auto& state = State::Instance();
+    return state.currentSwapchain == swapchain || state.currentWrappedSwapchain == swapchain;
+}
+
 // Menu draws on the current swapchain and the last presenting window
 static bool HasMenu(IDXGISwapChain* swapchain, HWND hwnd)
 {
-    auto& state = State::Instance();
-    return state.currentSwapchain == swapchain || state.currentWrappedSwapchain == swapchain ||
-           MenuOverlayBase::Handle() == hwnd;
+    return IsCurrentSwapchain(swapchain) || MenuOverlayBase::Handle() == hwnd;
 }
 
 static void WaitForGPUIdle(IUnknown* object)
@@ -328,7 +333,8 @@ void ReportD3D12LiveObjects(ID3D12Device* device)
 #endif
 
 static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags,
-                            const DXGI_PRESENT_PARAMETERS* pPresentParameters, IUnknown* pDevice, HWND hWnd, bool isUWP)
+                            const DXGI_PRESENT_PARAMETERS* pPresentParameters, IUnknown* pDevice, HWND hWnd, bool isUWP,
+                            bool isCurrent)
 {
     if (State::Instance().isShuttingDown)
     {
@@ -362,15 +368,19 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
             ftDelta = now - _lastFrameTime;
 
         _lastFrameTime = now;
-        State::Instance().presentFrameTime = ftDelta;
 
-        if (State::Instance().currentFG == nullptr)
-            State::Instance().lastFGFrameTime = ftDelta;
+        if (isCurrent)
+        {
+            State::Instance().presentFrameTime = ftDelta;
+
+            if (State::Instance().currentFG == nullptr)
+                State::Instance().lastFGFrameTime = ftDelta;
+        }
 
         LOG_DEBUG("SyncInterval: {}, Flags: {:X}, Frametime: {:0.3f} ms", SyncInterval, Flags, ftDelta);
 
         // Update swapchain info evey frame
-        if (pSwapChain->GetDesc(&State::Instance().currentSwapchainDesc) != S_OK)
+        if (isCurrent && pSwapChain->GetDesc(&State::Instance().currentSwapchainDesc) != S_OK)
             LOG_WARN("Can't get swapchain desc!");
     }
 
@@ -390,8 +400,12 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
             LOG_DEBUG("D3D11Device captured");
 
         _dx11Device = true;
-        State::Instance().swapchainApi = DX11;
-        State::Instance().currentD3D11Device = device;
+
+        if (isCurrent)
+        {
+            State::Instance().swapchainApi = DX11;
+            State::Instance().currentD3D11Device = device;
+        }
     }
     else if (pDevice->QueryInterface(IID_PPV_ARGS(&cq)) == S_OK)
     {
@@ -404,10 +418,13 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         if (Util::CheckForRealObject(__FUNCTION__, cq, (IUnknown**) &realQueue))
             cq = realQueue;
 
-        State::Instance().swapchainApi = DX12;
+        if (isCurrent)
+        {
+            State::Instance().swapchainApi = DX12;
 
-        if (State::Instance().currentCommandQueue == nullptr)
-            State::Instance().currentCommandQueue = cq;
+            if (State::Instance().currentCommandQueue == nullptr)
+                State::Instance().currentCommandQueue = cq;
+        }
 
         if (cq->GetDevice(IID_PPV_ARGS(&device12)) == S_OK)
         {
@@ -418,7 +435,9 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
 
             _dx12Device = true;
 
-            State::Instance().currentD3D12Device = device12;
+            if (isCurrent)
+                State::Instance().currentD3D12Device = device12;
+
             D3D12Hooks::HookDevice(device12);
         }
     }
@@ -497,7 +516,12 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         {
             SyncInterval = 0;
 
-            if (State::Instance().SCAllowTearing && !State::Instance().realExclusiveFullscreen)
+            // This swapchain's flags, the global ones can belong to a released or another swapchain
+            DXGI_SWAP_CHAIN_DESC scDesc {};
+            bool allowTearing = pSwapChain->GetDesc(&scDesc) == S_OK &&
+                                (scDesc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) != 0 && scDesc.Windowed;
+
+            if (allowTearing && !State::Instance().realExclusiveFullscreen)
             {
                 LOG_DEBUG("Adding DXGI_PRESENT_ALLOW_TEARING");
                 Flags |= DXGI_PRESENT_ALLOW_TEARING;
@@ -555,7 +579,9 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         }
 
         _frameCounter++;
-        State::Instance().frameCount = _frameCounter;
+
+        if (isCurrent)
+            State::Instance().frameCount = _frameCounter;
     }
 
     LOG_DEBUG("Calling original present");
@@ -574,7 +600,8 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         fgPresentQueue->Release();
     }
 
-    if (presentResult == S_OK)
+    // DXGI_STATUS_OCCLUDED etc. are not errors
+    if (SUCCEEDED(presentResult))
     {
         LOG_DEBUG("Original present result: {:X}", (UINT) presentResult);
     }
@@ -597,6 +624,88 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
     }
 
     return presentResult;
+}
+
+static void UpdateSCBuffers(IDXGISwapChain* real, IDXGISwapChain1* real1, UINT bufferCount)
+{
+    if (bufferCount == 0 && real1 != nullptr)
+    {
+        DXGI_SWAP_CHAIN_DESC1 desc {};
+
+        if (real1->GetDesc1(&desc) == S_OK)
+            bufferCount = desc.BufferCount;
+    }
+
+    std::vector<IUnknown*> buffers;
+
+    for (UINT i = 0; i < bufferCount; i++)
+    {
+        IUnknown* buffer = nullptr;
+
+        // Same pointer the game creates its views with
+        if (real->GetBuffer(i, __uuidof(ID3D12Resource), (void**) &buffer) == S_OK)
+        {
+            buffers.push_back(buffer);
+            buffer->Release();
+        }
+    }
+
+    State::Instance().SetSCBuffers(std::move(buffers));
+}
+
+// OptiScaler FG's swapchain wraps this one, the game renders to FG's buffers which keep their format
+static bool UseForceHDR()
+{
+    return Config::Instance()->ForceHDR.value_or_default() && State::Instance().currentFGSwapchain == nullptr;
+}
+
+// Only D3D12 views of the buffers are forced to the new format
+static void ForceHDRFormat(IUnknown* device, DXGI_FORMAT& format)
+{
+    if (!UseForceHDR() || device == nullptr)
+        return;
+
+    ID3D12CommandQueue* cq = nullptr;
+    if (device->QueryInterface(IID_PPV_ARGS(&cq)) != S_OK)
+        return;
+
+    cq->Release();
+    format = Config::Instance()->UseHDR10.value_or_default() ? DXGI_FORMAT_R10G10B10A2_UNORM
+                                                             : DXGI_FORMAT_R16G16B16A16_FLOAT;
+}
+
+static void SetForcedHDRColorSpace(IDXGISwapChain3* swapchain)
+{
+    LOG_INFO("Force HDR on");
+
+    if (swapchain == nullptr || Config::Instance()->SkipColorSpace.value_or_default())
+        return;
+
+    DXGI_COLOR_SPACE_TYPE hdrCS = Config::Instance()->UseHDR10.value_or_default()
+                                      ? DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020
+                                      : DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709;
+
+    UINT css = 0;
+    auto result = swapchain->CheckColorSpaceSupport(hdrCS, &css);
+
+    if (result != S_OK)
+    {
+        LOG_ERROR("CheckColorSpaceSupport error: {:X}", (UINT) result);
+        return;
+    }
+
+    if (DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT & css)
+    {
+        result = swapchain->SetColorSpace1(hdrCS);
+
+        if (result != S_OK)
+        {
+            LOG_ERROR("SetColorSpace1 error: {:X}", (UINT) result);
+            return;
+        }
+    }
+
+    LOG_INFO("HDR color space is set");
 }
 
 WrappedIDXGISwapChain4::WrappedIDXGISwapChain4(IDXGISwapChain* real, IUnknown* pDevice, HWND hWnd, UINT flags,
@@ -635,6 +744,11 @@ WrappedIDXGISwapChain4::~WrappedIDXGISwapChain4() {}
 //
 HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::QueryInterface(REFIID riid, void** ppvObject)
 {
+    if (ppvObject == nullptr)
+        return E_POINTER;
+
+    *ppvObject = nullptr;
+
     LOG_TRACE("Caller: {}", Util::WhoIsTheCaller(_ReturnAddress()));
 
     if (riid == __uuidof(IDXGISwapChain))
@@ -751,8 +865,7 @@ ULONG STDMETHODCALLTYPE WrappedIDXGISwapChain4::Release()
             OwnedLockGuard lock(_localMutex, 999);
 #endif
 
-            const bool isCurrent =
-                State::Instance().currentSwapchain == this || State::Instance().currentWrappedSwapchain == this;
+            const bool isCurrent = IsCurrentSwapchain(this);
 
             // Menu's last command list can still be running
             if (HasMenu(this, _handle))
@@ -769,6 +882,12 @@ ULONG STDMETHODCALLTYPE WrappedIDXGISwapChain4::Release()
 
             if (State::Instance().currentRealSwapchain == _real)
                 State::Instance().currentRealSwapchain = nullptr;
+
+            if (isCurrent && State::Instance().currentCommandQueue == _device)
+                State::Instance().currentCommandQueue = nullptr;
+
+            if (isCurrent)
+                State::Instance().SetSCBuffers({});
 
             auto fg = State::Instance().currentFG;
             if (isCurrent && fg != nullptr && fg->Mutex.getOwner() != 1 && fg->SwapchainContext() != nullptr)
@@ -852,11 +971,12 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::Present(UINT SyncInterval, UIN
 
     if ((Flags & DXGI_PRESENT_TEST) == 0)
     {
-        result = LocalPresent(_real, SyncInterval, Flags, nullptr, _device, _handle, _uwp);
+        auto isCurrent = IsCurrentSwapchain(this) || State::Instance().currentSwapchain == nullptr;
+        result = LocalPresent(_real, SyncInterval, Flags, nullptr, _device, _handle, _uwp, isCurrent);
 
         // When Reflex can't be used to limit, sleep in present
         // DXVK's DXGI presents through Vulkan where the limiter already sleeps
-        if (!State::Instance().reflexLimitsFps && State::Instance().activeFgOutput == FGOutput::NoFG &&
+        if (isCurrent && !State::Instance().reflexLimitsFps && State::Instance().activeFgOutput == FGOutput::NoFG &&
             !IdentifyGpu::getPrimaryGpu().dxgiIsDxvk && !InputCommon::can_limit_fps())
             FrameLimit::sleep(false);
     }
@@ -902,11 +1022,12 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::SetFullscreenState(BOOL Fullsc
             }
         }
 
-        State::Instance().realExclusiveFullscreen = Fullscreen;
-
         result = _real->SetFullscreenState(Fullscreen, pTarget);
 
-        if (result != S_OK)
+        if (result == S_OK && IsCurrentSwapchain(this))
+            State::Instance().realExclusiveFullscreen = Fullscreen;
+
+        if (FAILED(result))
             LOG_ERROR("result: {:X}", (UINT) result);
         else
             LOG_DEBUG("result: {:X}", result);
@@ -968,13 +1089,22 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
         State::Instance().currentFG == nullptr)
     {
         LOG_DEBUG("Overriding flags");
-        SwapChainFlags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
 
-        if (BufferCount < 2)
+        // ALLOW_TEARING can't change on resize
+        DXGI_SWAP_CHAIN_DESC scDesc {};
+        if (_real->GetDesc(&scDesc) == S_OK)
+        {
+            SwapChainFlags = (SwapChainFlags & ~DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) |
+                             (scDesc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING);
+        }
+
+        // 0 keeps the current count
+        if (BufferCount == 1)
             BufferCount = 2;
     }
 
-    State::Instance().SCAllowTearing = (SwapChainFlags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) > 0;
+    if (IsCurrentSwapchain(this))
+        State::Instance().SCAllowTearing = (SwapChainFlags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) > 0;
 
     LOG_DEBUG("BufferCount: {0}, Width: {1}, Height: {2}, NewFormat: {3}, SwapChainFlags: {4:X}", BufferCount, Width,
               Height, (UINT) NewFormat, SwapChainFlags);
@@ -1038,6 +1168,9 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
 #endif
 #endif
 
+    if (IsCurrentSwapchain(this))
+        ForceHDRFormat(_device, NewFormat);
+
     if (Config::Instance()->FGDontUseSwapchainBuffers.value_or_default())
     {
         ScopedSkipHeapCapture skipHeapCapture {};
@@ -1052,7 +1185,8 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
     }
 
     // Game recreates its views before the next present, resource tracking filters them by swapchain size
-    if (result == S_OK && _real->GetDesc(&State::Instance().currentSwapchainDesc) != S_OK)
+    if (SUCCEEDED(result) && IsCurrentSwapchain(this) &&
+        _real->GetDesc(&State::Instance().currentSwapchainDesc) != S_OK)
         LOG_WARN("Can't get swapchain desc!");
 
     if (result == DXGI_ERROR_DEVICE_REMOVED && State::Instance().currentD3D12Device != nullptr)
@@ -1063,7 +1197,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
         ReadDxgiInfoQueue();
 #endif
 
-    if (result == S_OK && State::Instance().currentFeature == nullptr)
+    if (SUCCEEDED(result) && State::Instance().currentFeature == nullptr)
     {
         State::Instance().screenWidth = static_cast<float>(Width);
         State::Instance().screenHeight = static_cast<float>(Height);
@@ -1073,73 +1207,11 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
 
     // Crude implementation of EndlesslyFlowering's AutoHDR-ReShade
     // https://github.com/EndlesslyFlowering/AutoHDR-ReShade
-    if (Config::Instance()->ForceHDR.value_or_default())
-    {
-        LOG_INFO("Force HDR on");
+    if (SUCCEEDED(result) && UseForceHDR())
+        SetForcedHDRColorSpace(_real3);
 
-        do
-        {
-            if (_real3 == nullptr)
-                break;
-
-            NewFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
-            DXGI_COLOR_SPACE_TYPE hdrCS = DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709;
-
-            if (Config::Instance()->UseHDR10.value_or_default())
-            {
-                NewFormat = DXGI_FORMAT_R10G10B10A2_UNORM;
-                hdrCS = DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
-            }
-
-            if (!Config::Instance()->SkipColorSpace.value_or_default())
-            {
-                UINT css = 0;
-
-                result = _real3->CheckColorSpaceSupport(hdrCS, &css);
-
-                if (result != S_OK)
-                {
-                    LOG_ERROR("CheckColorSpaceSupport error: {:X}", (UINT) result);
-                    break;
-                }
-
-                if (DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT & css)
-                {
-                    result = _real3->SetColorSpace1(hdrCS);
-
-                    if (result != S_OK)
-                    {
-                        LOG_ERROR("SetColorSpace1 error: {:X}", (UINT) result);
-                        break;
-                    }
-                }
-
-                LOG_INFO("HDR format and color space are set");
-            }
-
-        } while (false);
-    }
-
-    State::Instance().scBuffers.clear();
-    UINT bc = BufferCount;
-    if (bc == 0 && _real1 != nullptr)
-    {
-        DXGI_SWAP_CHAIN_DESC1 desc {};
-
-        if (_real1->GetDesc1(&desc) == S_OK)
-            bc = desc.BufferCount;
-    }
-
-    for (UINT i = 0; i < bc; i++)
-    {
-        IUnknown* buffer;
-
-        if (_real->GetBuffer(i, IID_PPV_ARGS(&buffer)) == S_OK)
-        {
-            State::Instance().scBuffers.push_back(buffer);
-            buffer->Release();
-        }
-    }
+    if (SUCCEEDED(result) && UseForceHDR() && IsCurrentSwapchain(this))
+        UpdateSCBuffers(_real, _real1, BufferCount);
 
     LOG_DEBUG("result: {0:X}", (UINT) result);
 
@@ -1206,11 +1278,12 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::Present1(UINT SyncInterval, UI
 
     if ((Flags & DXGI_PRESENT_TEST) == 0)
     {
-        result = LocalPresent(_real1, SyncInterval, Flags, pPresentParameters, _device, _handle, _uwp);
+        auto isCurrent = IsCurrentSwapchain(this) || State::Instance().currentSwapchain == nullptr;
+        result = LocalPresent(_real1, SyncInterval, Flags, pPresentParameters, _device, _handle, _uwp, isCurrent);
 
         // When Reflex can't be used to limit, sleep in present
         // DXVK's DXGI presents through Vulkan where the limiter already sleeps
-        if (!State::Instance().reflexLimitsFps && State::Instance().activeFgOutput == FGOutput::NoFG &&
+        if (isCurrent && !State::Instance().reflexLimitsFps && State::Instance().activeFgOutput == FGOutput::NoFG &&
             !IdentifyGpu::getPrimaryGpu().dxgiIsDxvk && !InputCommon::can_limit_fps())
             FrameLimit::sleep(false);
     }
@@ -1344,12 +1417,12 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
 
     if (ppPresentQueue != nullptr && *ppPresentQueue != nullptr)
     {
-        auto state = &State::Instance();
-        state->currentCommandQueue = (ID3D12CommandQueue*) *ppPresentQueue;
+        if (IsCurrentSwapchain(this))
+            State::Instance().currentCommandQueue = (ID3D12CommandQueue*) *ppPresentQueue;
 
-        if (_device != state->currentCommandQueue)
+        if (_device != *ppPresentQueue)
         {
-            _device = state->currentCommandQueue;
+            _device = *ppPresentQueue;
             WaitForGPUIdle(_device);
         }
     }
@@ -1374,16 +1447,30 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
         State::Instance().currentFG == nullptr)
     {
         LOG_DEBUG("Overriding flags");
-        SwapChainFlags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
 
-        if (BufferCount < 2)
+        // ALLOW_TEARING can't change on resize
+        DXGI_SWAP_CHAIN_DESC scDesc {};
+        if (_real->GetDesc(&scDesc) == S_OK)
+        {
+            SwapChainFlags = (SwapChainFlags & ~DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) |
+                             (scDesc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING);
+        }
+
+        // 0 keeps the current count
+        if (BufferCount == 1)
             BufferCount = 2;
     }
 
-    State::Instance().SCAllowTearing = (SwapChainFlags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) > 0;
+    if (IsCurrentSwapchain(this))
+        State::Instance().SCAllowTearing = (SwapChainFlags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) > 0;
 
     LOG_DEBUG("BufferCount: {}, Width: {}, Height: {}, NewFormat: {}, SwapChainFlags: {:X}", BufferCount, Width, Height,
               (UINT) Format, SwapChainFlags);
+
+    if (IsCurrentSwapchain(this))
+        ForceHDRFormat(_device, Format);
+
+    bool skResized = false;
 
     // Release swapchain backbuffers to prevent errors when resizing
     const bool isUsingOptiFgFeature =
@@ -1395,6 +1482,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
         if (_real->QueryInterface(IID_IUnwrappedDXGISwapChain, (void**) &skSC) == S_OK && skSC != nullptr)
         {
             skSC->Release();
+            skResized = true;
             LOG_DEBUG(
                 "Found SK swapchain, skip releasing backbuffersand using ResizeBuffers instead of ResizeBuffers1");
 
@@ -1465,7 +1553,11 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
 #endif
 #endif
 
-    if (Config::Instance()->FGDontUseSwapchainBuffers.value_or_default())
+    if (skResized)
+    {
+        LOG_DEBUG("Resized with ResizeBuffers, result: {:X}", (UINT) result);
+    }
+    else if (Config::Instance()->FGDontUseSwapchainBuffers.value_or_default())
     {
         ScopedSkipHeapCapture skipHeapCapture {};
 
@@ -1481,7 +1573,8 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
     }
 
     // Game recreates its views before the next present, resource tracking filters them by swapchain size
-    if (result == S_OK && _real->GetDesc(&State::Instance().currentSwapchainDesc) != S_OK)
+    if (SUCCEEDED(result) && IsCurrentSwapchain(this) &&
+        _real->GetDesc(&State::Instance().currentSwapchainDesc) != S_OK)
         LOG_WARN("Can't get swapchain desc!");
 
     if (result == DXGI_ERROR_DEVICE_REMOVED && State::Instance().currentD3D12Device != nullptr)
@@ -1492,7 +1585,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
         ReadDxgiInfoQueue();
 #endif
 
-    if (result == S_OK && State::Instance().currentFeature == nullptr)
+    if (SUCCEEDED(result) && State::Instance().currentFeature == nullptr)
     {
         State::Instance().screenWidth = static_cast<float>(Width);
         State::Instance().screenHeight = static_cast<float>(Height);
@@ -1502,70 +1595,11 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
 
     // Crude implementation of EndlesslyFlowering's AutoHDR-ReShade
     // https://github.com/EndlesslyFlowering/AutoHDR-ReShade
-    if (Config::Instance()->ForceHDR.value_or_default())
-    {
-        LOG_INFO("Force HDR on");
+    if (SUCCEEDED(result) && UseForceHDR())
+        SetForcedHDRColorSpace(_real3);
 
-        do
-        {
-            Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-            DXGI_COLOR_SPACE_TYPE hdrCS = DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709;
-
-            if (Config::Instance()->UseHDR10.value_or_default())
-            {
-                Format = DXGI_FORMAT_R10G10B10A2_UNORM;
-                hdrCS = DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
-            }
-
-            if (!Config::Instance()->SkipColorSpace.value_or_default())
-            {
-                UINT css = 0;
-
-                auto result = _real3->CheckColorSpaceSupport(hdrCS, &css);
-
-                if (result != S_OK)
-                {
-                    LOG_ERROR("CheckColorSpaceSupport error: {:X}", (UINT) result);
-                    break;
-                }
-
-                if (DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT & css)
-                {
-                    result = _real3->SetColorSpace1(hdrCS);
-
-                    if (result != S_OK)
-                    {
-                        LOG_ERROR("SetColorSpace1 error: {:X}", (UINT) result);
-                        break;
-                    }
-                }
-
-                LOG_INFO("HDR format and color space are set");
-            }
-
-        } while (false);
-    }
-
-    State::Instance().scBuffers.clear();
-    UINT bc = BufferCount;
-    if (bc == 0 && _real1 != nullptr)
-    {
-        DXGI_SWAP_CHAIN_DESC1 desc {};
-
-        if (_real1->GetDesc1(&desc) == S_OK)
-            bc = desc.BufferCount;
-    }
-
-    for (UINT i = 0; i < bc; i++)
-    {
-        IUnknown* buffer;
-
-        if (_real->GetBuffer(i, IID_PPV_ARGS(&buffer)) == S_OK)
-        {
-            State::Instance().scBuffers.push_back(buffer);
-            buffer->Release();
-        }
-    }
+    if (SUCCEEDED(result) && UseForceHDR() && IsCurrentSwapchain(this))
+        UpdateSCBuffers(_real, _real1, BufferCount);
 
     LOG_DEBUG("result: {0:X}", (UINT) result);
 

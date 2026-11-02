@@ -71,6 +71,7 @@ class IFGFeature
     UINT _reset[BUFFER_COUNT] = {};
 
     UINT64 _frameCount = 0;
+    bool _allowLowerFrameId = false;
     UINT64 _lastDispatchedFrame = 0;
     UINT64 _lastFGFrame = 0;
     bool _waitingNewFrameData = false;

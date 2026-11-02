@@ -609,7 +609,7 @@ bool FSRFG_Vk::UsesDriver() const { return _ffxSwapchain == FSR4DriverProviderVk
 
 void FSRFG_Vk::DestroyFGContext()
 {
-    Deactivate();
+    Disable();
 
     if (_fgContext == nullptr)
         return;
@@ -705,7 +705,7 @@ void FSRFG_Vk::EvaluateState(FG_Constants& fgConstants)
     else
     {
         if (IsActive())
-            Deactivate();
+            Disable();
 
         // The change flags are cleared below, so a pending recreation (e.g. FFX FG version) must happen now
         if (state.scChanged)

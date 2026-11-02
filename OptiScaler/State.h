@@ -12,6 +12,7 @@
 #include <set>
 #include <deque>
 #include <mutex>
+#include <shared_mutex>
 #include <sl_dlss_g.h>
 #include <vulkan/vulkan.h>
 #include <ankerl/unordered_dense.h>
@@ -417,7 +418,6 @@ class State
     UINT SCLastFlags = 0;
 
     // HDR
-    std::vector<IUnknown*> scBuffers;
     OutputColorSpace outputColorSpace {};
     bool hdrOutputActive = false;
 
@@ -513,7 +513,7 @@ class State
         if (_serveOwner == 0 || _serveOwner == owner)
         {
             _serveOriginal = false;
-            _skipOwner = 0;
+            _serveOwner = 0;
         }
     };
 
@@ -522,7 +522,7 @@ class State
         if (_serveOwner == 0 || _serveOwner == owner)
         {
             _serveOriginal = true;
-            _skipOwner = owner;
+            _serveOwner = owner;
         }
     };
 
@@ -533,7 +533,23 @@ class State
     }
     static bool ServeOriginal() { return _serveOriginal; }
 
+    // Back buffers of the game's swapchain, read from view creation on any thread
+    bool IsSCBuffer(IUnknown* resource)
+    {
+        std::shared_lock<std::shared_mutex> lock(_scBuffersMutex);
+        return std::find(_scBuffers.begin(), _scBuffers.end(), resource) != _scBuffers.end();
+    }
+
+    void SetSCBuffers(std::vector<IUnknown*> buffers)
+    {
+        std::unique_lock<std::shared_mutex> lock(_scBuffersMutex);
+        _scBuffers = std::move(buffers);
+    }
+
   private:
+    std::vector<IUnknown*> _scBuffers;
+    std::shared_mutex _scBuffersMutex;
+
     inline static bool _skipChecks = false;
     inline static std::map<UINT, std::string> _skipDllName;
     inline static UINT _skipOwner = 0;

@@ -366,11 +366,16 @@ static int OutputMaxInterpolationCount()
         static int xefgMax = 0;
         static bool xefgQueried = false;
 
+        // Current device is set with the swapchain, before it use the latest created one
+        auto device = state.currentD3D12Device;
+        if (device == nullptr && !state.d3d12Devices.empty())
+            device = state.d3d12Devices.back();
+
         // GetState can be called every frame, only try once
-        if (!xefgQueried && state.currentD3D12Device != nullptr)
+        if (!xefgQueried && device != nullptr)
         {
             xefgQueried = true;
-            xefgMax = XeFG_Dx12::QueryMaxInterpolationCount(state.currentD3D12Device);
+            xefgMax = XeFG_Dx12::QueryMaxInterpolationCount(device);
         }
 
         if (xefgMax > 0)

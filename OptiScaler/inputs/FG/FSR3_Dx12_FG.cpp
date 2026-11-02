@@ -406,7 +406,7 @@ static Fsr3::FfxErrorCode hkffxCreateFrameinterpolationSwapchainDX12(DXGI_SWAP_C
 
     auto result = dxgiFactory->CreateSwapChain(queue, desc, (IDXGISwapChain**) &outGameSwapChain);
 
-    return result == S_OK ? Fsr3::FFX_OK : Fsr3::FFX_ERROR_BACKEND_API_ERROR;
+    return SUCCEEDED(result) ? Fsr3::FFX_OK : Fsr3::FFX_ERROR_BACKEND_API_ERROR;
 }
 
 static Fsr3::FfxErrorCode hkffxCreateFrameinterpolationSwapchainForHwndDX12(
@@ -437,7 +437,7 @@ static Fsr3::FfxErrorCode hkffxCreateFrameinterpolationSwapchainForHwndDX12(
                                             (IDXGISwapChain1**) &outGameSwapChain);
     }
 
-    return result == S_OK ? Fsr3::FFX_OK : Fsr3::FFX_ERROR_BACKEND_API_ERROR;
+    return SUCCEEDED(result) ? Fsr3::FFX_OK : Fsr3::FFX_ERROR_BACKEND_API_ERROR;
 }
 
 static Fsr3::FfxErrorCode hkffxWaitForPresents(Fsr3::FfxSwapchain gameSwapChain) { return Fsr3::FFX_OK; }

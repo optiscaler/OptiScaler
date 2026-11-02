@@ -6,6 +6,7 @@
 
 #include <proxies/KernelBase_Proxy.h>
 #include <proxies/Ntdll_Proxy.h>
+#include <misc/IdentifyGpu.h>
 
 #include <detours/detours.h>
 
@@ -56,7 +57,20 @@ HMODULE LoadDriverDll(const wchar_t* name)
         }
     }
 
+    // Systems with two GPUs of a vendor have a driver package for each, the primary GPU's goes first
+    auto primaryStore = IdentifyGpu::getPrimaryGpu().driverStore;
+    std::vector<std::filesystem::path> storePaths;
+
+    if (!primaryStore.empty())
+        storePaths.push_back(primaryStore);
+
     for (const auto& [luid, path] : Util::GetDriverStore())
+    {
+        if (path != primaryStore)
+            storePaths.push_back(path);
+    }
+
+    for (const auto& path : storePaths)
     {
         auto dllPath = path / name;
         LOG_DEBUG("Trying to load: {}", wstring_to_string(dllPath.c_str()));

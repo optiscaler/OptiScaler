@@ -31,6 +31,9 @@ static void InitD3D12DeviceForLuma(IDXGIFactory* factory)
 
     State::Instance().currentD3D12Device = WithDx12::RequestD3D12Device(D3D_FEATURE_LEVEL_11_0, hardwareAdapter);
 
+    if (hardwareAdapter != nullptr)
+        hardwareAdapter->Release();
+
     LOG_DEBUG("currentD3D12Device: {:X}", (size_t) State::Instance().currentD3D12Device);
 }
 

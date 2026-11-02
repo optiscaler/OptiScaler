@@ -41,6 +41,15 @@ static HANDLE _semaphore = nullptr;
 inline static std::vector<void*> oldBackBuffers;
 #endif
 
+// Keeps a reference to the FG swapchain's queue
+static void SetCurrentCommandQueue(ID3D12CommandQueue* cq)
+{
+    if (currentCommandQueue != nullptr)
+        currentCommandQueue->Release();
+
+    currentCommandQueue = cq;
+}
+
 static bool WaitForQueueIdle(ID3D12CommandQueue* queue)
 {
     std::scoped_lock lock(resizeFenceMutex);
@@ -311,7 +320,8 @@ HRESULT FGHooks::CreateSwapChain(IDXGIFactory* pFactory, IUnknown* pDevice, DXGI
 
         // Looks like game is creating new swapchain,
         // without releasing old one, be sure gpu is in idle state
-        if (State::Instance().currentFGSwapchain != nullptr)
+        if (scResult && !Config::Instance()->FGPreserveSwapChain.value_or_default() &&
+            State::Instance().currentFGSwapchain != nullptr)
         {
             LOG_WARN("Looks like game is creating new swapchain, without releasing old one!");
 
@@ -345,11 +355,13 @@ HRESULT FGHooks::CreateSwapChain(IDXGIFactory* pFactory, IUnknown* pDevice, DXGI
             resizeFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
         }
 
+        SetCurrentCommandQueue(cq);
         SetFGSwapchain(*ppSwapChain, pDesc->OutputWindow);
 
         return S_OK;
     }
 
+    cq->Release();
     return E_INVALIDARG;
 }
 
@@ -425,7 +437,8 @@ HRESULT FGHooks::CreateSwapChainForHwnd(IDXGIFactory* pFactory, IUnknown* pDevic
 
         // Looks like game is creating new swapchain,
         // without releasing old one, be sure gpu is in idle state
-        if (State::Instance().currentFGSwapchain != nullptr)
+        if (scResult && !Config::Instance()->FGPreserveSwapChain.value_or_default() &&
+            State::Instance().currentFGSwapchain != nullptr)
         {
             LOG_WARN("Looks like game is creating new swapchain, without releasing old one!");
 
@@ -459,11 +472,13 @@ HRESULT FGHooks::CreateSwapChainForHwnd(IDXGIFactory* pFactory, IUnknown* pDevic
             resizeFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
         }
 
+        SetCurrentCommandQueue(cq);
         SetFGSwapchain((IDXGISwapChain*) *ppSwapChain, hWnd);
 
         return S_OK;
     }
 
+    cq->Release();
     return E_INVALIDARG;
 }
 
@@ -487,6 +502,9 @@ void FGHooks::SetFGSwapchain(IDXGISwapChain* pSwapChain, HWND hWnd)
 
     State::Instance().currentFGSwapchain = pSwapChain;
     State::Instance().currentSwapchain = pSwapChain;
+
+    if (oldSwapChain == pSwapChain)
+        oldSwapChain = nullptr;
 
     HookFGSwapchain(pSwapChain);
 }
@@ -635,8 +653,6 @@ HRESULT FGHooks::hkSetFullscreenState(IDXGISwapChain* This, BOOL Fullscreen, IDX
         }
     }
 
-    State::Instance().realExclusiveFullscreen = Fullscreen;
-
     if (State::Instance().activeFgOutput == FGOutput::XeFG && Fullscreen)
         LOG_WARN("Using exclusive fullscreen with XeFG!!!");
 
@@ -647,6 +663,9 @@ HRESULT FGHooks::hkSetFullscreenState(IDXGISwapChain* This, BOOL Fullscreen, IDX
         result = o_FGSCSetFullscreenState(This, Fullscreen, pTarget);
         LOG_DEBUG("Fullscreen: {}, pTarget: {:X}, Result: {:X}", Fullscreen, (size_t) pTarget, (UINT) result);
     }
+
+    if (result == S_OK)
+        State::Instance().realExclusiveFullscreen = Fullscreen;
 
     if (result == S_OK && modeChanged)
     {
@@ -1133,8 +1152,17 @@ HRESULT FGHooks::hkResizeBuffers1(IDXGISwapChain3* This, UINT BufferCount, UINT 
         ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
         _skipResize = true;
 
-        result = o_FGSCResizeBuffers1(This, BufferCount, Width, Height, Format, SwapChainFlags, pCreationNodeMask,
-                                      ppPresentQueue);
+        // FSR FG proxy doesn't implement ResizeBuffers1, it returns S_OK without resizing.
+        // Called through the vtable, _skipResize passes the hooked class to its original
+        if (State::Instance().activeFgOutput == FGOutput::FSRFG)
+        {
+            result = This->ResizeBuffers(BufferCount, Width, Height, Format, SwapChainFlags);
+        }
+        else
+        {
+            result = o_FGSCResizeBuffers1(This, BufferCount, Width, Height, Format, SwapChainFlags, pCreationNodeMask,
+                                          ppPresentQueue);
+        }
 
         _skipResize = false;
     }
@@ -1299,15 +1327,15 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
 
                 context->Release();
             }
-            else if (state.swapchainInteropApi == SwapchainInteropApi::None && state.currentCommandQueue != nullptr)
+            else if (state.swapchainInteropApi == SwapchainInteropApi::None && currentCommandQueue != nullptr)
             {
-                if (upscalerTimeOpt = currentFeature->ReadUpscalerTime(state.currentCommandQueue);
+                if (upscalerTimeOpt = currentFeature->ReadUpscalerTime(currentCommandQueue);
                     upscalerTimeOpt.has_value())
                 {
-                    currentFeature->ReadDetailedGpuTimes(state.currentCommandQueue, state.detailedGpuTimes);
+                    currentFeature->ReadDetailedGpuTimes(currentCommandQueue, state.detailedGpuTimes);
                 }
 
-                if (auto fgGpuTime = fg->ReadGpuTime(state.currentCommandQueue))
+                if (auto fgGpuTime = fg->ReadGpuTime(currentCommandQueue))
                 {
                     state.detailedGpuTimes.emplace_back(DetailedGpuTime { fg->Name(), fgGpuTime.value(), false });
                 }

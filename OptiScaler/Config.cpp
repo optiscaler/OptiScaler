@@ -640,8 +640,8 @@ bool Config::Reload(std::filesystem::path iniPath)
                 AnisotropyOverride.reset();
 
             AnisotropySkipPointFilter.set_from_config(readBool("Anisotropy", "SkipPointFilter"));
-            AnisotropyModifyComp.set_from_config(readBool("Anisotropy", "AFModifyComparison"));
-            AnisotropyModifyMinMax.set_from_config(readBool("Anisotropy", "AFModifyMinMax"));
+            AnisotropyModifyComp.set_from_config(readBool("Anisotropy", "ModifyComparison"));
+            AnisotropyModifyMinMax.set_from_config(readBool("Anisotropy", "ModifyMinMax"));
         }
 
         // Mipmap

@@ -4,6 +4,7 @@
 #include <Config.h>
 #include <State.h>
 #include <Util.h>
+#include <hooks/D3D12_Hooks.h>
 
 #include <menu/menu_overlay_dx.h>
 
@@ -564,34 +565,16 @@ bool ResTrack_Dx12::IsHudFixActive()
 
 #pragma region Resource input hooks
 
-// Swapchain buffers get the HDR format on resize, their views must match it
-static DXGI_FORMAT ForcedHDRFormat(ID3D12Resource* resource)
-{
-    if (resource == nullptr || !Config::Instance()->ForceHDR.value_or_default())
-        return DXGI_FORMAT_UNKNOWN;
-
-    auto& scBuffers = State::Instance().scBuffers;
-    if (std::find(scBuffers.begin(), scBuffers.end(), resource) == scBuffers.end())
-        return DXGI_FORMAT_UNKNOWN;
-
-    auto format = Config::Instance()->UseHDR10.value_or_default() ? DXGI_FORMAT_R10G10B10A2_UNORM
-                                                                  : DXGI_FORMAT_R16G16B16A16_FLOAT;
-
-    // A failed resize keeps the old format
-    return resource->GetDesc().Format == format ? format : DXGI_FORMAT_UNKNOWN;
-}
-
 void ResTrack_Dx12::hkCreateRenderTargetView(ID3D12Device* This, ID3D12Resource* pResource,
                                              D3D12_RENDER_TARGET_VIEW_DESC* pDesc,
                                              D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor)
 {
     // force hdr for swapchain buffer, the game's desc can be read only
     D3D12_RENDER_TARGET_VIEW_DESC hdrDesc {};
-    if (auto hdrFormat = pDesc != nullptr ? ForcedHDRFormat(pResource) : DXGI_FORMAT_UNKNOWN;
-        hdrFormat != DXGI_FORMAT_UNKNOWN)
+    if (pDesc != nullptr && D3D12Hooks::IsForcedHDRBuffer(pResource))
     {
         hdrDesc = *pDesc;
-        hdrDesc.Format = hdrFormat;
+        hdrDesc.Format = D3D12Hooks::ForcedHDRFormat();
         pDesc = &hdrDesc;
     }
 
@@ -630,11 +613,10 @@ void ResTrack_Dx12::hkCreateShaderResourceView(ID3D12Device* This, ID3D12Resourc
 {
     // force hdr for swapchain buffer, the game's desc can be read only
     D3D12_SHADER_RESOURCE_VIEW_DESC hdrDesc {};
-    if (auto hdrFormat = pDesc != nullptr ? ForcedHDRFormat(pResource) : DXGI_FORMAT_UNKNOWN;
-        hdrFormat != DXGI_FORMAT_UNKNOWN)
+    if (pDesc != nullptr && D3D12Hooks::IsForcedHDRBuffer(pResource))
     {
         hdrDesc = *pDesc;
-        hdrDesc.Format = hdrFormat;
+        hdrDesc.Format = D3D12Hooks::ForcedHDRFormat();
         pDesc = &hdrDesc;
     }
 
@@ -674,11 +656,10 @@ void ResTrack_Dx12::hkCreateUnorderedAccessView(ID3D12Device* This, ID3D12Resour
 {
     // force hdr for swapchain buffer, the game's desc can be read only
     D3D12_UNORDERED_ACCESS_VIEW_DESC hdrDesc {};
-    if (auto hdrFormat = pDesc != nullptr ? ForcedHDRFormat(pResource) : DXGI_FORMAT_UNKNOWN;
-        hdrFormat != DXGI_FORMAT_UNKNOWN)
+    if (pDesc != nullptr && D3D12Hooks::IsForcedHDRBuffer(pResource))
     {
         hdrDesc = *pDesc;
-        hdrDesc.Format = hdrFormat;
+        hdrDesc.Format = D3D12Hooks::ForcedHDRFormat();
         pDesc = &hdrDesc;
     }
 

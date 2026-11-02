@@ -87,7 +87,7 @@ bool Reprojection_Dx12::CreateSwapchainInternal(IDXGIFactory* factory, ID3D12Com
     IDXGISwapChain* realSwapchain {};
     auto result = factory->CreateSwapChain(cmdQueue, desc, &realSwapchain);
 
-    if (result == S_OK && swapChain)
+    if (SUCCEEDED(result) && swapChain)
     {
         auto reprojectionSwapchain =
             new ReprojectionDXGISwapChain(realSwapchain, _device, desc->OutputWindow, 0, false);
@@ -116,7 +116,7 @@ bool Reprojection_Dx12::CreateSwapchain1Internal(IDXGIFactory* factory, ID3D12Co
     auto result = factory2->CreateSwapChainForHwnd(cmdQueue, hwnd, desc, pFullscreenDesc, nullptr, &realSwapchain1);
     factory2->Release();
 
-    if (result == S_OK && swapChain)
+    if (SUCCEEDED(result) && swapChain)
     {
         auto reprojectionSwapchain1 = new ReprojectionDXGISwapChain(realSwapchain1, _device, hwnd, 0, false);
 

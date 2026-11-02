@@ -200,6 +200,14 @@ void IFGFeature::SetFrameCount(UINT64 frameId)
     //    LOG_TRACE("Prevented setting frame count! Old: {}, New: {}", _frameCount, frameId);
     //}
 
+    // XeFG needs increasing frame ids, so it's only moved forward until its context is destroyed
+    if (frameId < _frameCount && State::Instance().activeFgOutput == FGOutput::XeFG && !_allowLowerFrameId)
+    {
+        LOG_TRACE("Prevented setting frame count! Old: {}, New: {}", _frameCount, frameId);
+        return;
+    }
+
+    _allowLowerFrameId = false;
     _frameCount = frameId;
 }
 

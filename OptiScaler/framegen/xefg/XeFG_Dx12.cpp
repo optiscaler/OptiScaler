@@ -182,6 +182,7 @@ bool XeFG_Dx12::DestroySwapchainContext()
         else
         {
             State::Instance().currentFGSwapchain = nullptr;
+            _allowLowerFrameId = true;
 
             // Its XeLL context isn't read anymore
             InputCommon::release_xefg_xell();
@@ -651,7 +652,7 @@ void XeFG_Dx12::Deactivate()
 
 void XeFG_Dx12::DestroyFGContext()
 {
-    Deactivate();
+    Disable();
 
     if (_fgContext != nullptr)
         _fgContext = nullptr;
@@ -1069,7 +1070,7 @@ void XeFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
     else
     {
         LOG_DEBUG("!FGEnabled");
-        Deactivate();
+        Disable();
         ReleaseResourceCopies();
         _depthInvert.reset();
 

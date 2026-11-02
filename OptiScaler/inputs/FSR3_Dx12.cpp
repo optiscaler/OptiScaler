@@ -250,13 +250,13 @@ static Fsr3::FfxErrorCode ffxFsr3ContextCreate_Dx12(Fsr3::FfxFsr3UpscalerContext
         }
     }
 
+    if (_d3d12Device == nullptr)
+        _d3d12Device = state.currentD3D12Device;
+
     // if still no device use latest created one
     // Might fixed TLOU but FMF2 still crashes
     if (_d3d12Device == nullptr && state.d3d12Devices.size() > 0)
         _d3d12Device = state.d3d12Devices[state.d3d12Devices.size() - 1];
-
-    if (_d3d12Device == nullptr)
-        _d3d12Device = state.currentD3D12Device;
 
     if (_d3d12Device == nullptr)
     {
@@ -458,13 +458,13 @@ ffxFsr3ContextCreate_Pattern_Dx12(Fsr3::FfxFsr3UpscalerContext* pContext,
         }
     }
 
+    if (_d3d12Device == nullptr)
+        _d3d12Device = state.currentD3D12Device;
+
     // if still no device use latest created one
     // Might fixed TLOU but FMF2 still crashes
     if (_d3d12Device == nullptr && state.d3d12Devices.size() > 0)
         _d3d12Device = state.d3d12Devices[state.d3d12Devices.size() - 1];
-
-    if (_d3d12Device == nullptr)
-        _d3d12Device = state.currentD3D12Device;
 
     if (_d3d12Device == nullptr)
     {

@@ -38,6 +38,7 @@ double MillisecondsNow();
 std::wstring ToLower(std::wstring value);
 
 HWND GetProcessWindow();
+bool IsOverlaySwapchain(HWND hwnd, UINT width, UINT height);
 bool GetFileVersion(std::wstring dllPath, version_t* fileVersionOut, version_t* productVersionOut = nullptr);
 std::string GetFileVersionString(std::wstring dllPath);
 bool IsSubpath(const std::filesystem::path& path, const std::filesystem::path& base);

@@ -50,7 +50,8 @@ std::string UpscalerDisplayName(Upscaler upscaler, API api)
         return "FSR 3.1";
 
     case Upscaler::FFX:
-        if (fsr4Capable && api == API::DX12)
+        // Native Vulkan gets FSR 4 from the driver
+        if (fsr4Capable && (api == API::DX12 || api == API::Vulkan))
             return "FSR 3.X/4";
         else
             return "FSR 3.X";

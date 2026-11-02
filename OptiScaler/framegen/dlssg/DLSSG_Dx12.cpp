@@ -61,7 +61,7 @@ bool DLSSG_Dx12::CreateSwapchainInternal(IDXGIFactory* factory, ID3D12CommandQue
         result = factory->CreateSwapChain(cmdQueue, desc, swapChain);
     }
 
-    if (result != S_OK)
+    if (FAILED(result))
     {
         LOG_ERROR("CreateSwapChain error: {:X}", (UINT) result);
         return false;
@@ -128,7 +128,7 @@ bool DLSSG_Dx12::CreateSwapchain1Internal(IDXGIFactory* factory, ID3D12CommandQu
         factory2->Release();
         factory2 = nullptr;
 
-        if (result != S_OK)
+        if (FAILED(result))
         {
             LOG_ERROR("CreateSwapChain error: {:X}", (UINT) result);
             return false;
@@ -165,7 +165,7 @@ void DLSSG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
 
 void DLSSG_Dx12::DestroyFGContext()
 {
-    Deactivate();
+    Disable();
     ReleaseObjects();
 }
 
@@ -298,7 +298,7 @@ void DLSSG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
     else
     {
         LOG_DEBUG("!FGEnabled");
-        Deactivate();
+        Disable();
         ReleaseResourceCopies();
 
         state.clearCapturedHudlesses = true;

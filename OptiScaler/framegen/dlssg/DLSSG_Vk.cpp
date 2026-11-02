@@ -502,18 +502,18 @@ bool DLSSG_Vk::TagResources(int fIndex)
     return true;
 }
 
-void DLSSG_Vk::DestroyFGContext() { Deactivate(); }
+void DLSSG_Vk::DestroyFGContext() { Disable(); }
 
 // The swapchain goes with the game's vkDestroySwapchainKHR
 bool DLSSG_Vk::ReleaseSwapchain(HWND hwnd)
 {
-    Deactivate();
+    Disable();
     return true;
 }
 
 bool DLSSG_Vk::Shutdown()
 {
-    Deactivate();
+    Disable();
 
     if (State::Instance().isShuttingDown && StreamlineProxy::Shutdown() != nullptr)
         StreamlineProxy::Shutdown()();

@@ -225,6 +225,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="fsr4\FSR4Presets.h" />
     <ClInclude Include="fsr4\FSR4PipelineLayouts.h" />
     <ClInclude Include="hooks\D3D12_Hooks.h" />
+    <ClInclude Include="hooks\Sampler_Overrides.h" />
     <ClInclude Include="hooks\DxgiFactory_Hooks.h" />
     <ClInclude Include="hooks\DxgiFactory_WrappedCalls.h" />
     <ClInclude Include="hooks\Dxgi_Hooks.h" />

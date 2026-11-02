@@ -1078,12 +1078,13 @@ void* FSRFG_Dx12::SwapchainContext()
 void FSRFG_Dx12::DestroyFGContext()
 {
     _frameCount = 1;
+    UpdateTarget();
     // _lastDispatchedFrame = 0;
     _version = {};
 
     LOG_DEBUG("");
 
-    Deactivate();
+    Disable();
 
     if (_fgContext != nullptr)
     {
@@ -1095,12 +1096,14 @@ void FSRFG_Dx12::DestroyFGContext()
         _fgContext = nullptr;
     }
 
+    _isActive = false;
+
     ReleaseObjects();
 }
 
 bool FSRFG_Dx12::Shutdown()
 {
-    Deactivate();
+    Disable();
 
     if (_swapChainContext != nullptr)
     {
@@ -1575,8 +1578,8 @@ void FSRFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
             // Pause for 10 frames
             UpdateTarget();
 
-            // Destroy if Swapchain has a change destroy FG Context too
-            if (State::Instance().scChanged)
+            // Destroy if Swapchain has a change destroy FG Context too, or if FG couldn't be disabled
+            if (State::Instance().scChanged || _isActive)
                 DestroyFGContext();
         }
 
@@ -1587,7 +1590,7 @@ void FSRFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
     {
         if (IsActive())
         {
-            Deactivate();
+            Disable();
 
             State::Instance().clearCapturedHudlesses = true;
             Hudfix_Dx12::ResetCounters();
@@ -1595,7 +1598,8 @@ void FSRFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
         }
 
         // The change flags are cleared below, so a pending recreation (e.g. FFX FG version) must happen now
-        if (State::Instance().scChanged)
+        // Also when FG couldn't be disabled
+        if (State::Instance().scChanged || _isActive)
             DestroyFGContext();
 
         ReleaseResourceCopies();

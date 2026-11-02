@@ -383,7 +383,7 @@ xefg_swapchain_result_t XeFGInputs::InitFromSwapChainDesc(xefg_swapchain_handle_
     IDXGISwapChain1* swapChain = nullptr;
     auto appParams = *params;
 
-    if (factory->CreateSwapChainForHwnd(queue, hwnd, desc, fullscreenDesc, nullptr, &swapChain) != S_OK)
+    if (FAILED(factory->CreateSwapChainForHwnd(queue, hwnd, desc, fullscreenDesc, nullptr, &swapChain)))
         return XEFG_SWAPCHAIN_RESULT_ERROR_HRESULT_FAILURE;
 
     appParams.pApplicationSwapChain = swapChain;

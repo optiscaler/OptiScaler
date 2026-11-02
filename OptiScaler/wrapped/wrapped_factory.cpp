@@ -248,7 +248,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGIFactory7::CreateSwapChain(IUnknown* pDevic
 {
     auto result = DxgiFactoryWrappedCalls::CreateSwapChain(_real, this, pDevice, pDesc, ppSwapChain);
 
-    if (result == S_OK)
+    if (SUCCEEDED(result))
         return result;
 
     return _real->CreateSwapChain(pDevice, pDesc, ppSwapChain);
@@ -312,7 +312,7 @@ WrappedIDXGIFactory7::CreateSwapChainForHwnd(IUnknown* pDevice, HWND hWnd, const
                                                                  pRestrictToOutput, ppSwapChain);
     }
 
-    if (result == S_OK)
+    if (SUCCEEDED(result))
         return result;
 
     return _real2->CreateSwapChainForHwnd(pDevice, hWnd, pDesc, pFullscreenDesc, pRestrictToOutput, ppSwapChain);
@@ -331,7 +331,7 @@ HRESULT __stdcall WrappedIDXGIFactory7::CreateSwapChainForCoreWindow(IUnknown* p
     auto result = DxgiFactoryWrappedCalls::CreateSwapChainForCoreWindow(_real2, pDevice, pWindow, &localDesc,
                                                                         pRestrictToOutput, ppSwapChain);
 
-    if (result == S_OK)
+    if (SUCCEEDED(result))
         return result;
 
     return _real2->CreateSwapChainForCoreWindow(pDevice, pWindow, pDesc, pRestrictToOutput, ppSwapChain);
