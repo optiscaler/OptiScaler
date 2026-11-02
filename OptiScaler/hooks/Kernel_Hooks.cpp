@@ -56,11 +56,25 @@ static inline bool IsDataFileLoad(DWORD dwFlags)
             (LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE | LOAD_LIBRARY_AS_IMAGE_RESOURCE)) != 0;
 }
 
+// Kernel32 loads end up in the hooked KernelBase ones, the same load is checked only once
+static thread_local const std::wstring* _checkedName = nullptr;
+
+struct CheckedLoadScope
+{
+    const std::wstring* _previous;
+
+    explicit CheckedLoadScope(const std::wstring& name) : _previous(_checkedName) { _checkedName = &name; }
+    ~CheckedLoadScope() { _checkedName = _previous; }
+};
+
 static inline HMODULE CheckLoad(const std::wstring& name)
 {
     do
     {
         if (State::Instance().isShuttingDown || LibraryLoadHooks::IsApiSetName(name))
+            break;
+
+        if (_checkedName != nullptr && *_checkedName == name)
             break;
 
         if (State::SkipDllChecks())
@@ -360,6 +374,7 @@ HMODULE KernelHooks::hk_K32_LoadLibraryW(LPCWSTR lpLibFileName)
     if (result != nullptr)
         return result != (HMODULE) 1337 ? result : nullptr;
 
+    CheckedLoadScope scope(name);
     return o_K32_LoadLibraryW(lpLibFileName);
 }
 
@@ -381,6 +396,7 @@ HMODULE KernelHooks::hk_K32_LoadLibraryA(LPCSTR lpLibFileName)
     if (result != nullptr)
         return result != (HMODULE) 1337 ? result : nullptr;
 
+    CheckedLoadScope scope(name);
     return o_K32_LoadLibraryA(lpLibFileName);
 }
 
@@ -404,6 +420,7 @@ HMODULE KernelHooks::hk_K32_LoadLibraryExW(LPCWSTR lpLibFileName, HANDLE hFile, 
     if (result != nullptr)
         return result != (HMODULE) 1337 ? result : nullptr;
 
+    CheckedLoadScope scope(name);
     return o_K32_LoadLibraryExW(lpLibFileName, hFile, dwFlags);
 }
 
@@ -428,6 +445,7 @@ HMODULE KernelHooks::hk_K32_LoadLibraryExA(LPCSTR lpLibFileName, HANDLE hFile, D
     if (result != nullptr)
         return result != (HMODULE) 1337 ? result : nullptr;
 
+    CheckedLoadScope scope(name);
     return o_K32_LoadLibraryExA(lpLibFileName, hFile, dwFlags);
 }
 
@@ -451,6 +469,7 @@ HMODULE KernelHooks::hk_KB_LoadLibraryExW(LPCWSTR lpLibFileName, HANDLE hFile, D
     if (result != nullptr)
         return result != (HMODULE) 1337 ? result : nullptr;
 
+    CheckedLoadScope scope(name);
     return o_KB_LoadLibraryExW(lpLibFileName, hFile, dwFlags);
 }
 

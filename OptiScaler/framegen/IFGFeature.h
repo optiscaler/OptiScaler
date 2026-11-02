@@ -99,6 +99,7 @@ class IFGFeature
 
     bool CheckForRealObject(std::string functionName, IUnknown* pObject, IUnknown** ppRealObject);
     int GetDispatchIndex(UINT64& willDispatchFrame);
+    UINT64 NextDispatchFrame();
 
     // The frame's camera and the mouse input since its simulation start, for the reprojection of the presented frame
     // Depth and motion vector sizes are left to the caller
