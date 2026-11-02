@@ -1230,13 +1230,13 @@ bool FSRFG_Dx12::ReleaseSwapchain(HWND hwnd)
     {
         State::Instance().currentFGSwapchain = nullptr;
 
-        if (_swapChainContext != nullptr)
+        // Destroying it releases the wrapped swapchain, which calls back here
+        if (auto context = _swapChainContext; context != nullptr)
         {
-            auto result = FfxApiProxy::D3D12_DestroyContext(&_swapChainContext, nullptr);
+            _swapChainContext = nullptr;
+            auto result = FfxApiProxy::D3D12_DestroyContext(&context, nullptr);
             LOG_INFO("Destroy Ffx Swapchain Result: {}({})", result, FfxApiProxy::ReturnCodeToString(result));
         }
-
-        _swapChainContext = nullptr;
     }
 
     if (Config::Instance()->FGUseMutexForSwapchain.value_or_default())
