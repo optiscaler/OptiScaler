@@ -12,6 +12,9 @@ static UINT64 _handleCounter = 23370000;
 static UINT64 _frameCounter = 0;
 static xess_context_handle_t _currentContext = nullptr;
 static VkDevice _device = nullptr;
+// Device this input initialised NGX with
+static std::atomic<VkDevice> _nvngxDevice { nullptr };
+static bool _nvngxInited = false;
 static VkInstance _instance = nullptr;
 static VkPhysicalDevice _physicalDevice = nullptr;
 static NVSDK_NGX_Resource_VK expNVRes[3] {};
@@ -129,7 +132,8 @@ xess_result_t hk_xessVKCreateContext(VkInstance instance, VkPhysicalDevice physi
     _physicalDevice = physicalDevice;
     _device = device;
 
-    if (!State::Instance().nvngxVkInited)
+    // Re-initialise NGX when the device this input initialised it with was replaced
+    if (!State::Instance().nvngxVkInited || (_nvngxInited && _nvngxDevice.load() != _device))
     {
         NVSDK_NGX_FeatureCommonInfo fcInfo {};
         auto exePath = Util::ExePath().remove_filename();
@@ -140,6 +144,9 @@ xess_result_t hk_xessVKCreateContext(VkInstance instance, VkPhysicalDevice physi
 
         if (nvResult != NVSDK_NGX_Result_Success)
             return XESS_RESULT_ERROR_UNINITIALIZED;
+
+        _nvngxDevice = _device;
+        _nvngxInited = true;
     }
 
     *phContext = (xess_context_handle_t) ++_handleCounter;
@@ -413,4 +420,10 @@ xess_result_t hk_xessVKGetRequiredDeviceFeatures(VkInstance instance, VkPhysical
     auto result = XeSSProxy::VKGetRequiredDeviceFeatures()(instance, physicalDevice, features);
 
     return result;
+}
+
+void XeSSVkDeviceDestroyed(VkDevice device)
+{
+    VkDevice expected = device;
+    _nvngxDevice.compare_exchange_strong(expected, nullptr);
 }

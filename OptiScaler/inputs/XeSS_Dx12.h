@@ -8,6 +8,7 @@
 #include "xess_d3d12_debug.h"
 
 xess_result_t hk_xessD3D12CreateContext(ID3D12Device* pDevice, xess_context_handle_t* phContext);
+void XeSSDx12DeviceDestroyed(IUnknown* device);
 xess_result_t hk_xessD3D12BuildPipelines(xess_context_handle_t hContext, ID3D12PipelineLibrary* pPipelineLibrary,
                                          bool blocking, uint32_t initFlags);
 xess_result_t hk_xessD3D12Init(xess_context_handle_t hContext, const xess_d3d12_init_params_t* pInitParams);

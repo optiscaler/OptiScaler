@@ -19,6 +19,7 @@
 #include <misc/IdentifyGpu.h>
 
 static ID3D11Device* D3D11Device = nullptr;
+static std::atomic<bool> _d3d11DeviceDestroyed { false };
 static ankerl::unordered_dense::map<unsigned int, ContextData<IFeature_Dx11>> Dx11Contexts;
 static int evalCounter = 0;
 static bool shutdown = false;
@@ -134,7 +135,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_Init_Ext(unsigned long long InApp
     if (InFeatureInfo != nullptr && InSDKVersion > 0x0000013)
         State::Instance().NVNGX_Logger = InFeatureInfo->LoggingInfo;
 
-    if (State::Instance().nvngxDx11Inited && InDevice == D3D11Device)
+    if (State::Instance().nvngxDx11Inited && InDevice == D3D11Device && !_d3d11DeviceDestroyed)
     {
         LOG_WARN("NVNGX already inited");
         return NVSDK_NGX_Result_Success;
@@ -145,7 +146,10 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_Init_Ext(unsigned long long InApp
     LOG_INFO(L"InApplicationDataPath {0}", std::wstring(InApplicationDataPath));
 
     if (InDevice)
+    {
         D3D11Device = InDevice;
+        _d3d11DeviceDestroyed = false;
+    }
 
     State::Instance().currentD3D11Device = InDevice;
     State::Instance().nvngxDx11Inited = true;
@@ -791,3 +795,9 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_EvaluateFeature(ID3D11DeviceConte
 }
 
 #pragma endregion
+
+void NVNGXDx11DeviceDestroyed(IUnknown* device)
+{
+    if (D3D11Device == device)
+        _d3d11DeviceDestroyed = true;
+}

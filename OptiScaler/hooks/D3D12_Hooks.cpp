@@ -19,6 +19,9 @@
 #include <inputs/FSR2_Dx12.h>
 #include <inputs/FSR3_Dx12.h>
 #include <inputs/NVNGX_DLSS.h>
+#include <inputs/FfxApi_Dx12.h>
+#include <inputs/FfxApiExe_Dx12.h>
+#include <inputs/XeSS_Dx12.h>
 
 #include <detours/detours.h>
 
@@ -1717,6 +1720,9 @@ static ULONG D3D12DeviceRelease(IUnknown* device, PFN_Release original)
         FSR2Dx12DeviceDestroyed(device);
         FSR3Dx12DeviceDestroyed(device);
         NVNGXDx12DeviceDestroyed(device);
+        FfxApiDx12DeviceDestroyed(device);
+        FfxApiExeDx12DeviceDestroyed(device);
+        XeSSDx12DeviceDestroyed(device);
     }
 
     return result;

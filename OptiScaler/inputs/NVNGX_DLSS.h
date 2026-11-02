@@ -1,6 +1,8 @@
 #pragma once
 
+void NVNGXDx11DeviceDestroyed(IUnknown* device);
 void NVNGXDx12DeviceDestroyed(IUnknown* device);
+void NVNGXVkDeviceDestroyed(VkDevice device);
 
 template <typename FeatureType> struct ContextData
 {

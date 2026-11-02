@@ -53,7 +53,9 @@ static std::unordered_map<FfxFsr2Context*, NVSDK_NGX_Handle*> _contexts;
 static VkDevice _vkDevice = nullptr;
 static VkPhysicalDevice _vkPhysicalDevice = nullptr;
 static PFN_vkGetDeviceProcAddr _vkDeviceProcAddress = nullptr;
-static bool _nvnxgInited = false;
+// Device this input initialised NGX with
+static std::atomic<VkDevice> _nvngxDevice { nullptr };
+static bool _nvngxInited = false;
 static bool _skipCreate = false;
 static bool _skipDispatch = false;
 static bool _skipDestroy = false;
@@ -334,13 +336,11 @@ static FfxErrorCode ffxFsr2ContextCreate_Vk(FfxFsr2Context* context, FfxFsr2Cont
     if (contextDescription->device == VK_NULL_HANDLE)
         return ccResult;
 
-    if (_vkDevice == VK_NULL_HANDLE)
-    {
-        _vkDevice = (VkDevice) contextDescription->device;
-        LOG_DEBUG("VkDevice: {:X}", (size_t) _vkDevice);
-    }
+    _vkDevice = (VkDevice) contextDescription->device;
+    LOG_DEBUG("VkDevice: {:X}", (size_t) _vkDevice);
 
-    if (!state.nvngxVkInited)
+    // Re-initialise NGX when the device this input initialised it with was replaced
+    if (!state.nvngxVkInited || (_nvngxInited && _nvngxDevice.load() != _vkDevice))
     {
         NVSDK_NGX_FeatureCommonInfo fcInfo {};
         auto exePath = Util::ExePath().remove_filename();
@@ -353,7 +353,8 @@ static FfxErrorCode ffxFsr2ContextCreate_Vk(FfxFsr2Context* context, FfxFsr2Cont
         if (nvResult != NVSDK_NGX_Result_Success)
             return FFX_ERROR_BACKEND_API_ERROR;
 
-        _nvnxgInited = true;
+        _nvngxDevice = _vkDevice;
+        _nvngxInited = true;
     }
 
     NVSDK_NGX_Parameter* params = nullptr;
@@ -760,4 +761,10 @@ void HookFSR2VkExeInputs()
         o_ffxFsr2GetScratchMemorySize_Vk = nullptr;
         o_ffxGetDevice_Vk = nullptr;
     }
+}
+
+void FSR2VkDeviceDestroyed(VkDevice device)
+{
+    VkDevice expected = device;
+    _nvngxDevice.compare_exchange_strong(expected, nullptr);
 }

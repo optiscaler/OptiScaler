@@ -21,6 +21,10 @@
 
 #include <spoofing/Vulkan_Spoofing.h>
 #include <hudfix/Hudfix_Vk.h>
+#include <inputs/NVNGX_DLSS.h>
+#include <inputs/FfxApi_Vk.h>
+#include <inputs/FSR2_Vk.h>
+#include <inputs/XeSS_Vulkan.h>
 
 #include <vulkan/vulkan.h>
 
@@ -639,6 +643,10 @@ static void hkvkDestroyDevice(VkDevice device, const VkAllocationCallbacks* pAll
             _hookedDevices.erase((uint64_t) device);
         }
         ReflexHooks::deviceDestroyed(device);
+        NVNGXVkDeviceDestroyed(device);
+        FfxApiVkDeviceDestroyed(device);
+        FSR2VkDeviceDestroyed(device);
+        XeSSVkDeviceDestroyed(device);
 
         std::scoped_lock lock(_passThroughSwapchainsMutex);
         std::erase_if(_passThroughSwapchains, [device](const auto& entry) { return entry.first == device; });
