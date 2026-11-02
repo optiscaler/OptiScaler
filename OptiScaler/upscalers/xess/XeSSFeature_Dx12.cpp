@@ -76,7 +76,6 @@ bool XeSSFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
         else if (State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
-                 State::Instance().gameEngine == GameEngineType::Unreal ||
                  State::Instance().gameQuirks & GameQuirk::ForceUnrealEngine)
         {
             Config::Instance()->ColorResourceBarrier.set_volatile_value(D3D12_RESOURCE_STATE_RENDER_TARGET);
@@ -106,7 +105,6 @@ bool XeSSFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
         else if (State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
-                 State::Instance().gameEngine == GameEngineType::Unreal ||
                  State::Instance().gameQuirks & GameQuirk::ForceUnrealEngine)
         {
             Config::Instance()->MVResourceBarrier.set_volatile_value(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
