@@ -142,6 +142,7 @@ class StreamlineHooks
     static void updateDlssgOptions();
 
     static void unhookInterposer();
+    static void forgetInterposer();
     static void hookInterposer(HMODULE slInterposer);
     static inline HMODULE hookedInterposerModule = nullptr;
 
@@ -222,6 +223,11 @@ class StreamlineHooks
     };
 
     inline static PluginHookSlot pluginSlots[(size_t) SlPlugin::Count][kMaxPluginInstances];
+
+    // Hooked slInit export, its image and bytes, a fresh image at the same address doesn't have the patch
+    inline static void* hookedInterposerInit = nullptr;
+    inline static std::wstring hookedInterposerPath;
+    inline static uint8_t hookedInterposerPatch[kPatchBytes] {};
 
     static const char* pluginName(SlPlugin plugin);
     static std::mutex& pluginMutex(SlPlugin plugin);

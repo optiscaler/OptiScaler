@@ -2025,7 +2025,39 @@ void StreamlineHooks::unhookInterposer()
         o_logCallback = nullptr;
         o_logCallback_sl1 = nullptr;
         hookedInterposerModule = nullptr;
+        hookedInterposerInit = nullptr;
+        hookedInterposerPath.clear();
     }
+}
+
+// The image and its detours are gone, nothing to detach
+void StreamlineHooks::forgetInterposer()
+{
+    o_slInit = nullptr;
+    o_slInit_sl1 = nullptr;
+    o_slSetTag = nullptr;
+    o_slSetTagForFrame = nullptr;
+    o_slEvaluateFeature = nullptr;
+    o_slSetConstants = nullptr;
+    o_slSetTag_sl1 = nullptr;
+    o_slSetConstants_interposer_sl1 = nullptr;
+    o_slEvaluateFeature_sl1 = nullptr;
+    o_slGetNativeInterface = nullptr;
+    o_slSetD3DDevice = nullptr;
+    o_slGetNewFrameToken = nullptr;
+    o_slIsFeatureSupported = nullptr;
+    o_slIsFeatureLoaded = nullptr;
+    o_slGetFeatureRequirements = nullptr;
+    o_slGetFeatureVersion = nullptr;
+    o_slGetFeatureFunction = nullptr;
+    o_slSetFeatureLoaded = nullptr;
+    o_slAllocateResources = nullptr;
+    o_slFreeResources = nullptr;
+    o_logCallback = nullptr;
+    o_logCallback_sl1 = nullptr;
+    hookedInterposerModule = nullptr;
+    hookedInterposerInit = nullptr;
+    hookedInterposerPath.clear();
 }
 
 // Call it just after sl.interposer's load or if sl.interposer is already loaded
@@ -2041,7 +2073,17 @@ void StreamlineHooks::hookInterposer(HMODULE slInterposer)
 
     // Interposer needs this or it might end in an infinite loop calling itself
     if (hookedInterposerModule == slInterposer)
-        return;
+    {
+        // Same path at the same address is the same layout, so the export can be read
+        if (hookedInterposerInit == nullptr || (GetModulePath(slInterposer) == hookedInterposerPath &&
+                                                memcmp(hookedInterposerInit, hookedInterposerPatch, kPatchBytes) == 0))
+        {
+            return;
+        }
+
+        LOG_DEBUG("sl.interposer was reloaded without its unload being seen");
+        forgetInterposer();
+    }
 
     // Looks like when reading DLL version load methods are called
     // To prevent loops disabling checks for sl.interposer.dll
@@ -2232,6 +2274,15 @@ void StreamlineHooks::hookInterposer(HMODULE slInterposer)
                 }
             }
         }
+    }
+
+    if (o_slInit != nullptr || o_slInit_sl1 != nullptr)
+    {
+        hookedInterposerInit = KernelBaseProxy::GetProcAddress_()(slInterposer, "slInit");
+        hookedInterposerPath = GetModulePath(slInterposer);
+
+        if (hookedInterposerInit != nullptr)
+            memcpy(hookedInterposerPatch, hookedInterposerInit, kPatchBytes);
     }
 
     State::EnableChecks(owner);
@@ -2604,6 +2655,13 @@ void StreamlineHooks::onModuleFreed(PVOID module)
 {
     if (module == nullptr)
         return;
+
+    // A reload at the same address has to be hooked again
+    if ((HMODULE) module == hookedInterposerModule && GetModulePath(hookedInterposerModule).empty())
+    {
+        LOG_DEBUG("sl.interposer unloaded");
+        forgetInterposer();
+    }
 
     for (size_t p = 0; p < (size_t) SlPlugin::Count; p++)
     {
