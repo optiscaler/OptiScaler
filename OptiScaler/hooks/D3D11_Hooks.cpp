@@ -34,18 +34,21 @@ static PFN_D3D11_CREATE_DEVICE o_D3D11CreateDevice = nullptr;
 static PFN_D3D11_CREATE_DEVICE_AND_SWAP_CHAIN o_D3D11CreateDeviceAndSwapChain = nullptr;
 static PFN_CreateSamplerState o_CreateSamplerState = nullptr;
 static PFN_D3D11ON12_CREATE_DEVICE o_D3D11On12CreateDevice = nullptr;
-static PFN_Release o_D3D11DeviceRelease = nullptr;
+
+// One original per hooked Release, devices of other classes (debug layer, wrappers) have their own
+static PVOID _d3d11DeviceReleaseTargets[4] {};
+static PFN_Release o_D3D11DeviceRelease[4] {};
+static std::mutex _d3d11DeviceReleaseMutex;
 
 static HRESULT hkCreateSamplerState(ID3D11Device* This, const D3D11_SAMPLER_DESC* pSamplerDesc,
                                     ID3D11SamplerState** ppSamplerState);
 
-VALIDATE_HOOK(hkD3D11DeviceRelease, PFN_Release)
-static ULONG hkD3D11DeviceRelease(IUnknown* device)
+static ULONG D3D11DeviceRelease(IUnknown* device, PFN_Release original)
 {
     if (State::Instance().currentD3D11Device == device)
     {
         device->AddRef();
-        auto refCount = o_D3D11DeviceRelease(device);
+        auto refCount = original(device);
 
         if (refCount == 1)
         {
@@ -54,7 +57,7 @@ static ULONG hkD3D11DeviceRelease(IUnknown* device)
         }
     }
 
-    auto result = o_D3D11DeviceRelease(device);
+    auto result = original(device);
 
     if (result == 0)
     {
@@ -65,10 +68,57 @@ static ULONG hkD3D11DeviceRelease(IUnknown* device)
     return result;
 }
 
+template <size_t I> static ULONG hkD3D11DeviceRelease(IUnknown* device)
+{
+    return D3D11DeviceRelease(device, o_D3D11DeviceRelease[I]);
+}
+VALIDATE_MEMBER_HOOK(hkD3D11DeviceRelease<0>, PFN_Release)
+
+static constexpr PFN_Release hkD3D11DeviceReleases[] = { hkD3D11DeviceRelease<0>, hkD3D11DeviceRelease<1>,
+                                                         hkD3D11DeviceRelease<2>, hkD3D11DeviceRelease<3> };
+
+// Hooks the Release of the device's class once
+static void HookD3D11DeviceRelease(ID3D11Device* device)
+{
+    auto target = (*(PVOID**) device)[2];
+
+    std::scoped_lock lock(_d3d11DeviceReleaseMutex);
+
+    for (size_t i = 0; i < std::size(_d3d11DeviceReleaseTargets); i++)
+    {
+        if (_d3d11DeviceReleaseTargets[i] == target)
+            return;
+
+        if (_d3d11DeviceReleaseTargets[i] != nullptr)
+            continue;
+
+        _d3d11DeviceReleaseTargets[i] = target;
+        o_D3D11DeviceRelease[i] = (PFN_Release) target;
+
+        DetourTransactionBegin();
+        DetourUpdateThread(GetCurrentThread());
+        DetourAttach(&(PVOID&) o_D3D11DeviceRelease[i], (PVOID) hkD3D11DeviceReleases[i]);
+
+        auto detourResult = DetourTransactionCommit();
+        if (detourResult != NO_ERROR)
+        {
+            LOG_ERROR("Failed to hook ID3D11Device::Release: {:X}", detourResult);
+            o_D3D11DeviceRelease[i] = nullptr;
+            _d3d11DeviceReleaseTargets[i] = nullptr;
+        }
+
+        return;
+    }
+
+    LOG_WARN("No free slot to hook ID3D11Device::Release of {:X}", (size_t) device);
+}
+
 static void HookToDeviceLocal(ID3D11Device* InDevice)
 {
     if (InDevice == nullptr)
         return;
+
+    HookD3D11DeviceRelease(InDevice);
 
     if (o_CreateSamplerState != nullptr)
         return;
@@ -78,27 +128,21 @@ static void HookToDeviceLocal(ID3D11Device* InDevice)
     // Get the vtable pointer
     PVOID* pVTable = *(PVOID**) InDevice;
 
-    o_D3D11DeviceRelease = (PFN_Release) pVTable[2];
     o_CreateSamplerState = (PFN_CreateSamplerState) pVTable[23];
 
     // Apply the detour
-    if (o_CreateSamplerState != nullptr || o_D3D11DeviceRelease != nullptr)
+    if (o_CreateSamplerState != nullptr)
     {
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());
 
-        if (o_D3D11DeviceRelease != nullptr)
-            DetourAttach(&(PVOID&) o_D3D11DeviceRelease, hkD3D11DeviceRelease);
-
-        if (o_CreateSamplerState != nullptr)
-            DetourAttach(&(PVOID&) o_CreateSamplerState, hkCreateSamplerState);
+        DetourAttach(&(PVOID&) o_CreateSamplerState, hkCreateSamplerState);
 
         auto detourResult = DetourTransactionCommit();
         if (detourResult != NO_ERROR)
         {
             LOG_ERROR("Failed to hook ID3D11Device: {:X}", detourResult);
             o_CreateSamplerState = nullptr;
-            o_D3D11DeviceRelease = nullptr;
         }
     }
 }
@@ -153,7 +197,10 @@ static HRESULT hkD3D11On12CreateDevice(IUnknown* pDevice, UINT Flags, const D3D_
     }
 
     if (result == S_OK && ppDevice != nullptr && *ppDevice != nullptr)
+    {
         State::Instance().AddD3D11Device(*ppDevice);
+        HookD3D11DeviceRelease(*ppDevice);
+    }
 
     LOG_FUNC_RESULT(result);
 
@@ -268,7 +315,10 @@ static HRESULT hkD3D11CreateDevice(IDXGIAdapter* pAdapter, D3D_DRIVER_TYPE Drive
     LOG_FUNC_RESULT(result);
 
     if (result == S_OK && ppDevice != nullptr && *ppDevice != nullptr)
+    {
         State::Instance().AddD3D11Device(*ppDevice);
+        HookD3D11DeviceRelease(*ppDevice);
+    }
 
     return result;
 }
@@ -469,7 +519,10 @@ static HRESULT hkD3D11CreateDeviceAndSwapChain(IDXGIAdapter* pAdapter, D3D_DRIVE
     }
 
     if (SUCCEEDED(result) && ppDevice != nullptr && *ppDevice != nullptr)
+    {
         State::Instance().AddD3D11Device(*ppDevice);
+        HookD3D11DeviceRelease(*ppDevice);
+    }
 
     LOG_FUNC_RESULT(result);
     return result;
@@ -535,6 +588,8 @@ void D3D11Hooks::Hook(HMODULE dx11Module)
 
 void D3D11Hooks::Unhook()
 {
+    std::scoped_lock lock(_d3d11DeviceReleaseMutex);
+
     ResTrack_Dx11::ReleaseHooks();
 
     DetourTransactionBegin();
@@ -543,8 +598,11 @@ void D3D11Hooks::Unhook()
     if (o_D3D11CreateDevice != nullptr)
         DetourDetach(&(PVOID&) o_D3D11CreateDevice, hkD3D11CreateDevice);
 
-    if (o_D3D11DeviceRelease != nullptr)
-        DetourDetach(&(PVOID&) o_D3D11DeviceRelease, hkD3D11DeviceRelease);
+    for (size_t i = 0; i < std::size(o_D3D11DeviceRelease); i++)
+    {
+        if (o_D3D11DeviceRelease[i] != nullptr)
+            DetourDetach(&(PVOID&) o_D3D11DeviceRelease[i], (PVOID) hkD3D11DeviceReleases[i]);
+    }
 
     if (o_D3D11On12CreateDevice != nullptr)
         DetourDetach(&(PVOID&) o_D3D11On12CreateDevice, hkD3D11On12CreateDevice);
@@ -564,9 +622,14 @@ void D3D11Hooks::Unhook()
     {
         o_D3D11CreateDevice = nullptr;
         o_CreateSamplerState = nullptr;
-        o_D3D11DeviceRelease = nullptr;
         o_D3D11On12CreateDevice = nullptr;
         o_D3D11CreateDeviceAndSwapChain = nullptr;
+
+        for (size_t i = 0; i < std::size(o_D3D11DeviceRelease); i++)
+        {
+            o_D3D11DeviceRelease[i] = nullptr;
+            _d3d11DeviceReleaseTargets[i] = nullptr;
+        }
     }
 }
 

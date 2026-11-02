@@ -50,6 +50,10 @@ static std::unordered_map<VkPhysicalDevice, VkInstance> _physicalDeviceInstances
 static std::mutex _surfaceWindowsMutex;
 static std::unordered_map<VkSurfaceKHR, HWND> _surfaceWindows;
 
+// Overlay and probe swapchains passed to the driver, swapchain handles are only unique per device
+static std::mutex _passThroughSwapchainsMutex;
+static std::vector<std::pair<VkDevice, VkSwapchainKHR>> _passThroughSwapchains;
+
 PFN_vkCreateDevice o_vkCreateDevice = nullptr;
 PFN_vkCreateInstance o_vkCreateInstance = nullptr;
 PFN_vkCreateWin32SurfaceKHR o_vkCreateWin32SurfaceKHR = nullptr;
@@ -103,6 +107,38 @@ static VkResult FGOutputQueuePresent(VkQueue queue, const VkPresentInfoKHR* pPre
 {
     MenuCommon::FGOutputPresent();
     return o_QueuePresentKHR(queue, pPresentInfo);
+}
+
+// The present has no device, the handles are matched on their own like the menu's
+static bool IsPassThroughPresent(const VkPresentInfoKHR* pPresentInfo)
+{
+    if (pPresentInfo == nullptr || pPresentInfo->swapchainCount == 0)
+        return false;
+
+    std::scoped_lock lock(_passThroughSwapchainsMutex);
+
+    for (uint32_t i = 0; i < pPresentInfo->swapchainCount; i++)
+    {
+        if (std::ranges::find(_passThroughSwapchains, pPresentInfo->pSwapchains[i],
+                              &std::pair<VkDevice, VkSwapchainKHR>::second) == _passThroughSwapchains.end())
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool IsPassThroughSwapchain(VkDevice device, VkSwapchainKHR swapchain)
+{
+    std::scoped_lock lock(_passThroughSwapchainsMutex);
+    return std::ranges::find(_passThroughSwapchains, std::pair(device, swapchain)) != _passThroughSwapchains.end();
+}
+
+static bool ForgetPassThroughSwapchain(VkDevice device, VkSwapchainKHR swapchain)
+{
+    std::scoped_lock lock(_passThroughSwapchainsMutex);
+    return std::erase(_passThroughSwapchains, std::pair(device, swapchain)) > 0;
 }
 
 // OptiScaler's Streamline calls the driver's swapchain functions directly. Overlays like RTSS hook the same ones on top
@@ -593,6 +629,9 @@ static void hkvkDestroyDevice(VkDevice device, const VkAllocationCallbacks* pAll
         MenuOverlayVk::ReleaseDevice(device);
         DeferredRelease::ReleaseOwner((uint64_t) device);
         ReflexHooks::deviceDestroyed(device);
+
+        std::scoped_lock lock(_passThroughSwapchainsMutex);
+        std::erase_if(_passThroughSwapchains, [device](const auto& entry) { return entry.first == device; });
     }
 
     o_vkDestroyDevice(device, pAllocator);
@@ -776,6 +815,13 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
     if (FromFGOutput(_ReturnAddress()) || (fg != nullptr && fg->OwnsQueue(queue)))
         return FGOutputQueuePresent(queue, pPresentInfo);
 
+    // Overlays' presents aren't frames of the game
+    if (IsPassThroughPresent(pPresentInfo))
+    {
+        ScopedVulkanCreatingSC scopedVulkanCreatingSC {};
+        return o_QueuePresentKHR(queue, pPresentInfo);
+    }
+
     LOG_FUNC();
 
     // Upscaler GPU time computation
@@ -892,14 +938,23 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
 
     // Overlays and probes use tiny swapchains, they get no menu, FG or tracking like on DXGI
     // A recreate keeps its chain, oldSwapchain can be an FG handle
-    if (pCreateInfo != nullptr && pCreateInfo->oldSwapchain == VK_NULL_HANDLE &&
+    if (pCreateInfo != nullptr &&
+        (pCreateInfo->oldSwapchain == VK_NULL_HANDLE || IsPassThroughSwapchain(device, pCreateInfo->oldSwapchain)) &&
         Util::IsOverlaySwapchain(VulkanHooks::SurfaceWindow(pCreateInfo->surface), pCreateInfo->imageExtent.width,
                                  pCreateInfo->imageExtent.height))
     {
         LOG_WARN("Overlay swapchain {}x{}", pCreateInfo->imageExtent.width, pCreateInfo->imageExtent.height);
 
         ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
-        return o_CreateSwapchainKHR(device, pCreateInfo, pAllocator, pSwapchain);
+        auto result = o_CreateSwapchainKHR(device, pCreateInfo, pAllocator, pSwapchain);
+
+        if (result == VK_SUCCESS)
+        {
+            std::scoped_lock lock(_passThroughSwapchainsMutex);
+            _passThroughSwapchains.emplace_back(device, *pSwapchain);
+        }
+
+        return result;
     }
 
     // dxvk/vkd3d-proton swapchains get the menu on the DXGI swapchain
@@ -995,7 +1050,9 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
 VALIDATE_HOOK(hkvkDestroySwapchainKHR, PFN_vkDestroySwapchainKHR)
 static void hkvkDestroySwapchainKHR(VkDevice device, VkSwapchainKHR swapchain, const VkAllocationCallbacks* pAllocator)
 {
-    if (FromFGOutput(_ReturnAddress()))
+    // Forgotten first on every path, the game's swapchain can reuse the handle
+    if ((swapchain != VK_NULL_HANDLE && ForgetPassThroughSwapchain(device, swapchain)) ||
+        FromFGOutput(_ReturnAddress()))
     {
         o_DestroySwapchainKHR(device, swapchain, pAllocator);
         return;

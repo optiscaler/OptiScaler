@@ -115,7 +115,8 @@ static std::unordered_map<Fsr212::FfxFsr2Context*, Fsr212::FfxFsr2ContextDescrip
 static std::unordered_map<Fsr212::FfxFsr2Context*, NVSDK_NGX_Parameter*> _nvParams;
 static std::unordered_map<Fsr212::FfxFsr2Context*, NVSDK_NGX_Handle*> _contexts;
 static std::atomic<ID3D12Device*> _d3d12Device { nullptr };
-static bool _nvnxgInited = false;
+// Device this input initialised NGX with
+static ID3D12Device* _nvngxDevice = nullptr;
 static bool _skipCreate = false;
 static bool _skipDispatch = false;
 static bool _skipDestroy = false;
@@ -412,7 +413,8 @@ static Fsr212::FfxErrorCode ffxFsr2ContextCreate_Dx12(Fsr212::FfxFsr2Context* co
         return ccResult;
     }
 
-    if (!state.nvngxDx12Inited)
+    // Re-initialise NGX when the device this input initialised it with was replaced
+    if (!state.nvngxDx12Inited || (_nvngxDevice != nullptr && _nvngxDevice != _d3d12Device))
     {
         NVSDK_NGX_FeatureCommonInfo fcInfo {};
         auto exePath = Util::ExePath().remove_filename();
@@ -424,7 +426,7 @@ static Fsr212::FfxErrorCode ffxFsr2ContextCreate_Dx12(Fsr212::FfxFsr2Context* co
         if (nvResult != NVSDK_NGX_Result_Success)
             return Fsr212::FFX_ERROR_BACKEND_API_ERROR;
 
-        _nvnxgInited = true;
+        _nvngxDevice = _d3d12Device;
     }
 
     NVSDK_NGX_Parameter* params = nullptr;
@@ -495,7 +497,8 @@ static Fsr212::FfxErrorCode ffxFsr2ContextCreate_Pattern_Dx12(Fsr212::FfxFsr2Con
         return ccResult;
     }
 
-    if (!state.nvngxDx12Inited)
+    // Re-initialise NGX when the device this input initialised it with was replaced
+    if (!state.nvngxDx12Inited || (_nvngxDevice != nullptr && _nvngxDevice != _d3d12Device))
     {
         NVSDK_NGX_FeatureCommonInfo fcInfo {};
 
@@ -508,7 +511,7 @@ static Fsr212::FfxErrorCode ffxFsr2ContextCreate_Pattern_Dx12(Fsr212::FfxFsr2Con
         if (nvResult != NVSDK_NGX_Result_Success)
             return Fsr212::FFX_ERROR_BACKEND_API_ERROR;
 
-        _nvnxgInited = true;
+        _nvngxDevice = _d3d12Device;
     }
 
     NVSDK_NGX_Parameter* params = nullptr;
