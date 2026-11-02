@@ -109,7 +109,6 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_Init_Ext(unsigned long long InApp
     State::Instance().NVNGX_ApplicationId = InApplicationId;
     State::Instance().NVNGX_ApplicationDataPath = std::wstring(InApplicationDataPath);
     State::Instance().NVNGX_Version = InSDKVersion;
-    State::Instance().NVNGX_FeatureInfo = InFeatureInfo;
     State::Instance().NVNGX_Version = InSDKVersion;
 
     if (Config::Instance()->DLSSEnabled.value_or_default() && !_skipInit)

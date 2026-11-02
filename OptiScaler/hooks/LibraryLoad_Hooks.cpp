@@ -61,17 +61,10 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
     const bool pathInsideLocalSlPath = Util::IsSubpath(path, normalizedLocalSlPath);
 
-    // exe path
-    auto exePath = Util::ExePath().parent_path().wstring();
-
-    to_lower_in_place(exePath);
-
-    auto lowerName = libName;
-    to_lower_in_place(lowerName);
-    auto pos = lowerName.rfind(exePath);
+    const bool pathInsideExePath = Util::IsSubpath(path, Util::ExePath().parent_path());
 
     if (Config::Instance()->EnableDlssInputs.value_or_default() && CheckDllNameW(&libName, &nvngxNamesW) &&
-        (!Config::Instance()->HookOriginalNvngxOnly.value_or_default() || pos == std::string::npos))
+        (!Config::Instance()->HookOriginalNvngxOnly.value_or_default() || !pathInsideExePath))
     {
         LOG_INFO("nvngx call: {0}, returning this dll!", libNameA);
 
