@@ -1770,7 +1770,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         auto exePath = Util::ExePath().remove_filename();
         auto optiDllPath = std::filesystem::path(Config::Instance()->MainDllPath.value());
 
-        std::vector<std::filesystem::path> dllFolders { optiDllPath };
+        // Same order as the NGX feature path list
+        std::vector<std::filesystem::path> dllFolders;
 
         if (Config::Instance()->DLSSFeaturePath.has_value())
             dllFolders.push_back(Config::Instance()->DLSSFeaturePath.value());
@@ -1805,6 +1806,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
             {
                 Config::Instance()->NVNGX_DLSS_Library.set_volatile_value(dlssPath.wstring());
                 State::Instance().NVNGX_DLSS_Path = dlssPath.wstring();
+                dllFolders.push_back(dlssPath.parent_path());
                 LOG_INFO("nvngx_dlss.dll override found at {}", wstring_to_string(dlssPath.wstring()));
             }
             else
@@ -1813,6 +1815,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                 Config::Instance()->NVNGX_DLSS_Library.reset_volatile();
             }
         }
+
+        dllFolders.push_back(optiDllPath);
 
         if (!State::Instance().NVNGX_DLSS_Path.has_value())
             State::Instance().NVNGX_DLSS_Path = findDll(L"nvngx_dlss.dll");
