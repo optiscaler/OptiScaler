@@ -340,8 +340,7 @@ void IdentifyGpu::getHardwareAdapter(IDXGIFactory* InFactory, IDXGIAdapter** InA
 
 std::vector<GpuInformation> IdentifyGpu::getAllGpus()
 {
-    thread_local bool is_fetching = false;
-    if (is_fetching)
+    if (isFetching)
         return {};
 
     std::scoped_lock lock(mutex);
@@ -351,13 +350,15 @@ std::vector<GpuInformation> IdentifyGpu::getAllGpus()
         return cache;
     }
 
-    is_fetching = true;
+    isFetching = true;
     cache = checkGpuInfo();
-    is_fetching = false;
+    isFetching = false;
 
     // TODO: try to reactivate DxgiSpoofing if was auto on Nvidia cards without DLSS
     return cache;
 }
+
+bool IdentifyGpu::isDetecting() { return isFetching; }
 
 GpuInformation IdentifyGpu::getPrimaryGpu()
 {
