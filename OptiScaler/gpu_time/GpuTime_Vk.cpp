@@ -151,7 +151,7 @@ void GpuTime_Vk::PollInteropLocked()
         if (completedValue > slot.value &&
             (queryResult == VK_NOT_READY || (queryResult == VK_SUCCESS && (timestamps[1] == 0 || timestamps[3] == 0))))
         {
-            completedSerial = (std::max)(completedSerial, slot.serial);
+            completedSerial = (std::max) (completedSerial, slot.serial);
             slot = {};
             continue;
         }
@@ -177,7 +177,7 @@ void GpuTime_Vk::PollInteropLocked()
         }
 
         // Safe to reset only after both a completed timeline value AND available timestamp results.
-        completedSerial = (std::max)(completedSerial, slot.serial);
+        completedSerial = (std::max) (completedSerial, slot.serial);
         slot = {};
     }
 
