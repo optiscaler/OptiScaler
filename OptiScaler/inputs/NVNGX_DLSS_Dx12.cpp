@@ -66,13 +66,7 @@ class ScopedInitDx12
 
 static void UpdateInitPaths(NVSDK_NGX_FeatureCommonInfo* InFeatureInfo)
 {
-    auto& gamePaths = State::Instance().NVNGX_Game_Paths;
-    gamePaths.clear();
-
-    for (size_t i = 0; i < InFeatureInfo->PathListInfo.Length; i++)
-        gamePaths.push_back(InFeatureInfo->PathListInfo.Path[i]);
-
-    NVNGXProxy::SetFeaturePaths(InFeatureInfo);
+    NVNGXProxy::SetFeaturePaths(InFeatureInfo, &InFeatureInfo->PathListInfo);
 }
 
 #pragma region DLSS Init Calls

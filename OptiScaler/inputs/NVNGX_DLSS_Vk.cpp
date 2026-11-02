@@ -44,17 +44,10 @@ class ScopedInitVk
 
 static void UpdateInitPaths(NVSDK_NGX_FeatureCommonInfo* InFeatureInfo)
 {
-    auto& gamePaths = State::Instance().NVNGX_Game_Paths;
-    gamePaths.clear();
-
     // WAR: Doom Ethernal is sending junk data
-    if (InFeatureInfo->PathListInfo.Length < 10)
-    {
-        for (size_t i = 0; i < InFeatureInfo->PathListInfo.Length; i++)
-            gamePaths.push_back(InFeatureInfo->PathListInfo.Path[i]);
-    }
-
-    NVNGXProxy::SetFeaturePaths(InFeatureInfo);
+    NVSDK_NGX_PathListInfo noPaths {};
+    NVNGXProxy::SetFeaturePaths(InFeatureInfo,
+                                InFeatureInfo->PathListInfo.Length < 10 ? &InFeatureInfo->PathListInfo : &noPaths);
 }
 
 NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_Init_Ext2(
