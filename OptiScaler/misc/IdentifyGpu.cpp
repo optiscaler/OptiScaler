@@ -63,6 +63,15 @@ std::vector<GpuInformation> IdentifyGpu::checkGpuInfo()
 
         result = adapter->GetDesc1(&adapterDesc);
 
+        // DXGI can list the same adapter more than once
+        if (result == S_OK && std::ranges::any_of(localCachedInfo, [&adapterDesc](const GpuInformation& gpu)
+                                                  { return IsEqualLUID(gpu.luid, adapterDesc.AdapterLuid); }))
+        {
+            LOG_DEBUG("Skipping duplicate adapter: {}", adapterIndex);
+            adapterIndex++;
+            continue;
+        }
+
         if (result == S_OK)
         {
             GpuInformation gpuInfo;

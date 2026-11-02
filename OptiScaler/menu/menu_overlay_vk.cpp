@@ -16,7 +16,7 @@
 // https://gist.github.com/mem99/0ec31ca302927457f86b1d6756aaa8c4
 // Need to check resize & recreate fixes
 
-static bool _vulkanObjectsCreated = false;
+static std::atomic<bool> _vulkanObjectsCreated { false };
 static std::mutex _vkCleanMutex;
 
 // Family of every queue, games can present from queues the menu can't submit to
@@ -36,7 +36,7 @@ static VkSwapchainKHR _menuOldSwapchain = VK_NULL_HANDLE;
 static ULONG64 _frameCount;
 
 // Window of a destroyed menu swapchain, probe windows can stay alive
-static HWND _releasedHwnd = nullptr;
+static std::atomic<HWND> _releasedHwnd { nullptr };
 
 // menu background blur
 // Raw pointer, static destruction at exit would use an already destroyed device
@@ -465,8 +465,14 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
         }
     }
 
-    _vulkanObjectsCreated = true;
-    LOG_FUNC_RESULT(_vulkanObjectsCreated);
+    // Present reads both under the lock
+    {
+        std::lock_guard lock(_vkCleanMutex);
+        _menuSwapchain = *pSwapchain;
+        _vulkanObjectsCreated = true;
+    }
+
+    LOG_FUNC_RESULT(true);
 }
 
 void MenuOverlayVk::DestroyVulkanObjects(bool shutdown, VkDevice device, VkSwapchainKHR swapchain)
@@ -600,7 +606,7 @@ bool MenuOverlayVk::QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo)
     if (!_vulkanObjectsCreated)
         return true;
 
-    if (!MenuOverlayBase::IsInited() || _ImVulkan_Info.Device == VK_NULL_HANDLE)
+    if (!MenuOverlayBase::IsInited())
         return true;
 
     if (pPresentInfo->swapchainCount == 0)
@@ -764,7 +770,6 @@ void MenuOverlayVk::CreateSwapchain(VkDevice device, VkPhysicalDevice pd, VkInst
 
     if (_vulkanObjectsCreated)
     {
-        _menuSwapchain = *pSwapchain;
         _menuOldSwapchain = pCreateInfo->oldSwapchain;
         _releasedHwnd = nullptr;
         MenuOverlayBase::VulkanReady();

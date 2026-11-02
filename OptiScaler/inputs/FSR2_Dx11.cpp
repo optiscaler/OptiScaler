@@ -43,8 +43,9 @@ static std::unordered_map<FfxFsr2Context*, FfxFsr2ContextDescription> _initParam
 static std::unordered_map<FfxFsr2Context*, NVSDK_NGX_Parameter*> _nvParams;
 static std::unordered_map<FfxFsr2Context*, NVSDK_NGX_Handle*> _contexts;
 static ID3D11Device* _d3d11Device = nullptr;
-// Device this input initialised NGX with
-static ID3D11Device* _nvngxDevice = nullptr;
+// Device this input initialised NGX with, cleared on destroy as a new device can get its address
+static std::atomic<ID3D11Device*> _nvngxDevice { nullptr };
+static bool _nvngxInited = false;
 static bool _skipCreate = false;
 static bool _skipDispatch = false;
 static bool _skipDestroy = false;
@@ -217,7 +218,7 @@ static FfxErrorCode ffxFsr2ContextCreate_Dx11(FfxFsr2Context* context, FfxFsr2Co
     }
 
     // Re-initialise NGX when the device this input initialised it with was replaced
-    if (!state.nvngxDx11Inited || (_nvngxDevice != nullptr && _nvngxDevice != _d3d11Device))
+    if (!state.nvngxDx11Inited || (_nvngxInited && _nvngxDevice != _d3d11Device))
     {
         NVSDK_NGX_FeatureCommonInfo fcInfo {};
         auto exePath = Util::ExePath().remove_filename();
@@ -230,6 +231,7 @@ static FfxErrorCode ffxFsr2ContextCreate_Dx11(FfxFsr2Context* context, FfxFsr2Co
             return FFX_ERROR_BACKEND_API_ERROR;
 
         _nvngxDevice = _d3d11Device;
+        _nvngxInited = true;
     }
 
     NVSDK_NGX_Parameter* params = nullptr;
@@ -393,6 +395,12 @@ static FfxErrorCode ffxFsr2GetRenderResolutionFromQualityMode_Dx11(uint32_t* ren
 
     LOG_WARN("Quality mode: {}, pOutRenderWidth or pOutRenderHeight is null!", (UINT) qualityMode);
     return FFX_ERROR_INVALID_ARGUMENT;
+}
+
+void FSR2Dx11DeviceDestroyed(IUnknown* device)
+{
+    ID3D11Device* expected = (ID3D11Device*) device;
+    _nvngxDevice.compare_exchange_strong(expected, nullptr);
 }
 
 void HookFSR2Dx11ExeInputs()

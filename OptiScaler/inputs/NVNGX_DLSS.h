@@ -1,5 +1,7 @@
 #pragma once
 
+void NVNGXDx12DeviceDestroyed(IUnknown* device);
+
 template <typename FeatureType> struct ContextData
 {
     std::unique_ptr<FeatureType> feature;

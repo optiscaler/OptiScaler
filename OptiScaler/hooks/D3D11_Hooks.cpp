@@ -10,6 +10,8 @@
 
 #include <resource_tracking/ResTrack_dx11.h>
 
+#include <inputs/FSR2_Dx11.h>
+
 #include <detours/detours.h>
 
 #include <d3d11_4.h>
@@ -63,6 +65,7 @@ static ULONG D3D11DeviceRelease(IUnknown* device, PFN_Release original)
     {
         State::Instance().RemoveD3D11Device(device);
         ReflexHooks::deviceDestroyed(device);
+        FSR2Dx11DeviceDestroyed(device);
     }
 
     return result;

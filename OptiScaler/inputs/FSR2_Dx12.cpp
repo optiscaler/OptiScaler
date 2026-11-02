@@ -115,8 +115,9 @@ static std::unordered_map<Fsr212::FfxFsr2Context*, Fsr212::FfxFsr2ContextDescrip
 static std::unordered_map<Fsr212::FfxFsr2Context*, NVSDK_NGX_Parameter*> _nvParams;
 static std::unordered_map<Fsr212::FfxFsr2Context*, NVSDK_NGX_Handle*> _contexts;
 static std::atomic<ID3D12Device*> _d3d12Device { nullptr };
-// Device this input initialised NGX with
-static ID3D12Device* _nvngxDevice = nullptr;
+// Device this input initialised NGX with, cleared on destroy as a new device can get its address
+static std::atomic<ID3D12Device*> _nvngxDevice { nullptr };
+static bool _nvngxInited = false;
 static bool _skipCreate = false;
 static bool _skipDispatch = false;
 static bool _skipDestroy = false;
@@ -414,7 +415,7 @@ static Fsr212::FfxErrorCode ffxFsr2ContextCreate_Dx12(Fsr212::FfxFsr2Context* co
     }
 
     // Re-initialise NGX when the device this input initialised it with was replaced
-    if (!state.nvngxDx12Inited || (_nvngxDevice != nullptr && _nvngxDevice != _d3d12Device))
+    if (!state.nvngxDx12Inited || (_nvngxInited && _nvngxDevice.load() != _d3d12Device))
     {
         NVSDK_NGX_FeatureCommonInfo fcInfo {};
         auto exePath = Util::ExePath().remove_filename();
@@ -426,7 +427,8 @@ static Fsr212::FfxErrorCode ffxFsr2ContextCreate_Dx12(Fsr212::FfxFsr2Context* co
         if (nvResult != NVSDK_NGX_Result_Success)
             return Fsr212::FFX_ERROR_BACKEND_API_ERROR;
 
-        _nvngxDevice = _d3d12Device;
+        _nvngxDevice = _d3d12Device.load();
+        _nvngxInited = true;
     }
 
     NVSDK_NGX_Parameter* params = nullptr;
@@ -498,7 +500,7 @@ static Fsr212::FfxErrorCode ffxFsr2ContextCreate_Pattern_Dx12(Fsr212::FfxFsr2Con
     }
 
     // Re-initialise NGX when the device this input initialised it with was replaced
-    if (!state.nvngxDx12Inited || (_nvngxDevice != nullptr && _nvngxDevice != _d3d12Device))
+    if (!state.nvngxDx12Inited || (_nvngxInited && _nvngxDevice.load() != _d3d12Device))
     {
         NVSDK_NGX_FeatureCommonInfo fcInfo {};
 
@@ -511,7 +513,8 @@ static Fsr212::FfxErrorCode ffxFsr2ContextCreate_Pattern_Dx12(Fsr212::FfxFsr2Con
         if (nvResult != NVSDK_NGX_Result_Success)
             return Fsr212::FFX_ERROR_BACKEND_API_ERROR;
 
-        _nvngxDevice = _d3d12Device;
+        _nvngxDevice = _d3d12Device.load();
+        _nvngxInited = true;
     }
 
     NVSDK_NGX_Parameter* params = nullptr;
@@ -977,6 +980,9 @@ void FSR2Dx12DeviceDestroyed(IUnknown* device)
 {
     ID3D12Device* expected = (ID3D12Device*) device;
     _d3d12Device.compare_exchange_strong(expected, nullptr);
+
+    expected = (ID3D12Device*) device;
+    _nvngxDevice.compare_exchange_strong(expected, nullptr);
 }
 
 void HookFSR2ExeInputs()

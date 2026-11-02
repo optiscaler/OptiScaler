@@ -28,6 +28,8 @@ static ankerl::unordered_dense::map<unsigned int, ContextData<IFeature_Dx12>> Dx
 static std::unordered_map<unsigned int, NVSDK_NGX_Feature> HandleToFeature;
 
 static ID3D12Device* D3D12Device = nullptr;
+// A new device can get the destroyed one's address, Init must not skip it as already inited
+static std::atomic<bool> _d3d12DeviceDestroyed { false };
 static int evalCounter = 0;
 static bool shutdown = false;
 static bool _skipInit = false;
@@ -195,7 +197,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Init_Ext(unsigned long long InApp
     if (InFeatureInfo != nullptr && InSDKVersion > 0x0000013)
         State::Instance().NVNGX_Logger = InFeatureInfo->LoggingInfo;
 
-    if (State::Instance().nvngxDx12Inited && InDevice == D3D12Device)
+    if (State::Instance().nvngxDx12Inited && InDevice == D3D12Device && !_d3d12DeviceDestroyed)
     {
         LOG_WARN("NVNGX already inited");
         return NVSDK_NGX_Result_Success;
@@ -211,6 +213,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Init_Ext(unsigned long long InApp
     LOG_INFO(L"InApplicationDataPath {0}", std::wstring(InApplicationDataPath));
 
     D3D12Device = InDevice;
+    _d3d12DeviceDestroyed = false;
     State::Instance().currentD3D12Device = InDevice;
     D3D12Hooks::HookDevice(InDevice);
 
@@ -258,7 +261,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Init(unsigned long long InApplica
         }
     }
 
-    if (State::Instance().nvngxDx12Inited && InDevice == D3D12Device)
+    if (State::Instance().nvngxDx12Inited && InDevice == D3D12Device && !_d3d12DeviceDestroyed)
     {
         LOG_WARN("NVNGX already inited");
         return NVSDK_NGX_Result_Success;
@@ -325,7 +328,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Init_ProjectID(const char* InProj
     State::Instance().NVNGX_Engine = InEngineType;
     State::Instance().NVNGX_EngineVersion = std::string(InEngineVersion);
 
-    if (State::Instance().nvngxDx12Inited && InDevice == D3D12Device)
+    if (State::Instance().nvngxDx12Inited && InDevice == D3D12Device && !_d3d12DeviceDestroyed)
     {
         LOG_WARN("NVNGX already inited");
         return NVSDK_NGX_Result_Success;
@@ -352,7 +355,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Init_with_ProjectID(
     State::Instance().NVNGX_Engine = InEngineType;
     State::Instance().NVNGX_EngineVersion = std::string(InEngineVersion);
 
-    if (State::Instance().nvngxDx12Inited && InDevice == D3D12Device)
+    if (State::Instance().nvngxDx12Inited && InDevice == D3D12Device && !_d3d12DeviceDestroyed)
     {
         LOG_WARN("NVNGX already inited");
         return NVSDK_NGX_Result_Success;
@@ -364,6 +367,12 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Init_with_ProjectID(
 }
 
 #pragma endregion
+
+void NVNGXDx12DeviceDestroyed(IUnknown* device)
+{
+    if (D3D12Device == device)
+        _d3d12DeviceDestroyed = true;
+}
 
 #pragma region DLSS Shutdown Calls
 
@@ -634,6 +643,9 @@ static bool EnsureD3D12Device(ID3D12GraphicsCommandList* cmdList)
         LOG_ERROR("Can't get Dx12Device from InCmdList!");
         return false;
     }
+
+    // Not owned, like the device from Init
+    D3D12Device->Release();
 
     return true;
 }
