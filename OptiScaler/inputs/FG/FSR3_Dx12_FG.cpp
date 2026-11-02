@@ -596,9 +596,8 @@ hkffxFrameInterpolationContextCreate(FfxFrameInterpolationContext* context,
     if (_device == nullptr)
     {
         auto backendDevice = (ID3D12Device*) contextDescription->backendInterface.device;
-        auto& devices = State::Instance().d3d12Devices;
 
-        if (std::find(devices.begin(), devices.end(), backendDevice) != devices.end())
+        if (State::Instance().IsD3D12Device(backendDevice))
             _device = backendDevice;
     }
 

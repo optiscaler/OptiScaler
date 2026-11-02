@@ -37,6 +37,9 @@ static uint32_t _scImageCount;
 static VkSwapchainKHR _menuSwapchain = VK_NULL_HANDLE;
 static ULONG64 _frameCount;
 
+// Window of a destroyed menu swapchain, probe windows can stay alive
+static HWND _releasedHwnd = nullptr;
+
 // menu background blur
 // Raw pointer, static destruction at exit would use an already destroyed device
 static MenuBlur_Vk* _menuBlur = nullptr;
@@ -556,6 +559,7 @@ void MenuOverlayVk::DestroyVulkanObjects(bool shutdown)
 
     _ImVulkan_Info = {};
     _vulkanObjectsCreated = false;
+    _menuSwapchain = VK_NULL_HANDLE;
 
     _vkCleanMutex.unlock();
 }
@@ -600,10 +604,11 @@ bool MenuOverlayVk::QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo)
     if (pPresentInfo->swapchainCount == 0)
         return false;
 
-    if (pPresentInfo->pSwapchains[0] != _menuSwapchain)
+    // Cleanup on another thread can be waiting on this present's queue, skip the menu instead of blocking
+    std::unique_lock cleanLock(_vkCleanMutex, std::try_to_lock);
+    if (!cleanLock.owns_lock() || !_vulkanObjectsCreated || pPresentInfo->pSwapchains[0] != _menuSwapchain)
         return true;
 
-    // std::lock_guard<std::mutex> lock(_vkPresentMutex);
     LOG_DEBUG("rendering menu, swapchain count: {0}", pPresentInfo->swapchainCount);
 
     ImGuiIO& io = ImGui::GetIO();
@@ -731,6 +736,13 @@ void MenuOverlayVk::CreateSwapchain(VkDevice device, VkPhysicalDevice pd, VkInst
 {
     LOG_FUNC();
 
+    if (Util::IsOverlaySwapchain(hwnd, pCreateInfo->imageExtent.width, pCreateInfo->imageExtent.height))
+    {
+        LOG_WARN("Overlay swapchain {}x{}, skipping menu", pCreateInfo->imageExtent.width,
+                 pCreateInfo->imageExtent.height);
+        return;
+    }
+
     if (OnOtherWindow(hwnd))
     {
         LOG_DEBUG("Menu is on window {:X}, skipping swapchain of {:X}", (UINT64) MenuOverlayBase::Handle(),
@@ -758,14 +770,28 @@ void MenuOverlayVk::CreateSwapchain(VkDevice device, VkPhysicalDevice pd, VkInst
     if (_vulkanObjectsCreated)
     {
         _menuSwapchain = *pSwapchain;
+        _releasedHwnd = nullptr;
         _isInited = true;
         MenuOverlayBase::VulkanReady();
         LOG_DEBUG("Vulkan ready");
     }
 }
 
+void MenuOverlayVk::DestroySwapchain(VkDevice device, VkSwapchainKHR swapchain)
+{
+    // Swapchain handles are only unique per device
+    if (swapchain == VK_NULL_HANDLE || swapchain != _menuSwapchain || device != _ImVulkan_Info.Device)
+        return;
+
+    LOG_DEBUG("Menu swapchain {:X} destroyed", (UINT64) swapchain);
+
+    // Image views and framebuffers of its images go before it
+    DestroyVulkanObjects(false);
+    _releasedHwnd = MenuOverlayBase::Handle();
+}
+
 bool MenuOverlayVk::OnOtherWindow(HWND hwnd)
 {
     auto menuHwnd = MenuOverlayBase::Handle();
-    return MenuOverlayBase::IsInited() && menuHwnd != hwnd && IsWindow(menuHwnd);
+    return MenuOverlayBase::IsInited() && menuHwnd != hwnd && menuHwnd != _releasedHwnd && IsWindow(menuHwnd);
 }

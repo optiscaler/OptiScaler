@@ -240,14 +240,8 @@ static Fsr3::FfxErrorCode ffxFsr3ContextCreate_Dx12(Fsr3::FfxFsr3UpscalerContext
     {
         auto bDevice = (ID3D12Device*) pContextDescription->backendInterface.device;
 
-        for (size_t i = 0; i < state.d3d12Devices.size(); i++)
-        {
-            if (state.d3d12Devices[i] == bDevice)
-            {
-                _d3d12Device = bDevice;
-                break;
-            }
-        }
+        if (state.IsD3D12Device(bDevice))
+            _d3d12Device = bDevice;
     }
 
     if (_d3d12Device == nullptr)
@@ -255,8 +249,8 @@ static Fsr3::FfxErrorCode ffxFsr3ContextCreate_Dx12(Fsr3::FfxFsr3UpscalerContext
 
     // if still no device use latest created one
     // Might fixed TLOU but FMF2 still crashes
-    if (_d3d12Device == nullptr && state.d3d12Devices.size() > 0)
-        _d3d12Device = state.d3d12Devices[state.d3d12Devices.size() - 1];
+    if (_d3d12Device == nullptr)
+        _d3d12Device = state.LastD3D12Device();
 
     if (_d3d12Device == nullptr)
     {
@@ -448,14 +442,8 @@ ffxFsr3ContextCreate_Pattern_Dx12(Fsr3::FfxFsr3UpscalerContext* pContext,
     {
         auto bDevice = (ID3D12Device*) pContextDescription->backendInterface.device;
 
-        for (size_t i = 0; i < state.d3d12Devices.size(); i++)
-        {
-            if (state.d3d12Devices[i] == bDevice)
-            {
-                _d3d12Device = bDevice;
-                break;
-            }
-        }
+        if (state.IsD3D12Device(bDevice))
+            _d3d12Device = bDevice;
     }
 
     if (_d3d12Device == nullptr)
@@ -463,8 +451,8 @@ ffxFsr3ContextCreate_Pattern_Dx12(Fsr3::FfxFsr3UpscalerContext* pContext,
 
     // if still no device use latest created one
     // Might fixed TLOU but FMF2 still crashes
-    if (_d3d12Device == nullptr && state.d3d12Devices.size() > 0)
-        _d3d12Device = state.d3d12Devices[state.d3d12Devices.size() - 1];
+    if (_d3d12Device == nullptr)
+        _d3d12Device = state.LastD3D12Device();
 
     if (_d3d12Device == nullptr)
     {

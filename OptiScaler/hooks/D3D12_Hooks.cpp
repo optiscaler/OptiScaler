@@ -1482,7 +1482,7 @@ static HRESULT hkD3D12CreateDevice(IUnknown* pAdapter, D3D_FEATURE_LEVEL Minimum
         HookToDevice((ID3D12Device*) *ppDevice);
         _d3d12Captured = true;
 
-        State::Instance().d3d12Devices.push_back((ID3D12Device*) *ppDevice);
+        State::Instance().AddD3D12Device((ID3D12Device*) *ppDevice);
 
 #ifdef ENABLE_DEBUG_LAYER_DX12
         if (infoQueue != nullptr)
@@ -1611,7 +1611,7 @@ static HRESULT hkCreateDevice(ID3D12DeviceFactory* pFactory, IUnknown* pAdapter,
         HookToDevice((ID3D12Device*) *ppDevice);
         _d3d12Captured = true;
 
-        State::Instance().d3d12Devices.push_back((ID3D12Device*) *ppDevice);
+        State::Instance().AddD3D12Device((ID3D12Device*) *ppDevice);
 
 #ifdef ENABLE_DEBUG_LAYER_DX12
         if (infoQueue != nullptr)
@@ -1693,6 +1693,13 @@ static ULONG hkD3D12DeviceRelease(IUnknown* device)
     }
 
     auto result = o_D3D12DeviceRelease(device);
+
+    if (result == 0)
+    {
+        State::Instance().RemoveD3D12Device(device);
+        ReflexHooks::deviceDestroyed(device);
+    }
+
     return result;
 }
 

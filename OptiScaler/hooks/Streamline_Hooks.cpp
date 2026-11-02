@@ -368,8 +368,8 @@ static int OutputMaxInterpolationCount()
 
         // Current device is set with the swapchain, before it use the latest created one
         auto device = state.currentD3D12Device;
-        if (device == nullptr && !state.d3d12Devices.empty())
-            device = state.d3d12Devices.back();
+        if (device == nullptr)
+            device = state.LastD3D12Device();
 
         // GetState can be called every frame, only try once
         if (!xefgQueried && device != nullptr)

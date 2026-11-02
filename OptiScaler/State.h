@@ -450,7 +450,6 @@ class State
     VkDevice currentVkDevice = nullptr;
     DXGI_SWAP_CHAIN_DESC currentSwapchainDesc {};
 
-    std::vector<ID3D12Device*> d3d12Devices;
     std::vector<ID3D11Device*> d3d11Devices;
 
     // The FG output of whichever API the game uses
@@ -546,9 +545,46 @@ class State
         _scBuffers = std::move(buffers);
     }
 
+    // The game's live D3D12 devices, created and destroyed on any thread
+    void AddD3D12Device(ID3D12Device* device)
+    {
+        std::scoped_lock lock(_d3d12DevicesMutex);
+        _d3d12Devices.push_back(device);
+        _d3d12DeviceCreated = true;
+    }
+
+    void RemoveD3D12Device(IUnknown* device)
+    {
+        std::scoped_lock lock(_d3d12DevicesMutex);
+        std::erase(_d3d12Devices, device);
+    }
+
+    bool IsD3D12Device(IUnknown* device)
+    {
+        std::scoped_lock lock(_d3d12DevicesMutex);
+        return std::find(_d3d12Devices.begin(), _d3d12Devices.end(), device) != _d3d12Devices.end();
+    }
+
+    ID3D12Device* LastD3D12Device()
+    {
+        std::scoped_lock lock(_d3d12DevicesMutex);
+        return _d3d12Devices.empty() ? nullptr : _d3d12Devices.back();
+    }
+
+    // Stays set after the devices are destroyed
+    bool D3D12DeviceCreated()
+    {
+        std::scoped_lock lock(_d3d12DevicesMutex);
+        return _d3d12DeviceCreated;
+    }
+
   private:
     std::vector<IUnknown*> _scBuffers;
     std::shared_mutex _scBuffersMutex;
+
+    std::vector<ID3D12Device*> _d3d12Devices;
+    std::mutex _d3d12DevicesMutex;
+    bool _d3d12DeviceCreated = false;
 
     inline static bool _skipChecks = false;
     inline static std::map<UINT, std::string> _skipDllName;

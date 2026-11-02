@@ -610,22 +610,31 @@ void ReflexHooks::setFPSLimit(float fps)
     else
         _minimumIntervalUs = static_cast<uint32_t>(std::round(1'000'000 / fps));
 
-    if (_lastSleepDev != nullptr)
+    if (auto device = _lastSleepDev.load(); device != nullptr)
     {
         NV_SET_SLEEP_MODE_PARAMS temp {};
         memcpy(&temp, &_lastSleepParams, sizeof(NV_SET_SLEEP_MODE_PARAMS));
         temp.minimumIntervalUs = _minimumIntervalUs;
 
-        o_NvAPI_D3D_SetSleepMode(_lastSleepDev, &temp);
+        o_NvAPI_D3D_SetSleepMode(device, &temp);
     }
 
-    if (_lastVkSleepDev != nullptr)
+    if (auto vkDevice = _lastVkSleepDev.load(); vkDevice != nullptr)
     {
         NV_VULKAN_SET_SLEEP_MODE_PARAMS temp {};
         memcpy(&temp, &_lastVkSleepParams, sizeof(NV_VULKAN_SET_SLEEP_MODE_PARAMS));
         temp.minimumIntervalUs = _minimumIntervalUs;
-        o_NvAPI_Vulkan_SetSleepMode(_lastVkSleepDev, &temp);
+        o_NvAPI_Vulkan_SetSleepMode(vkDevice, &temp);
     }
+}
+
+void ReflexHooks::deviceDestroyed(void* device)
+{
+    IUnknown* expected = (IUnknown*) device;
+    _lastSleepDev.compare_exchange_strong(expected, nullptr);
+
+    HANDLE expectedVk = device;
+    _lastVkSleepDev.compare_exchange_strong(expectedVk, nullptr);
 }
 
 bool ReflexHooks::gameIsSendingMarkers()

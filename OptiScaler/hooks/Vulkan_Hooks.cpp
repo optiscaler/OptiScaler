@@ -596,6 +596,7 @@ static void hkvkDestroyDevice(VkDevice device, const VkAllocationCallbacks* pAll
     {
         MenuOverlayVk::ReleaseDevice(device);
         DeferredRelease::ReleaseOwner((uint64_t) device);
+        ReflexHooks::deviceDestroyed(device);
     }
 
     o_vkDestroyDevice(device, pAllocator);
@@ -993,7 +994,10 @@ static void hkvkDestroySwapchainKHR(VkDevice device, VkSwapchainKHR swapchain, c
     }
 
     if (swapchain != VK_NULL_HANDLE)
+    {
         VulkanHooks::ForgetLowLatencySwapchain(swapchain);
+        MenuOverlayVk::DestroySwapchain(device, swapchain);
+    }
 
     if (auto fg = State::Instance().currentVkFG; fg != nullptr)
     {

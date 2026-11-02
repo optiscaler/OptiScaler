@@ -10,7 +10,7 @@ class ReflexHooks
     inline static bool _inited = false;
     inline static uint32_t _minimumIntervalUs = 0;
     inline static NV_SET_SLEEP_MODE_PARAMS _lastSleepParams {};
-    inline static IUnknown* _lastSleepDev = nullptr;
+    inline static std::atomic<IUnknown*> _lastSleepDev { nullptr };
     inline static uint8_t _FgNumFramesToGenerate = 0;
     inline static uint64_t _lastAsyncMarkerFrameId = 0;
     inline static uint64_t _updatesWithoutMarker = 0;
@@ -18,7 +18,7 @@ class ReflexHooks
     inline static uint64_t _lastMarkerFrame = 0;
 
     inline static NV_VULKAN_SET_SLEEP_MODE_PARAMS _lastVkSleepParams {};
-    inline static HANDLE _lastVkSleepDev = nullptr;
+    inline static std::atomic<HANDLE> _lastVkSleepDev { nullptr };
 
     inline static std::thread::id _lastSetSleepThread {};
 
@@ -94,6 +94,9 @@ class ReflexHooks
 
     // 0 - disables the fps cap
     static void setFPSLimit(float fps);
+
+    // A D3D device or VkDevice is destroyed, the kept sleep device mustn't be used anymore
+    static void deviceDestroyed(void* device);
 };
 
 // Marks OptiScaler's own Reflex calls for the scope
