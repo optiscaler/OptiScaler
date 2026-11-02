@@ -107,6 +107,7 @@ class IFeature_VkwDx12 : public virtual IFeature_Vk
     PFN_vkImportSemaphoreWin32HandleKHR vkImportSemaphoreWin32HandleKHR = nullptr;
 
     // Helper methods
+    std::optional<LUID> VulkanDeviceLuid();
     HRESULT CreateDx12Device();
 
     bool CreateSharedTexture(const VkImageCreateInfo& ImageInfo, VkImage& VulkanResource, VkDeviceMemory& VulkanMemory,

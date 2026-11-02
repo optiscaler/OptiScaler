@@ -40,12 +40,12 @@ void DeferredRelease::Enqueue(std::function<void()> destroy, uint64_t owner)
     entries.push_back({ std::move(destroy), owner, presentCounter, std::chrono::steady_clock::now() });
 }
 
-void DeferredRelease::DropOwnersExcept(uint64_t keep)
+void DeferredRelease::DropOwnersExcept(const std::unordered_set<uint64_t>& keep)
 {
     std::lock_guard lock(mutex);
 
     const auto dropped =
-        std::erase_if(entries, [keep](const Entry& entry) { return entry.owner != 0 && entry.owner != keep; });
+        std::erase_if(entries, [&keep](const Entry& entry) { return entry.owner != 0 && !keep.contains(entry.owner); });
 
     if (dropped > 0)
         LOG_WARN("Dropped {} deferred objects of a previous device", dropped);

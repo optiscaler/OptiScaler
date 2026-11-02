@@ -1909,6 +1909,35 @@ void IFeature_VkwDx12::ReleaseSharedResource(VK_TEXTURE2D_RESOURCE_C& resource)
     DeferredRelease::Release(resource.Dx12Resource);
 }
 
+std::optional<LUID> IFeature_VkwDx12::VulkanDeviceLuid()
+{
+    auto gipa = VulkanGIPA != nullptr ? VulkanGIPA : vkGetInstanceProcAddr;
+
+    auto getProperties2 = (PFN_vkGetPhysicalDeviceProperties2) gipa(VulkanInstance, "vkGetPhysicalDeviceProperties2");
+
+    if (getProperties2 == nullptr)
+        getProperties2 = (PFN_vkGetPhysicalDeviceProperties2) gipa(VulkanInstance, "vkGetPhysicalDeviceProperties2KHR");
+
+    if (getProperties2 == nullptr)
+        return std::nullopt;
+
+    VkPhysicalDeviceIDProperties idProperties {};
+    idProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES;
+
+    VkPhysicalDeviceProperties2 properties {};
+    properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    properties.pNext = &idProperties;
+
+    getProperties2(VulkanPhysicalDevice, &properties);
+
+    if (!idProperties.deviceLUIDValid)
+        return std::nullopt;
+
+    LUID luid {};
+    std::memcpy(&luid, idProperties.deviceLUID, sizeof(luid));
+    return luid;
+}
+
 HRESULT IFeature_VkwDx12::CreateDx12Device()
 {
     LOG_FUNC();
@@ -1919,8 +1948,14 @@ HRESULT IFeature_VkwDx12::CreateDx12Device()
     HRESULT result;
     D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_12_0;
 
-    if (_localDx11on12Device == nullptr && (State::Instance().currentD3D12Device == nullptr ||
-                                            (State::Instance().gameQuirks & GameQuirk::ForceCreateD3D12Device)))
+    // Shared resources only work on the Vulkan device's GPU
+    const auto vkLuid = VulkanDeviceLuid();
+    auto gameDevice = State::Instance().currentD3D12Device;
+    const bool gameDeviceUsable =
+        gameDevice != nullptr && (!vkLuid.has_value() || IsEqualLUID(gameDevice->GetAdapterLuid(), vkLuid.value()));
+
+    if (_localDx11on12Device == nullptr &&
+        (!gameDeviceUsable || (State::Instance().gameQuirks & GameQuirk::ForceCreateD3D12Device)))
     {
         IDXGIFactory2* factory = nullptr;
 
@@ -1936,12 +1971,51 @@ HRESULT IFeature_VkwDx12::CreateDx12Device()
         }
 
         IDXGIAdapter* hwAdapter = nullptr;
-        IdentifyGpu::getHardwareAdapter(factory, &hwAdapter, featureLevel);
+        bool adapterByLuid = false;
+
+        if (vkLuid.has_value())
+        {
+            IDXGIFactory4* factory4 = nullptr;
+
+            if (factory->QueryInterface(IID_PPV_ARGS(&factory4)) == S_OK)
+            {
+                adapterByLuid = factory4->EnumAdapterByLuid(vkLuid.value(), IID_PPV_ARGS(&hwAdapter)) == S_OK;
+
+                if (!adapterByLuid)
+                    hwAdapter = nullptr;
+
+                factory4->Release();
+            }
+        }
+
+        if (hwAdapter == nullptr)
+        {
+            if (vkLuid.has_value())
+                LOG_WARN("Can't find the Vulkan device's adapter, using the hardware adapter");
+
+            IdentifyGpu::getHardwareAdapter(factory, &hwAdapter, featureLevel);
+        }
 
         if (hwAdapter == nullptr)
             LOG_WARN("Can't get hwAdapter, will try nullptr!");
 
-        _localDx11on12Device = WithDx12::RequestD3D12Device(featureLevel, hwAdapter);
+        // WithDx12 keeps or adopts an existing device without looking at the adapter
+        auto withDx12Device = WithDx12::GetD3D12Device() != nullptr ? WithDx12::GetD3D12Device() : gameDevice;
+        const bool forceCreate = static_cast<bool>(State::Instance().gameQuirks & GameQuirk::ForceCreateD3D12Device);
+
+        if (adapterByLuid && !forceCreate && withDx12Device != nullptr &&
+            !IsEqualLUID(withDx12Device->GetAdapterLuid(), vkLuid.value()))
+        {
+            ID3D12Device* device = nullptr;
+            if (CreateD3D12DeviceOnAdapter(hwAdapter, featureLevel, &device) == S_OK && device != nullptr)
+            {
+                LOG_INFO("Created a D3D12Device on the Vulkan device's GPU");
+                _localDx11on12Device = device;
+            }
+        }
+
+        if (_localDx11on12Device == nullptr)
+            _localDx11on12Device = WithDx12::RequestD3D12Device(featureLevel, hwAdapter);
 
         if (_localDx11on12Device == nullptr)
         {
@@ -1951,15 +2025,8 @@ HRESULT IFeature_VkwDx12::CreateDx12Device()
 
         _dx11on12Device = _localDx11on12Device;
 
-        if (hwAdapter != nullptr)
-        {
-            DXGI_ADAPTER_DESC desc {};
-            auto primaryGpu = IdentifyGpu::getPrimaryGpu();
-            if (hwAdapter->GetDesc(&desc) == S_OK && !IsEqualLUID(desc.AdapterLuid, primaryGpu.luid))
-            {
-                LOG_WARN("D3D12Device created with non-primary GPU");
-            }
-        }
+        if (vkLuid.has_value() && !IsEqualLUID(_localDx11on12Device->GetAdapterLuid(), vkLuid.value()))
+            LOG_WARN("D3D12Device is on a different GPU than the Vulkan device");
 
         if (hwAdapter != nullptr)
             hwAdapter->Release();

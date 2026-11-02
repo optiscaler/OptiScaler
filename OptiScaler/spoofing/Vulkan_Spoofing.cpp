@@ -1027,8 +1027,9 @@ VkResult VulkanSpoofing::hkvkCreateDevice(VkPhysicalDevice physicalDevice, VkDev
             auto nvLowLatency = std::strcmp(extName, VK_NV_LOW_LATENCY_EXTENSION_NAME) == 0;
             auto nvOpticalFlow = std::strcmp(extName, VK_NV_OPTICAL_FLOW_EXTENSION_NAME) == 0;
             auto nvPresentMeter = std::strcmp(extName, VK_NV_PRESENT_METERING_EXTENSION_NAME) == 0;
+            auto pushDescriptor = std::strcmp(extName, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME) == 0;
             const bool spoofedExtension = binaryImport || imgViewHandle || bufferDeviceAddr || mvPerViewAttr ||
-                                          nvLowLatency || nvOpticalFlow || nvPresentMeter;
+                                          nvLowLatency || nvOpticalFlow || nvPresentMeter || pushDescriptor;
 
             if (spoofedExtension && supportedDeviceExtensionsValid &&
                 !SupportsExtension(supportedDeviceExtensions, extName))

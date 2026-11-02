@@ -25,6 +25,7 @@
 #include <vulkan/vulkan.h>
 
 #include <unordered_map>
+#include <unordered_set>
 
 #include <detours/detours.h>
 #include <misc/IdentifyGpu.h>
@@ -42,6 +43,10 @@ static VkDevice _device = VK_NULL_HANDLE;
 static VkInstance _instance = VK_NULL_HANDLE;
 static VkPhysicalDevice _PD = VK_NULL_HANDLE;
 static HWND _hwnd = nullptr;
+
+// Devices created while hooked, their destroy goes through the hook too
+static std::mutex _hookedDevicesMutex;
+static std::unordered_set<uint64_t> _hookedDevices;
 
 static std::mutex _vkApiVersionMutex;
 static std::unordered_map<VkInstance, uint32_t> _instanceApiVersions;
@@ -628,6 +633,11 @@ static void hkvkDestroyDevice(VkDevice device, const VkAllocationCallbacks* pAll
     {
         MenuOverlayVk::ReleaseDevice(device);
         DeferredRelease::ReleaseOwner((uint64_t) device);
+
+        {
+            std::scoped_lock lock(_hookedDevicesMutex);
+            _hookedDevices.erase((uint64_t) device);
+        }
         ReflexHooks::deviceDestroyed(device);
 
         std::scoped_lock lock(_passThroughSwapchainsMutex);
@@ -714,7 +724,11 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
     }
 
     if (result == VK_SUCCESS)
-        DeferredRelease::DropOwnersExcept((uint64_t) *pDevice);
+    {
+        std::scoped_lock lock(_hookedDevicesMutex);
+        DeferredRelease::DropOwnersExcept(_hookedDevices);
+        _hookedDevices.insert((uint64_t) *pDevice);
+    }
 
     if (result == VK_SUCCESS && fg != nullptr)
     {
