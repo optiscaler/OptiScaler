@@ -11,6 +11,11 @@ class DxgiFactoryHooks
     static void HookToFactory(IDXGIFactory* pFactory);
     static void HookToDLSSGFactory(IDXGIFactory* pFactory);
 
+    // Dx11wDx12 FG swapchain descs
+    static bool IsTearingSupported(IDXGIFactory* factory);
+    static bool PrepareDx12InteropDesc(DXGI_SWAP_CHAIN_DESC& desc, bool tearingSupported);
+    static bool PrepareDx12InteropDesc1(DXGI_SWAP_CHAIN_DESC1& desc, bool tearingSupported);
+
   private:
     using PFN_EnumAdapterByGpuPreference =
         rewrite_signature<decltype(&IDXGIFactory6::EnumAdapterByGpuPreference)>::type;

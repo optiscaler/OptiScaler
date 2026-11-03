@@ -20,8 +20,6 @@ class DECLSPEC_UUID("1af622a3-82d0-49cd-124f-cce05122c222") WrappedIDXGIFactory7
     ULONG _refCount = 0;
     UINT _id = 0;
 
-    std::recursive_mutex _mutex;
-
   public:
     WrappedIDXGIFactory7(IDXGIFactory* real);
     virtual ~WrappedIDXGIFactory7();

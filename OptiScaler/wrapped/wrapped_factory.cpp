@@ -47,6 +47,9 @@ static HRESULT hkGetParent(IDXGIAdapter* This, REFIID riid, void** ppParent)
 
 static void AttachToAdapter(IDXGIAdapter* adapter)
 {
+    static std::mutex attachMutex;
+    std::scoped_lock lock(attachMutex);
+
     if (o_GetParent != nullptr)
         return;
 
@@ -72,17 +75,16 @@ static void AttachToAdapter(IDXGIAdapter* adapter)
     }
 }
 
-static UINT fCount = 0;
+static std::atomic<UINT> fCount = 0;
 
 WrappedIDXGIFactory7::WrappedIDXGIFactory7(IDXGIFactory* real)
 {
     if (real == nullptr)
         return;
 
-    fCount++;
-    _id = fCount;
+    _id = ++fCount;
 
-    LOG_WARN("{}", _id);
+    LOG_DEBUG("{}", _id);
 
     _real = real;
     _refCount = 1;
@@ -113,6 +115,9 @@ WrappedIDXGIFactory7::~WrappedIDXGIFactory7() {}
 
 HRESULT __stdcall WrappedIDXGIFactory7::QueryInterface(REFIID riid, void** ppvObject)
 {
+    if (ppvObject == nullptr)
+        return E_POINTER;
+
     if (riid == __uuidof(IDXGIFactory))
     {
         AddRef();
@@ -184,18 +189,14 @@ HRESULT __stdcall WrappedIDXGIFactory7::QueryInterface(REFIID riid, void** ppvOb
     return E_NOINTERFACE;
 }
 
-ULONG __stdcall WrappedIDXGIFactory7::AddRef()
-{
-    InterlockedIncrement(&_refCount);
-    return _refCount;
-}
+ULONG __stdcall WrappedIDXGIFactory7::AddRef() { return InterlockedIncrement(&_refCount); }
 
 ULONG __stdcall WrappedIDXGIFactory7::Release()
 {
     ULONG now = InterlockedDecrement(&_refCount);
     if (now == 0)
     {
-        LOG_WARN("id: {}", _id);
+        LOG_DEBUG("id: {}", _id);
         _real->Release();
         delete this;
     }
@@ -246,12 +247,7 @@ HRESULT __stdcall WrappedIDXGIFactory7::GetWindowAssociation(HWND* pWindowHandle
 HRESULT STDMETHODCALLTYPE WrappedIDXGIFactory7::CreateSwapChain(IUnknown* pDevice, DXGI_SWAP_CHAIN_DESC* pDesc,
                                                                 IDXGISwapChain** ppSwapChain)
 {
-    auto result = DxgiFactoryWrappedCalls::CreateSwapChain(_real, this, pDevice, pDesc, ppSwapChain);
-
-    if (SUCCEEDED(result))
-        return result;
-
-    return _real->CreateSwapChain(pDevice, pDesc, ppSwapChain);
+    return DxgiFactoryWrappedCalls::CreateSwapChain(_real, this, pDevice, pDesc, ppSwapChain);
 }
 
 HRESULT __stdcall WrappedIDXGIFactory7::CreateSoftwareAdapter(HMODULE Module, IDXGIAdapter** ppAdapter)
@@ -296,26 +292,8 @@ WrappedIDXGIFactory7::CreateSwapChainForHwnd(IUnknown* pDevice, HWND hWnd, const
     if (_real2 == nullptr)
         return E_NOTIMPL;
 
-    HRESULT result;
-    DXGI_SWAP_CHAIN_DESC1 localDesc = *pDesc;
-
-    if (pFullscreenDesc != nullptr)
-    {
-        DXGI_SWAP_CHAIN_FULLSCREEN_DESC localFSDesc = *pFullscreenDesc;
-
-        result = DxgiFactoryWrappedCalls::CreateSwapChainForHwnd(_real2, this, pDevice, hWnd, &localDesc, &localFSDesc,
-                                                                 pRestrictToOutput, ppSwapChain);
-    }
-    else
-    {
-        result = DxgiFactoryWrappedCalls::CreateSwapChainForHwnd(_real2, this, pDevice, hWnd, &localDesc, nullptr,
-                                                                 pRestrictToOutput, ppSwapChain);
-    }
-
-    if (SUCCEEDED(result))
-        return result;
-
-    return _real2->CreateSwapChainForHwnd(pDevice, hWnd, pDesc, pFullscreenDesc, pRestrictToOutput, ppSwapChain);
+    return DxgiFactoryWrappedCalls::CreateSwapChainForHwnd(_real2, this, pDevice, hWnd, pDesc, pFullscreenDesc,
+                                                           pRestrictToOutput, ppSwapChain);
 }
 
 HRESULT __stdcall WrappedIDXGIFactory7::CreateSwapChainForCoreWindow(IUnknown* pDevice, IUnknown* pWindow,
@@ -326,15 +304,8 @@ HRESULT __stdcall WrappedIDXGIFactory7::CreateSwapChainForCoreWindow(IUnknown* p
     if (_real2 == nullptr)
         return E_NOTIMPL;
 
-    DXGI_SWAP_CHAIN_DESC1 localDesc = *pDesc;
-
-    auto result = DxgiFactoryWrappedCalls::CreateSwapChainForCoreWindow(_real2, pDevice, pWindow, &localDesc,
-                                                                        pRestrictToOutput, ppSwapChain);
-
-    if (SUCCEEDED(result))
-        return result;
-
-    return _real2->CreateSwapChainForCoreWindow(pDevice, pWindow, pDesc, pRestrictToOutput, ppSwapChain);
+    return DxgiFactoryWrappedCalls::CreateSwapChainForCoreWindow(_real2, pDevice, pWindow, pDesc, pRestrictToOutput,
+                                                                 ppSwapChain);
 }
 
 HRESULT __stdcall WrappedIDXGIFactory7::GetSharedResourceAdapterLuid(HANDLE hResource, LUID* pLuid)
