@@ -7,6 +7,7 @@
 #include <nvapi/fakenvapi.h>
 #include <hooks/Reflex_Hooks.h>
 #include <hooks/D3D12_Hooks.h>
+#include <hooks/FG_Hooks.h>
 #include <with_dx12/dx11_with_dx12_sync.h>
 
 #include <menu/menu_overlay_base.h>
@@ -182,6 +183,13 @@ static bool IsCurrentSwapchain(IDXGISwapChain* swapchain)
 {
     auto& state = State::Instance();
     return state.currentSwapchain == swapchain || state.currentWrappedSwapchain == swapchain;
+}
+
+// Game's output, the FG library's swapchain on the FG window included
+static bool IsGameOutput(IDXGISwapChain* swapchain, HWND hwnd)
+{
+    return IsCurrentSwapchain(swapchain) ||
+           (State::Instance().currentFGSwapchain != nullptr && !FGHooks::IsOtherWindowThanFG(hwnd));
 }
 
 // Menu draws on the current swapchain and the last presenting window
@@ -363,15 +371,16 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
     {
         double ftDelta = 0.0;
 
-        auto now = Util::MillisecondsNow();
-
-        if (_lastFrameTime != 0)
-            ftDelta = now - _lastFrameTime;
-
-        _lastFrameTime = now;
-
+        // Other windows' presents would shorten the game's frame time
         if (isCurrent)
         {
+            auto now = Util::MillisecondsNow();
+
+            if (_lastFrameTime != 0)
+                ftDelta = now - _lastFrameTime;
+
+            _lastFrameTime = now;
+
             State::Instance().presentFrameTime = ftDelta;
 
             if (State::Instance().currentFG == nullptr)
@@ -579,10 +588,8 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
             InputCommon::dlssg_present();
         }
 
-        _frameCounter++;
-
         if (isCurrent)
-            State::Instance().frameCount = _frameCounter;
+            State::Instance().frameCount = ++_frameCounter;
     }
 
     LOG_DEBUG("Calling original present");
@@ -848,16 +855,16 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::QueryInterface(REFIID riid, vo
 
 ULONG STDMETHODCALLTYPE WrappedIDXGISwapChain4::AddRef()
 {
-    InterlockedIncrement(&_refcount);
-    LOG_TRACE("Count: {}, caller: {}", _refcount, Util::WhoIsTheCaller(_ReturnAddress()));
-    return _refcount;
+    ULONG count = InterlockedIncrement(&_refcount);
+    LOG_TRACE("Count: {}, caller: {}", count, Util::WhoIsTheCaller(_ReturnAddress()));
+    return count;
 }
 
 ULONG STDMETHODCALLTYPE WrappedIDXGISwapChain4::Release()
 {
     ULONG ret = InterlockedDecrement(&_refcount);
 
-    LOG_TRACE("Count: {}, caller: {}", _refcount, Util::WhoIsTheCaller(_ReturnAddress()));
+    LOG_TRACE("Count: {}, caller: {}", ret, Util::WhoIsTheCaller(_ReturnAddress()));
 
     if (ret == 0)
     {
@@ -1221,7 +1228,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
 
     // Crude implementation of EndlesslyFlowering's AutoHDR-ReShade
     // https://github.com/EndlesslyFlowering/AutoHDR-ReShade
-    if (SUCCEEDED(result) && UseForceHDR())
+    if (SUCCEEDED(result) && UseForceHDR() && IsGameOutput(this, _handle))
         SetForcedHDRColorSpace(_real3);
 
     if (SUCCEEDED(result) && UseForceHDR() && IsCurrentSwapchain(this))
@@ -1392,7 +1399,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::SetColorSpace1(DXGI_COLOR_SPAC
 {
     auto result = _real3->SetColorSpace1(ColorSpace);
 
-    if (SUCCEEDED(result))
+    if (SUCCEEDED(result) && IsGameOutput(this, _handle))
     {
         UpdateOutputColorSpace(ColorSpace);
 
@@ -1617,7 +1624,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
 
     // Crude implementation of EndlesslyFlowering's AutoHDR-ReShade
     // https://github.com/EndlesslyFlowering/AutoHDR-ReShade
-    if (SUCCEEDED(result) && UseForceHDR())
+    if (SUCCEEDED(result) && UseForceHDR() && IsGameOutput(this, _handle))
         SetForcedHDRColorSpace(_real3);
 
     if (SUCCEEDED(result) && UseForceHDR() && IsCurrentSwapchain(this))

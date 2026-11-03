@@ -143,6 +143,23 @@ bool PrepareFGResize(IDXGISwapChain* fgSwapChain, UINT& bufferCount, DXGI_FORMAT
     return true;
 }
 
+// Game's flags are for its swapchain, DXGI rejects ALLOW_TEARING on a swapchain without the flag, in fullscreen or
+// with a sync interval
+UINT ValidPresentFlags(IDXGISwapChain* swapchain, UINT syncInterval, UINT flags)
+{
+    if ((flags & DXGI_PRESENT_ALLOW_TEARING) == 0)
+        return flags;
+
+    DXGI_SWAP_CHAIN_DESC desc {};
+    if (syncInterval != 0 || swapchain == nullptr || FAILED(swapchain->GetDesc(&desc)) ||
+        (desc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) == 0 || !desc.Windowed)
+    {
+        flags &= ~DXGI_PRESENT_ALLOW_TEARING;
+    }
+
+    return flags;
+}
+
 bool IsSame(IDXGISwapChain* swapchain, UINT bufferCount, UINT width, UINT height, DXGI_FORMAT format, UINT flags)
 {
     if (swapchain == nullptr)
@@ -396,7 +413,7 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::Present(UINT SyncInterval, UINT Flags)
 
     // Occlusion test belongs to the game window's swapchain, the real one is on a hidden window
     if ((Flags & DXGI_PRESENT_TEST) != 0)
-        return _fgSwapChain->Present(SyncInterval, Flags);
+        return _fgSwapChain->Present(SyncInterval, ValidPresentFlags(_fgSwapChain, SyncInterval, Flags));
 
     const bool dx11HudfixPresent = Config::Instance()->FGHUDFix.value_or_default() &&
                                    State::Instance().activeFgInput == FGInput::Upscaler &&
@@ -451,7 +468,7 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::Present(UINT SyncInterval, UINT Flags)
             LOG_WARN("hidden real DX11 Present failed: {:X}", (UINT) realPresentResult);
     }
 
-    auto result = _fgSwapChain->Present(SyncInterval, Flags);
+    auto result = _fgSwapChain->Present(SyncInterval, ValidPresentFlags(_fgSwapChain, SyncInterval, Flags));
 
     if (dx11HudfixPresent)
         Hudfix_Dx11::PresentEnd();
@@ -497,7 +514,14 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::GetDesc(DXGI_SWAP_CHAIN_DESC* pDesc)
 
     auto result = _real->GetDesc(pDesc);
     if (SUCCEEDED(result) && pDesc != nullptr)
+    {
         pDesc->OutputWindow = _handle;
+
+        // Real one is always windowed on its hidden window
+        BOOL fullscreen = FALSE;
+        if (_fgSwapChain != nullptr && SUCCEEDED(_fgSwapChain->GetFullscreenState(&fullscreen, nullptr)))
+            pDesc->Windowed = !fullscreen;
+    }
 
     return result;
 }
@@ -837,6 +861,14 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::ResizeBuffers1(UINT BufferCount, UINT Wid
 
         State::Instance().scChanged = true;
         State::Instance().SCAllowTearing = (SwapChainFlags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) != 0;
+
+        if (State::Instance().currentFeature == nullptr)
+        {
+            State::Instance().screenWidth = static_cast<float>(Width);
+            State::Instance().screenHeight = static_cast<float>(Height);
+            State::Instance().lastMipBias = 100.0f;
+            State::Instance().lastMipBiasMax = -100.0f;
+        }
     }
 
     return FAILED(realResult) ? realResult : fgResult;

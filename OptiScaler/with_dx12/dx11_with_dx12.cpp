@@ -1015,7 +1015,9 @@ bool Dx11WithDx12::CopyUpscalerOutputToDx11(D3D11_UPSCALER_RESOURCE_CACHE_C& cac
         return false;
     }
 
-    Dx11DeviceContext->CopyResource(cache.ParamOutput[outputIndex], cache.Output[outputIndex].SharedTexture);
+    // An already shared output is written in place, copying a resource onto itself is invalid
+    if (cache.ParamOutput[outputIndex] != static_cast<ID3D11Resource*>(cache.Output[outputIndex].SharedTexture))
+        Dx11DeviceContext->CopyResource(cache.ParamOutput[outputIndex], cache.Output[outputIndex].SharedTexture);
 
     // After a CPU wait the D3D11 queue is idle, submit right away instead of waiting for the next flush
     if (UseCpuWaitForDx12())

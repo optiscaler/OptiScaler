@@ -1425,8 +1425,8 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
     }
 
     // FG can become active after the check above, its Present then would race with EvaluateState
-    const bool fgFeatureActive = fg != nullptr && fg->IsActive() && !fg->IsPaused() &&
-                                 (!useMutex || mutexUsed || fg->Mutex.getOwner() == 2);
+    const bool fgFeatureActive =
+        fg != nullptr && fg->IsActive() && !fg->IsPaused() && (!useMutex || mutexUsed || fg->Mutex.getOwner() == 2);
 
     sl::FrameToken* localToken = nullptr;
     sl::Result tokenResult = sl::Result::eErrorReflexAPI;
@@ -1482,7 +1482,12 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
         {
             SyncInterval = 0;
 
-            if (state.SCAllowTearing && !state.realExclusiveFullscreen)
+            // This swapchain's flags and live windowed state, the global ones can be stale or the game's
+            DXGI_SWAP_CHAIN_DESC scDesc {};
+            const bool allowTearing = This->GetDesc(&scDesc) == S_OK &&
+                                      (scDesc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) != 0 && scDesc.Windowed;
+
+            if (allowTearing)
             {
                 LOG_DEBUG("Adding DXGI_PRESENT_ALLOW_TEARING");
                 Flags |= DXGI_PRESENT_ALLOW_TEARING;
