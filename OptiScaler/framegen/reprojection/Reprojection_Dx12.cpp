@@ -25,7 +25,7 @@ void Reprojection_Dx12::ReleaseObjects()
         _uiAllocatorFenceValues[i] = 0;
     }
 
-    ReleaseUIFence();
+    ReleaseFences();
 
     _renderUI.reset();
     _hudlessCompare.reset();
@@ -333,13 +333,7 @@ bool Reprojection_Dx12::Present()
         _uiCommandListResetted[fIndex] = false;
     }
 
-    if (_scCommandListResetted[fIndex])
-    {
-        if (_scCommandList[fIndex]->Close() == S_OK)
-            _gameCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList**) &_scCommandList[fIndex]);
-
-        _scCommandListResetted[fIndex] = false;
-    }
+    SubmitSCCommandList(fIndex);
 
     // Returning false usually means "I didn't present, the caller still needs to call original Present",
     // which aligns with standard pass-through logic if you are purely injecting shaders before Present.

@@ -1414,9 +1414,9 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
         }
     }
 
+    const bool useMutex = config->FGUseMutexForSwapchain.value_or_default();
     bool mutexUsed = false;
-    if (willPresent && fg != nullptr && fg->IsActive() && !fg->IsPaused() &&
-        config->FGUseMutexForSwapchain.value_or_default() && fg->Mutex.getOwner() != 2)
+    if (willPresent && fg != nullptr && fg->IsActive() && !fg->IsPaused() && useMutex && fg->Mutex.getOwner() != 2)
     {
         LOG_TRACE("Waiting FG->Mutex 2, current: {}", fg->Mutex.getOwner());
         fg->Mutex.lock(2);
@@ -1424,7 +1424,9 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
         LOG_TRACE("Accuired FG->Mutex: {}", fg->Mutex.getOwner());
     }
 
-    const bool fgFeatureActive = fg != nullptr && fg->IsActive() && !fg->IsPaused();
+    // FG can become active after the check above, its Present then would race with EvaluateState
+    const bool fgFeatureActive = fg != nullptr && fg->IsActive() && !fg->IsPaused() &&
+                                 (!useMutex || mutexUsed || fg->Mutex.getOwner() == 2);
 
     sl::FrameToken* localToken = nullptr;
     sl::Result tokenResult = sl::Result::eErrorReflexAPI;

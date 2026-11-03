@@ -1121,7 +1121,7 @@ void XeFG_Dx12::ReleaseObjects()
         _uiAllocatorFenceValues[i] = 0;
     }
 
-    ReleaseUIFence();
+    ReleaseFences();
 
     _renderUI.reset();
     _hudlessCompare.reset();
@@ -1350,18 +1350,7 @@ bool XeFG_Dx12::Present()
             _uiCommandListResetted[fIndex] = false;
         }
 
-        if (_scCommandListResetted[fIndex])
-        {
-            LOG_DEBUG("Executing _scCommandList[{}]: {:X}", fIndex, (size_t) _scCommandList[fIndex]);
-            auto closeResult = _scCommandList[fIndex]->Close();
-
-            if (closeResult == S_OK)
-                _gameCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList**) &_scCommandList[fIndex]);
-            else
-                LOG_ERROR("_scCommandList[{}]->Close() error: {:X}", fIndex, (UINT) closeResult);
-
-            _scCommandListResetted[fIndex] = false;
-        }
+        SubmitSCCommandList(fIndex);
     }
 
     if ((_fgFramePresentId - _lastFGFramePresentId) > 3 && IsActive() && !_waitingNewFrameData)
