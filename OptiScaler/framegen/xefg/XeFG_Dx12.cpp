@@ -184,6 +184,10 @@ bool XeFG_Dx12::DestroySwapchainContext()
             State::Instance().currentFGSwapchain = nullptr;
             _allowLowerFrameId = true;
 
+            // New context starts with its defaults, Dispatch sets them again
+            _framesToInterpolate = -1;
+            _uiComposition = false;
+
             // Its XeLL context isn't read anymore
             InputCommon::release_xefg_xell();
         }
@@ -1683,12 +1687,15 @@ bool XeFG_Dx12::ReleaseSwapchain(HWND hwnd)
 
     if (!State::Instance().isShuttingDown)
     {
+        auto fgSwapchain = State::Instance().currentFGSwapchain;
         State::Instance().currentFGSwapchain = nullptr;
 
         if (_swapChainContext != nullptr)
             DestroySwapchainContext();
 
-        _swapChainContext = nullptr;
+        // Destroy failed, the context still owns the swapchain and the window
+        if (_swapChainContext != nullptr)
+            State::Instance().currentFGSwapchain = fgSwapchain;
     }
 
     ReleaseObjects();

@@ -308,7 +308,7 @@ bool IFeature::UpdateOutputResolution(const NVSDK_NGX_Parameter* InParameters)
 
     if (Config::Instance()->OutputScalingEnabled.value_or_default())
     {
-        if (_targetWidth == fsrDynamicOutputWidth || _targetHeight == fsrDynamicOutputHeight)
+        if (_targetWidth == fsrDynamicOutputWidth && _targetHeight == fsrDynamicOutputHeight)
             return false;
 
         if (fsrDynamicOutputWidth > 0 && fsrDynamicOutputHeight > 0 &&

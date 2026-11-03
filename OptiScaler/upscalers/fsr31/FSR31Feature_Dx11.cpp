@@ -129,11 +129,6 @@ bool FSR31FeatureDx11::EvaluateInternal(ID3D11DeviceContext* DeviceContext, NVSD
     if (Config::Instance()->FsrDebugView.value_or_default())
         params.flags = Fsr31::FFX_FSR3_UPSCALER_FLAG_DRAW_DEBUG_VIEW;
 
-    if (Config::Instance()->FsrNonLinearPQ.value_or_default())
-        params.flags |= FFX_UPSCALE_FLAG_NON_LINEAR_COLOR_PQ;
-    else if (Config::Instance()->FsrNonLinearSRGB.value_or_default())
-        params.flags |= FFX_UPSCALE_FLAG_NON_LINEAR_COLOR_SRGB;
-
     InParameters->Get(NVSDK_NGX_Parameter_Jitter_Offset_X, &params.jitterOffset.x);
     InParameters->Get(NVSDK_NGX_Parameter_Jitter_Offset_Y, &params.jitterOffset.y);
 
@@ -142,7 +137,7 @@ bool FSR31FeatureDx11::EvaluateInternal(ID3D11DeviceContext* DeviceContext, NVSD
 
     LOG_DEBUG("Jitter Offset: {0}x{1}", params.jitterOffset.x, params.jitterOffset.y);
 
-    unsigned int reset;
+    unsigned int reset = 0;
     InParameters->Get(NVSDK_NGX_Parameter_Reset, &reset);
     params.reset = (reset == 1);
 
@@ -473,13 +468,6 @@ bool FSR31FeatureDx11::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
 
         if (!LowResMV())
             _upscalerContextDesc.flags |= Fsr31::FFX_FSR3_ENABLE_DISPLAY_RESOLUTION_MOTION_VECTORS;
-
-        if (Config::Instance()->FsrNonLinearPQ.value_or_default() ||
-            Config::Instance()->FsrNonLinearSRGB.value_or_default())
-        {
-            _upscalerContextDesc.flags |= FFX_UPSCALE_ENABLE_NON_LINEAR_COLORSPACE;
-            LOG_INFO("contextDesc.initFlags (NonLinearColorSpace) {0:b}", _upscalerContextDesc.flags);
-        }
 
         if (Config::Instance()->OutputScalingEnabled.value_or_default() &&
             (LowResMV() || RenderWidth() == DisplayWidth()))

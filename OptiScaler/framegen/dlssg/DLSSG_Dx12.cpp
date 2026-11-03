@@ -745,6 +745,7 @@ bool DLSSG_Dx12::SetResource(Dx12Resource* inputResource)
 
             if (lastFormat[fIndex] != DXGI_FORMAT_UNKNOWN && lastFormat[fIndex] != desc.Format)
             {
+                std::fill_n(lastFormat, BUFFER_COUNT, desc.Format);
                 State::Instance().fgChanged = true;
                 return false;
             }

@@ -182,7 +182,7 @@ bool FSR2FeatureVk212::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_P
     InParameters->Get(NVSDK_NGX_Parameter_Jitter_Offset_X, &params.jitterOffset.x);
     InParameters->Get(NVSDK_NGX_Parameter_Jitter_Offset_Y, &params.jitterOffset.y);
 
-    unsigned int reset;
+    unsigned int reset = 0;
     InParameters->Get(NVSDK_NGX_Parameter_Reset, &reset);
     params.reset = (reset == 1);
 

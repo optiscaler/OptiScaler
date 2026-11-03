@@ -32,7 +32,7 @@ bool FSR2FeatureDx12_212::EvaluateInternal(ID3D12GraphicsCommandList* InCommandL
 
     LOG_DEBUG("Jitter Offset: {0}x{1}", params.jitterOffset.x, params.jitterOffset.y);
 
-    unsigned int reset;
+    unsigned int reset = 0;
     InParameters->Get(NVSDK_NGX_Parameter_Reset, &reset);
     params.reset = (reset == 1);
 

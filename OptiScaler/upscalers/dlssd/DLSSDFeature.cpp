@@ -193,7 +193,7 @@ void DLSSDFeature::ProcessInitParams(NVSDK_NGX_Parameter* InParameters)
         }
         else
         {
-            if (State::Instance().dlssPresetsOverriddenExternally)
+            if (State::Instance().dlssdPresetsOverriddenExternally)
             {
                 InParameters->Set("RayReconstruction.Hint.Render.Preset.DLAA",
                                   State::Instance().dlssdRenderPresetExternal);
