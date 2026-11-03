@@ -1643,6 +1643,10 @@ static UiTargetMode getUiTargetMode()
         return UiTargetMode::SDR;
     }
 
+    // sRGB target encodes on write, colors need to be linear
+    if (state.menuTargetSrgb)
+        return UiTargetMode::LinearHDR;
+
     const auto& output = state.outputColorSpace;
 
     // If SetColorSpace1 has not provided a known/valid color space,

@@ -418,6 +418,7 @@ class State
     // HDR
     OutputColorSpace outputColorSpace {};
     bool hdrOutputActive = false;
+    bool menuTargetSrgb = false;
 
     std::optional<ApiUpscalerInput> setInputApiName;
     ApiUpscalerInput currentInputApiName;

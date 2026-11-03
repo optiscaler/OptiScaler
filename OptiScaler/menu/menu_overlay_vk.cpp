@@ -12,6 +12,10 @@
 #include "menu_common.h"
 #include <shaders/menu_blur/MenuBlur_Vk.h>
 #include <misc/DeferredRelease.h>
+#include <framegen/IFGFeature_Vk.h>
+#include <State.h>
+
+#include <magic_enum.hpp>
 
 // Vulkan overlay code adopted from here:
 // https://gist.github.com/mem99/0ec31ca302927457f86b1d6756aaa8c4
@@ -89,6 +93,11 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
     // Also objects of a half finished creation
     MenuOverlayVk::DestroyVulkanObjects(false);
 
+    LOG_DEBUG("Swapchain format: {}", magic_enum::enum_name(pCreateInfo->imageFormat));
+
+    const bool srgbTarget = IFGFeature_Vk::WithoutSrgb(pCreateInfo->imageFormat) != pCreateInfo->imageFormat;
+    const bool srgbChanged = std::exchange(State::Instance().menuTargetSrgb, srgbTarget) != srgbTarget;
+
     // Initialize ImGui
     if (!MenuOverlayBase::IsInited() || MenuOverlayBase::Handle() != hwnd)
     {
@@ -97,6 +106,10 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
 
         LOG_DEBUG("MenuOverlayBase::Init");
         MenuOverlayBase::Init(hwnd, false);
+    }
+    else if (srgbChanged)
+    {
+        MenuOverlayBase::ApplyThemeStyle();
     }
 
     ImGuiIO& io = ImGui::GetIO();
