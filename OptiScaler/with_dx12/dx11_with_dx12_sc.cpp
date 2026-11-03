@@ -415,6 +415,10 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::Present(UINT SyncInterval, UINT Flags)
     if ((Flags & DXGI_PRESENT_TEST) != 0)
         return _fgSwapChain->Present(SyncInterval, ValidPresentFlags(_fgSwapChain, SyncInterval, Flags));
 
+    // The FG library's swapchain isn't the current one, game's frames are counted here
+    if (State::Instance().currentSwapchain == this)
+        State::Instance().frameCount++;
+
     const bool dx11HudfixPresent = Config::Instance()->FGHUDFix.value_or_default() &&
                                    State::Instance().activeFgInput == FGInput::Upscaler &&
                                    State::Instance().swapchainInteropApi == SwapchainInteropApi::Dx11wDx12;
