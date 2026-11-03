@@ -5,6 +5,7 @@
 #include <with_dx12/dx11_with_dx12_sync.h>
 
 #include <hooks/FG_Hooks.h>
+#include <hooks/DxgiFactory_Hooks.h>
 #include <menu/menu_overlay_dx.h>
 #include <wrapped/wrapped_factory.h>
 
@@ -120,6 +121,26 @@ DXGI_FORMAT ResolveBufferFormat(IDXGISwapChain* swapchain, IDXGISwapChain1* swap
         return desc1.Format;
 
     return DXGI_FORMAT_UNKNOWN;
+}
+
+// FG swapchain is flip model, game's resize params can be for blt model
+bool PrepareFGResize(IDXGISwapChain* fgSwapChain, UINT& bufferCount, DXGI_FORMAT& format, UINT& flags)
+{
+    if (format != DXGI_FORMAT_UNKNOWN && !DxgiFactoryHooks::PrepareDx12FlipFormat(format))
+        return false;
+
+    // 0 keeps the current count
+    if (bufferCount == 1)
+        bufferCount = 2;
+
+    flags &= ~DXGI_SWAP_CHAIN_FLAG_GDI_COMPATIBLE;
+
+    // ALLOW_TEARING can't change on resize
+    DXGI_SWAP_CHAIN_DESC desc {};
+    if (fgSwapChain != nullptr && SUCCEEDED(fgSwapChain->GetDesc(&desc)))
+        flags = (flags & ~DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) | (desc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING);
+
+    return true;
 }
 
 bool IsSame(IDXGISwapChain* swapchain, UINT bufferCount, UINT width, UINT height, DXGI_FORMAT format, UINT flags)
@@ -385,25 +406,21 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::Present(UINT SyncInterval, UINT Flags)
         Hudfix_Dx11::PresentStart();
     }
 
-    if (!_InitInteropObjects())
-        return DXGI_ERROR_DEVICE_REMOVED;
+    // The device is fine when the interop copy fails, keep presenting the FG swapchain
+    bool frameCopied = _InitInteropObjects();
+    UINT dx11Index = 0;
 
-    auto dx11Index = _GetDx11BackBufferIndexForPresent();
+    if (frameCopied)
+    {
+        dx11Index = _GetDx11BackBufferIndexForPresent();
 
-    if (!_RequestSharedBackBuffer(dx11Index))
-        return DXGI_ERROR_DEVICE_REMOVED;
+        frameCopied = _RequestSharedBackBuffer(dx11Index) && _CopyDx11BackBufferToShared(dx11Index) &&
+                      _WaitDx11ThenDx12() && _CopyDx11SharedToDx12FGBackBuffer(dx11Index) &&
+                      _WaitForInteropCopyOnPresentQueue();
+    }
 
-    if (!_CopyDx11BackBufferToShared(dx11Index))
-        return DXGI_ERROR_DEVICE_REMOVED;
-
-    if (!_WaitDx11ThenDx12())
-        return DXGI_ERROR_DEVICE_REMOVED;
-
-    if (!_CopyDx11SharedToDx12FGBackBuffer(dx11Index))
-        return DXGI_ERROR_DEVICE_REMOVED;
-
-    if (!_WaitForInteropCopyOnPresentQueue())
-        return DXGI_ERROR_DEVICE_REMOVED;
+    if (!frameCopied)
+        LOG_ERROR("Interop copy failed, presenting without the new frame");
 
     const bool fgHookedPresenter =
         State::Instance().currentFGSwapchain == _fgSwapChain && !FGHooks::IsDx12InteropPresentSC(_fgSwapChain);
@@ -438,10 +455,10 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::Present(UINT SyncInterval, UINT Flags)
     if (dx11HudfixPresent)
         Hudfix_Dx11::PresentEnd();
 
-    if (SUCCEEDED(result))
-        _AdvanceFakeBackBufferIndex();
-    else
+    if (FAILED(result))
         LOG_ERROR("fg Present failed: {:X}", (UINT) result);
+    else if (frameCopied)
+        _AdvanceFakeBackBufferIndex();
 
     return result;
 }
@@ -490,7 +507,16 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::ResizeBuffers(UINT BufferCount, UINT Widt
     LOG_DEBUG("Dx11wDx12SC ResizeBuffers: count {}, size {}x{}, format {}, flags {:X}", BufferCount, Width, Height,
               (UINT) NewFormat, SwapChainFlags);
 
-    const bool skipFgResize = IsSame(_fgSwapChain, BufferCount, Width, Height, NewFormat, SwapChainFlags);
+    DxgiFactoryHooks::ResolveInteropSize(_handle, Width, Height);
+
+    UINT fgBufferCount = BufferCount;
+    DXGI_FORMAT fgFormat = NewFormat;
+    UINT fgFlags = SwapChainFlags;
+
+    if (!PrepareFGResize(_fgSwapChain, fgBufferCount, fgFormat, fgFlags))
+        return DXGI_ERROR_INVALID_CALL;
+
+    const bool skipFgResize = IsSame(_fgSwapChain, fgBufferCount, Width, Height, fgFormat, fgFlags);
     const bool synchronizeXeFGPresent = skipFgResize && State::Instance().activeFgOutput == FGOutput::XeFG &&
                                         State::Instance().swapchainInteropApi == SwapchainInteropApi::Dx11wDx12;
 
@@ -534,7 +560,7 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::ResizeBuffers(UINT BufferCount, UINT Widt
         }
         else
         {
-            fgResult = _fgSwapChain->ResizeBuffers(BufferCount, Width, Height, NewFormat, SwapChainFlags);
+            fgResult = _fgSwapChain->ResizeBuffers(fgBufferCount, Width, Height, fgFormat, fgFlags);
         }
     }
 
@@ -737,7 +763,16 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::ResizeBuffers1(UINT BufferCount, UINT Wid
     if (_real3 == nullptr)
         return ResizeBuffers(BufferCount, Width, Height, Format, SwapChainFlags);
 
-    const bool skipFgResize = IsSame(_fgSwapChain, BufferCount, Width, Height, Format, SwapChainFlags);
+    DxgiFactoryHooks::ResolveInteropSize(_handle, Width, Height);
+
+    UINT fgBufferCount = BufferCount;
+    DXGI_FORMAT fgFormat = Format;
+    UINT fgFlags = SwapChainFlags;
+
+    if (!PrepareFGResize(_fgSwapChain, fgBufferCount, fgFormat, fgFlags))
+        return DXGI_ERROR_INVALID_CALL;
+
+    const bool skipFgResize = IsSame(_fgSwapChain, fgBufferCount, Width, Height, fgFormat, fgFlags);
     const bool synchronizeXeFGPresent = skipFgResize && State::Instance().activeFgOutput == FGOutput::XeFG &&
                                         State::Instance().swapchainInteropApi == SwapchainInteropApi::Dx11wDx12;
 
@@ -782,7 +817,7 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::ResizeBuffers1(UINT BufferCount, UINT Wid
         }
         else
         {
-            fgResult = _fgSwapChain->ResizeBuffers(BufferCount, Width, Height, Format, SwapChainFlags);
+            fgResult = _fgSwapChain->ResizeBuffers(fgBufferCount, Width, Height, fgFormat, fgFlags);
         }
     }
 
@@ -1028,6 +1063,7 @@ bool Dx11wDx12SC::_RequestSharedBackBuffer(UINT index)
         if (FAILED(result) || dxgiResource == nullptr)
         {
             LOG_ERROR("shadow IDXGIResource1 query {} failed: {:X}", _currentFakeIndex, (UINT) result);
+            SafeRelease(_sharedDx11BackBufferCopies[_currentFakeIndex]);
             sourceTexture->Release();
             return false;
         }
@@ -1039,6 +1075,8 @@ bool Dx11wDx12SC::_RequestSharedBackBuffer(UINT index)
         if (FAILED(result) || _sharedBackBufferHandles[_currentFakeIndex] == nullptr)
         {
             LOG_ERROR("shadow CreateSharedHandle {} failed: {:X}", _currentFakeIndex, (UINT) result);
+            SafeRelease(_sharedDx11BackBufferCopies[_currentFakeIndex]);
+            _sharedBackBufferHandles[_currentFakeIndex] = nullptr;
             sourceTexture->Release();
             return false;
         }
@@ -1359,7 +1397,7 @@ void Dx11wDx12SC::_RefreshCachedSwapchainDesc()
 {
     _bufferCount = ResolveBufferCount(_real, _real1);
     _bufferFormat = ResolveBufferFormat(_real, _real1);
-    _currentFakeIndex = _bufferCount > 0 ? _currentFakeIndex : 0;
+    _currentFakeIndex = _bufferCount > 0 ? _currentFakeIndex % _bufferCount : 0;
 }
 
 UINT Dx11wDx12SC::_GetDx11BackBufferIndexForPresent() const
