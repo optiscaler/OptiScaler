@@ -352,6 +352,12 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
     const bool hasRestoreParamReactive = getOriginalNgxResource(
         InParameters, NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, &restoreParamReactive);
 
+    // Dx11 textures, Dx12 backends would read them as Dx12 resources. Reactive mask is shared via the bias mask
+    void* restoreFsrReactive = nullptr;
+    void* restoreFsrTransparency = nullptr;
+    InParameters->Get("FSR.reactive", &restoreFsrReactive);
+    InParameters->Get("FSR.transparencyAndComposition", &restoreFsrTransparency);
+
     ComPtr<ID3D11ShaderResourceView> restoreSRVs[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
     ComPtr<ID3D11SamplerState> restoreSamplerStates[D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT] = {};
     ComPtr<ID3D11Buffer> restoreCBVs[D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT] = {};
@@ -422,6 +428,9 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
             InParameters->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask,
                               (void*) dx11Reactive.Dx12Resource);
 
+        InParameters->Set("FSR.reactive", (void*) nullptr);
+        InParameters->Set("FSR.transparencyAndComposition", (void*) nullptr);
+
         LOG_DEBUG("Dispatch!!");
         dx12EvalResult = dx12Feature->Evaluate(cmdList, InParameters);
 
@@ -444,6 +453,9 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
 
     if (hasRestoreParamReactive)
         InParameters->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void*) restoreParamReactive);
+
+    InParameters->Set("FSR.reactive", restoreFsrReactive);
+    InParameters->Set("FSR.transparencyAndComposition", restoreFsrTransparency);
 
     if (commandListRecording)
     {

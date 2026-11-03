@@ -47,6 +47,12 @@ bool IFeature_Dx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_Par
     // Frees deferred objects even when presents aren't hooked
     DeferredRelease::Collect();
 
+    if (!IsInited())
+    {
+        LOG_ERROR("Not inited!");
+        return false;
+    }
+
     auto result = true;
 
     ComPtr<ID3D11ShaderResourceView> restoreSRVs[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
@@ -358,6 +364,9 @@ bool IFeature_Dx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_Par
 
 std::optional<double> IFeature_Dx11::ReadUpscalerTime(void* deviceContextVoid)
 {
+    if (!UpscalerTime || !RCAS || !OutputScaler)
+        return std::nullopt;
+
     auto* deviceContext = (ID3D11DeviceContext*) deviceContextVoid;
 
     lastUpscalerTime = UpscalerTime->ReadGpuTime(deviceContext);

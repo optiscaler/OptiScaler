@@ -311,12 +311,17 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
 
     // LOG_TRACE("Handle received from the game: {:X}", (uint64_t) InHandle);
 
-    std::scoped_lock lock(((Nvngx_FG_Handle*) InHandle)->handleMutex);
+    Nvngx_FG_Handle* ourHandle = (Nvngx_FG_Handle*) InHandle;
+    NVSDK_NGX_Result result;
 
-    auto result = provider->D3D12_ReleaseFeature(((Nvngx_FG_Handle*) InHandle)->nativeHandle);
+    // Lock must end before the handle (and its mutex) is deleted
+    {
+        std::scoped_lock lock(ourHandle->handleMutex);
+        result = provider->D3D12_ReleaseFeature(ourHandle->nativeHandle);
+    }
 
     if (result == NVSDK_NGX_Result_Success)
-        delete InHandle;
+        delete ourHandle;
 
     return result;
 }
@@ -559,12 +564,16 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
     // LOG_TRACE("Handle received from the game: {:X}", (uint64_t) InHandle);
 
     Nvngx_FG_Handle* ourHandle = (Nvngx_FG_Handle*) InHandle;
-    std::scoped_lock lock(ourHandle->handleMutex);
+    NVSDK_NGX_Result result;
 
-    auto result = provider->VULKAN_ReleaseFeature(ourHandle->nativeHandle);
+    // Lock must end before the handle (and its mutex) is deleted
+    {
+        std::scoped_lock lock(ourHandle->handleMutex);
+        result = provider->VULKAN_ReleaseFeature(ourHandle->nativeHandle);
+    }
 
     if (result == NVSDK_NGX_Result_Success)
-        delete InHandle;
+        delete ourHandle;
 
     return result;
 }

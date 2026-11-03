@@ -562,6 +562,13 @@ NVSDK_NGX_Result Nvngx_FFX::Evaluate(const Nvngx_FFX_Api& api, ffxApiHeader* bac
         // get number of versions for allocation
         api.Query(nullptr, &versionQuery.header);
 
+        if (versionCount == 0)
+        {
+            LOG_ERROR("No FFX FG version found");
+            InOurHandle->createFailed = true;
+            return NVSDK_NGX_Result_Fail;
+        }
+
         State::Instance().ffxFGVersionIds.resize(versionCount);
         State::Instance().ffxFGVersionNames.resize(versionCount);
         versionQuery.versionIds = State::Instance().ffxFGVersionIds.data();

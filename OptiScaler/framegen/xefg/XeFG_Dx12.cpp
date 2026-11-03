@@ -1588,6 +1588,7 @@ bool XeFG_Dx12::SetResource(Dx12Resource* inputResource)
         xefg_swapchain_d3d12_resource_data_t resourceParam = GetResourceData(type, fIndex);
         auto taggedState = resourceParam.incomingState;
         bool movedToCopyDest = false;
+        auto tagCmdList = fResource->cmdList;
 
         // SDK version 2.1.1 fixes those issues
         if (version < feature_version { 1, 2, 2 })
@@ -1595,8 +1596,9 @@ bool XeFG_Dx12::SetResource(Dx12Resource* inputResource)
             // HACK: XeFG docs lie and cmd list is technically required as it checks for it
             // But it doesn't seem to use it when the validity is UNTIL_NEXT_PRESENT
             // https://github.com/intel/xess/issues/45
-            if (fResource->cmdList == nullptr && resourceParam.validity == XEFG_SWAPCHAIN_RV_UNTIL_NEXT_PRESENT)
-                fResource->cmdList = (ID3D12GraphicsCommandList*) 1;
+            // Not stored, a later re-tag would use it for a barrier
+            if (tagCmdList == nullptr && resourceParam.validity == XEFG_SWAPCHAIN_RV_UNTIL_NEXT_PRESENT)
+                tagCmdList = (ID3D12GraphicsCommandList*) 1;
 
             // HACK: XeFG seems to crash if the resource is in COPY_SOURCE state
             // even though the docs say it's the preferred state
@@ -1623,7 +1625,7 @@ bool XeFG_Dx12::SetResource(Dx12Resource* inputResource)
             (XeFGProxy::SetUiCompositionState() != nullptr || Config::Instance()->FGDrawUIOverFG.value_or_default()))
         {
             auto frameId = static_cast<uint32_t>(_frameCount - indexDiff);
-            result = XeFGProxy::D3D12TagFrameResource()(_swapChainContext, fResource->cmdList, frameId, &resourceParam);
+            result = XeFGProxy::D3D12TagFrameResource()(_swapChainContext, tagCmdList, frameId, &resourceParam);
             LOG_DEBUG("D3D12TagFrameResource, frameId: {}, type: {} result: {} ({})", frameId,
                       magic_enum::enum_name(type), magic_enum::enum_name(result), (int32_t) result);
         }

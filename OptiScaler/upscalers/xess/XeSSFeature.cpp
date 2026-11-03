@@ -241,7 +241,7 @@ bool XeSSFeature::InitXeSS(ID3D12Device* device, const NVSDK_NGX_Parameter* InPa
                     }
                     else
                     {
-                        _localBufferHeap->Release();
+                        SAFE_RELEASE(_localBufferHeap);
                         LOG_ERROR("CreateHeap textureHeapDesc failed {0:x}!", (UINT) hr);
                     }
                 }

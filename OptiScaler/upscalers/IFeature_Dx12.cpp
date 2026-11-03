@@ -339,6 +339,9 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
 
 std::optional<double> IFeature_Dx12::ReadUpscalerTime(void* commandQueueVoid)
 {
+    if (!UpscalerTime || !RCAS || !OutputScaler)
+        return std::nullopt;
+
     ID3D12CommandQueue* commandQueue = (ID3D12CommandQueue*) commandQueueVoid;
 
     lastUpscalerTime = UpscalerTime->ReadGpuTime(commandQueue);

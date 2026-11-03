@@ -2234,6 +2234,12 @@ bool IFeature_VkwDx12::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter
     InParameters->Get(NVSDK_NGX_Parameter_ExposureTexture, &originalExposure);
     InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, &originalReactiveMask);
 
+    // Vulkan structs, Dx12 backends would read them as Dx12 resources. Reactive mask is shared via the bias mask
+    void* originalFsrReactive = nullptr;
+    void* originalFsrTransparency = nullptr;
+    InParameters->Get("FSR.reactive", &originalFsrReactive);
+    InParameters->Get("FSR.transparencyAndComposition", &originalFsrTransparency);
+
     auto RestoreVulkanParameters = [&]()
     {
         InParameters->Set(NVSDK_NGX_Parameter_Color, originalColor);
@@ -2242,6 +2248,8 @@ bool IFeature_VkwDx12::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter
         InParameters->Set(NVSDK_NGX_Parameter_Depth, originalDepth);
         InParameters->Set(NVSDK_NGX_Parameter_ExposureTexture, originalExposure);
         InParameters->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, originalReactiveMask);
+        InParameters->Set("FSR.reactive", originalFsrReactive);
+        InParameters->Set("FSR.transparencyAndComposition", originalFsrTransparency);
     };
 
     bool dx12EvalResult = false;
@@ -2270,6 +2278,9 @@ bool IFeature_VkwDx12::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter
 
         if (!Config::Instance()->DisableReactiveMask.value_or(false))
             InParameters->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void*) vkReactive.Dx12Resource);
+
+        InParameters->Set("FSR.reactive", (void*) nullptr);
+        InParameters->Set("FSR.transparencyAndComposition", (void*) nullptr);
 
         LOG_DEBUG("Dispatch!!");
         dx12EvalResult = dx12Feature->Evaluate(cmdList, InParameters);
