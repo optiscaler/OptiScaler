@@ -11,6 +11,7 @@
 
 #include <menu/menu_overlay_base.h>
 #include <menu/menu_overlay_dx.h>
+#include <wrapped/wrapped_factory.h>
 
 #include <misc/FrameLimit.h>
 #include <misc/DeferredRelease.h>
@@ -948,7 +949,12 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::GetPrivateData(REFGUID Name, U
 
 HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::GetParent(REFIID riid, void** ppParent)
 {
-    return _real->GetParent(riid, ppParent);
+    auto result = _real->GetParent(riid, ppParent);
+
+    if (result == S_OK && Config::Instance()->DxgiFactoryWrapping.value_or_default())
+        WrappedIDXGIFactory7::WrapParent(riid, ppParent, _ReturnAddress());
+
+    return result;
 }
 
 //

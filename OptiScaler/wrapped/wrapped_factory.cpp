@@ -3,21 +3,33 @@
 
 #include <hooks/DxgiFactory_WrappedCalls.h>
 
+#include <DllNames.h>
 #include <detours/detours.h>
+
+#pragma intrinsic(_ReturnAddress)
 
 typedef HRESULT (*PFN_GetParent)(IDXGIAdapter* This, REFIID riid, void** ppParent);
 
 static PFN_GetParent o_GetParent = nullptr;
 
+// One wrapper per real factory, like DXGI returns the same parent every time
+static std::unordered_map<IUnknown*, WrappedIDXGIFactory7*> _wrappers;
+static std::recursive_mutex _wrappersMutex;
+
 static HRESULT hkGetParent(IDXGIAdapter* This, REFIID riid, void** ppParent)
 {
     auto result = o_GetParent(This, riid, ppParent);
 
-    if (State::Instance().skipParentWrapping)
-        return result;
+    if (result == S_OK)
+        WrappedIDXGIFactory7::WrapParent(riid, ppParent, _ReturnAddress());
 
-    if (result != S_OK)
-        return result;
+    return result;
+}
+
+void WrappedIDXGIFactory7::WrapParent(REFIID riid, void** ppParent, void* returnAddress)
+{
+    if (State::Instance().skipParentWrapping || ppParent == nullptr || *ppParent == nullptr)
+        return;
 
     // The wrapper only has the factory vtable
     if (riid != __uuidof(IUnknown) && riid != __uuidof(IDXGIObject) && riid != __uuidof(IDXGIFactory) &&
@@ -25,24 +37,45 @@ static HRESULT hkGetParent(IDXGIAdapter* This, REFIID riid, void** ppParent)
         riid != __uuidof(IDXGIFactory4) && riid != __uuidof(IDXGIFactory5) && riid != __uuidof(IDXGIFactory6) &&
         riid != __uuidof(IDXGIFactory7))
     {
-        return result;
+        return;
     }
 
+    // Same as factory creation, these get the real factory
+    auto caller = Util::WhoIsTheCaller(returnAddress);
+    if (CheckDllName(&caller, &skipDxgiWrappingNames))
+        return;
+
     auto parent = reinterpret_cast<IUnknown*>(*ppParent);
-    if (parent == nullptr)
-        return result;
+
+    // Parent of a wrapped swapchain is already wrapped
+    WrappedIDXGIFactory7* wrapped = nullptr;
+    if (parent->QueryInterface(IID_PPV_ARGS(&wrapped)) == S_OK)
+    {
+        wrapped->Release();
+        return;
+    }
 
     // Parent of an output is an adapter
-    IDXGIFactory* f = nullptr;
-    if (parent->QueryInterface(IID_PPV_ARGS(&f)) != S_OK)
-        return result;
+    IDXGIFactory* real = nullptr;
+    if (parent->QueryInterface(IID_PPV_ARGS(&real)) != S_OK)
+        return;
 
     parent->Release();
 
-    auto wf = new WrappedIDXGIFactory7(f);
-    *ppParent = wf;
+    IUnknown* identity = nullptr;
+    if (real->QueryInterface(IID_PPV_ARGS(&identity)) == S_OK)
+        identity->Release();
 
-    return result;
+    std::scoped_lock lock(_wrappersMutex);
+
+    if (auto it = _wrappers.find(identity); it != _wrappers.end() && it->second->TryAddRef())
+    {
+        real->Release();
+        *ppParent = it->second;
+        return;
+    }
+
+    *ppParent = new WrappedIDXGIFactory7(real);
 }
 
 static void AttachToAdapter(IDXGIAdapter* adapter)
@@ -109,9 +142,35 @@ WrappedIDXGIFactory7::WrappedIDXGIFactory7(IDXGIFactory* real)
 
     if (real->QueryInterface(IID_PPV_ARGS(&_real7)) == S_OK)
         _real7->Release();
+
+    if (real->QueryInterface(IID_PPV_ARGS(&_identity)) == S_OK)
+    {
+        _identity->Release();
+
+        std::scoped_lock lock(_wrappersMutex);
+        _wrappers[_identity] = this;
+    }
 }
 
 WrappedIDXGIFactory7::~WrappedIDXGIFactory7() {}
+
+bool WrappedIDXGIFactory7::TryAddRef()
+{
+    // A wrapper at 0 is being destroyed
+    ULONG count = _refCount;
+
+    while (count != 0)
+    {
+        ULONG prev = InterlockedCompareExchange(&_refCount, count + 1, count);
+
+        if (prev == count)
+            return true;
+
+        count = prev;
+    }
+
+    return false;
+}
 
 HRESULT __stdcall WrappedIDXGIFactory7::QueryInterface(REFIID riid, void** ppvObject)
 {
@@ -197,6 +256,14 @@ ULONG __stdcall WrappedIDXGIFactory7::Release()
     if (now == 0)
     {
         LOG_DEBUG("id: {}", _id);
+
+        {
+            std::scoped_lock lock(_wrappersMutex);
+
+            if (auto it = _wrappers.find(_identity); it != _wrappers.end() && it->second == this)
+                _wrappers.erase(it);
+        }
+
         _real->Release();
         delete this;
     }
