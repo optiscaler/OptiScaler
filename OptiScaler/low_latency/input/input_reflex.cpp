@@ -145,6 +145,12 @@ NvAPI_Status InputReflex::D3D_GetLatency(IUnknown* pDev, NV_LATENCY_RESULT_PARAM
             return driver(pDev, pGetLatencyParams);
     }
 
+    if (pGetLatencyParams->version != NV_LATENCY_RESULT_PARAMS_VER1)
+    {
+        LOG_ERROR("Unsupported version {}", pGetLatencyParams->version);
+        return NVAPI_INCOMPATIBLE_STRUCT_VERSION;
+    }
+
     return ToNvApi(InputCommon::get_latency(own ? optiScalerContext : inputContext, pDev, pGetLatencyParams),
                    "get_latency");
 }

@@ -220,12 +220,22 @@ NvAPI_Status __cdecl NvAPI_GPU_GetPstates20(NvPhysicalGpuHandle hPhysicalGpu, NV
     if (!pPstatesInfo)
         return ERROR();
 
+    const auto version = pPstatesInfo->version;
+
+    if (version != NV_GPU_PERF_PSTATES20_INFO_VER1 && version != NV_GPU_PERF_PSTATES20_INFO_VER2 &&
+        version != NV_GPU_PERF_PSTATES20_INFO_VER3)
+    {
+        return ERROR_VALUE(NVAPI_INCOMPATIBLE_STRUCT_VERSION);
+    }
+
     // Initialize the structure with mock data
-    pPstatesInfo->version = NV_GPU_PERF_PSTATES20_INFO_VER;
     pPstatesInfo->numPstates = 2; // Example: 2 P-states
     pPstatesInfo->numClocks = 3;
     pPstatesInfo->numBaseVoltages = 1;
-    pPstatesInfo->ov.numVoltages = 0;
+
+    // V1 is V2 without ov, the caller's struct ends before it
+    if (version != NV_GPU_PERF_PSTATES20_INFO_VER1)
+        pPstatesInfo->ov.numVoltages = 0;
 
     // Fill mock data for P-state 0
     pPstatesInfo->pstates[0].pstateId = NVAPI_GPU_PERF_PSTATE_P0;
@@ -302,13 +312,19 @@ NvAPI_Status __cdecl NvAPI_Mosaic_GetDisplayViewportsByResolution(NvU32 displayI
 
 NvAPI_Status __cdecl NvAPI_SYS_GetDisplayDriverInfo(NV_DISPLAY_DRIVER_INFO* driverInfo)
 {
+    if (!driverInfo)
+        return ERROR_VALUE(NVAPI_INVALID_ARGUMENT);
+
+    if (driverInfo->version != NV_DISPLAY_DRIVER_INFO_VER1 && driverInfo->version != NV_DISPLAY_DRIVER_INFO_VER2)
+        return ERROR_VALUE(NVAPI_INCOMPATIBLE_STRUCT_VERSION);
+
     driverInfo->driverVersion = 99999;
     tonvss(driverInfo->szBuildBranch, "buildBranch");
     driverInfo->bIsDCHDriver = 1;
     driverInfo->bIsNVIDIAStudioPackage = 1;
     driverInfo->bIsNVIDIARTXProductionBranchPackage = 1;
     driverInfo->bIsNVIDIARTXNewFeatureBranchPackage = 1;
-    if (driverInfo->version == 2)
+    if (driverInfo->version == NV_DISPLAY_DRIVER_INFO_VER2)
         tonvss(driverInfo->szBuildBaseBranch, "buildBaseBranch");
     return OK();
 }
@@ -582,8 +598,9 @@ NvAPI_Status __cdecl NvAPI_DRS_GetBaseProfile(NvDRSSessionHandle session, NvDRSP
 NvAPI_Status __cdecl NvAPI_DRS_GetSetting(NvDRSSessionHandle hSession, NvDRSProfileHandle hProfile, NvU32 settingId,
                                           NVDRS_SETTING* pSetting)
 {
+    // No settings are stored, the caller must not read pSetting
     LOG_DEBUG("Missing get setting: {:X}", settingId);
-    return OK();
+    return ERROR_VALUE(NVAPI_SETTING_NOT_FOUND);
 }
 
 NvAPI_Status __cdecl NvAPI_DRS_SetSetting(NvDRSSessionHandle hSession, NvDRSProfileHandle hProfile,

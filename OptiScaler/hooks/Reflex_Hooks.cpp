@@ -613,7 +613,10 @@ void ReflexHooks::setFPSLimit(float fps)
     {
         NV_SET_SLEEP_MODE_PARAMS temp {};
         memcpy(&temp, &_lastSleepParams, sizeof(NV_SET_SLEEP_MODE_PARAMS));
-        temp.minimumIntervalUs = _minimumIntervalUs;
+
+        // Without OptiScaler's limit the game's own cap applies
+        if (_minimumIntervalUs != 0)
+            temp.minimumIntervalUs = _minimumIntervalUs;
 
         o_NvAPI_D3D_SetSleepMode(device, &temp);
     }
@@ -622,7 +625,9 @@ void ReflexHooks::setFPSLimit(float fps)
     {
         NV_VULKAN_SET_SLEEP_MODE_PARAMS temp {};
         memcpy(&temp, &_lastVkSleepParams, sizeof(NV_VULKAN_SET_SLEEP_MODE_PARAMS));
-        temp.minimumIntervalUs = _minimumIntervalUs;
+
+        if (_minimumIntervalUs != 0)
+            temp.minimumIntervalUs = _minimumIntervalUs;
         o_NvAPI_Vulkan_SetSleepMode(vkDevice, &temp);
     }
 }

@@ -191,9 +191,9 @@ void AntiLag2::set_async_marker(IUnknown* pCommandQueue, const MarkerParams& mar
 {
     if (marker_params.marker_type == MarkerType::OUT_OF_BAND_PRESENT_START)
     {
-        static uint64_t previous_frame_id = marker_params.frame_id;
-        set_fg_type(marker_params.interpolated.value_or(previous_frame_id == marker_params.frame_id),
+        // A present with the previous one's frame id is a generated frame
+        set_fg_type(marker_params.interpolated.value_or(previous_oob_frame_id == marker_params.frame_id),
                     marker_params.frame_id);
-        previous_frame_id = marker_params.frame_id;
+        previous_oob_frame_id = marker_params.frame_id;
     }
 }

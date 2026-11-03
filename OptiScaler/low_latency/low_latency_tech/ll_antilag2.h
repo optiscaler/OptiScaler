@@ -20,6 +20,8 @@ class AntiLag2 : public LowLatencyTech
     uint64_t simulation_framecount = 0;
     const uint64_t call_spot_switch_threshold = 20;
 
+    uint64_t previous_oob_frame_id = INVALID_ID;
+
     HRESULT al2_sleep();
 
   public:
