@@ -2,6 +2,8 @@
 
 #include "Config.h"
 
+#include <plugins/PluginApi.h>
+#include <proxies/KernelBase_Proxy.h>
 #include <proxies/Ntdll_Proxy.h>
 
 #include <filesystem>
@@ -74,9 +76,16 @@ inline HMODULE LoadDll(const std::string& name, const std::filesystem::path& pat
     auto dll = path.empty() ? nullptr : NtdllProxy::LoadLibraryExW_Ldr(path.c_str(), NULL, NULL);
 
     if (dll == nullptr)
+    {
         LOG_ERROR("Can't load custom {} from {}", name, wstring_to_string(Folder(name).wstring()));
-    else
-        LOG_INFO("Loaded custom {} from {}", name, wstring_to_string(path.wstring()));
+        return nullptr;
+    }
+
+    LOG_INFO("Loaded custom {} from {}", name, wstring_to_string(path.wstring()));
+
+    // Folder name is the plugin name, the dlls themselves mostly have the standard names
+    PluginApi::InitPlugin(dll, (PFN_OptiPluginInit) KernelBaseProxy::GetProcAddress_()(dll, OPTI_PLUGIN_INIT_NAME),
+                          name);
 
     return dll;
 }

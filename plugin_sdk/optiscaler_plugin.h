@@ -9,6 +9,8 @@
  *
  * Usage:
  *   Export OptiPluginInit from the plugin. OptiScaler calls it once, right after InitializeASI (if present).
+ *   Custom upscaler and FG dlls (custom/<name>/<kind>) can export it too, it's called when OptiScaler loads them,
+ *   which can be long after the game started.
  *   Keep the api pointer, it stays valid for the lifetime of the process.
  *
  * Compatibility rules:
@@ -26,8 +28,8 @@
  *
  * Settings:
  *   Stored in OptiScaler.ini, in the [Plugin.<name>] section. <name> is the plugin file name without the
- *   extension and without a "-loadlate" suffix. A missing key or the value "auto" returns the default.
- *   Set* only changes the value in memory, SaveSettings (or Save INI in the menu) writes the file.
+ *   extension and without a "-loadlate" suffix, or the folder name for a custom dll. A missing key or the value "auto"
+ * returns the default. Set* only changes the value in memory, SaveSettings (or Save INI in the menu) writes the file.
  */
 
 #ifndef OPTISCALER_PLUGIN_H

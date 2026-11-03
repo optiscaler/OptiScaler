@@ -19,6 +19,9 @@ class PluginApi
     // Calls OptiPluginInit of a loaded ASI plugin, once per module
     static void InitPlugin(HMODULE module, PFN_OptiPluginInit init, const std::filesystem::path& path);
 
+    // Same for any other dll, name is its [Plugin.<name>] section
+    static void InitPlugin(HMODULE module, PFN_OptiPluginInit init, const std::string& name);
+
     static std::vector<TabInfo> GetTabs();
 
     // Draws a registered tab inside of the menu, colorMap adjusts colors for the HDR menu

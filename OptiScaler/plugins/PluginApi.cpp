@@ -499,6 +499,24 @@ const OptiPluginApi _api = {
 
 void PluginApi::InitPlugin(HMODULE module, PFN_OptiPluginInit init, const std::filesystem::path& path)
 {
+    // Name shouldn't change when the plugin is switched to late loading
+    std::string name = wstring_to_string(path.stem().wstring());
+    constexpr std::string_view lateSuffix = "-loadlate";
+
+    if (name.size() > lateSuffix.size())
+    {
+        std::string tail = name.substr(name.size() - lateSuffix.size());
+        std::ranges::transform(tail, tail.begin(), [](unsigned char c) { return (char) std::tolower(c); });
+
+        if (tail == lateSuffix)
+            name.resize(name.size() - lateSuffix.size());
+    }
+
+    InitPlugin(module, init, name);
+}
+
+void PluginApi::InitPlugin(HMODULE module, PFN_OptiPluginInit init, const std::string& name)
+{
     if (module == nullptr || init == nullptr)
         return;
 
@@ -507,24 +525,11 @@ void PluginApi::InitPlugin(HMODULE module, PFN_OptiPluginInit init, const std::f
     {
         std::lock_guard<std::mutex> lock(_mutex);
 
-        // Late loaded plugins can be reported more than once
+        // Late loaded plugins and custom dlls can be reported more than once
         if (std::ranges::find(_initedModules, module) != _initedModules.end())
             return;
 
         _initedModules.push_back(module);
-
-        // Name shouldn't change when the plugin is switched to late loading
-        std::string name = wstring_to_string(path.stem().wstring());
-        constexpr std::string_view lateSuffix = "-loadlate";
-
-        if (name.size() > lateSuffix.size())
-        {
-            std::string tail = name.substr(name.size() - lateSuffix.size());
-            std::ranges::transform(tail, tail.begin(), [](unsigned char c) { return (char) std::tolower(c); });
-
-            if (tail == lateSuffix)
-                name.resize(name.size() - lateSuffix.size());
-        }
 
         auto& created = _plugins.emplace_back(std::make_unique<OptiPlugin>());
         created->name = name;

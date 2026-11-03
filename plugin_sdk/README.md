@@ -21,6 +21,8 @@ ASI plugins loaded by OptiScaler can add their own tabs to the OptiScaler menu a
 2. Put the `.asi` file in the `plugins` folder and set `LoadAsiPlugins=true` in `OptiScaler.ini`.
 3. Your tabs appear under **PLUGINS** in the menu sidebar.
 
+Custom upscaler and FG dlls in `custom/<name>/<kind>` can export `OptiPluginInit` too. It's called when OptiScaler loads the dll, which happens when the upscaler or FG is first used, so their tabs can show up after the game started.
+
 ## Drawing
 
 Inside a draw callback you can use `Section`, `Text`, `Checkbox`, `SliderFloat`/`SliderInt`, `Combo`, `InputText`, `ColorEdit`, `Button`, `SameLine`, `Disabled`, `ItemTooltip` and `ItemDeactivatedAfterEdit`.
@@ -34,7 +36,7 @@ Inside a draw callback you can use `Section`, `Text`, `Checkbox`, `SliderFloat`/
 
 ## Settings
 
-Settings are stored in the `[Plugin.<name>]` section of `OptiScaler.ini`, where `<name>` is the plugin file name without the extension and without a `-loadlate` suffix.
+Settings are stored in the `[Plugin.<name>]` section of `OptiScaler.ini`, where `<name>` is the plugin file name without the extension and without a `-loadlate` suffix. For a custom dll it's the `<name>` folder.
 
 - `Get*` returns the default when the key is missing or set to `auto`.
 - `Set*` only changes the value in memory. `SaveSettings`, or **Save INI** in the menu, writes the file.
