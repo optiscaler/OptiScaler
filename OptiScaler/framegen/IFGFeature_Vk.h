@@ -128,6 +128,9 @@ class IFGFeature_Vk : public virtual IFGFeature
     // The handle the game gets is the driver's, VK_NV_low_latency2 calls with it reach the driver
     virtual bool HasDriverSwapchain() const { return false; }
 
+    // Old swapchain the FG already destroyed, the driver must not get it as oldSwapchain
+    virtual bool IsRetiredSwapchain(VkSwapchainKHR swapchain) const { return false; }
+
     // The game's swapchain calls, the hooks route them here for the output's swapchain
     virtual bool CreateSwapchain(VkDevice device, const VkSwapchainCreateInfoKHR* pCreateInfo,
                                  const VkAllocationCallbacks* pAllocator, VkSwapchainKHR* pSwapchain) = 0;

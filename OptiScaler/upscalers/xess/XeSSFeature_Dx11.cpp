@@ -109,7 +109,9 @@ bool XeSSFeature_Dx11::InitInternal(ID3D11DeviceContext* InContext, NVSDK_NGX_Pa
             xessParams.initFlags |= XESS_INIT_FLAG_HIGH_RES_MV;
 
         int responsiveMask = 0;
-        if (InParameters->Get("XeSS.ResponsivePixelMask", &responsiveMask) == NVSDK_NGX_Result_Success &&
+        // Evaluate disables the mask when none comes, the flag must stay off after its recreate
+        if (!Config::Instance()->DisableReactiveMask.value_or(false) &&
+            InParameters->Get("XeSS.ResponsivePixelMask", &responsiveMask) == NVSDK_NGX_Result_Success &&
             responsiveMask > 0)
             xessParams.initFlags |= XESS_INIT_FLAG_RESPONSIVE_PIXEL_MASK;
 
@@ -369,15 +371,33 @@ bool XeSSFeature_Dx11::EvaluateInternal(ID3D11DeviceContext* DeviceContext, NVSD
     //}
 
     ID3D11Resource* paramReactiveMask = nullptr;
-    if (InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, &paramReactiveMask) !=
-        NVSDK_NGX_Result_Success)
-        InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void**) &paramReactiveMask);
-
+    InParameters->Get("FSR.reactive", (void**) &paramReactiveMask);
     bool supportsFloatResponsivePixelMask = Version() >= feature_version { 2, 0, 1 };
 
-    if (!Config::Instance()->DisableReactiveMask.value_or(true) && supportsFloatResponsivePixelMask)
+    if (paramReactiveMask != nullptr)
     {
-        if (paramReactiveMask)
+        if (!Config::Instance()->DisableReactiveMask.value_or(!supportsFloatResponsivePixelMask))
+        {
+            if ((_xessInitFlags & XESS_INIT_FLAG_RESPONSIVE_PIXEL_MASK) == 0)
+            {
+                Config::Instance()->DisableReactiveMask = false;
+                LOG_WARN("Reactive mask exist but not enabled, enabling it!");
+                State::Instance().changeBackend[_handle->Id] = true;
+                return true;
+            }
+
+            LOG_DEBUG("Using FSR reactive mask");
+            params.pResponsivePixelMaskTexture = paramReactiveMask;
+        }
+    }
+    else
+    {
+        if (InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, &paramReactiveMask) !=
+            NVSDK_NGX_Result_Success)
+            InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void**) &paramReactiveMask);
+
+        if (!Config::Instance()->DisableReactiveMask.value_or(true) && supportsFloatResponsivePixelMask &&
+            paramReactiveMask)
         {
             LOG_DEBUG("Input Bias mask exist..");
             params.pResponsivePixelMaskTexture = paramReactiveMask;

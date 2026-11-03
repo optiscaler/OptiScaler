@@ -119,7 +119,9 @@ bool XeSSFeature_Vk::InitInternal(VkCommandBuffer InCmdList, NVSDK_NGX_Parameter
             xessParams.initFlags |= XESS_INIT_FLAG_HIGH_RES_MV;
 
         int responsiveMask = 0;
-        if (InParameters->Get("XeSS.ResponsivePixelMask", &responsiveMask) == NVSDK_NGX_Result_Success &&
+        // Evaluate disables the mask when none comes, the flag must stay off after its recreate
+        if (!Config::Instance()->DisableReactiveMask.value_or(false) &&
+            InParameters->Get("XeSS.ResponsivePixelMask", &responsiveMask) == NVSDK_NGX_Result_Success &&
             responsiveMask > 0)
             xessParams.initFlags |= XESS_INIT_FLAG_RESPONSIVE_PIXEL_MASK;
 
@@ -485,4 +487,14 @@ XeSSFeature_Vk::XeSSFeature_Vk(unsigned int handleId, NVSDK_NGX_Parameter* InPar
     _moduleLoaded = XeSSProxy::Module() != nullptr && XeSSProxy::VKCreateContext() != nullptr;
 }
 
-XeSSFeature_Vk::~XeSSFeature_Vk() {}
+XeSSFeature_Vk::~XeSSFeature_Vk()
+{
+    if (State::Instance().isShuttingDown)
+        return;
+
+    if (_xessContext)
+    {
+        XeSSProxy::DestroyContext()(_xessContext);
+        _xessContext = nullptr;
+    }
+}

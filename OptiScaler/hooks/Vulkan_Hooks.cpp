@@ -1033,16 +1033,30 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
     {
         ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
         bool fgSwapchain = false;
+        auto fg = State::Instance().currentVkFG;
 
-        if (auto fg = State::Instance().currentVkFG;
-            fg != nullptr && pCreateInfo != nullptr && !dxgiBacked && !State::Instance().vulkanSkipHooks)
+        if (fg != nullptr && pCreateInfo != nullptr && !dxgiBacked && !State::Instance().vulkanSkipHooks)
         {
             ScopedFGCall fgCall {};
             fgSwapchain = fg->CreateSwapchain(device, pCreateInfo, pAllocator, pSwapchain);
         }
 
         if (!fgSwapchain)
+        {
+            // FG destroyed the old swapchain before failing
+            if (fg != nullptr && pCreateInfo != nullptr && fg->IsRetiredSwapchain(pCreateInfo->oldSwapchain))
+            {
+                if (pCreateInfo != &localCreateInfo)
+                {
+                    localCreateInfo = *pCreateInfo;
+                    pCreateInfo = &localCreateInfo;
+                }
+
+                localCreateInfo.oldSwapchain = VK_NULL_HANDLE;
+            }
+
             result = o_CreateSwapchainKHR(device, pCreateInfo, pAllocator, pSwapchain);
+        }
     }
 
     if (result == VK_SUCCESS && lowLatencySwapchain)

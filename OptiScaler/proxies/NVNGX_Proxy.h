@@ -209,8 +209,7 @@ inline static void HookNgxApi(HMODULE nvngx)
 
 inline static void UnhookApis()
 {
-    NvApiHooks::Unhook();
-
+    // NvApi hook stays, it is only installed when nvapi gets loaded
     if (Original_D3D11_GetFeatureRequirements != nullptr || Original_D3D12_GetFeatureRequirements != nullptr)
     {
         DetourTransactionBegin();
@@ -1138,7 +1137,7 @@ class NVNGXProxy
 
         _vulkanInited = (nvResult == NVSDK_NGX_Result_Success);
 
-        return true;
+        return _vulkanInited;
     }
 
     static void SetVulkanInited(bool value) { _vulkanInited = value; }

@@ -133,10 +133,8 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
     if (!InOurHandle)
         return NVSDK_NGX_Result_FAIL_InvalidParameter;
 
-    if (InOurHandle->device)
-        InOurHandle->device->Release();
-
-    delete InOurHandle; // destroys FFX context automatically
+    // FFX can still have work in flight, the destructor releases the context and then the device
+    Util::DelayedDestroy(std::unique_ptr<Nvngx_FFX_Handle>(InOurHandle));
 
     return NVSDK_NGX_Result_Success;
 }
