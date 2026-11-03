@@ -864,6 +864,8 @@ bool Config::LoadFromPath(const wchar_t* InPath)
     std::filesystem::path iniPath(InPath);
     auto newPath = iniPath / fileName;
 
+    std::lock_guard<std::recursive_mutex> lock(iniMutex);
+
     if (Reload(newPath))
     {
         absoluteFileName = newPath;
@@ -1212,6 +1214,8 @@ static std::optional<std::string> UnpackOverlayValues(std::string_view data)
 
 std::string Config::ExportOverlaySettings()
 {
+    std::lock_guard<std::recursive_mutex> lock(iniMutex);
+
     WriteOverlaySettings();
 
     std::string data;
@@ -1256,6 +1260,8 @@ bool Config::ImportOverlaySettings(std::string_view code)
 
 bool Config::ApplyOverlaySettings(std::string_view text)
 {
+    std::lock_guard<std::recursive_mutex> lock(iniMutex);
+
     // Known keys only, their values are checked as the ini's are
     std::vector<std::pair<const char*, std::string>> values;
     std::istringstream entries { std::string(text) };

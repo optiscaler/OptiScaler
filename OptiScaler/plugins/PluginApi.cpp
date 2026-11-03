@@ -11,8 +11,16 @@
 
 struct OptiPlugin
 {
+    enum class InitState
+    {
+        Running,
+        Accepted,
+        Declined,
+    };
+
     std::string name;
     std::string section; // Plugin.<name> in OptiScaler.ini
+    InitState initState = InitState::Running;
 };
 
 namespace
@@ -31,6 +39,7 @@ struct PluginTab
 std::vector<std::unique_ptr<OptiPlugin>> _plugins;
 std::vector<HMODULE> _initedModules;
 std::vector<std::shared_ptr<PluginTab>> _tabs;
+std::vector<std::shared_ptr<PluginTab>> _pendingTabs;
 std::mutex _mutex;
 
 // State of the draw callback that is running, widgets do nothing without it
@@ -42,7 +51,6 @@ struct TabDrawState
 };
 
 thread_local TabDrawState* _draw = nullptr;
-float _menuScale = 1.0f;
 
 // Plugin code is called through these, a crash in it disables the plugin instead of the game
 bool CallDraw(OptiDrawTabFn draw, void* userData)
@@ -165,7 +173,18 @@ bool Api_RegisterTab(OptiPlugin* plugin, const char* name, const char* descripti
     tab->userData = userData;
 
     std::lock_guard<std::mutex> lock(_mutex);
-    _tabs.push_back(std::move(tab));
+
+    switch (plugin->initState)
+    {
+    case OptiPlugin::InitState::Running:
+        _pendingTabs.push_back(std::move(tab));
+        break;
+    case OptiPlugin::InitState::Accepted:
+        _tabs.push_back(std::move(tab));
+        break;
+    default:
+        return false;
+    }
 
     LOG_INFO("[{}] Registered tab: {}", plugin->name, name);
 
@@ -177,7 +196,15 @@ void Api_Section(const char* title)
     if (_draw == nullptr)
         return;
 
+    // Card border is drawn when the card closes, it shouldn't take the alpha of disabled widgets
+    if (_draw->disabled)
+        ImGui::EndDisabled();
+
     _draw->card.reset();
+
+    if (_draw->disabled)
+        ImGui::BeginDisabled();
+
     _draw->card.emplace(title);
 }
 
@@ -268,8 +295,10 @@ bool Api_SliderInt(const char* label, int32_t* value, int32_t min, int32_t max, 
     return ImGui::SliderInt(label, value, min, max, format != nullptr ? format : "%d", ImGuiSliderFlags_AlwaysClamp);
 }
 
-bool Api_ComboEx(const char* label, int32_t* current, const char* const* items, int32_t itemCount,
-                 uint64_t disabledItemsMask)
+bool Api_ItemDeactivatedAfterEdit() { return _draw != nullptr && ImGui::IsItemDeactivatedAfterEdit(); }
+
+bool Api_Combo(const char* label, int32_t* current, const char* const* items, int32_t itemCount,
+               const bool* itemDisabled)
 {
     if (_draw == nullptr || label == nullptr || current == nullptr || (items == nullptr && itemCount > 0))
         return false;
@@ -284,8 +313,7 @@ bool Api_ComboEx(const char* label, int32_t* current, const char* const* items, 
         {
             ImGui::PushID(i);
 
-            const bool disabled = i < 64 && (disabledItemsMask & (1ull << i)) != 0;
-            ImGui::BeginDisabled(disabled);
+            ImGui::BeginDisabled(itemDisabled != nullptr && itemDisabled[i]);
 
             const bool selected = *current == i;
             if (ImGui::Selectable(items[i] != nullptr ? items[i] : "", selected) && !selected)
@@ -307,13 +335,6 @@ bool Api_ComboEx(const char* label, int32_t* current, const char* const* items, 
     return changed;
 }
 
-bool Api_Combo(const char* label, int32_t* current, const char* const* items, int32_t itemCount)
-{
-    return Api_ComboEx(label, current, items, itemCount, 0);
-}
-
-bool Api_ItemDeactivatedAfterEdit() { return _draw != nullptr && ImGui::IsItemDeactivatedAfterEdit(); }
-
 bool Api_InputText(const char* label, char* buffer, size_t bufferSize)
 {
     if (_draw == nullptr || label == nullptr || buffer == nullptr || bufferSize == 0)
@@ -329,8 +350,6 @@ bool Api_ColorEdit(const char* label, float* rgba, bool withAlpha)
 
     return withAlpha ? ImGui::ColorEdit4(label, rgba) : ImGui::ColorEdit3(label, rgba);
 }
-
-float Api_GetMenuScale() { return _menuScale; }
 
 bool Api_IsMenuOpen() { return MenuCommon::IsVisible(); }
 
@@ -447,6 +466,7 @@ const OptiPluginApi _api = {
     .Spacing = Api_Spacing,
     .Disabled = Api_Disabled,
     .ItemTooltip = Api_ItemTooltip,
+    .ItemDeactivatedAfterEdit = Api_ItemDeactivatedAfterEdit,
 
     .Text = Api_Text,
     .TextDisabled = Api_TextDisabled,
@@ -460,7 +480,6 @@ const OptiPluginApi _api = {
     .InputText = Api_InputText,
     .ColorEdit = Api_ColorEdit,
 
-    .GetMenuScale = Api_GetMenuScale,
     .IsMenuOpen = Api_IsMenuOpen,
 
     .GetBool = Api_GetBool,
@@ -475,9 +494,6 @@ const OptiPluginApi _api = {
     .SaveSettings = Api_SaveSettings,
 
     .Log = Api_Log,
-
-    .ComboEx = Api_ComboEx,
-    .ItemDeactivatedAfterEdit = Api_ItemDeactivatedAfterEdit,
 };
 } // namespace
 
@@ -521,16 +537,26 @@ void PluginApi::InitPlugin(HMODULE module, PFN_OptiPluginInit init, const std::f
     bool accepted = false;
     const bool finished = CallInit(init, &_api, plugin, &accepted);
 
-    if (finished && accepted)
-        return;
-
     if (!finished)
         LOG_ERROR("[{}] Crashed in OptiPluginInit, its tabs are removed", plugin->name);
-    else
+    else if (!accepted)
         LOG_INFO("[{}] Declined the plugin API", plugin->name);
 
     std::lock_guard<std::mutex> lock(_mutex);
-    std::erase_if(_tabs, [plugin](const auto& tab) { return tab->plugin == plugin; });
+
+    // Declined plugins can't register tabs later either
+    plugin->initState = finished && accepted ? OptiPlugin::InitState::Accepted : OptiPlugin::InitState::Declined;
+
+    if (plugin->initState == OptiPlugin::InitState::Accepted)
+    {
+        for (const auto& tab : _pendingTabs)
+        {
+            if (tab->plugin == plugin)
+                _tabs.push_back(tab);
+        }
+    }
+
+    std::erase_if(_pendingTabs, [plugin](const auto& tab) { return tab->plugin == plugin; });
 }
 
 std::vector<PluginApi::TabInfo> PluginApi::GetTabs()
@@ -557,8 +583,6 @@ void PluginApi::DrawTab(size_t index, float menuScale, ImVec4 (*colorMap)(const 
 
         tab = _tabs[index];
     }
-
-    _menuScale = menuScale;
 
     if (tab->faulted)
     {

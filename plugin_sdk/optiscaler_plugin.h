@@ -82,6 +82,9 @@ extern "C"
         void (*Disabled)(bool disabled);
         // Shows a tooltip when the previous widget is hovered
         void (*ItemTooltip)(const char* text);
+        // True on the frame the previous widget stopped being edited, a slider was released for example.
+        // Lets a plugin apply a value once instead of on every frame of a drag.
+        bool (*ItemDeactivatedAfterEdit)(void);
 
         // Text, only inside a draw callback -----------------------------------------------------------------
 
@@ -98,8 +101,11 @@ extern "C"
         bool (*Checkbox)(const char* label, bool* value); // true when changed
         bool (*SliderFloat)(const char* label, float* value, float min, float max, const char* format);
         bool (*SliderInt)(const char* label, int32_t* value, int32_t min, int32_t max, const char* format);
-        // items is an array of itemCount strings, current is the selected index
-        bool (*Combo)(const char* label, int32_t* current, const char* const* items, int32_t itemCount);
+        // items is an array of itemCount strings, current is the selected index.
+        // itemDisabled is NULL or an array of itemCount bools, true greys out the item. The selected item is
+        // shown even when it's disabled.
+        bool (*Combo)(const char* label, int32_t* current, const char* const* items, int32_t itemCount,
+                      const bool* itemDisabled);
         // buffer is a zero terminated UTF-8 string that is edited in place
         bool (*InputText)(const char* label, char* buffer, size_t bufferSize);
         // rgba is float[4] in 0.0 - 1.0
@@ -107,8 +113,6 @@ extern "C"
 
         // Menu state ----------------------------------------------------------------------------------------
 
-        // UI scale of the menu, multiply custom sizes by it
-        float (*GetMenuScale)(void);
         bool (*IsMenuOpen)(void);
 
         // Settings in [Plugin.<name>] of OptiScaler.ini ---------------------------------------------------
@@ -135,16 +139,6 @@ extern "C"
 
         // Writes to the OptiScaler log, prefixed with the plugin name
         void (*Log)(OptiPlugin* plugin, OptiLogLevel level, const char* message);
-
-        // More widgets, only inside a draw callback ---------------------------------------------------------
-
-        // Combo with greyed out items, bit i of disabledItemsMask disables items[i] (the first 64 items).
-        // The selected item is shown even when it's disabled.
-        bool (*ComboEx)(const char* label, int32_t* current, const char* const* items, int32_t itemCount,
-                        uint64_t disabledItemsMask);
-        // True on the frame the previous widget stopped being edited, a slider was released for example.
-        // Lets a plugin apply a value once instead of on every frame of a drag.
-        bool (*ItemDeactivatedAfterEdit)(void);
 
     } OptiPluginApi;
 

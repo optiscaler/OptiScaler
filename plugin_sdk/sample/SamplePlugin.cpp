@@ -121,9 +121,10 @@ void DrawMainTab(void* /*userData*/)
     }
 
     // With too few samples Ultra stays in the list but can't be picked
-    const uint64_t disabledQualities = settings.samples < ultraMinSamples ? 1ull << ultraQuality : 0;
+    bool disabledQualities[qualityCount] = {};
+    disabledQualities[ultraQuality] = settings.samples < ultraMinSamples;
 
-    if (api->ComboEx("Quality", &settings.quality, qualityNames, qualityCount, disabledQualities))
+    if (api->Combo("Quality", &settings.quality, qualityNames, qualityCount, disabledQualities))
     {
         api->SetInt(self, "Quality", settings.quality);
         unsaved = true;
@@ -199,14 +200,13 @@ void DrawInfoTab(void* userData)
 
     api->Separator();
 
-    snprintf(text, sizeof(text), "Menu scale: %.2f, menu open: %s", api->GetMenuScale(),
-             api->IsMenuOpen() ? "yes" : "no");
+    snprintf(text, sizeof(text), "Menu open: %s", api->IsMenuOpen() ? "yes" : "no");
     api->Text(text);
 
     api->Section("Counter");
 
     // Not kept in the ini, only for this session
-    api->Combo("Log clicks as", &clickLogLevel, logLevelNames, logLevelCount);
+    api->Combo("Log clicks as", &clickLogLevel, logLevelNames, logLevelCount, nullptr);
 
     // userData given to RegisterTab comes back here
     if (api->Button("Click me"))
@@ -226,10 +226,6 @@ void DrawInfoTab(void* userData)
 
 extern "C" __declspec(dllexport) bool OptiPluginInit(const OptiPluginApi* optiApi, OptiPlugin* plugin)
 {
-    // An older OptiScaler doesn't have everything this plugin uses
-    if (!OPTI_API_HAS(optiApi, ItemDeactivatedAfterEdit))
-        return false;
-
     api = optiApi;
     self = plugin;
 
