@@ -1,13 +1,18 @@
 # OptiScaler plugin SDK
 
-ASI plugins loaded by OptiScaler can add their own tabs to the OptiScaler menu and keep their settings in `OptiScaler.ini`.
+Dlls loaded by OptiScaler can add their own tabs to the OptiScaler menu and keep their settings in `OptiScaler.ini`. Two kinds of dlls get the API:
+
+- **ASI plugins** in the `plugins` folder, loaded when `LoadAsiPlugins=true`.
+- **Custom upscaler and FG dlls** in `custom/<name>/<kind>` (`ffx`, `ffx_vk`, `dlss` or `dlssg`).
+
+Both use the API the same way. Below, "plugin" means either kind.
 
 - The API is a plain C function table defined in [`optiscaler_plugin.h`](optiscaler_plugin.h). This header is all you need: you don't link against OptiScaler or ImGui.
 - Plugins don't have to be rebuilt for newer OptiScaler versions. Fields are only ever appended to `OptiPluginApi`, so before you use a field added after version 1, check it with `OPTI_API_HAS(api, Field)`.
 
 ## Getting started
 
-1. Export `OptiPluginInit` from your plugin:
+1. Export `OptiPluginInit` from your dll:
 
    ```cpp
    extern "C" __declspec(dllexport) bool OptiPluginInit(const OptiPluginApi* api, OptiPlugin* plugin)
@@ -17,11 +22,15 @@ ASI plugins loaded by OptiScaler can add their own tabs to the OptiScaler menu a
    }
    ```
 
-   OptiScaler calls it once, right after `InitializeASI`. Tabs registered here show up once it returns `true`. Return `false` to opt out; the tabs you registered are then dropped and `RegisterTab` fails from then on.
-2. Put the `.asi` file in the `plugins` folder and set `LoadAsiPlugins=true` in `OptiScaler.ini`.
-3. Your tabs appear under **PLUGINS** in the menu sidebar.
+   OptiScaler calls it once per dll:
+   - ASI plugins: right after `InitializeASI`, when the game starts (or after `LateAsiPluginsDelay` for `-loadlate` plugins).
+   - Custom upscaler and FG dlls: when OptiScaler loads the dll, the first time that upscaler or FG is used. This can be well after the game started.
 
-Custom upscaler and FG dlls in `custom/<name>/<kind>` can export `OptiPluginInit` too. It's called when OptiScaler loads the dll, which happens when the upscaler or FG is first used, so their tabs can show up after the game started.
+   Tabs registered here show up once it returns `true`. Return `false` to opt out; the tabs you registered are then dropped and `RegisterTab` fails from then on.
+2. Install the dll:
+   - ASI plugin: put the `.asi` file in the `plugins` folder and set `LoadAsiPlugins=true` in `OptiScaler.ini`.
+   - Custom upscaler or FG: put the dll in `custom/<name>/<kind>` and select `<name>` as the upscaler or FG in the menu.
+3. Your tabs appear under **PLUGINS** in the menu sidebar.
 
 ## Drawing
 
@@ -36,7 +45,10 @@ Inside a draw callback you can use `Section`, `Text`, `Checkbox`, `SliderFloat`/
 
 ## Settings
 
-Settings are stored in the `[Plugin.<name>]` section of `OptiScaler.ini`, where `<name>` is the plugin file name without the extension and without a `-loadlate` suffix. For a custom dll it's the `<name>` folder.
+Settings are stored in the `[Plugin.<name>]` section of `OptiScaler.ini`, where `<name>` is:
+
+- for an ASI plugin, the file name without the extension and without a `-loadlate` suffix;
+- for a custom upscaler or FG dll, the `<name>` folder in `custom`, not the dll's file name.
 
 - `Get*` returns the default when the key is missing or set to `auto`.
 - `Set*` only changes the value in memory. `SaveSettings`, or **Save INI** in the menu, writes the file.
