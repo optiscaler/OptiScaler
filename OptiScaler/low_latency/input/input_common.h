@@ -162,6 +162,9 @@ class InputCommon
     // Called on every present: Force State and OptiScaler's FPS limit for the active output. The Reflex output is
     // limited through the Reflex hooks.
     static void update();
+
+    // Vulkan outputs work on the game's device, they go before it
+    static void vk_device_destroyed(void* device);
     static bool can_limit_fps() { return limits_fps; }
 
     // OptiScaler's own frame generation presenter (FSR-FG, XeFG) gives the Reflex output the async calls DLSSG makes,

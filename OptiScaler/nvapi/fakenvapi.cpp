@@ -26,6 +26,10 @@ extern "C" __declspec(dllexport) void* nvapi_QueryInterface(NvU32 id) { return f
 
 void* __cdecl fakenvapi::queryInterface(NvU32 id)
 {
+    // Games and Streamline query from any thread
+    static std::mutex mappingMutex;
+    std::scoped_lock lock(mappingMutex);
+
     auto entry = idToFuncMapping.find(id);
     if (entry != idToFuncMapping.end())
         return entry->second;

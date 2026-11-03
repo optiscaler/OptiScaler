@@ -101,16 +101,6 @@ bool AntiLag2::init(IUnknown* pDevice)
 
 void AntiLag2::deinit()
 {
-    {
-        std::scoped_lock lock(amdxc64_load_mutex);
-
-        const auto module = GetModuleHandleA("amdxc64.dll");
-        for (uint64_t i = 0; i < amdxc64_load_times; i++)
-            FreeLibrary(module);
-
-        amdxc64_load_times = 0;
-    }
-
     if (dx12_ctx.m_pAntiLagAPI)
     {
         // WAR for AL2 not deiniting properly when it's enabled
@@ -122,6 +112,17 @@ void AntiLag2::deinit()
 
     if (dx11_ctx.m_pAntiLagAPI && !AMD::AntiLag2DX11::DeInitialize(&dx11_ctx))
         LOG_INFO("FSR Anti-Lag 2.0 DX11 deinitialized");
+
+    // AntiLag 2 calls run in amdxc64, unloaded only after them
+    {
+        std::scoped_lock lock(amdxc64_load_mutex);
+
+        const auto module = GetModuleHandleA("amdxc64.dll");
+        for (uint64_t i = 0; i < amdxc64_load_times; i++)
+            FreeLibrary(module);
+
+        amdxc64_load_times = 0;
+    }
 }
 
 void* AntiLag2::get_tech_context()

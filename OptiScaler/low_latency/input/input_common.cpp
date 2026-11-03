@@ -510,6 +510,13 @@ bool InputCommon::update_low_latency_tech(IUnknown* pDevice, API api, std::optio
 
     std::scoped_lock lock(create_tech_mutex);
 
+    // Another thread can have switched the output while this one waited
+    if (activeOutput == desiredMode && api == output_api && currently_active_tech.load() != nullptr)
+    {
+        delay_deinit = 0;
+        return true;
+    }
+
     if (init_tech(pDevice, api, desiredMode))
         return true;
 
@@ -827,16 +834,13 @@ InputResult InputCommon::get_latency(const InputContext& inputContext, IUnknown*
         xell_frame_report_t* reports = (xell_frame_report_t*) latency_params;
         constexpr size_t reportCount = 64; // 64 reports, if the app allocated less then it's on them
 
-        if (activeOutput == LowLatencyMode::XeLL)
+        if (auto current_tech = currently_active_tech.load();
+            current_tech != nullptr && current_tech->get_mode() == LowLatencyMode::XeLL)
         {
-            if (auto current_tech = currently_active_tech.load())
-            {
-                auto xell_tech = std::static_pointer_cast<XeLL>(current_tech);
-                auto result = xell_tech->xellGetFramesReports(reports);
+            auto xell_tech = std::static_pointer_cast<XeLL>(current_tech);
 
-                if (result == XELL_RESULT_SUCCESS)
-                    return InputResult::Ok;
-            }
+            if (xell_tech->xellGetFramesReports(reports) == XELL_RESULT_SUCCESS)
+                return InputResult::Ok;
         }
 
         // Hopefully not too slow
@@ -1590,6 +1594,34 @@ xell_context_handle_t InputCommon::acquire_xefg_xell(IUnknown* pDevice)
     xefg_started_output = output;
 
     return (xell_context_handle_t) own->get_tech_context();
+}
+
+void InputCommon::vk_device_destroyed(void* device)
+{
+    if (device == nullptr || output_api != API::Vulkan)
+        return;
+
+    auto usesDevice = [device]()
+    {
+        auto tech = currently_active_tech.load();
+
+        return tech != nullptr && tech->get_tech_context() == device &&
+               (tech->get_mode() == LowLatencyMode::Reflex || tech->get_mode() == LowLatencyMode::AntiLagVk);
+    };
+
+    // Checked before the lock too, AntiLag 2 on dxvk can destroy a device while an output switch holds it
+    if (!usesDevice())
+        return;
+
+    std::scoped_lock lock(create_tech_mutex);
+
+    if (!usesDevice())
+        return;
+
+    LOG_INFO("Low latency output's Vulkan device is destroyed, the output restarts on the next device");
+
+    deinit_current_tech();
+    activeOutput = LowLatencyMode::None;
 }
 
 void InputCommon::release_xefg_xell()

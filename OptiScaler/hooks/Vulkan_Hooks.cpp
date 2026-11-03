@@ -642,7 +642,12 @@ static void hkvkDestroyDevice(VkDevice device, const VkAllocationCallbacks* pAll
             std::scoped_lock lock(_hookedDevicesMutex);
             _hookedDevices.erase((uint64_t) device);
         }
+        // Its swapchains are already destroyed, the low latency output must not use one
+        if (device == _lowLatency2Device)
+            VulkanHooks::ForgetLowLatencySwapchain(VulkanHooks::LowLatencySwapchain());
+
         ReflexHooks::deviceDestroyed(device);
+        InputCommon::vk_device_destroyed(device);
         NVNGXVkDeviceDestroyed(device);
         FfxApiVkDeviceDestroyed(device);
         FSR2VkDeviceDestroyed(device);
