@@ -522,7 +522,7 @@ static HRESULT LocalPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
             bool allowTearing = pSwapChain->GetDesc(&scDesc) == S_OK &&
                                 (scDesc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) != 0 && scDesc.Windowed;
 
-            if (allowTearing && !State::Instance().realExclusiveFullscreen)
+            if (allowTearing)
             {
                 LOG_DEBUG("Adding DXGI_PRESENT_ALLOW_TEARING");
                 Flags |= DXGI_PRESENT_ALLOW_TEARING;
@@ -1417,8 +1417,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
     // Unlock the locked FG, currentFG can change meanwhile
     auto lockedFG = State::Instance().currentFG;
     bool ffxLock = false;
-    if (State::Instance().activeFgOutput == FGOutput::FSRFG && lockedFG != nullptr &&
-        Config::Instance()->FGUseMutexForSwapchain.value_or_default() &&
+    if (lockedFG != nullptr && Config::Instance()->FGUseMutexForSwapchain.value_or_default() &&
         !(lockedFG->Mutex.getOwner() == 7 && InSendMessage()) && !lockedFG->Mutex.isLockedByThisThread())
     {
         LOG_TRACE("Waiting ffxMutex 3, current: {}", lockedFG->Mutex.getOwner());
@@ -1429,18 +1428,6 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
 
     // Menu's last command list can still be running
     WaitForGPUIdle(_device);
-
-    if (ppPresentQueue != nullptr && *ppPresentQueue != nullptr)
-    {
-        if (IsCurrentSwapchain(this))
-            State::Instance().currentCommandQueue = (ID3D12CommandQueue*) *ppPresentQueue;
-
-        if (_device != *ppPresentQueue)
-        {
-            _device = *ppPresentQueue;
-            WaitForGPUIdle(_device);
-        }
-    }
 
     HRESULT result = E_FAIL;
     DXGI_SWAP_CHAIN_DESC desc {};
@@ -1591,6 +1578,20 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
         _lastFlags = SwapChainFlags;
         result = _real3->ResizeBuffers1(BufferCount, Width, Height, Format, SwapChainFlags, pCreationNodeMask,
                                         ppPresentQueue);
+    }
+
+    // Present queue only changes with a successful ResizeBuffers1, SK path resizes without it
+    if (SUCCEEDED(result) && !skResized && ppPresentQueue != nullptr && *ppPresentQueue != nullptr)
+    {
+        // Unwrapped like on creation, Release matches currentCommandQueue with it
+        IUnknown* realQueue = nullptr;
+        if (!Util::CheckForRealObject(__FUNCTION__, *ppPresentQueue, &realQueue))
+            realQueue = *ppPresentQueue;
+
+        _device = realQueue;
+
+        if (IsCurrentSwapchain(this))
+            State::Instance().currentCommandQueue = (ID3D12CommandQueue*) realQueue;
     }
 
     // Game recreates its views before the next present, resource tracking filters them by swapchain size

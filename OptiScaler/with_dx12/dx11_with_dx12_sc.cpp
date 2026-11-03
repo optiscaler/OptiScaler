@@ -394,8 +394,9 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::Present(UINT SyncInterval, UINT Flags)
     if (_fg == nullptr)
         _fg = State::Instance().currentFG;
 
+    // Occlusion test belongs to the game window's swapchain, the real one is on a hidden window
     if ((Flags & DXGI_PRESENT_TEST) != 0)
-        return _real->Present(SyncInterval, Flags);
+        return _fgSwapChain->Present(SyncInterval, Flags);
 
     const bool dx11HudfixPresent = Config::Instance()->FGHUDFix.value_or_default() &&
                                    State::Instance().activeFgInput == FGInput::Upscaler &&
@@ -414,9 +415,9 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::Present(UINT SyncInterval, UINT Flags)
     {
         dx11Index = _GetDx11BackBufferIndexForPresent();
 
-        frameCopied = _RequestSharedBackBuffer(dx11Index) && _CopyDx11BackBufferToShared(dx11Index) &&
-                      _WaitDx11ThenDx12() && _CopyDx11SharedToDx12FGBackBuffer(dx11Index) &&
-                      _WaitForInteropCopyOnPresentQueue();
+        frameCopied = _RequestSharedBackBuffer(dx11Index) && _WaitForCopyAllocator(_currentFakeIndex) &&
+                      _CopyDx11BackBufferToShared(dx11Index) && _WaitDx11ThenDx12() &&
+                      _CopyDx11SharedToDx12FGBackBuffer(dx11Index) && _WaitForInteropCopyOnPresentQueue();
     }
 
     if (!frameCopied)
@@ -886,6 +887,9 @@ bool Dx11wDx12SC::_InitInteropObjects()
 
     HRESULT result = S_OK;
 
+    // A failed FG resize skips the refresh, the cached count can be stale
+    _RefreshCachedSwapchainDesc();
+
     const UINT copyAllocatorCount = std::max<UINT>(_bufferCount != 0 ? _bufferCount : 3, 3);
 
     if (_copyAllocators.size() != copyAllocatorCount)
@@ -1203,6 +1207,13 @@ bool Dx11wDx12SC::_CopyDx11SharedToDx12FGBackBuffer(UINT dx11Index)
     }
 
     const UINT copySlot = _currentFakeIndex;
+
+    if (copySlot >= _copyAllocators.size() || copySlot >= _copyCommandLists.size())
+    {
+        LOG_ERROR("copy slot {} out of range {}", copySlot, _copyAllocators.size());
+        return false;
+    }
+
     auto allocator = _copyAllocators[copySlot];
 
     if (allocator == nullptr)
@@ -1400,12 +1411,7 @@ void Dx11wDx12SC::_RefreshCachedSwapchainDesc()
     _currentFakeIndex = _bufferCount > 0 ? _currentFakeIndex % _bufferCount : 0;
 }
 
-UINT Dx11wDx12SC::_GetDx11BackBufferIndexForPresent() const
-{
-    if (_real3 != nullptr)
-        return _real3->GetCurrentBackBufferIndex();
-
-    return _bufferCount > 0 ? _currentFakeIndex : 0;
-}
+// D3D11 always renders to buffer 0, the runtime rotates the buffers
+UINT Dx11wDx12SC::_GetDx11BackBufferIndexForPresent() const { return 0; }
 
 void Dx11wDx12SC::_AdvanceFakeBackBufferIndex() { _currentFakeIndex = (_currentFakeIndex + 1) % _bufferCount; }
