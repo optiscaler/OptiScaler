@@ -574,7 +574,9 @@ void ReflexHooks::update(bool fgActive, bool isVulkan)
     if (lastFgNumFramesToGenerate != _FgNumFramesToGenerate)
     {
         lastFgNumFramesToGenerate = _FgNumFramesToGenerate;
-        setFPSLimit(currentFps);
+
+        // Applied below, after the FSR-FG halving
+        lastFps = 0;
 
         if (_FgNumFramesToGenerate == 0)
             LOG_DEBUG("DLSS FG no longer detected");

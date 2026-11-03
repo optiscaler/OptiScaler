@@ -5,6 +5,13 @@
 
 using namespace DirectX;
 
+// No output yet or the game uses another input, nothing went wrong
+static bool IsError(InputResult result)
+{
+    return result != InputResult::Ok && result != InputResult::UsingDifferentInput &&
+           result != InputResult::NoReadyOutput && result != InputResult::NotEnoughReports;
+}
+
 void InputUeLowLatency::init()
 {
     if (inited)
@@ -44,12 +51,11 @@ void InputUeLowLatency::tickStart(int64_t frameId, float DeltaSeconds, bool bIdl
     // Most backends use 32bit frameId so it is what it is
     auto result = InputCommon::sleep(inputContext, device, (uint32_t) frameId);
 
-    if (result == InputResult::UsingDifferentInput)
-        return;
-
     if (result != InputResult::Ok)
     {
-        LOG_ERROR("sleep result: {}", magic_enum::enum_name(result));
+        if (IsError(result))
+            LOG_ERROR("sleep result: {}", magic_enum::enum_name(result));
+
         return;
     }
 
@@ -59,11 +65,8 @@ void InputUeLowLatency::tickStart(int64_t frameId, float DeltaSeconds, bool bIdl
 
     result = InputCommon::set_marker(inputContext, device, markerParams);
 
-    if (result != InputResult::Ok)
-    {
+    if (IsError(result))
         LOG_ERROR("set_marker result: {}", magic_enum::enum_name(result));
-        return;
-    }
 }
 
 void InputUeLowLatency::tickEnd(int64_t frameId, float DeltaSeconds, bool bIdleMode)
@@ -74,11 +77,8 @@ void InputUeLowLatency::tickEnd(int64_t frameId, float DeltaSeconds, bool bIdleM
 
     auto result = InputCommon::set_marker(inputContext, device, markerParams);
 
-    if (result != InputResult::Ok)
-    {
+    if (IsError(result))
         LOG_ERROR("set_marker result: {}", magic_enum::enum_name(result));
-        return;
-    }
 }
 
 static void GetCameraBasis(const float cameraRotation[3], float cameraUp[3], float cameraRight[3],

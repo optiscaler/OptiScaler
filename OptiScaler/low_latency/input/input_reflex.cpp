@@ -31,15 +31,15 @@ template <typename Fn> static Fn ToDriver(unsigned int id)
 
 static NvAPI_Status ToNvApi(InputResult result, const char* call)
 {
+    // Not errors for the game, the driver returns OK for these too
     if (result == InputResult::Ok || result == InputResult::UsingDifferentInput ||
-        result == InputResult::NotEnoughReports)
+        result == InputResult::NotEnoughReports || result == InputResult::NoReadyOutput)
     {
         return NVAPI_OK;
     }
 
     LOG_ERROR("{} result: {}", call, magic_enum::enum_name(result));
-
-    return result == InputResult::NoReadyOutput ? NVAPI_OK : NVAPI_ERROR;
+    return NVAPI_ERROR;
 }
 
 NvAPI_Status InputReflex::D3D_SetSleepMode(IUnknown* pDev, NV_SET_SLEEP_MODE_PARAMS* pSetSleepModeParams)
