@@ -321,8 +321,7 @@ void DLSSFeature::Shutdown()
 {
     LOG_FUNC();
 
-    if (NVNGXProxy::NVNGXModule() != nullptr)
-        UnhookApis();
+    // NGX requirement hooks are shared by all features and stay for the session
 
     LOG_FUNC_RESULT(0);
 }

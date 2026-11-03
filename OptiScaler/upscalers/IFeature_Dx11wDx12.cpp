@@ -349,8 +349,8 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
         getOriginalNgxResource(InParameters, NVSDK_NGX_Parameter_Depth, &restoreParamDepth);
     const bool hasRestoreParamExposure =
         getOriginalNgxResource(InParameters, NVSDK_NGX_Parameter_ExposureTexture, &restoreParamExposure);
-    const bool hasRestoreParamReactive = getOriginalNgxResource(
-        InParameters, NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, &restoreParamReactive);
+    getOriginalNgxResource(InParameters, NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask,
+                           &restoreParamReactive);
 
     // Dx11 textures, Dx12 backends would read them as Dx12 resources. Reactive mask is shared via the bias mask
     void* restoreFsrReactive = nullptr;
@@ -424,9 +424,12 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
         if (!AutoExposure() && dx11Exp.Dx12Resource != nullptr)
             InParameters->Set(NVSDK_NGX_Parameter_ExposureTexture, (void*) dx11Exp.Dx12Resource);
 
-        if (!Config::Instance()->DisableReactiveMask.value_or(false) && dx11Reactive.Dx12Resource != nullptr)
-            InParameters->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask,
-                              (void*) dx11Reactive.Dx12Resource);
+        // Without a copy for this frame the param would hold the Dx11 texture or the cache's last copy
+        const bool reactiveReady = !Config::Instance()->DisableReactiveMask.value_or(false) &&
+                                   dx11Reactive.Dx12Resource != nullptr &&
+                                   dx11Reactive.LastPreparedFrame == cache.LastPreparedFrameId;
+        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask,
+                          reactiveReady ? (void*) dx11Reactive.Dx12Resource : nullptr);
 
         InParameters->Set("FSR.reactive", (void*) nullptr);
         InParameters->Set("FSR.transparencyAndComposition", (void*) nullptr);
@@ -451,8 +454,7 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
     if (hasRestoreParamExposure)
         InParameters->Set(NVSDK_NGX_Parameter_ExposureTexture, (void*) restoreParamExposure);
 
-    if (hasRestoreParamReactive)
-        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void*) restoreParamReactive);
+    InParameters->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void*) restoreParamReactive);
 
     InParameters->Set("FSR.reactive", restoreFsrReactive);
     InParameters->Set("FSR.transparencyAndComposition", restoreFsrTransparency);

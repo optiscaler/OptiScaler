@@ -345,7 +345,7 @@ bool QueryHDRLuminanceRange(NVSDK_NGX_Parameter* InParameters, Nvngx_FFX_Handle*
         IdentifyGpu::getHardwareAdapter(factory.Get(), adapter.GetAddressOf(), D3D_FEATURE_LEVEL_12_0);
 
         // Then check the first HDR-capable output
-        for (uint32_t j = 0; adapter->EnumOutputs(j, &output) == S_OK; j++)
+        for (uint32_t j = 0; adapter != nullptr && adapter->EnumOutputs(j, &output) == S_OK; j++)
         {
             if (IDXGIOutput6* output6; output->QueryInterface(IID_PPV_ARGS(&output6)) == S_OK)
             {

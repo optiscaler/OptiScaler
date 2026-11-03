@@ -50,6 +50,7 @@ bool DLSSFeatureDx11::InitInternal(ID3D11DeviceContext* InContext, NVSDK_NGX_Par
             if (nvResult != NVSDK_NGX_Result_Success)
             {
                 LOG_ERROR("NVNGXProxy::D3D11_CreateFeature result: {0:X}", (unsigned int) nvResult);
+                _p_dlssHandle = nullptr; // NGX never issued it
                 break;
             }
         }

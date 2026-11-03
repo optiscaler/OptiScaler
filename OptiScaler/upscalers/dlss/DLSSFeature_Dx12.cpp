@@ -84,6 +84,7 @@ bool DLSSFeatureDx12::InitDLSS(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
         if (nvResult != NVSDK_NGX_Result_Success)
         {
             LOG_ERROR("_CreateFeature result: {0:X}", (unsigned int) nvResult);
+            _p_dlssHandle = nullptr; // NGX never issued it
             return false;
         }
         else

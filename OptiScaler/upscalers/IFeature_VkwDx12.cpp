@@ -75,7 +75,6 @@ static bool HasStencil(VkFormat format)
 {
     switch (format)
     {
-    case VK_FORMAT_X8_D24_UNORM_PACK32:
     case VK_FORMAT_D16_UNORM_S8_UINT:
     case VK_FORMAT_D24_UNORM_S8_UINT:
     case VK_FORMAT_D32_SFLOAT_S8_UINT:
@@ -667,6 +666,23 @@ bool IFeature_VkwDx12::CopyTextureFromVkToDx12(VkCommandBuffer InCmdBuffer, NVSD
 
         OutResource->VkSharedImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         OutResource->VkSharedImageAccess = VK_ACCESS_NONE;
+
+        // Output is written by D3D12 first, a later transition from UNDEFINED could discard it
+        if (!InCopy)
+        {
+            VkImageMemoryBarrier imageBarrier {};
+            imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            imageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            imageBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+            imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            imageBarrier.image = OutResource->VkSharedImage;
+            imageBarrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+            vkCmdPipelineBarrier(InCmdBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                 0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
+
+            OutResource->VkSharedImageLayout = VK_IMAGE_LAYOUT_GENERAL;
+        }
 
         // Verify the resource descriptor
         D3D12_RESOURCE_DESC actualDesc = OutResource->Dx12Resource->GetDesc();
@@ -2137,6 +2153,15 @@ bool IFeature_VkwDx12::Init(VkInstance InInstance, VkPhysicalDevice InPD, VkDevi
 
     if (IsInited())
         return true;
+
+    // Shared resources are already in NPSR, the backends' UE barriers would declare wrong states
+    if (State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
+        State::Instance().gameQuirks & GameQuirk::ForceUnrealEngine)
+    {
+        LOG_INFO("Vulkan detected, disabling UE resource barrier overrides");
+        Config::Instance()->ColorResourceBarrier.set_volatile_value(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        Config::Instance()->MVResourceBarrier.set_volatile_value(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    }
 
     VulkanInstance = InInstance;
     VulkanPhysicalDevice = InPD;

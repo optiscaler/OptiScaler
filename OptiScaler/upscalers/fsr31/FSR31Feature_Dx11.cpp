@@ -64,6 +64,10 @@ bool FSR31FeatureDx11::CopyTexture(ID3D11Resource* InResource, D3D11_TEXTURE2D_R
 
     if (desc.BindFlags == bindFlags)
     {
+        // Our copy isn't needed anymore
+        if (!OutTextureRes->usingOriginal && OutTextureRes->Texture != nullptr)
+            OutTextureRes->Texture->Release();
+
         ASSIGN_DESC(OutTextureRes->Desc, desc);
         OutTextureRes->Texture = originalTexture;
         OutTextureRes->usingOriginal = true;
@@ -559,6 +563,11 @@ bool FSR31FeatureDx11::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
         if (ret != Fsr31::FFX_OK)
         {
             LOG_ERROR("_createContext error: {0}", ResultToString(ret));
+
+            // The destructor frees it only for inited features
+            free(_upscalerContextDesc.backendInterfaceUpscaling.scratchBuffer);
+            _upscalerContextDesc.backendInterfaceUpscaling.scratchBuffer = nullptr;
+
             return false;
         }
 

@@ -565,19 +565,28 @@ void FSRFG_Vk::CreateContext()
 
 void FSRFG_Vk::ConfigureFramePaceTuning()
 {
-    State::Instance().fsrfgFramePaceTuningChanged = false;
+    const bool changed = std::exchange(State::Instance().fsrfgFramePaceTuningChanged, false);
 
     auto config = Config::Instance();
 
     // Versions are FFX SDK ones here, 1.1.3 shipped FSR 3.1.3 which added the tuning
-    if (_swapChainContext == nullptr || _version < feature_version { 1, 1, 3 } ||
-        !config->FGFramePacingTuning.value_or_default())
+    if (_swapChainContext == nullptr || _version < feature_version { 1, 1, 3 })
         return;
 
-    // The Vulkan swapchain only reads safetyMarginInMs and varianceFactor
+    // A new swapchain keeps the SDK's own pacing until tuning is used
+    if (!config->FGFramePacingTuning.value_or_default() && !changed)
+        return;
+
+    // The Vulkan swapchain only reads safetyMarginInMs and varianceFactor, SDK defaults restore it when turned off
     FfxApiSwapchainFramePacingTuning fpt {};
-    fpt.safetyMarginInMs = config->FGFPTSafetyMarginInMs.value_or_default();
-    fpt.varianceFactor = config->FGFPTVarianceFactor.value_or_default();
+    fpt.safetyMarginInMs = 0.1f;
+    fpt.varianceFactor = 0.1f;
+
+    if (config->FGFramePacingTuning.value_or_default())
+    {
+        fpt.safetyMarginInMs = config->FGFPTSafetyMarginInMs.value_or_default();
+        fpt.varianceFactor = config->FGFPTVarianceFactor.value_or_default();
+    }
 
     ffxConfigureDescFrameGenerationSwapChainKeyValueVK cfgDesc {};
     cfgDesc.header.type = FFX_API_CONFIGURE_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_KEYVALUE_VK;

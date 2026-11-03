@@ -1043,4 +1043,6 @@ void NVNGXVkDeviceDestroyed(VkDevice device)
 {
     if (vkDevice == device)
         _vkDeviceDestroyed = true;
+
+    Nvngx_FG::VkDeviceDestroyed(device);
 }

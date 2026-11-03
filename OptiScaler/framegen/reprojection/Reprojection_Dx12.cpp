@@ -90,7 +90,7 @@ bool Reprojection_Dx12::CreateSwapchainInternal(IDXGIFactory* factory, ID3D12Com
     if (SUCCEEDED(result) && swapChain)
     {
         auto reprojectionSwapchain =
-            new ReprojectionDXGISwapChain(realSwapchain, _device, desc->OutputWindow, 0, false);
+            new ReprojectionDXGISwapChain(realSwapchain, cmdQueue, desc->OutputWindow, 0, false);
 
         *swapChain = reprojectionSwapchain;
 
@@ -118,7 +118,7 @@ bool Reprojection_Dx12::CreateSwapchain1Internal(IDXGIFactory* factory, ID3D12Co
 
     if (SUCCEEDED(result) && swapChain)
     {
-        auto reprojectionSwapchain1 = new ReprojectionDXGISwapChain(realSwapchain1, _device, hwnd, 0, false);
+        auto reprojectionSwapchain1 = new ReprojectionDXGISwapChain(realSwapchain1, cmdQueue, hwnd, 0, false);
 
         *swapChain = reprojectionSwapchain1;
 
@@ -388,6 +388,10 @@ bool Reprojection_Dx12::SetResource(Dx12Resource* inputResource)
     fResource->left = inputResource->left;
     fResource->width = inputResource->width;
     fResource->height = inputResource->height;
+
+    // A new resource for the slot, its old copy is stale. A re-tag passes the slot itself
+    if (inputResource != fResource)
+        fResource->copy = nullptr;
 
     if (inputResource->cmdList != nullptr && fResource->validity == FG_ResourceValidity::ValidButMakeCopy)
     {
