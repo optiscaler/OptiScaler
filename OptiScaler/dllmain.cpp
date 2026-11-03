@@ -1765,6 +1765,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         bool possibleNvidia = isNvidiaViaNvapi();
         IdentifyGpu::setNvidiaHint(possibleNvidia);
 
+        // Quirks can extend the DLL search
+        spdlog::info("");
+        CheckQuirks(possibleNvidia);
+
         spdlog::info("");
         spdlog::info("Check for DLSS files");
 
@@ -1850,9 +1854,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         {
             Config::Instance()->DLSSEnabled.set_volatile_value(false);
         }
-
-        spdlog::info("");
-        CheckQuirks(possibleNvidia);
 
         // Check for working mode and attach hooks
         spdlog::info("");

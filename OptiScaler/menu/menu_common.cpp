@@ -3492,6 +3492,10 @@ void MenuCommon::RenderMainMenuHeaderMessages(RenderMenuContext& ctx)
         {
             LOG_ERROR("Version check failed: {0}", versionStatus.error);
             versionStatus.error.clear();
+
+            // The status is copied from State every frame
+            std::scoped_lock lock(state.versionCheckMutex);
+            state.versionCheckError.clear();
         }
         // Disabled error message
         // else if (!versionStatus.error.empty())
