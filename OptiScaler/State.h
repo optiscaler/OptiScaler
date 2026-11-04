@@ -235,6 +235,7 @@ class State
     bool fsrfgInputActive = false;
 
     ankerl::unordered_dense::map<void*, CapturedHudlessInfo> capturedHudlesses;
+    std::mutex capturedHudlessesMutex; // Changes and the menu, lookups also rely on the hudfix check lock
     bool clearCapturedHudlesses = false;
 
     // NVNGX init parameters

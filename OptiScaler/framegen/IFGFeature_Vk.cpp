@@ -46,7 +46,7 @@ static VkImageAspectFlags AspectMask(VkFormat format)
 }
 
 void IFGFeature_Vk::ImageBarrier(VkCommandBuffer cmdBuffer, VkImage image, VkFormat format, VkImageLayout oldLayout,
-                                 VkImageLayout newLayout)
+                                 VkImageLayout newLayout, bool firstSubresourceOnly)
 {
     VkImageMemoryBarrier barrier { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
     barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
@@ -56,7 +56,8 @@ void IFGFeature_Vk::ImageBarrier(VkCommandBuffer cmdBuffer, VkImage image, VkFor
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.image = image;
-    barrier.subresourceRange = { AspectMask(format), 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS };
+    barrier.subresourceRange = { AspectMask(format), 0, firstSubresourceOnly ? 1u : VK_REMAINING_MIP_LEVELS, 0,
+                                 firstSubresourceOnly ? 1u : VK_REMAINING_ARRAY_LAYERS };
 
     vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
                          nullptr, 0, nullptr, 1, &barrier);
@@ -313,7 +314,9 @@ bool IFGFeature_Vk::CopyImage(VkCommandBuffer cmdBuffer, VkFGResource& resource,
 
     auto aspect = AspectMask(resource.format);
 
-    ImageBarrier(cmdBuffer, resource.image, resource.format, resource.layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    // The copy reads mip 0 of layer 0, the resource's layout is the one of that view
+    ImageBarrier(cmdBuffer, resource.image, resource.format, resource.layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                 true);
     ImageBarrier(cmdBuffer, copy.image, copy.format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
     // A blit would decode/encode sRGB, a copy keeps the stored values as they are
@@ -338,7 +341,8 @@ bool IFGFeature_Vk::CopyImage(VkCommandBuffer cmdBuffer, VkFGResource& resource,
                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, VK_FILTER_NEAREST);
     }
 
-    ImageBarrier(cmdBuffer, resource.image, resource.format, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, resource.layout);
+    ImageBarrier(cmdBuffer, resource.image, resource.format, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, resource.layout,
+                 true);
 
     resource.image = copy.image;
     resource.view = copy.view;

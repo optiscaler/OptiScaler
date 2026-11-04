@@ -10316,6 +10316,9 @@ void MenuCommon::RenderHudlessResourcesWindow(RenderMenuContext& ctx, ImGuiWindo
 
                 ankerl::unordered_dense::map<void*, CapturedHudlessInfo>::iterator it;
 
+                // Render threads add and remove entries
+                std::scoped_lock hudlessLock(state.capturedHudlessesMutex);
+
                 for (it = state.capturedHudlesses.begin(); it != state.capturedHudlesses.end(); it++)
                 {
                     ImGui::TableNextRow();
