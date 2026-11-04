@@ -519,7 +519,7 @@ static VkResult hkvkCreateInstance(const VkInstanceCreateInfo* pCreateInfo, cons
     VulkanSpoofing::hkvkCreateInstance(&localCreateInfo, pAllocator, pInstance);
 
     // FFX and Streamline use Vulkan 1.2 core functions like vkWaitSemaphores. Wine only provides those to 1.2 apps,
-    // older ones crash calling them, Streamline's own vkCreateInstance raises the version too.
+    // older ones crash calling them. Streamline's own vkCreateInstance raises the version to 1.3
     VkApplicationInfo appInfo { VK_STRUCTURE_TYPE_APPLICATION_INFO };
     const auto fgOutput = State::Instance().activeFgOutput;
 
@@ -528,12 +528,14 @@ static VkResult hkvkCreateInstance(const VkInstanceCreateInfo* pCreateInfo, cons
         if (localCreateInfo.pApplicationInfo != nullptr)
             appInfo = *localCreateInfo.pApplicationInfo;
 
-        if (appInfo.apiVersion < VK_API_VERSION_1_2)
-        {
-            LOG_INFO("Raising the API version from {}.{} to 1.2 for FG", VK_API_VERSION_MAJOR(appInfo.apiVersion),
-                     VK_API_VERSION_MINOR(appInfo.apiVersion));
+        const uint32_t fgApiVersion = fgOutput == FGOutput::DLSSG ? VK_API_VERSION_1_3 : VK_API_VERSION_1_2;
 
-            appInfo.apiVersion = VK_API_VERSION_1_2;
+        if (appInfo.apiVersion < fgApiVersion)
+        {
+            LOG_INFO("Raising the API version from {}.{} to 1.{} for FG", VK_API_VERSION_MAJOR(appInfo.apiVersion),
+                     VK_API_VERSION_MINOR(appInfo.apiVersion), VK_API_VERSION_MINOR(fgApiVersion));
+
+            appInfo.apiVersion = fgApiVersion;
             localCreateInfo.pApplicationInfo = &appInfo;
         }
     }

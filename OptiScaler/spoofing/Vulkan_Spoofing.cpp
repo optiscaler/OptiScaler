@@ -561,6 +561,9 @@ struct VulkanDeviceFeatureState::Impl
     VkPhysicalDeviceComputeShaderDerivativesFeaturesKHR computeShaderDerivatives {
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_KHR
     };
+    VkPhysicalDeviceShaderIntegerDotProductFeatures integerDotProduct {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_DOT_PRODUCT_FEATURES
+    };
 
     Impl(VkDeviceCreateInfo* pCreateInfo, PFN_vkGetPhysicalDeviceFeatures2 getFeatures2)
         : pCreateInfo(pCreateInfo), getFeatures2(getFeatures2)
@@ -580,7 +583,7 @@ struct VulkanDeviceFeatureState::Impl
             CopyFeatureChain(pCreateInfo->pNext, features2, vulkan12Features, vulkan13Features, shaderFloat16Int8,
                              storage8Bit, descriptorIndexing, bufferDeviceAddress, vulkanMemoryModel, synchronization2,
                              subgroupSizeControl, timelineSemaphore, descriptorBuffer, shaderFloat8, cooperativeMatrix,
-                             cooperativeMatrix2, computeShaderDerivatives);
+                             cooperativeMatrix2, computeShaderDerivatives, integerDotProduct);
     }
 
     bool CanUpgradeExtBufferDeviceAddress(VkPhysicalDevice physicalDevice)
@@ -769,9 +772,16 @@ struct VulkanDeviceFeatureState::Impl
                 EnableExistingFeature(modifiedFeatures, features, vulkan13Features,
                                       &VkPhysicalDeviceVulkan13Features::computeFullSubgroups,
                                       supported.computeFullSubgroups);
+                EnableExistingFeature(modifiedFeatures, features, vulkan13Features,
+                                      &VkPhysicalDeviceVulkan13Features::shaderIntegerDotProduct,
+                                      supported.shaderIntegerDotProduct);
 
                 return;
             }
+
+            EnableSupportedFeature(pCreateInfo, modifiedFeatures, integerDotProduct,
+                                   &VkPhysicalDeviceShaderIntegerDotProductFeatures::shaderIntegerDotProduct,
+                                   supported.shaderIntegerDotProduct);
 
             EnableSupportedFeature(pCreateInfo, modifiedFeatures, synchronization2,
                                    &VkPhysicalDeviceSynchronization2Features::synchronization2,
@@ -793,6 +803,11 @@ struct VulkanDeviceFeatureState::Impl
             EnableFeatureStruct(pCreateInfo, getFeatures2, physicalDevice, modifiedFeatures, subgroupSizeControl,
                                 &VkPhysicalDeviceSubgroupSizeControlFeatures::subgroupSizeControl,
                                 &VkPhysicalDeviceSubgroupSizeControlFeatures::computeFullSubgroups);
+
+        // Added for XeSS, its DP4a path and DLSSG replacements running D3D12 on Vulkan use it
+        if (HasExtension(pCreateInfo, VK_KHR_SHADER_INTEGER_DOT_PRODUCT_EXTENSION_NAME))
+            EnableFeatureStruct(pCreateInfo, getFeatures2, physicalDevice, modifiedFeatures, integerDotProduct,
+                                &VkPhysicalDeviceShaderIntegerDotProductFeatures::shaderIntegerDotProduct);
     }
 
     void EnableVulkan14Features(VkPhysicalDevice physicalDevice)
