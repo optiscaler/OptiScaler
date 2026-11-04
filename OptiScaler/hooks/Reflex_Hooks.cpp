@@ -40,23 +40,9 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_Sleep(IUnknown* pDev)
     LOG_FUNC();
 #endif
 
-    // Streamline's own sleep comes back here
-    static bool skip = false;
-
-    if (!skip)
-    {
-        skip = true;
-        bool slept = streamlineSleep();
-        skip = false;
-
-        if (slept)
-            return NVAPI_OK;
-    }
-    else
-    {
-        _lastSleepDev = pDev;
-        return o_NvAPI_D3D_Sleep(pDev);
-    }
+    // OptiScaler's Streamline sleep comes back here
+    if (!optiScalerCall && streamlineSleep())
+        return NVAPI_OK;
 
     _lastSleepDev = pDev;
     return o_NvAPI_D3D_Sleep(pDev);

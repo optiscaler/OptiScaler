@@ -8,11 +8,11 @@
 
 class XeLL : public LowLatencyTech
 {
-    bool sent_sleep_frame_ids[64] {};
     uint64_t simulation_start_last_id {};
     uint64_t sleep_last_id {};
 
     xell_context_handle_t xell_context {};
+    ID3D12Device* dx12_device = nullptr;
 
     // The sleep mode last sent to this context, the first one always goes out
     uint32_t last_low_latency_mode = UINT32_MAX;

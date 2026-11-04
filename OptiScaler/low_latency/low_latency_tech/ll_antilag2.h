@@ -10,6 +10,7 @@ class AntiLag2 : public LowLatencyTech
   private:
     AMD::AntiLag2DX12::Context dx12_ctx = {};
     AMD::AntiLag2DX11::Context dx11_ctx = {};
+    ID3D12Device* dx12_device = nullptr;
 
     std::mutex amdxc64_load_mutex;
     uint64_t amdxc64_load_times = 0;

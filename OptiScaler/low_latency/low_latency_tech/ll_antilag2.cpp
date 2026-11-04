@@ -49,8 +49,6 @@ bool AntiLag2::init(IUnknown* pDevice)
 {
     if (!dx12_ctx.m_pAntiLagAPI && !dx11_ctx.m_pAntiLagAPI && pDevice)
     {
-        ID3D12Device* device = nullptr;
-
         // Specifically for Linux where the amdxc64.dll may not be loaded yet
         {
             std::scoped_lock lock(amdxc64_load_mutex);
@@ -58,12 +56,12 @@ bool AntiLag2::init(IUnknown* pDevice)
             amdxc64_load_times++;
         }
 
-        HRESULT hr = pDevice->QueryInterface(__uuidof(ID3D12Device), reinterpret_cast<void**>(&device));
+        HRESULT hr = pDevice->QueryInterface(__uuidof(ID3D12Device), reinterpret_cast<void**>(&dx12_device));
         if (hr == S_OK)
         {
             Amdxc64Hooks::giveGameAl2Proxy = false;
             ScopedSkipVulkanHooks skipVulkanHooks {};
-            HRESULT init_return = AMD::AntiLag2DX12::Initialize(&dx12_ctx, device);
+            HRESULT init_return = AMD::AntiLag2DX12::Initialize(&dx12_ctx, dx12_device);
             Amdxc64Hooks::giveGameAl2Proxy = true;
             if (init_return == S_OK)
             {
@@ -73,6 +71,8 @@ bool AntiLag2::init(IUnknown* pDevice)
             else
             {
                 LOG_INFO("FSR Anti-Lag 2.0 DX12 initialization failed");
+                dx12_device->Release();
+                dx12_device = nullptr;
             }
         }
         else
@@ -108,6 +108,13 @@ void AntiLag2::deinit()
 
         if (!AMD::AntiLag2DX12::DeInitialize(&dx12_ctx))
             LOG_INFO("FSR Anti-Lag 2.0 DX12 deinitialized");
+    }
+
+    // Held while the context lives
+    if (dx12_device != nullptr)
+    {
+        dx12_device->Release();
+        dx12_device = nullptr;
     }
 
     if (dx11_ctx.m_pAntiLagAPI && !AMD::AntiLag2DX11::DeInitialize(&dx11_ctx))
