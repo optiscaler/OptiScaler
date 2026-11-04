@@ -7,6 +7,9 @@
 #include <hooks/Hook_Utils.h>
 #include <hooks/Vulkan_Hooks.h>
 #include <framegen/IFGFeature_Vk.h>
+#include <framegen/IFGFeature_Dx12.h>
+#include <inputs/FG/VkwDx12_Inputs.h>
+#include <with_dx12/vk_with_dx12_sc.h>
 
 #include <detours/detours.h>
 #include <ankerl/unordered_dense.h>
@@ -177,13 +180,42 @@ static bool HudfixEnabled()
     return State::Instance().activeFgInput == FGInput::Upscaler && Config::Instance()->FGHUDFix.value_or_default();
 }
 
+// The hudless goes to the Vulkan FG output, or through VkwDx12SC to the DX12 FG output presenting the game's frames
 static bool IsFGRunning()
 {
     if (!HudfixEnabled() || !Config::Instance()->IsFGEnabled())
         return false;
 
-    auto fg = State::Instance().currentVkFG;
-    return fg != nullptr && fg->IsActive() && !fg->IsPaused();
+    auto& state = State::Instance();
+
+    if (auto fg = state.currentVkFG; fg != nullptr)
+        return fg->IsActive() && !fg->IsPaused();
+
+    // The DX12 one, the dispatches of VkwDx12SC's own copies aren't the game's
+    auto fg = state.currentFG;
+    return fg != nullptr && state.swapchainInteropApi == SwapchainInteropApi::VkwDx12 && fg->IsActive() &&
+           !fg->IsPaused() && !VkwDx12Inputs::Recording();
+}
+
+// The swapchain the FG output presents
+static bool FGSwapchain(VkFormat& format, VkExtent2D& extent)
+{
+    if (auto fg = State::Instance().currentVkFG; fg != nullptr)
+    {
+        format = fg->SwapchainFormat();
+        extent = fg->SwapchainExtent();
+        return true;
+    }
+
+    return VkwDx12SC::SwapchainInfo(format, extent);
+}
+
+static bool SetFGResource(VkFGResource& resource)
+{
+    if (auto fg = State::Instance().currentVkFG; fg != nullptr)
+        return fg->SetResource(&resource);
+
+    return VkwDx12Inputs::SetResource(resource);
 }
 
 static bool IsSearching()
@@ -244,15 +276,18 @@ void Hudfix_Vk::CheckImage(VkCommandBuffer cmdBuffer, VkImage image, VkFormat fo
         return;
     }
 
-    auto fg = State::Instance().currentVkFG;
-    auto swapchainExtent = fg->SwapchainExtent();
+    VkFormat swapchainFormat = VK_FORMAT_UNDEFINED;
+    VkExtent2D swapchainExtent {};
 
-    if (extent.width != swapchainExtent.width || extent.height != swapchainExtent.height)
+    if (!FGSwapchain(swapchainFormat, swapchainExtent) || extent.width != swapchainExtent.width ||
+        extent.height != swapchainExtent.height)
+    {
         return;
+    }
 
     // The FG copy blits other formats to the swapchain's
     if (!Config::Instance()->FGHUDFixExtended.value_or_default() &&
-        IFGFeature_Vk::WithoutSrgb(format) != IFGFeature_Vk::WithoutSrgb(fg->SwapchainFormat()))
+        IFGFeature_Vk::WithoutSrgb(format) != IFGFeature_Vk::WithoutSrgb(swapchainFormat))
     {
         return;
     }
@@ -272,7 +307,7 @@ void Hudfix_Vk::CheckImage(VkCommandBuffer cmdBuffer, VkImage image, VkFormat fo
 
     auto resource = CopiedResource(FG_ResourceType::HudlessColor, cmdBuffer, image, format, extent, layout);
 
-    if (fg->SetResource(&resource))
+    if (SetFGResource(resource))
         LOG_DEBUG("Hudless: {:X}, frame: {}, candidate: {}", (size_t) image, frame, _candidateCount);
 
     _searchDoneFrame.store(frame, std::memory_order_release);
@@ -280,14 +315,19 @@ void Hudfix_Vk::CheckImage(VkCommandBuffer cmdBuffer, VkImage image, VkFormat fo
 
 void Hudfix_Vk::AddSwapchainImages(const VkImage* images, uint32_t count)
 {
-    auto fg = State::Instance().currentVkFG;
-    if (fg == nullptr || o_CreateImage == nullptr)
+    if (auto fg = State::Instance().currentVkFG; fg != nullptr)
+        AddSwapchainImages(images, count, fg->SwapchainFormat(), fg->SwapchainExtent());
+}
+
+void Hudfix_Vk::AddSwapchainImages(const VkImage* images, uint32_t count, VkFormat format, VkExtent2D extent)
+{
+    if (o_CreateImage == nullptr)
         return;
 
     std::unique_lock lock(_trackMutex);
 
     for (uint32_t i = 0; i < count; i++)
-        _images[images[i]] = { fg->SwapchainFormat(), fg->SwapchainExtent(), true };
+        _images[images[i]] = { format, extent, true };
 }
 
 static void CheckTrackedImage(VkCommandBuffer cmdBuffer, VkImage image, VkImageLayout layout)
@@ -572,6 +612,10 @@ static void UseUiTexture(VkCommandBuffer cmdBuffer, const DescriptorImage& ui, c
     auto& state = State::Instance();
     auto config = Config::Instance();
     auto fg = state.currentVkFG;
+
+    // The hudless is rebuilt on the Vulkan FG output, the DX12 one VkwDx12SC presents through only gets the candidates
+    if (fg == nullptr)
+        return;
 
     auto uiResource =
         CopiedResource(FG_ResourceType::UIColor, cmdBuffer, ui.image, uiInfo.format, uiInfo.extent, ui.layout);
