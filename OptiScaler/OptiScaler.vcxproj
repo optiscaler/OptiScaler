@@ -196,6 +196,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="framegen\reprojection\swapchain\reprojectionSwapchain.h" />
     <ClInclude Include="fsr4\FSR4DriverProvider.h" />
     <ClInclude Include="fsr4\FSR4DriverProviderVk.h" />
+    <ClInclude Include="fsr4\FSR4MotionVectorViewsVk.h" />
     <ClInclude Include="gpu_time\GpuTime_Dx11.h" />
     <ClInclude Include="gpu_time\GpuTime_Dx12.h" />
     <ClInclude Include="gpu_time\GpuTime_Vk.h" />

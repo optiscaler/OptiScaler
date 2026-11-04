@@ -56,6 +56,8 @@ class FSR4DriverProviderVk
 
     static bool IsSupported(VkDevice device, VkPhysicalDevice physicalDevice, PFN_vkGetDeviceProcAddr gdpa);
 
+    static bool CanUseDirectMotionVectors(VkDevice device);
+
     // Adds the driver upscaler to a version list from the FFX SDK, keeping it sorted newest first
     static void AddToVersionList(std::vector<uint64_t>& ids, std::vector<const char*>& names, DriverListing listing);
 
