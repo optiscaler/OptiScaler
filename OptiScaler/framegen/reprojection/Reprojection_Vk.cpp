@@ -189,6 +189,8 @@ VkSemaphore Reprojection_Vk::ReprojectPresent(VkQueue queue, const VkPresentInfo
     if (cmdBuffer == VK_NULL_HANDLE)
         return VK_NULL_HANDLE;
 
+    const auto unblended = UnblendUi(cmdBuffer, fIndex);
+
     auto imageIndex = pPresentInfo->pImageIndices[0];
     auto swapchainImage = _swapchainImages[imageIndex];
 
@@ -265,6 +267,8 @@ VkSemaphore Reprojection_Vk::ReprojectPresent(VkQueue queue, const VkPresentInfo
         LOG_ERROR("vkQueueSubmit error: {}", magic_enum::enum_name(result));
         return VK_NULL_HANDLE;
     }
+
+    UiUnblendSubmitted(fIndex, unblended);
 
     _reprojectionActive = !_reproject->IsBypassed();
 

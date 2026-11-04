@@ -487,19 +487,36 @@ bool IFGFeature_Vk::SetResource(VkFGResource* inputResource)
     return true;
 }
 
-void IFGFeature_Vk::RemoveUiFromHudless(VkCommandBuffer cmdBuffer, bool premultiplied)
+void IFGFeature_Vk::RequestUiUnblend(int fIndex, bool premultiplied)
 {
-    auto hudless = GetResource(FG_ResourceType::HudlessColor);
-    auto ui = GetResource(FG_ResourceType::UIColor);
+    if (fIndex >= 0 && fIndex < BUFFER_COUNT)
+        _uiUnblendPending[fIndex].store(premultiplied ? 2 : 1, std::memory_order_release);
+}
+
+void IFGFeature_Vk::UiUnblendSubmitted(int fIndex, uint8_t recorded)
+{
+    // A newer request of the frame stays
+    if (recorded != 0)
+        _uiUnblendPending[fIndex].compare_exchange_strong(recorded, 0, std::memory_order_acq_rel);
+}
+
+uint8_t IFGFeature_Vk::UnblendUi(VkCommandBuffer cmdBuffer, int fIndex)
+{
+    const auto pending = _uiUnblendPending[fIndex].load(std::memory_order_acquire);
+    if (pending == 0)
+        return 0;
+
+    auto hudless = GetResource(FG_ResourceType::HudlessColor, fIndex);
+    auto ui = GetResource(FG_ResourceType::UIColor, fIndex);
 
     if (!hudless || !ui || hudless->view == VK_NULL_HANDLE || ui->view == VK_NULL_HANDLE)
-        return;
+        return 0;
 
     if (_uiUnblend == nullptr)
         _uiUnblend = std::make_unique<UiUnblend_Vk>("UiUnblend", _device, _physicalDevice);
 
     if (!_uiUnblend->IsInit())
-        return;
+        return 0;
 
     auto imageInfo = [](const VkFGResource& resource) -> VkImageInfo
     {
@@ -507,7 +524,10 @@ void IFGFeature_Vk::RemoveUiFromHudless(VkCommandBuffer cmdBuffer, bool premulti
                  resource.format, resource.imageWidth, resource.imageHeight };
     };
 
-    _uiUnblend->Dispatch(cmdBuffer, imageInfo(*ui), ui->layout, imageInfo(*hudless), hudless->layout, premultiplied);
+    return _uiUnblend->Dispatch(cmdBuffer, imageInfo(*ui), ui->layout, imageInfo(*hudless), hudless->layout,
+                                pending == 2)
+               ? pending
+               : 0;
 }
 
 VkCommandBuffer IFGFeature_Vk::BeginCommandBuffer(int index)
@@ -624,6 +644,8 @@ void IFGFeature_Vk::NewFrame()
     }
 
     auto fIndex = GetIndex();
+
+    _uiUnblendPending[fIndex].store(0, std::memory_order_release);
 
     std::unique_lock lock(_resourceMutex[fIndex]);
     _frameResources[fIndex].clear();

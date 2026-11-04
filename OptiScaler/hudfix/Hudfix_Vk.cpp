@@ -584,8 +584,12 @@ static void UseUiTexture(VkCommandBuffer cmdBuffer, const DescriptorImage& ui, c
     auto config = Config::Instance();
     auto fg = state.currentVkFG;
 
+    // The render thread can start the next frame meanwhile, all three go to this frame
+    const auto fIndex = fg->GetIndex();
+
     auto uiResource =
         CopiedResource(FG_ResourceType::UIColor, cmdBuffer, ui.image, uiInfo.format, uiInfo.extent, ui.layout);
+    uiResource.frameIndex = fIndex;
 
     if (!fg->SetResource(&uiResource))
         return;
@@ -593,16 +597,18 @@ static void UseUiTexture(VkCommandBuffer cmdBuffer, const DescriptorImage& ui, c
     const auto upscaleFrame = _upscaleFrame.load(std::memory_order_acquire);
     LOG_DEBUG("UI: {:X}, frame: {}", (size_t) ui.image, upscaleFrame);
 
-    // FSR-FG has no UI input, the rebuilt hudless is its only way to know about the UI
-    if (!config->FGHUDFixUIUnblend.value_or(state.activeFgOutput != FGOutput::DLSSG))
+    // FSR-FG has no UI input, the rebuilt hudless is its only way to know about the UI.
+    // DLSSG takes the UI directly and has no command buffer of its own to unblend in.
+    if (state.activeFgOutput == FGOutput::DLSSG || !config->FGHUDFixUIUnblend.value_or(true))
         return;
 
     auto hudless = CopiedResource(FG_ResourceType::HudlessColor, cmdBuffer, frame.image, frameInfo.format,
                                   frameInfo.extent, frame.layout);
+    hudless.frameIndex = fIndex;
 
     if (fg->SetResource(&hudless))
     {
-        fg->RemoveUiFromHudless(cmdBuffer, config->FGUIPremultipliedAlpha.value_or_default());
+        fg->RequestUiUnblend(fIndex, config->FGUIPremultipliedAlpha.value_or_default());
         _hudlessFromUiFrame.store(upscaleFrame, std::memory_order_release);
     }
 }

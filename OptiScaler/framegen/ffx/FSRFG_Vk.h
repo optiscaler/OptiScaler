@@ -59,6 +59,9 @@ class FSRFG_Vk : public virtual IFGFeature_Vk
 
     uint64_t _lastDispatchedFrameId = 0;
 
+    // Signaled by the prepare after the game's present semaphores, the present waits for it
+    VkSemaphore _preparedSemaphore[BUFFER_COUNT] {};
+
     void CreateContext();
     void QueryVersions();
     bool IsDriverVersionSelected();
@@ -67,7 +70,7 @@ class FSRFG_Vk : public virtual IFGFeature_Vk
     ffxReturnCode_t ConfigureEnabled(bool enabled);
     void ConfigureFramePaceTuning();
 
-    bool Dispatch();
+    VkSemaphore Dispatch(const VkPresentInfoKHR* pPresentInfo);
     ffxReturnCode_t DispatchCallback(ffxDispatchDescFrameGeneration* params);
     void DispatchHudShaders(ffxDispatchDescFrameGeneration* params);
     VkImageView PresentView(VkImage image);

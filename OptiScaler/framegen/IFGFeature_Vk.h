@@ -41,6 +41,9 @@ class IFGFeature_Vk : public virtual IFGFeature
     ImageCopy _flipped[BUFFER_COUNT][ResourceTypeCOUNT] {};
 
     std::unique_ptr<UiUnblend_Vk> _uiUnblend;
+
+    // 0: none, 1: straight alpha, 2: premultiplied alpha
+    std::atomic<uint8_t> _uiUnblendPending[BUFFER_COUNT] {};
     std::unique_ptr<RF_Vk> _depthFlip;
     std::unique_ptr<RF_Vk> _mvFlip;
 
@@ -87,6 +90,12 @@ class IFGFeature_Vk : public virtual IFGFeature
 
     // Waits until the GPU is done with the previous use of the index, then begins it
     VkCommandBuffer BeginCommandBuffer(int index);
+
+    // Removes the UI copy from the hudless copy of the frame if it was requested, before the output reads it
+    // Returns what got recorded. UiUnblendSubmitted clears the request after the submit, a dropped command buffer
+    // leaves it for another present of the frame
+    uint8_t UnblendUi(VkCommandBuffer cmdBuffer, int fIndex);
+    void UiUnblendSubmitted(int fIndex, uint8_t recorded);
     void WaitForCommandBuffers();
     void DestroyCommandBuffers();
 
@@ -148,8 +157,9 @@ class IFGFeature_Vk : public virtual IFGFeature
 
     bool SetResource(VkFGResource* inputResource);
 
-    // Removes the current frame's UI copy from its hudless copy, for games blending a UI texture on the frame
-    void RemoveUiFromHudless(VkCommandBuffer cmdBuffer, bool premultiplied);
+    // For games blending a UI texture on the frame, the output removes it again in its own command buffer.
+    // A game's command buffer would keep our compute pipeline and descriptor set bound.
+    void RequestUiUnblend(int fIndex, bool premultiplied);
 
     bool HasResource(FG_ResourceType type, int index = -1) override final;
 

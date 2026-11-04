@@ -131,20 +131,15 @@ bool OS_Vk::Dispatch(VkCommandBuffer InCmdList, const VkImageInfo& InResourceVie
     constants.destWidth = State::Instance().currentFeature->DisplayWidth();
     constants.destHeight = State::Instance().currentFeature->DisplayHeight();
 
-    if (_mappedConstantBuffer)
-    {
-        if (Config::Instance()->OutputScalingDownscaler.value_or_default() == Scaler::FSR1)
-            memcpy(_mappedConstantBuffer, &fsr1Constants, sizeof(UpscaleShaderConstants));
-        else
-            memcpy(_mappedConstantBuffer, &constants, sizeof(Constants));
-    }
-
     // Advance Frame Index
     _currentSetIndex = (_currentSetIndex + 1) % _maxFramesInFlight;
     VkDescriptorSet currentSet = _descriptorSets[_currentSetIndex];
 
+    const auto bufferInfo = Config::Instance()->OutputScalingDownscaler.value_or_default() == Scaler::FSR1
+                                ? WriteConstants(&fsr1Constants, sizeof(UpscaleShaderConstants))
+                                : WriteConstants(&constants, sizeof(Constants));
+
     // Build Descriptor Writes
-    VkDescriptorBufferInfo bufferInfo { _constantBuffer, 0, sizeof(Constants) };
     VkDescriptorImageInfo sourceInfo { VK_NULL_HANDLE, InResourceView.ImageView,
                                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
     VkDescriptorImageInfo destInfo { VK_NULL_HANDLE, OutResourceView.ImageView, VK_IMAGE_LAYOUT_GENERAL };

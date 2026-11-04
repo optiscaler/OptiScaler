@@ -6219,14 +6219,15 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 config->FGHUDFixUITexture = uiTexture;
             ShowTooltip("Use the UI texture the game blends on the frame in its last compute pass");
 
-            ImGui::BeginDisabled(!uiTexture);
+            const bool dlssgOutput = state.activeFgOutput == FGOutput::DLSSG;
+            ImGui::BeginDisabled(!uiTexture || dlssgOutput);
             ImGui::SameLine(0.0f, 16.0f);
 
-            auto uiUnblend = config->FGHUDFixUIUnblend.value_or(state.activeFgOutput != FGOutput::DLSSG);
+            auto uiUnblend = !dlssgOutput && config->FGHUDFixUIUnblend.value_or(true);
             if (ImGui::Checkbox("Unblend UI", &uiUnblend))
                 config->FGHUDFixUIUnblend = uiUnblend;
             ShowTooltip("Rebuild the HUDless by removing the UI texture from the frame\n"
-                        "FSR-FG gets the UI only this way, DLSSG also takes the UI texture directly");
+                        "FSR-FG gets the UI only this way, DLSSG takes the UI texture directly");
 
             ImGui::EndDisabled();
 
