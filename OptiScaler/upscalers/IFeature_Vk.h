@@ -52,6 +52,7 @@ class IFeature_Vk : public virtual IFeature
 
     bool IsWithDx12() override { return false; }
     API Api() const override { return API::Vulkan; }
+    virtual VkDevice GetDevice() const { return Device; }
 
     virtual ~IFeature_Vk() {}
 };

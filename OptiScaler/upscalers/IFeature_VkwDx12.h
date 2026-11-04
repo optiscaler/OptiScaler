@@ -149,6 +149,7 @@ class IFeature_VkwDx12 : public virtual IFeature_Vk
 
     API Api() const override { return API::DX12; }
     bool IsWithDx12() override { return true; }
+    VkDevice GetDevice() const override { return VulkanDevice; }
 
     std::optional<double> ReadUpscalerTime(void* unused) override
     {

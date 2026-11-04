@@ -967,7 +967,9 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_ReleaseFeature(NVSDK_NGX_Handle*
         if (deviceContext == State::Instance().currentFeature)
             State::Instance().currentFeature = nullptr;
 
-        vkDeviceWaitIdle(vkDevice);
+        if (auto device = deviceContext->GetDevice(); device != VK_NULL_HANDLE)
+            vkDeviceWaitIdle(device);
+
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
         VkContexts[handleId].feature.reset();
