@@ -349,12 +349,6 @@ bool Hudfix_Dx11::IsResourceCheckActive()
     if (_skipTracking || state.isShuttingDown)
         return false;
 
-    {
-        std::lock_guard<std::mutex> lock(_counterMutex);
-        if (_upscaleCounter <= _fgCounter)
-            return false;
-    }
-
     if (!Config::Instance()->IsFGEnabled() || !Config::Instance()->FGHUDFix.value_or_default())
         return false;
 
@@ -367,7 +361,8 @@ bool Hudfix_Dx11::IsResourceCheckActive()
     if (!state.currentFG->IsActive())
         return false;
 
-    return true;
+    std::lock_guard<std::mutex> lock(_counterMutex);
+    return _upscaleCounter > _fgCounter;
 }
 
 bool Hudfix_Dx11::SkipHudlessChecks() { return _skipHudlessChecks; }

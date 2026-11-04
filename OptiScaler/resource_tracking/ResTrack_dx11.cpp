@@ -238,7 +238,8 @@ bool ResTrack_Dx11::IsHudFixActive(ID3D11DeviceContext* context)
     if (context != _immediateContext)
     {
         auto& state = State::Instance();
-        if (Config::Instance()->FGHUDFix.value_or_default() &&
+        if (!_deferredContextWarning.load(std::memory_order_relaxed) &&
+            Config::Instance()->FGHUDFix.value_or_default() &&
             state.swapchainInteropApi == SwapchainInteropApi::Dx11wDx12 &&
             context->GetType() == D3D11_DEVICE_CONTEXT_DEFERRED && !_deferredContextWarning.exchange(true))
         {
@@ -377,10 +378,7 @@ void ResTrack_Dx11::NoteOMRenderTargets(ID3D11DeviceContext* context, UINT numVi
                                         ID3D11RenderTargetView* const* views)
 {
     if (context == _immediateContext && !InternalCallActive())
-    {
-        std::lock_guard<std::mutex> lock(_stateMutex);
-        _omRtvCount = std::min<UINT>(numViews, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT);
-    }
+        _omRtvCount.store(std::min<UINT>(numViews, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT), std::memory_order_relaxed);
 
     if (!IsHudFixActive(context) || Config::Instance()->FGHudfixDisableOM.value_or_default() ||
         Config::Instance()->FGHudfixDisableRTV.value_or_default() ||
@@ -401,10 +399,7 @@ void ResTrack_Dx11::NoteOMRenderTargetsAndUAVs(ID3D11DeviceContext* context, UIN
                                                ID3D11UnorderedAccessView* const* uavs)
 {
     if (context == _immediateContext && !InternalCallActive() && numRTVs != D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL)
-    {
-        std::lock_guard<std::mutex> lock(_stateMutex);
-        _omRtvCount = std::min<UINT>(numRTVs, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT);
-    }
+        _omRtvCount.store(std::min<UINT>(numRTVs, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT), std::memory_order_relaxed);
 
     if (!IsHudFixActive(context) || Config::Instance()->FGHudfixDisableOM.value_or_default() ||
         !Config::Instance()->FGImmediateCapture.value_or_default())
@@ -566,11 +561,7 @@ void ResTrack_Dx11::ProcessCandidates(ID3D11DeviceContext* context, UINT dispatc
         return;
 
     // try OM UAVs, then RTVs
-    UINT omRtvCount = 0;
-    {
-        std::lock_guard<std::mutex> lock(_stateMutex);
-        omRtvCount = _omRtvCount;
-    }
+    const UINT omRtvCount = _omRtvCount.load(std::memory_order_relaxed);
 
     if (!config.FGHudfixDisableUAV.value_or_default() && omRtvCount < _uavSlotCount)
     {

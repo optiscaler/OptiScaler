@@ -1081,6 +1081,12 @@ void ResTrack_Dx12::ClearBindingStates()
     }
 }
 
+// Table and render target binds skip the lock while Hudfix is off, heaps and root signatures are always recorded
+static bool RecordsBinds()
+{
+    return Config::Instance()->FGHUDFix.value_or_default() && Config::Instance()->IsFGEnabled();
+}
+
 CommandListBindingState* ResTrack_Dx12::GetOrCreateBindingState(ID3D12GraphicsCommandList* commandList)
 {
     if (!_bindingTrackingEnabled.load(std::memory_order_acquire) || commandList == nullptr ||
@@ -1689,7 +1695,7 @@ void ResTrack_Dx12::hkSetGraphicsRootDescriptorTable(ID3D12GraphicsCommandList* 
                                                      D3D12_GPU_DESCRIPTOR_HANDLE BaseDescriptor)
 {
     bool persistentBinding = false;
-    if (This != MenuOverlayDx::MenuCommandList() && !Hudfix_Dx12::SkipHudlessChecks())
+    if (This != MenuOverlayDx::MenuCommandList() && !Hudfix_Dx12::SkipHudlessChecks() && RecordsBinds())
     {
         if (auto* state = GetOrCreateBindingState(This);
             state != nullptr && RootParameterIndex < CommandListBindingState::MAX_ROOT_PARAMETERS)
@@ -1826,7 +1832,7 @@ void ResTrack_Dx12::hkOMSetRenderTargets(ID3D12GraphicsCommandList* This, UINT N
                                          D3D12_CPU_DESCRIPTOR_HANDLE* pDepthStencilDescriptor)
 {
     bool persistentBinding = false;
-    if (This != MenuOverlayDx::MenuCommandList() && !Hudfix_Dx12::SkipHudlessChecks())
+    if (This != MenuOverlayDx::MenuCommandList() && !Hudfix_Dx12::SkipHudlessChecks() && RecordsBinds())
     {
         if (auto* state = GetOrCreateBindingState(This); state != nullptr)
         {
@@ -1976,7 +1982,7 @@ void ResTrack_Dx12::hkSetComputeRootDescriptorTable(ID3D12GraphicsCommandList* T
                                                     D3D12_GPU_DESCRIPTOR_HANDLE BaseDescriptor)
 {
     bool persistentBinding = false;
-    if (This != MenuOverlayDx::MenuCommandList() && !Hudfix_Dx12::SkipHudlessChecks())
+    if (This != MenuOverlayDx::MenuCommandList() && !Hudfix_Dx12::SkipHudlessChecks() && RecordsBinds())
     {
         if (auto* state = GetOrCreateBindingState(This);
             state != nullptr && RootParameterIndex < CommandListBindingState::MAX_ROOT_PARAMETERS)

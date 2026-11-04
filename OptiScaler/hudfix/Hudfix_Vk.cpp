@@ -113,6 +113,7 @@ static ankerl::unordered_dense::map<VkRenderPass, std::vector<AttachmentOps>> _r
 // Attachments to check when the command buffer's current render pass instance ends
 static std::mutex _pendingMutex;
 static ankerl::unordered_dense::map<VkCommandBuffer, std::vector<StoredImage>> _pendingEnds;
+static std::atomic<bool> _hasPendingEnds { false }; // Render passes skip the lock while nothing is pending
 
 static std::shared_mutex _descriptorMutex;
 static ankerl::unordered_dense::map<VkDescriptorSet, std::vector<DescriptorImage>> _setImages;
@@ -320,16 +321,25 @@ static void BeginPass(VkCommandBuffer cmdBuffer, const std::vector<Attachment>& 
             stored.push_back({ attachment.image, attachment.endLayout });
     }
 
+    // A command buffer's own entry is only changed by its recording thread
+    if (stored.empty() && !_hasPendingEnds.load(std::memory_order_acquire))
+        return;
+
     std::scoped_lock lock(_pendingMutex);
 
     if (stored.empty())
         _pendingEnds.erase(cmdBuffer);
     else
         _pendingEnds[cmdBuffer] = std::move(stored);
+
+    _hasPendingEnds.store(!_pendingEnds.empty(), std::memory_order_release);
 }
 
 static void EndPass(VkCommandBuffer cmdBuffer)
 {
+    if (!_hasPendingEnds.load(std::memory_order_acquire))
+        return;
+
     std::vector<StoredImage> stored;
     {
         std::scoped_lock lock(_pendingMutex);
@@ -340,6 +350,7 @@ static void EndPass(VkCommandBuffer cmdBuffer)
 
         stored = std::move(it->second);
         _pendingEnds.erase(it);
+        _hasPendingEnds.store(!_pendingEnds.empty(), std::memory_order_release);
     }
 
     for (auto& image : stored)
@@ -1066,6 +1077,10 @@ VALIDATE_MEMBER_HOOK(hkCmdDispatchBase<o_CmdDispatchBase>, PFN_vkCmdDispatchBase
 void Hudfix_Vk::HookDevice(VkDevice device)
 {
     if (o_CreateImage != nullptr || Config::Instance()->FGDisableHUDFix.value_or_default())
+        return;
+
+    // Only the upscaler input searches, the input doesn't change to it later
+    if (State::Instance().activeFgInput != FGInput::Upscaler)
         return;
 
     LOG_FUNC();
