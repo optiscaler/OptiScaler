@@ -24,6 +24,43 @@
 #include <magic_enum.hpp>
 #endif
 
+// Factories of [Hotfix] AuxiliaryDxgiFactoryModules carry this private data. It lives and dies with the factory,
+// a list of factory pointers would keep stale entries after an overlay releases its factory.
+static const GUID AuxiliaryFactoryMarker = {
+    0x7d8cb67a, 0x169b, 0x4d9e, { 0x8b, 0x5a, 0x31, 0xeb, 0x5e, 0x8c, 0x26, 0x50 }
+};
+
+void DxgiFactoryHooks::MarkAuxiliaryFactory(IUnknown* factory)
+{
+    IDXGIObject* object = nullptr;
+    if (factory == nullptr || FAILED(factory->QueryInterface(IID_PPV_ARGS(&object))))
+        return;
+
+    const UINT marker = 1;
+    const HRESULT result = object->SetPrivateData(AuxiliaryFactoryMarker, sizeof(marker), &marker);
+    object->Release();
+
+    if (FAILED(result))
+    {
+        LOG_WARN("Can't mark auxiliary DXGI factory: {:X}", (UINT) result);
+        return;
+    }
+
+    // If DXGI handed the same factory to the game, the game's swapchains would be native too
+    static std::atomic<bool> assumptionLogged = false;
+    if (!assumptionLogged.exchange(true))
+        LOG_INFO("Auxiliary factories are marked per object, this assumes every CreateDXGIFactory call returns a "
+                 "distinct factory");
+}
+
+static bool IsAuxiliaryFactory(IDXGIFactory* factory)
+{
+    UINT marker = 0;
+    UINT size = sizeof(marker);
+    return factory != nullptr && SUCCEEDED(factory->GetPrivateData(AuxiliaryFactoryMarker, &size, &marker)) &&
+           size == sizeof(marker) && marker == 1;
+}
+
 static bool IsTearingSupported(IDXGIFactory* factory)
 {
     if (factory == nullptr)
@@ -398,6 +435,16 @@ void DxgiFactoryHooks::HookToDLSSGFactory(IDXGIFactory* pFactory)
 HRESULT DxgiFactoryHooks::CreateSwapChain(IDXGIFactory* realFactory, IUnknown* pDevice, DXGI_SWAP_CHAIN_DESC* pDesc,
                                           IDXGISwapChain** ppSwapChain)
 {
+    if (IsAuxiliaryFactory(realFactory))
+    {
+        LOG_DEBUG("Auxiliary factory, creating a native swapchain");
+
+        ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
+        ScopedSkipParentWrapping skipParentWrapping {};
+
+        return o_CreateSwapChain(realFactory, pDevice, pDesc, ppSwapChain);
+    }
+
     *ppSwapChain = nullptr;
 
     if (State::Instance().vulkanCreatingSC)
@@ -751,6 +798,17 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
                                                  const DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pFullscreenDesc,
                                                  IDXGIOutput* pRestrictToOutput, IDXGISwapChain1** ppSwapChain)
 {
+    if (IsAuxiliaryFactory(realFactory))
+    {
+        LOG_DEBUG("Auxiliary factory, creating a native swapchain");
+
+        ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
+        ScopedSkipParentWrapping skipParentWrapping {};
+
+        return o_CreateSwapChainForHwnd(realFactory, pDevice, hWnd, pDesc, pFullscreenDesc, pRestrictToOutput,
+                                        ppSwapChain);
+    }
+
     *ppSwapChain = nullptr;
 
     static bool firstCall = static_cast<bool>(State::Instance().gameQuirks & GameQuirk::NoFSRFGFirstSwapchain);
@@ -1161,6 +1219,16 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForCoreWindow(IDXGIFactory2* realFactor
                                                        const DXGI_SWAP_CHAIN_DESC1* pDesc,
                                                        IDXGIOutput* pRestrictToOutput, IDXGISwapChain1** ppSwapChain)
 {
+    if (IsAuxiliaryFactory(realFactory))
+    {
+        LOG_DEBUG("Auxiliary factory, creating a native swapchain");
+
+        ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
+        ScopedSkipParentWrapping skipParentWrapping {};
+
+        return o_CreateSwapChainForCoreWindow(realFactory, pDevice, pWindow, pDesc, pRestrictToOutput, ppSwapChain);
+    }
+
     if (State::Instance().vulkanCreatingSC)
     {
         LOG_WARN("Vulkan is creating swapchain!");
@@ -1274,6 +1342,16 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForCoreWindow(IDXGIFactory2* realFactor
 HRESULT DxgiFactoryHooks::DLSSGCreateSwapChain(IDXGIFactory* realFactory, IUnknown* pDevice,
                                                DXGI_SWAP_CHAIN_DESC* pDesc, IDXGISwapChain** ppSwapChain)
 {
+    if (IsAuxiliaryFactory(realFactory))
+    {
+        LOG_DEBUG("Auxiliary factory, creating a native swapchain");
+
+        ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
+        ScopedSkipParentWrapping skipParentWrapping {};
+
+        return o_DLSSGCreateSwapChain(realFactory, pDevice, pDesc, ppSwapChain);
+    }
+
     *ppSwapChain = nullptr;
 
     if (State::Instance().vulkanCreatingSC)
@@ -1552,6 +1630,17 @@ HRESULT DxgiFactoryHooks::DLSSGCreateSwapChainForHwnd(IDXGIFactory2* realFactory
                                                       const DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pFullscreenDesc,
                                                       IDXGIOutput* pRestrictToOutput, IDXGISwapChain1** ppSwapChain)
 {
+    if (IsAuxiliaryFactory(realFactory))
+    {
+        LOG_DEBUG("Auxiliary factory, creating a native swapchain");
+
+        ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
+        ScopedSkipParentWrapping skipParentWrapping {};
+
+        return o_DLSSGCreateSwapChainForHwnd(realFactory, pDevice, hWnd, pDesc, pFullscreenDesc, pRestrictToOutput,
+                                             ppSwapChain);
+    }
+
     *ppSwapChain = nullptr;
 
     static bool firstCall = static_cast<bool>(State::Instance().gameQuirks & GameQuirk::NoFSRFGFirstSwapchain);
@@ -1874,6 +1963,17 @@ HRESULT DxgiFactoryHooks::DLSSGCreateSwapChainForCoreWindow(IDXGIFactory2* realF
                                                             IDXGIOutput* pRestrictToOutput,
                                                             IDXGISwapChain1** ppSwapChain)
 {
+    if (IsAuxiliaryFactory(realFactory))
+    {
+        LOG_DEBUG("Auxiliary factory, creating a native swapchain");
+
+        ScopedSkipDxgiLoadChecks skipDxgiLoadChecks {};
+        ScopedSkipParentWrapping skipParentWrapping {};
+
+        return o_DLSSGCreateSwapChainForCoreWindow(realFactory, pDevice, pWindow, pDesc, pRestrictToOutput,
+                                                   ppSwapChain);
+    }
+
     if (State::Instance().vulkanCreatingSC)
     {
         LOG_WARN("Vulkan is creating swapchain!");

@@ -481,6 +481,7 @@ class Config
     // Hotfixes
     CustomOptional<bool> CheckForUpdate { true };
     CustomOptional<bool, SoftDefault> DisableOverlays { false };
+    CustomOptional<std::string, NoDefault> AuxiliaryDxgiFactoryModules; // default in misc/AuxiliaryModules.h
 
     CustomOptional<bool> SimulateWaitableObject { false };
 

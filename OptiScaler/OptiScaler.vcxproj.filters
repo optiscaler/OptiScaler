@@ -611,6 +611,9 @@
     <ClInclude Include="misc\CustomProviders.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="misc\AuxiliaryModules.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="upscalers\FeatureProvider_Dx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>

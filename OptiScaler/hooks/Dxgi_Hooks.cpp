@@ -9,6 +9,7 @@
 #include <wrapped/wrapped_factory.h>
 
 #include <DllNames.h>
+#include <misc/AuxiliaryModules.h>
 #include <misc/IdentifyGpu.h>
 #include <with_dx12/with_dx12.h>
 
@@ -85,6 +86,25 @@ static void CheckLumaAndReShade(IDXGIFactory* factory)
     }
 }
 
+// [Hotfix] AuxiliaryDxgiFactoryModules, resolved once at the first factory when the config and log are ready
+static bool IsAuxiliaryCaller(const std::string& caller)
+{
+    static const std::vector<std::string> modules = []
+    {
+        std::optional<std::string> rejected;
+        auto names =
+            AuxiliaryModules::Resolve(Config::Instance()->AuxiliaryDxgiFactoryModules.value_for_config(), rejected);
+
+        if (rejected.has_value())
+            LOG_WARN("[Hotfix] AuxiliaryDxgiFactoryModules entry \"{}\" is not a dll file name, using {}",
+                     rejected.value(), AuxiliaryModules::Default);
+
+        return names;
+    }();
+
+    return AuxiliaryModules::Contains(modules, caller);
+}
+
 VALIDATE_HOOK(hkCreateDXGIFactory, DxgiProxy::PFN_CreateDxgiFactory)
 inline static HRESULT hkCreateDXGIFactory(REFIID riid, IDXGIFactory** ppFactory)
 {
@@ -95,6 +115,19 @@ inline static HRESULT hkCreateDXGIFactory(REFIID riid, IDXGIFactory** ppFactory)
     {
         LOG_DEBUG("Bypassing hooking/wrapping during Luma D3D12 device creation");
         return o_CreateDXGIFactory(riid, ppFactory);
+    }
+
+    if (IsAuxiliaryCaller(caller))
+    {
+        auto result = o_CreateDXGIFactory(riid, ppFactory);
+
+        if (SUCCEEDED(result) && ppFactory != nullptr && *ppFactory != nullptr)
+        {
+            DxgiFactoryHooks::MarkAuxiliaryFactory(*ppFactory);
+            LOG_INFO("Auxiliary factory, its swapchains bypass frame generation: {}", caller);
+        }
+
+        return result;
     }
 
     if (Config::Instance()->DxgiFactoryWrapping.value_or_default() && CheckDllName(&caller, &skipDxgiWrappingNames))
@@ -160,6 +193,19 @@ inline static HRESULT hkCreateDXGIFactory1(REFIID riid, IDXGIFactory1** ppFactor
         return o_CreateDXGIFactory1(riid, ppFactory);
     }
 
+    if (IsAuxiliaryCaller(caller))
+    {
+        auto result = o_CreateDXGIFactory1(riid, ppFactory);
+
+        if (SUCCEEDED(result) && ppFactory != nullptr && *ppFactory != nullptr)
+        {
+            DxgiFactoryHooks::MarkAuxiliaryFactory(*ppFactory);
+            LOG_INFO("Auxiliary factory, its swapchains bypass frame generation: {}", caller);
+        }
+
+        return result;
+    }
+
     if (Config::Instance()->DxgiFactoryWrapping.value_or_default() && CheckDllName(&caller, &skipDxgiWrappingNames))
     {
         LOG_INFO("Skipping wrapping for: {}", caller);
@@ -221,6 +267,19 @@ inline static HRESULT hkCreateDXGIFactory2(UINT Flags, REFIID riid, IDXGIFactory
     {
         LOG_DEBUG("Bypassing hooking/wrapping during Luma D3D12 device creation");
         return o_CreateDXGIFactory2(Flags, riid, ppFactory);
+    }
+
+    if (IsAuxiliaryCaller(caller))
+    {
+        auto result = o_CreateDXGIFactory2(Flags, riid, ppFactory);
+
+        if (SUCCEEDED(result) && ppFactory != nullptr && *ppFactory != nullptr)
+        {
+            DxgiFactoryHooks::MarkAuxiliaryFactory(*ppFactory);
+            LOG_INFO("Auxiliary factory, its swapchains bypass frame generation: {}", caller);
+        }
+
+        return result;
     }
 
     if (Config::Instance()->DxgiFactoryWrapping.value_or_default() && CheckDllName(&caller, &skipDxgiWrappingNames))
