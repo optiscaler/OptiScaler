@@ -104,8 +104,8 @@ bool FSR31FeatureVk::InitFSR3(const NVSDK_NGX_Parameter* InParameters)
         {
             // FFX packs the version into the low bits of the id, external providers also set bit 31
             auto driverVersion = FSR4DriverVk::Functions().versionId & 0x7FFFFFFF;
-            auto older = std::ranges::find_if(ids, [driverVersion](uint64_t id)
-                                              { return (id & 0x7FFFFFFF) < driverVersion; });
+            auto older =
+                std::ranges::find_if(ids, [driverVersion](uint64_t id) { return (id & 0x7FFFFFFF) < driverVersion; });
             auto index = std::distance(ids.begin(), older);
 
             ids.insert(ids.begin() + index, FSR4DriverVk::Functions().versionId);
