@@ -502,6 +502,8 @@ class Config
     CustomOptional<bool, SoftDefault> RestoreGraphicSignature { false };
     CustomOptional<bool, SoftDefault> ExtendedStateRestore { false };
 
+    CustomOptional<bool, SoftDefault> VulkanAmdImageReadRtNt { false };
+
     CustomOptional<bool> UsePrecompiledShaders { true };
 
     CustomOptional<bool> UseGenericAppIdWithDlss { false };
