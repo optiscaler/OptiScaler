@@ -48,7 +48,7 @@ inline PFN_NVSDK_NGX_VULKAN_GetFeatureDeviceExtensionRequirements
 // NGX returns arrays it owns and frees them when its snippets get reloaded (Streamline's NGX init does that),
 // but games keep pointing at the names for vkCreateInstance/vkCreateDevice and their own checks afterwards
 inline void CopyNgxExtensionProperties(NVSDK_NGX_Result result, const uint32_t* count,
-                                              VkExtensionProperties** properties)
+                                       VkExtensionProperties** properties)
 {
     if (result != NVSDK_NGX_Result_Success || count == nullptr || *count == 0 || properties == nullptr ||
         *properties == nullptr)

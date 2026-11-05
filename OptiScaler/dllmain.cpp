@@ -373,7 +373,8 @@ void LoadAsiPlugins()
                                 init();
 
                             PluginApi::InitPlugin(
-                                hMod, (PFN_OptiPluginInit) KernelBaseProxy::GetProcAddress_()(hMod, OPTI_PLUGIN_INIT_NAME),
+                                hMod,
+                                (PFN_OptiPluginInit) KernelBaseProxy::GetProcAddress_()(hMod, OPTI_PLUGIN_INIT_NAME),
                                 entry.path());
 
                             if (patchResult != nullptr)

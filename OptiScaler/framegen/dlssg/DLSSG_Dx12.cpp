@@ -728,10 +728,10 @@ bool DLSSG_Dx12::SetResource(Dx12Resource* inputResource)
         fResource->validity != FG_ResourceValidity::UntilPresent)
     {
         // Flip only made a copy when the shader ran
-        fResource->validity = (fResource->validity != FG_ResourceValidity::ValidNow ||
-                               (willFlip && fResource->copy != nullptr))
-                                  ? FG_ResourceValidity::UntilPresent
-                                  : FG_ResourceValidity::ValidNow;
+        fResource->validity =
+            (fResource->validity != FG_ResourceValidity::ValidNow || (willFlip && fResource->copy != nullptr))
+                ? FG_ResourceValidity::UntilPresent
+                : FG_ResourceValidity::ValidNow;
 
         if (type == FG_ResourceType::HudlessColor)
         {

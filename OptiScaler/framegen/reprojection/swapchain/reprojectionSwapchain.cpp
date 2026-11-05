@@ -539,8 +539,8 @@ HRESULT STDMETHODCALLTYPE ReprojectionDXGISwapChain::ResizeBuffers1(UINT BufferC
     WaitForGPUIdle(_device);
 
     _lastFlags = SwapChainFlags;
-    auto result = _real3->ResizeBuffers1(BufferCount, Width, Height, Format, SwapChainFlags, pCreationNodeMask,
-                                         ppPresentQueue);
+    auto result =
+        _real3->ResizeBuffers1(BufferCount, Width, Height, Format, SwapChainFlags, pCreationNodeMask, ppPresentQueue);
 
     LOG_DEBUG("result: {0:X}", (UINT) result);
 
