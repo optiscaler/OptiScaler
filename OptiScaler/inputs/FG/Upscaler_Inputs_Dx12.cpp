@@ -9,6 +9,56 @@
 using namespace OptiMath;
 static DS_Dx12* DepthScale = nullptr;
 
+// Hudless the game passes with the upscaler inputs, finished before present like a Streamline hudless tag
+static bool SetGameHudless(NVSDK_NGX_Parameter* parameters, IFGFeature_Dx12* fg)
+{
+    ID3D12Resource* hudless = nullptr;
+    if (parameters->Get("Opti.Hudless", &hudless) != NVSDK_NGX_Result_Success)
+        parameters->Get("Opti.Hudless", (void**) &hudless);
+
+    if (hudless == nullptr)
+        return false;
+
+    unsigned int state = 0;
+    if (parameters->Get("Opti.Hudless.State", &state) != NVSDK_NGX_Result_Success)
+    {
+        static bool warned = false;
+        if (!warned)
+        {
+            warned = true;
+            LOG_WARN("Opti.Hudless is ignored without Opti.Hudless.State");
+        }
+
+        return false;
+    }
+
+    auto desc = hudless->GetDesc();
+
+    if (desc.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || desc.SampleDesc.Count != 1)
+    {
+        static bool warnedDesc = false;
+        if (!warnedDesc)
+        {
+            warnedDesc = true;
+            LOG_WARN("Opti.Hudless is ignored, it isn't a single sampled 2D texture");
+        }
+
+        return false;
+    }
+
+    // No command list, FG reads it at present
+    Dx12Resource setResource {};
+    setResource.type = FG_ResourceType::HudlessColor;
+    setResource.resource = hudless;
+    setResource.width = desc.Width;
+    setResource.height = desc.Height;
+    setResource.state = (D3D12_RESOURCE_STATES) state;
+    setResource.validity = FG_ResourceValidity::UntilPresent;
+
+    fg->SetResource(&setResource);
+    return true;
+}
+
 void UpscalerInputsDx12::Init(ID3D12Device* device)
 {
     if (State::Instance().activeFgInput != FGInput::Upscaler)
@@ -196,6 +246,10 @@ void UpscalerInputsDx12::UpscaleEnd(ID3D12GraphicsCommandList* InCmdList, NVSDK_
     // FG Dispatch
     if (fg->IsActive() && Config::Instance()->IsFGEnabled() && State::Instance().currentSwapchain != nullptr)
     {
+        // Used instead of the HUD fix for this frame
+        if (SetGameHudless(InParameters, fg))
+            return;
+
         if (Config::Instance()->FGHUDFix.value_or_default())
         {
             // For signal after mv & depth copies

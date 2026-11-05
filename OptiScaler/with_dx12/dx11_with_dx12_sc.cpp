@@ -428,6 +428,9 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::Present(UINT SyncInterval, UINT Flags)
         Hudfix_Dx11::PresentStart();
     }
 
+    if (State::Instance().activeFgInput == FGInput::Upscaler && State::Instance().currentSwapchain == this)
+        Hudfix_Dx11::PublishGameHudless(Dx11WithDx12::GetD3D11DeviceContext());
+
     // The device is fine when the interop copy fails, keep presenting the FG swapchain
     bool frameCopied = _InitInteropObjects();
     UINT dx11Index = 0;

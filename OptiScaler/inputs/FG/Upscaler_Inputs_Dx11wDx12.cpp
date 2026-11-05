@@ -267,6 +267,18 @@ void UpscalerInputsDx11wDx12::UpscaleEnd(NVSDK_NGX_Parameter* InParameters, IFea
 
     if (fg->IsActive() && Config::Instance()->IsFGEnabled() && State::Instance().currentSwapchain != nullptr)
     {
+        ID3D11Resource* gameHudless = nullptr;
+        if (InParameters->Get("Opti.Hudless", &gameHudless) != NVSDK_NGX_Result_Success)
+            InParameters->Get("Opti.Hudless", (void**) &gameHudless);
+
+        // Used instead of the HUD fix for this frame, copied at present
+        ID3D11Texture2D* hudlessTexture = nullptr;
+        if (gameHudless != nullptr && SUCCEEDED(gameHudless->QueryInterface(IID_PPV_ARGS(&hudlessTexture))))
+        {
+            Hudfix_Dx11::SetGameHudless(hudlessTexture);
+            return;
+        }
+
         if (Config::Instance()->FGHUDFix.value_or_default())
         {
             Hudfix_Dx11::UpscaleEnd(feature->FrameCount(), State::Instance().lastFGFrameTime);

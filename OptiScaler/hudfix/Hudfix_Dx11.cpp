@@ -755,8 +755,72 @@ bool Hudfix_Dx11::CheckForHudless(ID3D11DeviceContext* context, Dx11ResourceInfo
     return true;
 }
 
+void Hudfix_Dx11::SetGameHudless(ID3D11Texture2D* texture)
+{
+    if (auto previous = _gameHudless.exchange(texture, std::memory_order_acq_rel); previous != nullptr)
+        previous->Release();
+}
+
+// The texture can be from a device recreated since the evaluate
+static bool IsOnContextDevice(ID3D11Texture2D* texture, ID3D11DeviceContext* context)
+{
+    ID3D11Device* textureDevice = nullptr;
+    ID3D11Device* contextDevice = nullptr;
+
+    texture->GetDevice(&textureDevice);
+    context->GetDevice(&contextDevice);
+
+    const bool result = textureDevice != nullptr && textureDevice == contextDevice;
+
+    SAFE_RELEASE(textureDevice);
+    SAFE_RELEASE(contextDevice);
+
+    return result;
+}
+
+void Hudfix_Dx11::PublishGameHudless(ID3D11DeviceContext* context)
+{
+    auto texture = _gameHudless.exchange(nullptr, std::memory_order_acq_rel);
+    if (texture == nullptr)
+        return;
+
+    auto fg = State::Instance().currentFG;
+    const auto& scDesc = State::Instance().currentSwapchainDesc.BufferDesc;
+    Dx11ResourceInfo info {};
+
+    if (context != nullptr && fg != nullptr && IsOnContextDevice(texture, context) &&
+        FillResourceInfo(texture, Dx11ResourceType::SRV, Dx11CaptureInfo::Upscaler, &info))
+    {
+        if (info.sampleCount != 1 || info.width != scDesc.Width || info.height != scDesc.Height)
+        {
+            static bool warned = false;
+            if (!warned)
+            {
+                warned = true;
+                LOG_WARN("Opti.Hudless is ignored, {}x{} with {} samples doesn't match the swapchain's {}x{}",
+                         info.width, info.height, info.sampleCount, scDesc.Width, scDesc.Height);
+            }
+        }
+        else
+        {
+            std::lock_guard<std::mutex> lock(_checkMutex);
+
+            // FG's slot of the frame, the hudless copies of earlier frames can still be read
+            const auto index = fg->GetIndexWillBeDispatched();
+
+            if (!CopyCaptureResource(context, &info, index) || !PublishCaptureToFg(context, &info, index))
+                LOG_WARN("Opti.Hudless couldn't be passed to FG");
+        }
+    }
+
+    texture->Release();
+}
+
 void Hudfix_Dx11::ResetCounters()
 {
+    // Can be from a previous device
+    SetGameHudless(nullptr);
+
     std::lock_guard<std::mutex> checkLock(_checkMutex);
     std::lock_guard<std::mutex> counterLock(_counterMutex);
 

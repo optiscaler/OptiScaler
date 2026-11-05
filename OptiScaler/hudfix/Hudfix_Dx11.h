@@ -92,6 +92,9 @@ class Hudfix_Dx11
     inline static std::mutex _counterMutex;
     inline static INT64 _captureCounter[BUFFER_COUNT] = {};
 
+    // Holds a reference until present
+    inline static std::atomic<ID3D11Texture2D*> _gameHudless { nullptr };
+
     static bool CheckCapture();
     static void HudlessFound();
     static int GetIndex();
@@ -119,6 +122,11 @@ class Hudfix_Dx11
                                  Dx11ResourceInfo* outInfo);
     static bool CheckResource(Dx11ResourceInfo* resource);
     static bool CheckForHudless(ID3D11DeviceContext* context, Dx11ResourceInfo* resource, bool ignoreBlocked = false);
+
+    // Hudless the game passes with the upscaler inputs, takes the texture's reference.
+    // It's finished only before present, PublishGameHudless copies it then.
+    static void SetGameHudless(ID3D11Texture2D* texture);
+    static void PublishGameHudless(ID3D11DeviceContext* context);
 
     static void ResetCounters();
     static void ReleaseResources();
