@@ -17,12 +17,31 @@
 #include <d3d11.h>
 #include <magic_enum.hpp>
 #include <detours/detours.h>
+#include <wrl/client.h>
 
 // #define DETAILED_SC_LOGS
 
 #ifdef DETAILED_SC_LOGS
 #include <magic_enum.hpp>
 #endif
+
+// When ReShade hooks DXGI before Opti, FG libraries create their swapchain inside ReShade's hook,
+// which then passes its proxy queue on to DXGI. ReShade loaded by Opti hooks after, it needs its proxy.
+static Microsoft::WRL::ComPtr<ID3D12CommandQueue> ReShadeRealQueue(IUnknown* pDevice)
+{
+    Microsoft::WRL::ComPtr<IUnknown> original;
+    Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue;
+
+    if (Config::Instance()->LoadReShade.value_or_default())
+        return queue;
+
+    original.Attach(Util::GetReShadeOriginal(pDevice));
+
+    if (original != nullptr && SUCCEEDED(original.As(&queue)))
+        LOG_INFO("Using the real queue behind ReShade's proxy");
+
+    return queue;
+}
 
 bool DxgiFactoryHooks::IsTearingSupported(IDXGIFactory* factory)
 {
@@ -522,6 +541,16 @@ HRESULT DxgiFactoryHooks::CreateSwapChain(IDXGIFactory* realFactory, IUnknown* p
     LOG_TRACE("localDesc.Windowed: {}", localDesc.Windowed);
 #endif //
 
+    Util::WarnIfProxy(__FUNCTION__, pDevice);
+
+    Microsoft::WRL::ComPtr<ID3D12CommandQueue> reShadeRealQueue;
+
+    if (_skipFGSwapChainCreation)
+        reShadeRealQueue = ReShadeRealQueue(pDevice);
+
+    if (reShadeRealQueue != nullptr)
+        pDevice = reShadeRealQueue.Get();
+
     // Check for SL proxy, get real queue
     auto prevCommandQueue = State::Instance().currentCommandQueue;
     ID3D12CommandQueue* cq = nullptr;
@@ -732,6 +761,8 @@ HRESULT DxgiFactoryHooks::CreateSwapChain(IDXGIFactory* realFactory, IUnknown* p
                 State::Instance().swapchainInteropApi = SwapchainInteropApi::None;
             }
 
+            Util::WarnIfProxy(__FUNCTION__, *ppSwapChain);
+
             // Check for SL proxy
             IDXGISwapChain* realSC = nullptr;
             if (!Util::CheckForRealObject(__FUNCTION__, *ppSwapChain, (IUnknown**) &realSC))
@@ -933,6 +964,16 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
         LOG_TRACE("localFullscreenDesc.Windowed : {}", localFullscreenDesc.Windowed);
     }
 #endif
+
+    Util::WarnIfProxy(__FUNCTION__, pDevice);
+
+    Microsoft::WRL::ComPtr<ID3D12CommandQueue> reShadeRealQueue;
+
+    if (_skipFGSwapChainCreation)
+        reShadeRealQueue = ReShadeRealQueue(pDevice);
+
+    if (reShadeRealQueue != nullptr)
+        pDevice = reShadeRealQueue.Get();
 
     // Check for SL proxy, get real queue
     auto prevCommandQueue = State::Instance().currentCommandQueue;
@@ -1166,6 +1207,8 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForHwnd(IDXGIFactory2* realFactory, IUn
             if (!otherWindow)
                 State::Instance().swapchainInteropApi = SwapchainInteropApi::None;
 
+            Util::WarnIfProxy(__FUNCTION__, *ppSwapChain);
+
             // check for SL proxy
             IDXGISwapChain1* realSC = nullptr;
             if (!Util::CheckForRealObject(__FUNCTION__, *ppSwapChain, (IUnknown**) &realSC))
@@ -1292,6 +1335,16 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForCoreWindow(IDXGIFactory2* realFactor
         State::Instance().realExclusiveFullscreen = false;
     }
 
+    Util::WarnIfProxy(__FUNCTION__, pDevice);
+
+    Microsoft::WRL::ComPtr<ID3D12CommandQueue> reShadeRealQueue;
+
+    if (_skipFGSwapChainCreation)
+        reShadeRealQueue = ReShadeRealQueue(pDevice);
+
+    if (reShadeRealQueue != nullptr)
+        pDevice = reShadeRealQueue.Get();
+
     auto prevCommandQueue = State::Instance().currentCommandQueue;
     ID3D12CommandQueue* cq = nullptr;
     IUnknown* real = nullptr;
@@ -1338,6 +1391,8 @@ HRESULT DxgiFactoryHooks::CreateSwapChainForCoreWindow(IDXGIFactory2* realFactor
 
     if (SUCCEEDED(result) && ppSwapChain != nullptr && *ppSwapChain != nullptr)
     {
+        Util::WarnIfProxy(__FUNCTION__, *ppSwapChain);
+
         // check for SL proxy
         IDXGISwapChain* realSC = nullptr;
         if (!Util::CheckForRealObject(__FUNCTION__, *ppSwapChain, (IUnknown**) &realSC))

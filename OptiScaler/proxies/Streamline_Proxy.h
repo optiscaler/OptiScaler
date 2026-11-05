@@ -17,6 +17,8 @@
 #include <vulkan/vulkan.h>
 #include <sl_helpers_vk.h>
 
+#include <wrl/client.h>
+
 #pragma comment(lib, "Version.lib")
 
 class StreamlineProxy
@@ -309,6 +311,21 @@ class StreamlineProxy
         return true;
     }
 
+    // The game gives NGX the real device, Streamline's NGX has to use the same one, not ReShade's proxy
+    static sl::Result SetD3D12Device(void* device, bool bind)
+    {
+        Microsoft::WRL::ComPtr<IUnknown> original;
+        original.Attach(Util::GetReShadeOriginal((IUnknown*) device));
+
+        if (original != nullptr)
+        {
+            LOG_INFO("Using the real device behind ReShade's proxy");
+            device = original.Get();
+        }
+
+        return bind ? SetD3DDeviceAndBind(device) : _slSetD3DDevice(device);
+    }
+
     static sl::Result SetD3DDeviceAndBind(void* device)
     {
         auto result = _slSetD3DDevice(device);
@@ -471,7 +488,7 @@ class StreamlineProxy
         if (State::Instance().gameQuirks & GameQuirk::CreateSLOnThe2ndDevice)
             _isD3D12Inited = true;
         else
-            _isD3D12Inited = SetD3DDeviceAndBind(device) == sl::Result::eOk && DisableReflex();
+            _isD3D12Inited = SetD3D12Device(device, true) == sl::Result::eOk && DisableReflex();
 
         return _isD3D12Inited;
     }

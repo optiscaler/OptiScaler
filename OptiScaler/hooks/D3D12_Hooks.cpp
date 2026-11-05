@@ -1483,7 +1483,7 @@ static HRESULT hkD3D12CreateDevice(IUnknown* pAdapter, D3D_FEATURE_LEVEL Minimum
             static void* lastDevice = nullptr;
 
             if (lastDevice && lastDevice != *ppDevice && StreamlineProxy::IsD3D12Inited() &&
-                StreamlineProxy::SetD3DDevice()(*ppDevice) == sl::Result::eOk)
+                StreamlineProxy::SetD3D12Device(*ppDevice, true) == sl::Result::eOk)
             {
                 auto reflexConst = sl::ReflexOptions {};
                 reflexConst.mode = sl::ReflexMode::eLowLatency;

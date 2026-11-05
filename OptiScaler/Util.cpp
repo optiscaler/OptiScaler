@@ -826,6 +826,53 @@ Util::MonitorInfo Util::GetMonitorInfoForOutput(IDXGIOutput* pOutput)
     return out;
 }
 
+// ReShade's IID_UnwrappedObject (6.7+) and its D3D12CommandQueue proxy
+static constexpr GUID ReShadeUnwrappedObject = {
+    0x7f2c9a11, 0x3b4e, 0x4d6a, { 0x81, 0x2f, 0x5e, 0x9c, 0xd3, 0x7a, 0x1b, 0x42 }
+};
+static constexpr GUID ReShadeCommandQueue = {
+    0x2c576d2a, 0x0c1c, 0x4d1d, { 0xad, 0x7c, 0xbc, 0x4f, 0xae, 0xc1, 0x5a, 0xbc }
+};
+
+// Special K's IWrapDXGISwapChain
+static constexpr GUID SpecialKSwapChain = {
+    0x24430a12, 0x6e3c, 0x4706, { 0xaf, 0xfa, 0xb3, 0xee, 0xf2, 0xdf, 0x41, 0x02 }
+};
+
+static bool HasInterface(IUnknown* pObject, const GUID& riid)
+{
+    IUnknown* result = nullptr;
+
+    if (pObject->QueryInterface(riid, (void**) &result) != S_OK || result == nullptr)
+        return false;
+
+    result->Release();
+    return true;
+}
+
+void Util::WarnIfProxy(std::string functionName, IUnknown* pObject)
+{
+    if (pObject == nullptr)
+        return;
+
+    if (HasInterface(pObject, ReShadeUnwrappedObject))
+        LOG_WARN("{} ReShade proxy found", functionName);
+    else if (HasInterface(pObject, ReShadeCommandQueue))
+        LOG_WARN("{} ReShade proxy found, ReShade before 6.7 can't be unwrapped", functionName);
+    else if (HasInterface(pObject, SpecialKSwapChain))
+        LOG_WARN("{} Special K proxy found", functionName);
+}
+
+IUnknown* Util::GetReShadeOriginal(IUnknown* pObject)
+{
+    IUnknown* original = nullptr;
+
+    if (pObject == nullptr || pObject->QueryInterface(ReShadeUnwrappedObject, (void**) &original) != S_OK)
+        return nullptr;
+
+    return original;
+}
+
 bool Util::CheckForRealObject(std::string functionName, IUnknown* pObject, IUnknown** ppRealObject)
 {
     // Need to check if this is necessary
