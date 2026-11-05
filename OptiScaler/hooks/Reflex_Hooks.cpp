@@ -116,10 +116,11 @@ NvAPI_Status ReflexHooks::processGameMarker(IUnknown* pDev, NV_LATENCY_MARKER_PA
         _lastFrameId[pSetLatencyMarkerParams->markerType] = pSetLatencyMarkerParams->frameID;
 
     if (pSetLatencyMarkerParams->markerType == SIMULATION_START)
-    {
         InputCollection::getInstance().startCollectingForFrame(pSetLatencyMarkerParams->frameID);
-    }
-    else if (pSetLatencyMarkerParams->markerType == SIMULATION_END)
+
+    // Some games don't send SIMULATION_END
+    if (pSetLatencyMarkerParams->markerType == SIMULATION_START ||
+        pSetLatencyMarkerParams->markerType == SIMULATION_END)
     {
         _lastMarkerFrame = State::Instance().fgLastFrame;
     }
