@@ -10,13 +10,16 @@ static UINT64 _handleCounter = 13370000;
 static UINT64 _frameCounter = 0;
 static xess_context_handle_t _currentContext = nullptr;
 static ID3D12Device* _d3d12Device = nullptr;
+// Device this input initialised NGX with
+static std::atomic<ID3D12Device*> _nvngxDevice { nullptr };
+static bool _nvngxInited = false;
 
 static bool CreateDLSSContext(xess_context_handle_t handle, ID3D12GraphicsCommandList* commandList,
                               const xess_d3d12_execute_params_t* pExecParams)
 {
     LOG_DEBUG("");
 
-    if (!_nvParams.contains(handle))
+    if (!_nvParams.contains(handle) || !_d3d12InitParams.contains(handle))
         return false;
 
     NVSDK_NGX_Handle* nvHandle = nullptr;
@@ -60,7 +63,7 @@ static bool CreateDLSSContext(xess_context_handle_t handle, ID3D12GraphicsComman
         break;
 
     case XESS_QUALITY_SETTING_PERFORMANCE:
-        params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_MaxQuality);
+        params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_MaxPerf);
         break;
 
     case XESS_QUALITY_SETTING_BALANCED:
@@ -101,7 +104,8 @@ xess_result_t hk_xessD3D12CreateContext(ID3D12Device* pDevice, xess_context_hand
     if (pDevice == nullptr)
         return XESS_RESULT_ERROR_DEVICE;
 
-    if (!State::Instance().nvngxDx12Inited)
+    // Re-initialise NGX when the device this input initialised it with was replaced
+    if (!State::Instance().nvngxDx12Inited || (_nvngxInited && _nvngxDevice.load() != pDevice))
     {
         NVSDK_NGX_FeatureCommonInfo fcInfo {};
 
@@ -113,6 +117,9 @@ xess_result_t hk_xessD3D12CreateContext(ID3D12Device* pDevice, xess_context_hand
 
         if (nvResult != NVSDK_NGX_Result_Success)
             return XESS_RESULT_ERROR_UNINITIALIZED;
+
+        _nvngxDevice = pDevice;
+        _nvngxInited = true;
     }
 
     _d3d12Device = pDevice;
@@ -281,11 +288,25 @@ xess_result_t hk_xessD3D12GetResourcesToDump(xess_context_handle_t hContext,
                                              xess_resources_to_dump_t** pResourcesToDump)
 {
     LOG_DEBUG("");
+
+    if (pResourcesToDump != nullptr)
+        *pResourcesToDump = nullptr;
+
     return XESS_RESULT_SUCCESS;
 }
 
 xess_result_t hk_xessD3D12GetProfilingData(xess_context_handle_t hContext, xess_profiling_data_t** pProfilingData)
 {
     LOG_DEBUG("");
+
+    if (pProfilingData != nullptr)
+        *pProfilingData = nullptr;
+
     return XESS_RESULT_SUCCESS;
+}
+
+void XeSSDx12DeviceDestroyed(IUnknown* device)
+{
+    ID3D12Device* expected = (ID3D12Device*) device;
+    _nvngxDevice.compare_exchange_strong(expected, nullptr);
 }

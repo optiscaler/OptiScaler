@@ -22,8 +22,9 @@ static PFN_RegQueryValueExA o_RegQueryValueExA = nullptr;
 VALIDATE_HOOK(hkRegOpenKeyExW, PFN_RegOpenKeyExW)
 static LSTATUS hkRegOpenKeyExW(HKEY hKey, LPCWSTR lpSubKey, DWORD ulOptions, REGSAM samDesired, PHKEY phkResult)
 {
-    if (lpSubKey != nullptr && (wcscmp(L"SOFTWARE\\NVIDIA Corporation\\Global", lpSubKey) == 0 ||
-                                wcscmp(L"SYSTEM\\ControlSet001\\Services\\nvlddmkm", lpSubKey) == 0))
+    if (lpSubKey != nullptr && phkResult != nullptr &&
+        (_wcsicmp(L"SOFTWARE\\NVIDIA Corporation\\Global", lpSubKey) == 0 ||
+         _wcsicmp(L"SYSTEM\\ControlSet001\\Services\\nvlddmkm", lpSubKey) == 0))
     {
         *phkResult = signatureMark;
         return 0;
@@ -255,7 +256,7 @@ static std::string ReplaceVendorDeviceTokensA(const std::string& input, const st
 }
 
 // Spoof a REG_MULTI_SZ buffer in-place by walking each null-terminated wide string
-// segment and replacing vendor/device tokens. Writes back to lpData and updates lpcbData.
+// segment and replacing vendor/device tokens. Writes back to lpData, the data size doesn't change.
 static void SpoofMultiSzW(LPBYTE lpData, LPDWORD lpcbData, const std::wstring& spoofedVendorId,
                           const std::wstring& spoofedDeviceId, const char* logKey)
 {
@@ -276,31 +277,26 @@ static void SpoofMultiSzW(LPBYTE lpData, LPDWORD lpcbData, const std::wstring& s
             break; // double-null terminator
         }
 
-        std::wstring segment(src + offset);
-        segments.push_back(ReplaceVendorDeviceTokensW(segment, spoofedVendorId, spoofedDeviceId));
+        std::wstring segment(src + offset, wcsnlen(src + offset, bufferChars - offset));
+        auto replaced = ReplaceVendorDeviceTokensW(segment, spoofedVendorId, spoofedDeviceId);
+        segments.push_back(replaced.size() == segment.size() ? replaced : segment);
         offset += static_cast<DWORD>(segment.size()) + 1;
     }
 
     if (segments.empty())
         return;
 
-    // Rebuild the MULTI_SZ in-place (same buffer, same or smaller size — safe)
+    // Tokens keep their length, entries are rewritten in place and keep their terminators
     wchar_t* dst = reinterpret_cast<wchar_t*>(lpData);
     DWORD written = 0;
     for (const auto& seg : segments)
     {
-        if (written + seg.size() + 1 < bufferChars)
-        {
-            std::wmemcpy(dst + written, seg.c_str(), seg.size() + 1);
-            written += static_cast<DWORD>(seg.size()) + 1;
-        }
+        if (written + seg.size() > bufferChars)
+            break;
+
+        std::wmemcpy(dst + written, seg.c_str(), seg.size());
+        written += static_cast<DWORD>(seg.size()) + 1;
     }
-
-    // Final double-null terminator
-    if (written < bufferChars)
-        dst[written] = L'\0';
-
-    *lpcbData = (written + 1) * sizeof(wchar_t);
 
     LOG_INFO("New {}: {}", logKey, wstring_to_string(segments[0]));
 }
@@ -325,8 +321,9 @@ static void SpoofMultiSzA(LPBYTE lpData, LPDWORD lpcbData, const std::string& sp
             break;
         }
 
-        std::string segment(src + offset);
-        segments.push_back(ReplaceVendorDeviceTokensA(segment, spoofedVendorId, spoofedDeviceId));
+        std::string segment(src + offset, strnlen(src + offset, bufferBytes - offset));
+        auto replaced = ReplaceVendorDeviceTokensA(segment, spoofedVendorId, spoofedDeviceId);
+        segments.push_back(replaced.size() == segment.size() ? replaced : segment);
         offset += static_cast<DWORD>(segment.size()) + 1;
     }
 
@@ -337,17 +334,12 @@ static void SpoofMultiSzA(LPBYTE lpData, LPDWORD lpcbData, const std::string& sp
     DWORD written = 0;
     for (const auto& seg : segments)
     {
-        if (written + seg.size() + 1 < bufferBytes)
-        {
-            std::memcpy(dst + written, seg.c_str(), seg.size() + 1);
-            written += static_cast<DWORD>(seg.size()) + 1;
-        }
+        if (written + seg.size() > bufferBytes)
+            break;
+
+        std::memcpy(dst + written, seg.c_str(), seg.size());
+        written += static_cast<DWORD>(seg.size()) + 1;
     }
-
-    if (written < bufferBytes)
-        dst[written] = '\0';
-
-    *lpcbData = written + 1;
 
     LOG_INFO("New {}: {}", logKey, segments[0]);
 }
@@ -401,6 +393,10 @@ static LONG hkRegQueryValueExW(HKEY hKey, LPCWSTR lpValueName, LPDWORD lpReserve
     if (lpData && lpcbData)
         oldCbData = *lpcbData;
 
+    DWORD localType = REG_NONE;
+    if (lpType == nullptr)
+        lpType = &localType;
+
     auto result = o_RegQueryValueExW(hKey, lpValueName, lpReserved, lpType, lpData, lpcbData);
 
     if (result == ERROR_SUCCESS && Config::Instance()->SpoofRegistry.value_or_default())
@@ -411,22 +407,9 @@ static LONG hkRegQueryValueExW(HKEY hKey, LPCWSTR lpValueName, LPDWORD lpReserve
                 *lpcbData = oldCbData;
 
             const std::wstring spoofedValue = Config::Instance()->SpoofedDriver.value_or_default();
-            size_t spoofedValueSize = (spoofedValue.size() + 1) * sizeof(wchar_t);
-
-            if (lpData != nullptr && lpcbData != nullptr)
-            {
-                if (*lpcbData >= spoofedValueSize)
-                {
-                    std::memcpy(lpData, spoofedValue.c_str(), spoofedValueSize);
-                    *lpcbData = static_cast<DWORD>(spoofedValueSize);
-                    LOG_INFO("New DriverVersion: {}", wstring_to_string(spoofedValue));
-                }
-                else
-                {
-                    *lpcbData = static_cast<DWORD>(spoofedValueSize);
-                    result = ERROR_MORE_DATA;
-                }
-            }
+            auto spoofResult = SpoofRegSzW(lpData, lpcbData, lpType, spoofedValue, "DriverVersion");
+            if (spoofResult != ERROR_SUCCESS)
+                result = spoofResult;
         }
 
         if (valueName == L"DriverDesc")
@@ -465,10 +448,7 @@ static LONG hkRegQueryValueExW(HKEY hKey, LPCWSTR lpValueName, LPDWORD lpReserve
         if ((valueName == L"HardwareID" || valueName == L"MatchingDeviceId") && lpData != nullptr &&
             lpcbData != nullptr)
         {
-            if (lpData && lpcbData)
-                *lpcbData = oldCbData;
-
-            DWORD regType = lpType ? *lpType : REG_NONE;
+            DWORD regType = *lpType;
 
             if (regType == REG_MULTI_SZ)
             {
@@ -478,16 +458,15 @@ static LONG hkRegQueryValueExW(HKEY hKey, LPCWSTR lpValueName, LPDWORD lpReserve
             else
             {
                 // REG_SZ fallback — single string, replace in-place
-                std::wstring data(reinterpret_cast<wchar_t*>(lpData), *lpcbData / sizeof(wchar_t));
+                auto str = reinterpret_cast<wchar_t*>(lpData);
+                std::wstring data(str, wcsnlen(str, *lpcbData / sizeof(wchar_t)));
                 std::wstring newData = ReplaceVendorDeviceTokensW(data, vendorId, deviceId);
 
                 if (newData != data)
                 {
-                    size_t newSize = (newData.size() + 1) * sizeof(wchar_t);
-                    if (*lpcbData >= newSize)
+                    if (newData.size() == data.size())
                     {
-                        std::memcpy(lpData, newData.c_str(), newSize);
-                        *lpcbData = static_cast<DWORD>(newSize);
+                        std::memcpy(lpData, newData.c_str(), newData.size() * sizeof(wchar_t));
                         LOG_INFO("New {}: {}", valueName == L"HardwareID" ? "HardwareID" : "MatchingDeviceId",
                                  wstring_to_string(newData));
                     }
@@ -501,21 +480,17 @@ static LONG hkRegQueryValueExW(HKEY hKey, LPCWSTR lpValueName, LPDWORD lpReserve
         if (lpData != nullptr && lpcbData != nullptr && *lpcbData >= sizeof(wchar_t) && valueName.size() >= 13 &&
             _wcsnicmp(valueName.c_str(), L"\\Device\\Video", 13) == 0)
         {
-            if (lpData && lpcbData)
-                *lpcbData = oldCbData;
-
-            DWORD regType = lpType ? *lpType : REG_NONE;
+            DWORD regType = *lpType;
             if (regType == REG_SZ || regType == REG_EXPAND_SZ)
             {
-                std::wstring path(reinterpret_cast<wchar_t*>(lpData), *lpcbData / sizeof(wchar_t));
+                auto str = reinterpret_cast<wchar_t*>(lpData);
+                std::wstring path(str, wcsnlen(str, *lpcbData / sizeof(wchar_t)));
                 std::wstring newPath = ReplaceVendorDeviceTokensW(path, vendorId, deviceId);
                 if (newPath != path)
                 {
-                    size_t newSize = (newPath.size() + 1) * sizeof(wchar_t);
-                    if (*lpcbData >= newSize)
+                    if (newPath.size() == path.size())
                     {
-                        std::memcpy(lpData, newPath.c_str(), newSize);
-                        *lpcbData = static_cast<DWORD>(newSize);
+                        std::memcpy(lpData, newPath.c_str(), newPath.size() * sizeof(wchar_t));
                         LOG_INFO("New VideoDeviceMap path: {}", wstring_to_string(newPath));
                     }
                 }
@@ -573,6 +548,10 @@ LONG WINAPI hkRegQueryValueExA(HKEY hKey, LPCSTR lpValueName, LPDWORD lpReserved
     if (lpData && lpcbData)
         oldCbData = *lpcbData;
 
+    DWORD localType = REG_NONE;
+    if (lpType == nullptr)
+        lpType = &localType;
+
     auto result = o_RegQueryValueExA(hKey, lpValueName, lpReserved, lpType, lpData, lpcbData);
 
     if (result == ERROR_SUCCESS && Config::Instance()->SpoofRegistry.value_or_default())
@@ -583,22 +562,9 @@ LONG WINAPI hkRegQueryValueExA(HKEY hKey, LPCSTR lpValueName, LPDWORD lpReserved
                 *lpcbData = oldCbData;
 
             const std::string spoofedValue = wstring_to_string(Config::Instance()->SpoofedDriver.value_or_default());
-            size_t spoofedValueSize = (spoofedValue.size() + 1) * sizeof(char);
-
-            if (lpData != nullptr && lpcbData != nullptr)
-            {
-                if (*lpcbData >= spoofedValueSize)
-                {
-                    std::memcpy(lpData, spoofedValue.c_str(), spoofedValueSize);
-                    *lpcbData = static_cast<DWORD>(spoofedValueSize);
-                    LOG_INFO("New DriverVersion: {}", spoofedValue);
-                }
-                else
-                {
-                    *lpcbData = static_cast<DWORD>(spoofedValueSize);
-                    result = ERROR_MORE_DATA;
-                }
-            }
+            auto spoofResult = SpoofRegSzA(lpData, lpcbData, lpType, spoofedValue, "DriverVersion");
+            if (spoofResult != ERROR_SUCCESS)
+                result = spoofResult;
         }
 
         if (valueName == "DriverDesc")
@@ -636,10 +602,7 @@ LONG WINAPI hkRegQueryValueExA(HKEY hKey, LPCSTR lpValueName, LPDWORD lpReserved
 
         if ((valueName == "HardwareID" || valueName == "MatchingDeviceId") && lpData != nullptr && lpcbData != nullptr)
         {
-            if (lpData && lpcbData)
-                *lpcbData = oldCbData;
-
-            DWORD regType = lpType ? *lpType : REG_NONE;
+            DWORD regType = *lpType;
 
             if (regType == REG_MULTI_SZ)
             {
@@ -649,16 +612,15 @@ LONG WINAPI hkRegQueryValueExA(HKEY hKey, LPCSTR lpValueName, LPDWORD lpReserved
             else
             {
                 // REG_SZ fallback
-                std::string data(reinterpret_cast<char*>(lpData), *lpcbData);
+                auto str = reinterpret_cast<char*>(lpData);
+                std::string data(str, strnlen(str, *lpcbData));
                 std::string newData = ReplaceVendorDeviceTokensA(data, vendorId, deviceId);
 
                 if (newData != data)
                 {
-                    size_t newSize = newData.size() + 1;
-                    if (*lpcbData >= newSize)
+                    if (newData.size() == data.size())
                     {
-                        std::memcpy(lpData, newData.c_str(), newSize);
-                        *lpcbData = static_cast<DWORD>(newSize);
+                        std::memcpy(lpData, newData.c_str(), newData.size());
                         LOG_INFO("New {}: {}", valueName == "HardwareID" ? "HardwareID" : "MatchingDeviceId", newData);
                     }
                 }
@@ -671,21 +633,17 @@ LONG WINAPI hkRegQueryValueExA(HKEY hKey, LPCSTR lpValueName, LPDWORD lpReserved
         if (lpData != nullptr && lpcbData != nullptr && *lpcbData >= sizeof(char) && valueName.size() >= 13 &&
             _strnicmp(valueName.c_str(), "\\Device\\Video", 13) == 0)
         {
-            if (lpData && lpcbData)
-                *lpcbData = oldCbData;
-
-            DWORD regType = lpType ? *lpType : REG_NONE;
+            DWORD regType = *lpType;
             if (regType == REG_SZ || regType == REG_EXPAND_SZ)
             {
-                std::string path(reinterpret_cast<char*>(lpData), *lpcbData);
+                auto str = reinterpret_cast<char*>(lpData);
+                std::string path(str, strnlen(str, *lpcbData));
                 std::string newPath = ReplaceVendorDeviceTokensA(path, vendorId, deviceId);
                 if (newPath != path)
                 {
-                    size_t newSize = newPath.size() + 1;
-                    if (*lpcbData >= newSize)
+                    if (newPath.size() == path.size())
                     {
-                        std::memcpy(lpData, newPath.c_str(), newSize);
-                        *lpcbData = static_cast<DWORD>(newSize);
+                        std::memcpy(lpData, newPath.c_str(), newPath.size());
                         LOG_INFO("New VideoDeviceMap path: {}", newPath);
                     }
                 }

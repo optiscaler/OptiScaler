@@ -25,9 +25,20 @@ class Nvngx_FG
     static inline std::unique_ptr<HudCopy_Dx12> _hudCopyDx12;
     static inline std::unique_ptr<HudCopy_Vk> _hudCopyVk;
 
+    // Devices the HUD copies were made on, not owned
+    static inline ID3D12Device* _hudCopyDx12Device = nullptr;
+    static inline VkDevice _hudCopyVkDevice = VK_NULL_HANDLE;
+
+    // Provider's callback, the game calls ours with the wrapped handle
+    static inline void* _providerGetCurrentSettings = nullptr;
+
     static IFGNvngx* getProvider();
+    static void WrapProviderCallbacks(NVSDK_NGX_Parameter* InParameters);
+    static void PrepareHudCopyVk(VkDevice InDevice, VkPhysicalDevice InPD);
 
   public:
+    static void VkDeviceDestroyed(VkDevice device);
+
     static int getMaxFakeFramesCount();
     static bool isDx12Available();
     static bool isVulkanAvailable();

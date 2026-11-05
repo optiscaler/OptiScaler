@@ -317,6 +317,7 @@ bool DLSSG_Vk::CreateSwapchain(VkDevice device, const VkSwapchainCreateInfoKHR* 
 
     QueryState();
 
+    _slSwapchains.insert(*pSwapchain);
     _swapchain = *pSwapchain;
     _swapchainFormat = pCreateInfo->imageFormat;
     _swapchainExtent = pCreateInfo->imageExtent;
@@ -327,7 +328,7 @@ bool DLSSG_Vk::CreateSwapchain(VkDevice device, const VkSwapchainCreateInfoKHR* 
 bool DLSSG_Vk::DestroySwapchain(VkDevice device, VkSwapchainKHR swapchain, const VkAllocationCallbacks* pAllocator)
 {
     // Streamline keeps data for all the swapchains it created, the replaced ones included
-    if (device != _slDevice || _sl.destroySwapchain == nullptr)
+    if (device != _slDevice || _sl.destroySwapchain == nullptr || _slSwapchains.erase(swapchain) == 0)
         return false;
 
     if (swapchain == _swapchain)
@@ -502,18 +503,18 @@ bool DLSSG_Vk::TagResources(int fIndex)
     return true;
 }
 
-void DLSSG_Vk::DestroyFGContext() { Deactivate(); }
+void DLSSG_Vk::DestroyFGContext() { Disable(); }
 
 // The swapchain goes with the game's vkDestroySwapchainKHR
 bool DLSSG_Vk::ReleaseSwapchain(HWND hwnd)
 {
-    Deactivate();
+    Disable();
     return true;
 }
 
 bool DLSSG_Vk::Shutdown()
 {
-    Deactivate();
+    Disable();
 
     if (State::Instance().isShuttingDown && StreamlineProxy::Shutdown() != nullptr)
         StreamlineProxy::Shutdown()();

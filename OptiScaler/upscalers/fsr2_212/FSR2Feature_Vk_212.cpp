@@ -119,6 +119,11 @@ bool FSR2FeatureVk212::InitFSR2(const NVSDK_NGX_Parameter* InParameters)
         if (ret != Fsr212::FFX_OK)
         {
             LOG_ERROR("ffxFsr2ContextCreate error: {0}", ResultToString212(ret));
+
+            // The destructor frees it only for inited features
+            free(_contextDesc.callbacks.scratchBuffer);
+            _contextDesc.callbacks.scratchBuffer = nullptr;
+
             return false;
         }
     }
@@ -182,7 +187,7 @@ bool FSR2FeatureVk212::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_P
     InParameters->Get(NVSDK_NGX_Parameter_Jitter_Offset_X, &params.jitterOffset.x);
     InParameters->Get(NVSDK_NGX_Parameter_Jitter_Offset_Y, &params.jitterOffset.y);
 
-    unsigned int reset;
+    unsigned int reset = 0;
     InParameters->Get(NVSDK_NGX_Parameter_Reset, &reset);
     params.reset = (reset == 1);
 
@@ -192,7 +197,7 @@ bool FSR2FeatureVk212::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_P
 
     params.commandList = Fsr212::ffxGetCommandListVK212(InCmdBuffer);
 
-    NVSDK_NGX_Resource_VK* paramColor;
+    NVSDK_NGX_Resource_VK* paramColor = nullptr;
     InParameters->Get(NVSDK_NGX_Parameter_Color, (void**) &paramColor);
 
     if (paramColor)
@@ -211,7 +216,7 @@ bool FSR2FeatureVk212::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_P
         return false;
     }
 
-    NVSDK_NGX_Resource_VK* paramVelocity;
+    NVSDK_NGX_Resource_VK* paramVelocity = nullptr;
     InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, (void**) &paramVelocity);
 
     if (paramVelocity)
@@ -230,7 +235,7 @@ bool FSR2FeatureVk212::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_P
         return false;
     }
 
-    NVSDK_NGX_Resource_VK* paramOutput;
+    NVSDK_NGX_Resource_VK* paramOutput = nullptr;
     InParameters->Get(NVSDK_NGX_Parameter_Output, (void**) &paramOutput);
 
     if (paramOutput)
@@ -249,7 +254,7 @@ bool FSR2FeatureVk212::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_P
         return false;
     }
 
-    NVSDK_NGX_Resource_VK* paramDepth;
+    NVSDK_NGX_Resource_VK* paramDepth = nullptr;
     InParameters->Get(NVSDK_NGX_Parameter_Depth, (void**) &paramDepth);
 
     if (paramDepth)

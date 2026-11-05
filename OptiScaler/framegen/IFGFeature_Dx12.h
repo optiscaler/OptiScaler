@@ -68,8 +68,12 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     ID3D12CommandAllocator* _scCommandAllocator[BUFFER_COUNT] {};
     bool _scCommandListResetted[BUFFER_COUNT] { false, false, false, false };
     UINT64 _scAllocatorFenceValues[BUFFER_COUNT] {};
+
+    // Signaled after our submits on the game queue, an allocator waits for its last submit before reset
     ID3D12Fence* _scFence = nullptr;
     HANDLE _scFenceEvent = nullptr;
+    UINT64 _scFenceValue = 0;
+    std::mutex _scFenceMutex; // FG dispatch and present signal it from different threads
 
     ID3D12GraphicsCommandList* _uiCommandList[BUFFER_COUNT] {};
     ID3D12CommandAllocator* _uiCommandAllocator[BUFFER_COUNT] {};
@@ -112,6 +116,10 @@ class IFGFeature_Dx12 : public virtual IFGFeature
 
   protected:
     virtual void ReleaseObjects() = 0;
+    void ReleaseFences();
+    bool WaitForFenceValue(ID3D12Fence* fence, HANDLE event, UINT64 value);
+    UINT64 SignalSCFence();
+    void SubmitSCCommandList(UINT index);
     virtual void CreateObjects(ID3D12Device* InDevice) = 0;
 
   public:

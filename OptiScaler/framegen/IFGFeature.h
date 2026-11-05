@@ -71,6 +71,7 @@ class IFGFeature
     UINT _reset[BUFFER_COUNT] = {};
 
     UINT64 _frameCount = 0;
+    bool _allowLowerFrameId = false;
     UINT64 _lastDispatchedFrame = 0;
     UINT64 _lastFGFrame = 0;
     bool _waitingNewFrameData = false;
@@ -98,6 +99,7 @@ class IFGFeature
 
     bool CheckForRealObject(std::string functionName, IUnknown* pObject, IUnknown** ppRealObject);
     int GetDispatchIndex(UINT64& willDispatchFrame);
+    UINT64 NextDispatchFrame();
 
     // The frame's camera and the mouse input since its simulation start, for the reprojection of the presented frame
     // Depth and motion vector sizes are left to the caller
@@ -114,6 +116,8 @@ class IFGFeature
     virtual bool Present() = 0;
     virtual void Activate() = 0;
     virtual void Deactivate() = 0;
+    // Deactivate and drop a pending resume, for when the game turns FG off
+    void Disable();
     virtual void DestroyFGContext() = 0;
     virtual bool ReleaseSwapchain(HWND hwnd) = 0;
     virtual bool Shutdown() = 0;

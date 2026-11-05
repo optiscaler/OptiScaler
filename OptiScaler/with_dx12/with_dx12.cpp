@@ -4,6 +4,7 @@
 
 #include <proxies/DXGI_Proxy.h>
 #include <proxies/D3D12_Proxy.h>
+#include <misc/IdentifyGpu.h>
 
 HRESULT CreateD3D12DeviceOnAdapter(IDXGIAdapter* adapter, D3D_FEATURE_LEVEL featureLevel, ID3D12Device** device)
 {
@@ -44,29 +45,70 @@ void WithDx12::SetD3D12Objects(ID3D12Device* InDevice, ID3D12CommandQueue* InCom
     LOG_DEBUG("Using D3D12 objects, device: {:X}, queue: {:X}", (size_t) _d3d12Device, (size_t) _d3d12CommandQueue);
 }
 
+// Interop shares textures and fences, both devices must be on the same adapter
+static bool IsOnD3D11Adapter(ID3D11Device* dx11Device, ID3D12Device* dx12Device)
+{
+    if (dx11Device == nullptr || dx12Device == nullptr)
+        return true;
+
+    ScopedSkipSpoofingThread skipSpoofingThread {};
+
+    IDXGIDevice* dxgiDevice = nullptr;
+    if (FAILED(dx11Device->QueryInterface(IID_PPV_ARGS(&dxgiDevice))) || dxgiDevice == nullptr)
+        return true;
+
+    IDXGIAdapter* adapter = nullptr;
+    auto result = dxgiDevice->GetAdapter(&adapter);
+    dxgiDevice->Release();
+
+    if (FAILED(result) || adapter == nullptr)
+        return true;
+
+    DXGI_ADAPTER_DESC desc {};
+    result = adapter->GetDesc(&desc);
+    adapter->Release();
+
+    return FAILED(result) || IsEqualLUID(desc.AdapterLuid, dx12Device->GetAdapterLuid());
+}
+
 bool WithDx12::PrepareD3D12ForD3D11(ID3D11Device* InDx11Device, D3D_FEATURE_LEVEL InFeatureLevel)
 {
     if (IsInited())
     {
-        UpdateStateObjects();
-        return true;
-    }
+        if (IsOnD3D11Adapter(InDx11Device, _d3d12Device))
+        {
+            UpdateStateObjects();
+            return true;
+        }
 
-    if (State::Instance().currentCommandQueue != nullptr)
+        LOG_WARN("D3D12 device is on another adapter than the D3D11 device, creating a new one");
+    }
+    else if (State::Instance().currentCommandQueue != nullptr)
     {
         ID3D12Device* queueDevice = nullptr;
         auto deviceResult = State::Instance().currentCommandQueue->GetDevice(IID_PPV_ARGS(&queueDevice));
 
         if (SUCCEEDED(deviceResult) && queueDevice != nullptr)
         {
-            SetD3D12Objects(queueDevice, State::Instance().currentCommandQueue, D3D12_COMMAND_LIST_TYPE_DIRECT);
-            return IsInited();
-        }
+            // Queue keeps its device alive
+            queueDevice->Release();
 
-        LOG_WARN("EnsureD3D12ForDx11: current command queue GetDevice failed: {:X}", (UINT) deviceResult);
+            if (IsOnD3D11Adapter(InDx11Device, queueDevice))
+            {
+                SetD3D12Objects(queueDevice, State::Instance().currentCommandQueue, D3D12_COMMAND_LIST_TYPE_DIRECT);
+                return IsInited();
+            }
+
+            LOG_WARN("Current command queue is on another adapter than the D3D11 device");
+        }
+        else
+        {
+            LOG_WARN("EnsureD3D12ForDx11: current command queue GetDevice failed: {:X}", (UINT) deviceResult);
+        }
     }
 
-    if (State::Instance().currentD3D12Device != nullptr)
+    if (!IsInited() && State::Instance().currentD3D12Device != nullptr &&
+        IsOnD3D11Adapter(InDx11Device, State::Instance().currentD3D12Device))
     {
         auto queue = CreateD3D12CommandQueue(State::Instance().currentD3D12Device);
         if (queue != nullptr)
@@ -178,7 +220,7 @@ ID3D12Device* WithDx12::GetD3D12DeviceFromD3D11(ID3D11Device* dx11Device, D3D_FE
     if (dx11Device == nullptr)
         return nullptr;
 
-    ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
+    ScopedSkipSpoofingThread skipSpoofingThread {};
     ScopedSkipVulkanHooks skipVulkanHooks {};
 
     IDXGIDevice* dxgiDevice = nullptr;
@@ -273,7 +315,7 @@ bool WithDx12::CreateDx12Device(D3D_FEATURE_LEVEL InFeatureLevel, IDXGIAdapter* 
 {
     LOG_FUNC();
 
-    ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
+    ScopedSkipSpoofingThread skipSpoofingThread {};
     ScopedSkipVulkanHooks skipVulkanHooks {};
 
     HRESULT result = S_OK;
@@ -334,7 +376,7 @@ bool WithDx12::CreateDx12Device(D3D_FEATURE_LEVEL InFeatureLevel, IDXGIAdapter* 
 
         if (hwAdapter != nullptr)
         {
-            ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
+            ScopedSkipSpoofingThread skipSpoofingThread {};
             DXGI_ADAPTER_DESC desc = {};
             if (hwAdapter->GetDesc(&desc) == S_OK)
             {

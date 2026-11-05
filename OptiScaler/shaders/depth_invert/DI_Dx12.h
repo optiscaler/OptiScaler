@@ -7,7 +7,7 @@
 #include <shaders/Shader_Dx12Utils.h>
 #include <shaders/Shader_Dx12.h>
 
-#define DI_NUM_OF_HEAPS 2
+#define DI_NUM_OF_HEAPS 3
 
 class DI_Dx12 : public Shader_Dx12
 {

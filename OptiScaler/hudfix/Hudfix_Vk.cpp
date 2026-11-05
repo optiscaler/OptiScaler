@@ -113,6 +113,7 @@ static ankerl::unordered_dense::map<VkRenderPass, std::vector<AttachmentOps>> _r
 // Attachments to check when the command buffer's current render pass instance ends
 static std::mutex _pendingMutex;
 static ankerl::unordered_dense::map<VkCommandBuffer, std::vector<StoredImage>> _pendingEnds;
+static std::atomic<bool> _hasPendingEnds { false }; // Render passes skip the lock while nothing is pending
 
 static std::shared_mutex _descriptorMutex;
 static ankerl::unordered_dense::map<VkDescriptorSet, std::vector<DescriptorImage>> _setImages;
@@ -320,16 +321,25 @@ static void BeginPass(VkCommandBuffer cmdBuffer, const std::vector<Attachment>& 
             stored.push_back({ attachment.image, attachment.endLayout });
     }
 
+    // A command buffer's own entry is only changed by its recording thread
+    if (stored.empty() && !_hasPendingEnds.load(std::memory_order_acquire))
+        return;
+
     std::scoped_lock lock(_pendingMutex);
 
     if (stored.empty())
         _pendingEnds.erase(cmdBuffer);
     else
         _pendingEnds[cmdBuffer] = std::move(stored);
+
+    _hasPendingEnds.store(!_pendingEnds.empty(), std::memory_order_release);
 }
 
 static void EndPass(VkCommandBuffer cmdBuffer)
 {
+    if (!_hasPendingEnds.load(std::memory_order_acquire))
+        return;
+
     std::vector<StoredImage> stored;
     {
         std::scoped_lock lock(_pendingMutex);
@@ -340,6 +350,7 @@ static void EndPass(VkCommandBuffer cmdBuffer)
 
         stored = std::move(it->second);
         _pendingEnds.erase(it);
+        _hasPendingEnds.store(!_pendingEnds.empty(), std::memory_order_release);
     }
 
     for (auto& image : stored)
@@ -573,8 +584,12 @@ static void UseUiTexture(VkCommandBuffer cmdBuffer, const DescriptorImage& ui, c
     auto config = Config::Instance();
     auto fg = state.currentVkFG;
 
+    // The render thread can start the next frame meanwhile, all three go to this frame
+    const auto fIndex = fg->GetIndex();
+
     auto uiResource =
         CopiedResource(FG_ResourceType::UIColor, cmdBuffer, ui.image, uiInfo.format, uiInfo.extent, ui.layout);
+    uiResource.frameIndex = fIndex;
 
     if (!fg->SetResource(&uiResource))
         return;
@@ -582,16 +597,18 @@ static void UseUiTexture(VkCommandBuffer cmdBuffer, const DescriptorImage& ui, c
     const auto upscaleFrame = _upscaleFrame.load(std::memory_order_acquire);
     LOG_DEBUG("UI: {:X}, frame: {}", (size_t) ui.image, upscaleFrame);
 
-    // FSR-FG has no UI input, the rebuilt hudless is its only way to know about the UI
-    if (!config->FGHUDFixUIUnblend.value_or(state.activeFgOutput != FGOutput::DLSSG))
+    // FSR-FG has no UI input, the rebuilt hudless is its only way to know about the UI.
+    // DLSSG takes the UI directly and has no command buffer of its own to unblend in.
+    if (state.activeFgOutput == FGOutput::DLSSG || !config->FGHUDFixUIUnblend.value_or(true))
         return;
 
     auto hudless = CopiedResource(FG_ResourceType::HudlessColor, cmdBuffer, frame.image, frameInfo.format,
                                   frameInfo.extent, frame.layout);
+    hudless.frameIndex = fIndex;
 
     if (fg->SetResource(&hudless))
     {
-        fg->RemoveUiFromHudless(cmdBuffer, config->FGUIPremultipliedAlpha.value_or_default());
+        fg->RequestUiUnblend(fIndex, config->FGUIPremultipliedAlpha.value_or_default());
         _hudlessFromUiFrame.store(upscaleFrame, std::memory_order_release);
     }
 }
@@ -1066,6 +1083,10 @@ VALIDATE_MEMBER_HOOK(hkCmdDispatchBase<o_CmdDispatchBase>, PFN_vkCmdDispatchBase
 void Hudfix_Vk::HookDevice(VkDevice device)
 {
     if (o_CreateImage != nullptr || Config::Instance()->FGDisableHUDFix.value_or_default())
+        return;
+
+    // Only the upscaler input searches, the input doesn't change to it later
+    if (State::Instance().activeFgInput != FGInput::Upscaler)
         return;
 
     LOG_FUNC();

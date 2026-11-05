@@ -7,8 +7,6 @@
 
 void XeLL::xell_sleep(uint32_t frame_id)
 {
-    sent_sleep_frame_ids[frame_id % 64] = true;
-
     // Don't call XeLL when trying to disable XeLL with XeFG active, or when another output does the sleeping
     if (!markers_only && (!forced_mode || is_enabled()))
     {
@@ -19,13 +17,6 @@ void XeLL::xell_sleep(uint32_t frame_id)
 
 void XeLL::add_marker(uint32_t frame_id, xell_latency_marker_type_t marker)
 {
-    if (!markers_only && !sent_sleep_frame_ids[frame_id % 64])
-    {
-        LOG_DEBUG("Skipping reporting {} for XeLL because sleep wasn't sent for frame id: {}",
-                  magic_enum::enum_name(marker), frame_id);
-        return;
-    }
-
     if (markers_only || !forced_mode || is_enabled())
         o_xellAddMarkerData(xell_context, frame_id, marker);
 }
@@ -43,14 +34,19 @@ bool XeLL::init(IUnknown* pDevice)
         return false;
     }
 
-    ID3D12Device* dx12_pDevice = nullptr;
-    HRESULT hr = pDevice->QueryInterface(__uuidof(ID3D12Device), reinterpret_cast<void**>(&dx12_pDevice));
+    HRESULT hr = pDevice->QueryInterface(__uuidof(ID3D12Device), reinterpret_cast<void**>(&dx12_device));
     if (hr != S_OK)
         return false;
 
     // Created as OptiScaler's own, it goes straight to the real XeLL. Opti's XeFG gets it too.
-    auto result = InputXeLL::D3D12CreateLocalContext(dx12_pDevice, (InputXeLL::xell_input_handle_t*) &xell_context) ==
+    auto result = InputXeLL::D3D12CreateLocalContext(dx12_device, (InputXeLL::xell_input_handle_t*) &xell_context) ==
                   XELL_RESULT_SUCCESS;
+
+    if (!result)
+    {
+        dx12_device->Release();
+        dx12_device = nullptr;
+    }
 
     return result;
 }
@@ -58,6 +54,14 @@ bool XeLL::init(IUnknown* pDevice)
 void XeLL::deinit()
 {
     o_xellDestroyContext(xell_context);
+
+    // Held while the context lives
+    if (dx12_device != nullptr)
+    {
+        dx12_device->Release();
+        dx12_device = nullptr;
+    }
+
     LOG_INFO("XeLL deinitialized");
 }
 

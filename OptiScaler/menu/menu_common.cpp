@@ -1644,6 +1644,10 @@ static UiTargetMode getUiTargetMode()
         return UiTargetMode::SDR;
     }
 
+    // sRGB target encodes on write, colors need to be linear
+    if (state.menuTargetSrgb)
+        return UiTargetMode::LinearHDR;
+
     const auto& output = state.outputColorSpace;
 
     // If SetColorSpace1 has not provided a known/valid color space,
@@ -3493,6 +3497,10 @@ void MenuCommon::RenderMainMenuHeaderMessages(RenderMenuContext& ctx)
         {
             LOG_ERROR("Version check failed: {0}", versionStatus.error);
             versionStatus.error.clear();
+
+            // The status is copied from State every frame
+            std::scoped_lock lock(state.versionCheckMutex);
+            state.versionCheckError.clear();
         }
         // Disabled error message
         // else if (!versionStatus.error.empty())
@@ -3779,6 +3787,14 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
         }
     }
 
+    constexpr auto fsr3DebugViewTooltip = "Top left: Dilated Motion Vectors\n"
+                                          "Top middle: Protected Areas\n"
+                                          "Top right: Dilated Depth\n"
+                                          "Middle: Upscaled frame\n"
+                                          "Bottom left: Disocclusion mask\n"
+                                          "Bottom middle: Reactiveness\n"
+                                          "Bottom right: Detail Protection Takedown";
+
     // FFX -----------------
     if (!usesDlssd && (currentBackend == Upscaler::FFX || currentBackend == Upscaler::FFX_on12))
     {
@@ -3992,13 +4008,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
             }
             else
             {
-                ShowTooltip("Top left: Dilated Motion Vectors\n"
-                            "Top middle: Protected Areas\n"
-                            "Top right: Dilated Depth\n"
-                            "Middle: Upscaled frame\n"
-                            "Bottom left: Disocclusion mask\n"
-                            "Bottom middle: Reactiveness\n"
-                            "Bottom right: Detail Protection Takedown");
+                ShowTooltip(fsr3DebugViewTooltip);
             }
 
             if (majorFsrVersion > 3)
@@ -4146,6 +4156,18 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                 ImGui::Spacing();
             }
         }
+    }
+
+    // FSR 3.1 Dx11 -----------------
+    if (!usesDlssd && currentBackend == Upscaler::FSR31)
+    {
+        ImGui::Spacing();
+
+        bool debugView = config->FsrDebugView.value_or_default();
+        if (ImGui::Checkbox("Upscaler Debug View", &debugView))
+            config->FsrDebugView = debugView;
+
+        ShowTooltip(fsr3DebugViewTooltip);
     }
 
     // DLSS -----------------
@@ -4804,7 +4826,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
             {
                 config->FGUIPremultipliedAlpha = uiPremultipliedAlpha;
             }
-            ShowTooltip("If UI is too faint, disable this option");
+            ShowTooltip("If UI is too bright, disable this option");
 
             ImGui::EndDisabled();
         }
@@ -6198,14 +6220,15 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 config->FGHUDFixUITexture = uiTexture;
             ShowTooltip("Use the UI texture the game blends on the frame in its last compute pass");
 
-            ImGui::BeginDisabled(!uiTexture);
+            const bool dlssgOutput = state.activeFgOutput == FGOutput::DLSSG;
+            ImGui::BeginDisabled(!uiTexture || dlssgOutput);
             ImGui::SameLine(0.0f, 16.0f);
 
-            auto uiUnblend = config->FGHUDFixUIUnblend.value_or(state.activeFgOutput != FGOutput::DLSSG);
+            auto uiUnblend = !dlssgOutput && config->FGHUDFixUIUnblend.value_or(true);
             if (ImGui::Checkbox("Unblend UI", &uiUnblend))
                 config->FGHUDFixUIUnblend = uiUnblend;
             ShowTooltip("Rebuild the HUDless by removing the UI texture from the frame\n"
-                        "FSR-FG gets the UI only this way, DLSSG also takes the UI texture directly");
+                        "FSR-FG gets the UI only this way, DLSSG takes the UI texture directly");
 
             ImGui::EndDisabled();
 
@@ -7225,11 +7248,10 @@ void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)
                 ImGui::BeginDisabled(!config->ContrastEnabled.value_or_default());
 
                 float contrast = config->Contrast.value_or_default();
-                if (ImGui::SliderFloat("Contrast", &contrast, -2.0f, 2.0f, "%.2f"))
+                if (ImGui::SliderFloat("Contrast", &contrast, 0.0f, 2.0f, "%.2f"))
                     config->Contrast = contrast;
 
-                ShowTooltip("Positive values decrease sharpness at high contrast areas.\n"
-                            "Negative values increase sharpness at high contrast areas.");
+                ShowTooltip("Lowers sharpness at high contrast areas.");
 
                 ImGui::EndDisabled();
             }
@@ -7991,7 +8013,7 @@ void MenuCommon::RenderLoggingSettings(RenderMenuContext& ctx)
     }
 
     const char* logLevels[] = { "Trace", "Debug", "Information", "Warning", "Error" };
-    const char* selectedLevel = logLevels[config->LogLevel.value_or_default()];
+    const char* selectedLevel = logLevels[std::clamp(config->LogLevel.value_or_default(), 0, 4)];
 
     if (ImGui::BeginCombo("Log Level", selectedLevel))
     {
@@ -10339,6 +10361,9 @@ void MenuCommon::RenderHudlessResourcesWindow(RenderMenuContext& ctx, ImGuiWindo
                 ImGui::TableSetupColumn("##2", ImGuiTableColumnFlags_WidthFixed);
 
                 ankerl::unordered_dense::map<void*, CapturedHudlessInfo>::iterator it;
+
+                // Render threads add and remove entries
+                std::scoped_lock hudlessLock(state.capturedHudlessesMutex);
 
                 for (it = state.capturedHudlesses.begin(); it != state.capturedHudlesses.end(); it++)
                 {

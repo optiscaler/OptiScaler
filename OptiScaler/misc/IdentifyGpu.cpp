@@ -63,6 +63,15 @@ std::vector<GpuInformation> IdentifyGpu::checkGpuInfo()
 
         result = adapter->GetDesc1(&adapterDesc);
 
+        // DXGI can list the same adapter more than once
+        if (result == S_OK && std::ranges::any_of(localCachedInfo, [&adapterDesc](const GpuInformation& gpu)
+                                                  { return IsEqualLUID(gpu.luid, adapterDesc.AdapterLuid); }))
+        {
+            LOG_DEBUG("Skipping duplicate adapter: {}", adapterIndex);
+            adapterIndex++;
+            continue;
+        }
+
         if (result == S_OK)
         {
             GpuInformation gpuInfo;
@@ -340,8 +349,7 @@ void IdentifyGpu::getHardwareAdapter(IDXGIFactory* InFactory, IDXGIAdapter** InA
 
 std::vector<GpuInformation> IdentifyGpu::getAllGpus()
 {
-    thread_local bool is_fetching = false;
-    if (is_fetching)
+    if (isFetching)
         return {};
 
     std::scoped_lock lock(mutex);
@@ -351,16 +359,32 @@ std::vector<GpuInformation> IdentifyGpu::getAllGpus()
         return cache;
     }
 
-    is_fetching = true;
+    isFetching = true;
     cache = checkGpuInfo();
-    is_fetching = false;
+    isFetching = false;
 
     // TODO: try to reactivate DxgiSpoofing if was auto on Nvidia cards without DLSS
     return cache;
 }
 
+bool IdentifyGpu::isDetecting() { return isFetching; }
+
 GpuInformation IdentifyGpu::getPrimaryGpu()
 {
+    // Detection creates DXGI factories, hooks of other mods can start nvapi, NGX or Streamline from inside it
+    if (isFetching)
+    {
+        GpuInformation gpu {};
+
+        if (nvidiaHint)
+        {
+            gpu.vendorId = VendorId::Nvidia;
+            gpu.dlssCapable = Config::Instance()->DLSSEnabled.value_or_default();
+        }
+
+        return gpu;
+    }
+
     auto allGpus = getAllGpus();
     return !allGpus.empty() ? allGpus.front() : GpuInformation {};
 }

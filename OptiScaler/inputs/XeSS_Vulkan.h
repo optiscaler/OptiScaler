@@ -9,6 +9,7 @@
 
 xess_result_t hk_xessVKCreateContext(VkInstance instance, VkPhysicalDevice physicalDevice, VkDevice device,
                                      xess_context_handle_t* phContext);
+void XeSSVkDeviceDestroyed(VkDevice device);
 xess_result_t hk_xessVKBuildPipelines(xess_context_handle_t hContext, VkPipelineCache pipelineCache, bool blocking,
                                       uint32_t initFlags);
 xess_result_t hk_xessVKInit(xess_context_handle_t hContext, const xess_vk_init_params_t* pInitParams);

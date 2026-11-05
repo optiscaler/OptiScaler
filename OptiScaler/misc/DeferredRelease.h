@@ -2,6 +2,7 @@
 #include "SysUtils.h"
 
 #include <functional>
+#include <unordered_set>
 
 // Destroys GPU objects once no queue can still reference them.
 // An entry runs after enough presents and enough wall time have passed. Presents bound how far the GPU
@@ -19,9 +20,12 @@ void Process();
 // the swapchain isn't hooked, like upscaler evaluation, so entries still go after a fallback age.
 void Collect();
 
-// Forgets owned entries of every other owner without running them. Their device is most likely destroyed already,
-// destroying the objects then would be invalid, leaking them is the safe option.
-void DropOwnersExcept(uint64_t keep);
+// Forgets owned entries of owners not in keep without running them. Their device can be destroyed without the hook
+// seeing it, destroying the objects then would be invalid, leaking them is the safe option.
+void DropOwnersExcept(const std::unordered_set<uint64_t>& keep);
+
+// Runs the owner's entries now, for a device that is being destroyed and so is idle
+void ReleaseOwner(uint64_t owner);
 
 template <typename T> void Release(T*& object)
 {

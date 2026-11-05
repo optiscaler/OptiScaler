@@ -17,6 +17,7 @@ void Menu_Dx11::CreateRenderTarget(ID3D11Resource* out)
 
     D3D11_TEXTURE2D_DESC outDesc {};
     outTexture2D->GetDesc(&outDesc);
+    outTexture2D->Release();
 
     if (_renderTargetTexture != nullptr)
     {
@@ -31,6 +32,19 @@ void Menu_Dx11::CreateRenderTarget(ID3D11Resource* out)
         else
             return;
     }
+    // RTV holds a reference to the output, so its address can't be reused meanwhile
+    else if (_renderTargetView != nullptr && _renderTargetOutput == out)
+    {
+        return;
+    }
+
+    if (_renderTargetView != nullptr)
+    {
+        _renderTargetView->Release();
+        _renderTargetView = nullptr;
+    }
+
+    _renderTargetOutput = nullptr;
 
     if ((outDesc.BindFlags & D3D11_BIND_RENDER_TARGET) > 0)
     {
@@ -40,7 +54,8 @@ void Menu_Dx11::CreateRenderTarget(ID3D11Resource* out)
         rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
         rtvDesc.Texture2D.MipSlice = 0;
 
-        _device->CreateRenderTargetView(out, &rtvDesc, &_renderTargetView);
+        if (_device->CreateRenderTargetView(out, &rtvDesc, &_renderTargetView) == S_OK)
+            _renderTargetOutput = out;
     }
     else
     {

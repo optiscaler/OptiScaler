@@ -10,13 +10,16 @@ static UINT64 _handleCounter = 33370000;
 static UINT64 _frameCounter = 0;
 static xess_context_handle_t _currentContext = nullptr;
 static ID3D11Device* _d3d11Device = nullptr;
+// Device this input initialised NGX with
+static std::atomic<ID3D11Device*> _nvngxDevice { nullptr };
+static bool _nvngxInited = false;
 
 static bool CreateDLSSContext(xess_context_handle_t handle, ID3D11DeviceContext* commandList,
                               const xess_d3d11_execute_params_t* pExecParams)
 {
     LOG_DEBUG("");
 
-    if (!_nvParams.contains(handle))
+    if (!_nvParams.contains(handle) || !_d3d11InitParams.contains(handle))
         return false;
 
     NVSDK_NGX_Handle* nvHandle = nullptr;
@@ -59,7 +62,7 @@ static bool CreateDLSSContext(xess_context_handle_t handle, ID3D11DeviceContext*
         break;
 
     case XESS_QUALITY_SETTING_PERFORMANCE:
-        params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_MaxQuality);
+        params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_MaxPerf);
         break;
 
     case XESS_QUALITY_SETTING_BALANCED:
@@ -100,7 +103,8 @@ xess_result_t hk_xessD3D11CreateContext(ID3D11Device* device, xess_context_handl
     if (device == nullptr)
         return XESS_RESULT_ERROR_DEVICE;
 
-    if (!State::Instance().nvngxDx11Inited)
+    // Re-initialise NGX when the device this input initialised it with was replaced
+    if (!State::Instance().nvngxDx11Inited || (_nvngxInited && _nvngxDevice.load() != device))
     {
         NVSDK_NGX_FeatureCommonInfo fcInfo {};
 
@@ -112,6 +116,9 @@ xess_result_t hk_xessD3D11CreateContext(ID3D11Device* device, xess_context_handl
 
         if (nvResult != NVSDK_NGX_Result_Success)
             return XESS_RESULT_ERROR_UNINITIALIZED;
+
+        _nvngxDevice = device;
+        _nvngxInited = true;
     }
 
     _d3d11Device = device;
@@ -168,7 +175,7 @@ xess_result_t hk_xessD3D11Execute(xess_context_handle_t hContext, const xess_d3d
 
     NVSDK_NGX_Parameter* params = _nvParams[hContext];
     NVSDK_NGX_Handle* handle = _contexts[hContext];
-    xess_d3d12_init_params_t* initParams = &_d3d12InitParams[hContext];
+    xess_d3d11_init_params_t* initParams = &_d3d11InitParams[hContext];
 
     if (_motionScales.contains(hContext))
     {
@@ -253,11 +260,17 @@ xess_result_t hk_xessD3D11GetInitParams(xess_context_handle_t hContext, xess_d3d
     if (!_d3d11InitParams.contains(hContext))
         return XESS_RESULT_ERROR_INVALID_CONTEXT;
 
-    auto ip = &_d3d12InitParams[hContext];
+    auto ip = &_d3d11InitParams[hContext];
 
     pInitParams->initFlags = ip->initFlags;
     pInitParams->outputResolution = ip->outputResolution;
     pInitParams->qualitySetting = ip->qualitySetting;
 
     return XESS_RESULT_SUCCESS;
+}
+
+void XeSSDx11DeviceDestroyed(IUnknown* device)
+{
+    ID3D11Device* expected = (ID3D11Device*) device;
+    _nvngxDevice.compare_exchange_strong(expected, nullptr);
 }

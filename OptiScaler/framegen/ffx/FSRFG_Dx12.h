@@ -38,6 +38,7 @@ class FSRFG_Dx12 : public virtual IFGFeature_Dx12
 
     ID3D12GraphicsCommandList* _fgCommandList[BUFFER_COUNT] {};
     ID3D12CommandAllocator* _fgCommandAllocator[BUFFER_COUNT] {};
+    UINT64 _fgAllocatorFenceValues[BUFFER_COUNT] {}; // _scFence values
 
     static FfxApiResourceState GetFfxApiState(D3D12_RESOURCE_STATES state)
     {

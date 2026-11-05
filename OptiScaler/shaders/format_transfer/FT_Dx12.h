@@ -7,7 +7,7 @@
 #include <shaders/Shader_Dx12Utils.h>
 #include <shaders/Shader_Dx12.h>
 
-#define FT_NUM_OF_HEAPS 2
+#define FT_NUM_OF_HEAPS 3
 
 class FT_Dx12 : public Shader_Dx12
 {

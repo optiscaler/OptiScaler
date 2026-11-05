@@ -67,6 +67,11 @@ bool OS_Dx11::Dispatch(ID3D11Device* InDevice, ID3D11DeviceContext* InContext, I
                State::Instance().currentFeature->TargetWidth(), State::Instance().currentFeature->TargetHeight(),
                State::Instance().currentFeature->DisplayWidth(), State::Instance().currentFeature->DisplayHeight());
 
+    // EASU only upscales, downscaling stays on the shader's bilinear path
+    fsr1Constants.squaredRadius =
+        State::Instance().currentFeature->TargetWidth() < State::Instance().currentFeature->DisplayWidth() ? UINT32_MAX
+                                                                                                           : 0;
+
     constants.srcWidth = State::Instance().currentFeature->TargetWidth();
     constants.srcHeight = State::Instance().currentFeature->TargetHeight();
     constants.destWidth = State::Instance().currentFeature->DisplayWidth();
@@ -108,6 +113,7 @@ bool OS_Dx11::Dispatch(ID3D11Device* InDevice, ID3D11DeviceContext* InContext, I
     // Set the compute shader and resources
     InContext->CSSetShader(_computeShader, nullptr, 0);
     InContext->CSSetConstantBuffers(0, 1, &_constantBuffer);
+    InContext->CSSetSamplers(0, 1, &_sampler);
     InContext->CSSetShaderResources(0, 1, &_srvInput);
     InContext->CSSetUnorderedAccessViews(0, 1, &_uavOutput, nullptr);
 
@@ -244,6 +250,22 @@ OS_Dx11::OS_Dx11(std::string InName, ID3D11Device* InDevice, bool InUpsample)
         return;
     }
 
+    // Shaders sample with LinearClampSampler at s0
+    D3D11_SAMPLER_DESC samplerDesc = {};
+    samplerDesc.Filter = D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT;
+    samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+    samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+    samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    samplerDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+    samplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
+
+    result = InDevice->CreateSamplerState(&samplerDesc, &_sampler);
+    if (result != S_OK)
+    {
+        LOG_ERROR("[{0}] CreateSamplerState error: {1:X}", _name, (UINT) result);
+        return;
+    }
+
     if (downscaler == Scaler::FSR1)
     {
         InNumThreadsX = 16;
@@ -251,4 +273,12 @@ OS_Dx11::OS_Dx11(std::string InName, ID3D11Device* InDevice, bool InUpsample)
     }
 
     _init = true;
+}
+
+OS_Dx11::~OS_Dx11()
+{
+    if (!_init || State::Instance().isShuttingDown)
+        return;
+
+    SAFE_RELEASE(_sampler);
 }

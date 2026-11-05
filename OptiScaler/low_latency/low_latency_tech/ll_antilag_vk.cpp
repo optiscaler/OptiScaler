@@ -9,7 +9,7 @@ bool AntiLagVk::init(IUnknown* pDevice)
     return VulkanHooks::o_vkAntiLagUpdateAMD != nullptr;
 }
 
-void* AntiLagVk::get_tech_context() { return nullptr; }
+void* AntiLagVk::get_tech_context() { return device; }
 
 void AntiLagVk::update(VkAntiLagStageAMD stage, std::optional<uint64_t> frame_id)
 {

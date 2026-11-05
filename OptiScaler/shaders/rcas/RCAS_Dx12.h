@@ -6,7 +6,7 @@
 #include <shaders/Shader_Dx12Utils.h>
 #include <shaders/Shader_Dx12.h>
 
-#define RCAS_NUM_OF_HEAPS 2
+#define RCAS_NUM_OF_HEAPS 3
 
 class RCAS_Dx12 : public Shader_Dx12, public RCAS_Common
 {

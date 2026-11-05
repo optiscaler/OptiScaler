@@ -46,10 +46,11 @@ bool FT_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InSou
 
     auto resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
+    auto oldBuffer = _buffer;
     auto result =
         Shader_Dx12::CreateBufferResource(InDevice, InSource, InState, &_buffer, resourceFlags, 0, 0, createFormat);
 
-    if (result)
+    if (result && _buffer != oldBuffer)
     {
         _buffer->SetName(L"FT_Buffer");
         _bufferState = InState;
@@ -125,11 +126,7 @@ FT_Dx12::FT_Dx12(std::string InName, ID3D12Device* InDevice, DXGI_FORMAT InForma
     _init = InitHeaps(InDevice, _frameHeaps, FT_NUM_OF_HEAPS);
 }
 
-bool FT_Dx12::IsFormatCompatible(DXGI_FORMAT InFormat)
-{
-    // Bold move: accept all formats
-    return true;
-}
+bool FT_Dx12::IsFormatCompatible(DXGI_FORMAT InFormat) { return InFormat == format; }
 
 FT_Dx12::~FT_Dx12()
 {

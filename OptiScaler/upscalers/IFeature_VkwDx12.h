@@ -83,8 +83,11 @@ class IFeature_VkwDx12 : public virtual IFeature_Vk
     VkSemaphore vkSemaphoreCopyBack[VKDX12_BUFFER_COUNT] {};
     ID3D12Fence* dx12FenceTextureCopy[VKDX12_BUFFER_COUNT] {};
     HANDLE vkSHForTextureCopy[VKDX12_BUFFER_COUNT] {};
-    ULONG _fenceValue = 0;
+    uint64_t _fenceValue = 0;
     uint64_t pendingResourceCopyValue = 0;
+    VkCommandBuffer registeredVirtualCommandBuffer = VK_NULL_HANDLE;
+    bool commandListOpen = false;
+    uint32_t _abortedWaits = 0;
     std::mutex EvaluateMutex;
 
     std::vector<DetailedGpuTime> detailedGpuTimes;
@@ -104,6 +107,7 @@ class IFeature_VkwDx12 : public virtual IFeature_Vk
     PFN_vkImportSemaphoreWin32HandleKHR vkImportSemaphoreWin32HandleKHR = nullptr;
 
     // Helper methods
+    std::optional<LUID> VulkanDeviceLuid();
     HRESULT CreateDx12Device();
 
     bool CreateSharedTexture(const VkImageCreateInfo& ImageInfo, VkImage& VulkanResource, VkDeviceMemory& VulkanMemory,
@@ -125,7 +129,10 @@ class IFeature_VkwDx12 : public virtual IFeature_Vk
     bool CreateSharedFenceSemaphore();
 
     void ReleaseSharedResources();
+    // Lets the last upscale finish on D3D12
+    void FinishPendingWork();
     void ReleaseSyncResources();
+    void ReleaseSharedResource(VK_TEXTURE2D_RESOURCE_C& resource);
 
     template <typename F, typename Default> auto CallFeature(F&& f, Default&& def)
     {

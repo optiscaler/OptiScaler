@@ -8,3 +8,4 @@ ffxReturnCode_t ffxDestroyContext_Vk(ffxContext* context, const ffxAllocationCal
 ffxReturnCode_t ffxConfigure_Vk(ffxContext* context, const ffxConfigureDescHeader* desc);
 ffxReturnCode_t ffxQuery_Vk(ffxContext* context, ffxQueryDescHeader* desc);
 ffxReturnCode_t ffxDispatch_Vk(ffxContext* context, ffxDispatchDescHeader* desc);
+void FfxApiVkDeviceDestroyed(VkDevice device);

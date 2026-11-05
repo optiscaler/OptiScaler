@@ -18,50 +18,53 @@ bool IFeature::SetInitParameters(NVSDK_NGX_Parameter* InParameters)
 
     if (InParameters->Get(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags, &_featureFlags) == NVSDK_NGX_Result_Success)
     {
-        if (Config::Instance()->HDR.has_value())
+        if (std::optional<bool> hdr = Config::Instance()->HDR; hdr.has_value())
         {
-            LOG_INFO("HDR flag overrided by user: {}", Config::Instance()->HDR.value());
-            _initFlags.IsHdr = Config::Instance()->HDR.value();
+            LOG_INFO("HDR flag overrided by user: {}", hdr.value());
+            _initFlags.IsHdr = hdr.value();
         }
         else
         {
             _initFlags.IsHdr = _featureFlags & NVSDK_NGX_DLSS_Feature_Flags_IsHDR;
         }
 
-        if (Config::Instance()->OverrideSharpness.has_value())
+        if (std::optional<bool> overrideSharpness = Config::Instance()->OverrideSharpness;
+            overrideSharpness.has_value())
         {
-            LOG_INFO("SharpenEnabled flag overrided by user: {}", Config::Instance()->OverrideSharpness.value());
-            _initFlags.SharpenEnabled = Config::Instance()->OverrideSharpness.value();
+            LOG_INFO("SharpenEnabled flag overrided by user: {}", overrideSharpness.value());
+            _initFlags.SharpenEnabled = overrideSharpness.value();
         }
         else
         {
             _initFlags.SharpenEnabled = _featureFlags & NVSDK_NGX_DLSS_Feature_Flags_DoSharpening;
         }
 
-        if (Config::Instance()->DepthInverted.has_value())
+        if (std::optional<bool> depthInverted = Config::Instance()->DepthInverted; depthInverted.has_value())
         {
-            LOG_INFO("DepthInverted flag overrided by user: {}", Config::Instance()->DepthInverted.value());
-            _initFlags.DepthInverted = Config::Instance()->DepthInverted.value();
+            LOG_INFO("DepthInverted flag overrided by user: {}", depthInverted.value());
+            _initFlags.DepthInverted = depthInverted.value();
         }
         else
         {
             _initFlags.DepthInverted = _featureFlags & NVSDK_NGX_DLSS_Feature_Flags_DepthInverted;
         }
 
-        if (Config::Instance()->JitterCancellation.has_value())
+        if (std::optional<bool> jitterCancellation = Config::Instance()->JitterCancellation;
+            jitterCancellation.has_value())
         {
-            LOG_INFO("JitteredMV flag overrided by user: {}", Config::Instance()->JitterCancellation.value());
-            _initFlags.JitteredMV = Config::Instance()->JitterCancellation.value();
+            LOG_INFO("JitteredMV flag overrided by user: {}", jitterCancellation.value());
+            _initFlags.JitteredMV = jitterCancellation.value();
         }
         else
         {
             _initFlags.JitteredMV = _featureFlags & NVSDK_NGX_DLSS_Feature_Flags_MVJittered;
         }
 
-        if (Config::Instance()->DisplayResolution.has_value())
+        if (std::optional<bool> displayResolution = Config::Instance()->DisplayResolution;
+            displayResolution.has_value())
         {
-            LOG_INFO("LowResMV flag overrided by user: {}", !Config::Instance()->DisplayResolution.value());
-            _initFlags.LowResMV = !Config::Instance()->DisplayResolution.value();
+            LOG_INFO("LowResMV flag overrided by user: {}", !displayResolution.value());
+            _initFlags.LowResMV = !displayResolution.value();
         }
         else
         {
@@ -69,25 +72,26 @@ bool IFeature::SetInitParameters(NVSDK_NGX_Parameter* InParameters)
         }
 
         // First check state to prevent upscaler re-init loops
-        if (State::Instance().autoExposure.has_value())
+        if (std::optional<bool> stateAutoExposure = State::Instance().autoExposure; stateAutoExposure.has_value())
         {
-            LOG_INFO("AutoExposure flag overrided by OptiScaler: {}", State::Instance().autoExposure.value());
-            _initFlags.AutoExposure = State::Instance().autoExposure.value();
+            LOG_INFO("AutoExposure flag overrided by OptiScaler: {}", stateAutoExposure.value());
+            _initFlags.AutoExposure = stateAutoExposure.value();
         }
-        else if (Config::Instance()->AutoExposure.has_value())
+        else if (std::optional<bool> autoExposure = Config::Instance()->AutoExposure; autoExposure.has_value())
         {
-            LOG_INFO("AutoExposure flag overrided by user: {}", Config::Instance()->AutoExposure.value());
-            _initFlags.AutoExposure = Config::Instance()->AutoExposure.value();
+            LOG_INFO("AutoExposure flag overrided by user: {}", autoExposure.value());
+            _initFlags.AutoExposure = autoExposure.value();
         }
         else
         {
             _initFlags.AutoExposure = _featureFlags & NVSDK_NGX_DLSS_Feature_Flags_AutoExposure;
         }
 
-        if (Config::Instance()->DynamicResolution.has_value())
+        if (std::optional<bool> dynamicResolution = Config::Instance()->DynamicResolution;
+            dynamicResolution.has_value())
         {
-            LOG_INFO("DynamicResolution flag overrided by user: {}", Config::Instance()->DynamicResolution.value());
-            _initFlags.DynamicResolution = Config::Instance()->DynamicResolution.value();
+            LOG_INFO("DynamicResolution flag overrided by user: {}", dynamicResolution.value());
+            _initFlags.DynamicResolution = dynamicResolution.value();
         }
         else
         {
@@ -304,7 +308,7 @@ bool IFeature::UpdateOutputResolution(const NVSDK_NGX_Parameter* InParameters)
 
     if (Config::Instance()->OutputScalingEnabled.value_or_default())
     {
-        if (_targetWidth == fsrDynamicOutputWidth || _targetHeight == fsrDynamicOutputHeight)
+        if (_targetWidth == fsrDynamicOutputWidth && _targetHeight == fsrDynamicOutputHeight)
             return false;
 
         if (fsrDynamicOutputWidth > 0 && fsrDynamicOutputHeight > 0 &&

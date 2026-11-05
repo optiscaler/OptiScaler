@@ -10,11 +10,13 @@ class OwnedMutex
   private:
     std::shared_mutex mtx;
     std::atomic<uint32_t> owner { 0 }; // don't use 0
+    std::atomic<DWORD> ownerThread { 0 };
 
   public:
     void lock(uint32_t _owner)
     {
         mtx.lock();
+        ownerThread.store(GetCurrentThreadId(), std::memory_order_release);
         owner.store(_owner, std::memory_order_release);
     }
 
@@ -29,11 +31,15 @@ class OwnedMutex
             return;
         }
 
+        ownerThread.store(0, std::memory_order_release);
         owner.store(0, std::memory_order_release);
         mtx.unlock();
     }
 
     uint32_t getOwner() { return owner.load(std::memory_order_seq_cst); }
+
+    // Locking again from the same thread would deadlock, the mutex isn't recursive
+    bool isLockedByThisThread() { return ownerThread.load(std::memory_order_acquire) == GetCurrentThreadId(); }
 };
 
 class OwnedLockGuard

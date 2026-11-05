@@ -5,6 +5,7 @@
 
 #include <State.h>
 #include <Util.h>
+#include <misc/DeferredRelease.h>
 
 #define ASSIGN_DESC(dest, src)                                                                                         \
     dest.Width = src.Width;                                                                                            \
@@ -64,7 +65,8 @@ void Dx11WithDx12::ReleaseSharedTexture(D3D11_TEXTURE2D_RESOURCE_C* resource)
     if (resource == nullptr)
         return;
 
-    SAFE_RELEASE(resource->Dx12Resource);
+    // D3D12 queue can still be using it
+    DeferredRelease::Release(resource->Dx12Resource);
 
     if (resource->Dx11Handle != NULL && resource->UsesNTHandle)
         CloseHandle(resource->Dx11Handle);
@@ -399,7 +401,6 @@ void Dx11WithDx12::Init(ID3D11Device* dx11Device, ID3D11DeviceContext* dx11Conte
     if (dx11DeviceResult != S_OK || newDx11Device == nullptr)
     {
         LOG_ERROR("QueryInterface ID3D11Device5 result: {0:x}", dx11DeviceResult);
-        newDx11Context->Release();
         return;
     }
 
@@ -1014,7 +1015,9 @@ bool Dx11WithDx12::CopyUpscalerOutputToDx11(D3D11_UPSCALER_RESOURCE_CACHE_C& cac
         return false;
     }
 
-    Dx11DeviceContext->CopyResource(cache.ParamOutput[outputIndex], cache.Output[outputIndex].SharedTexture);
+    // An already shared output is written in place, copying a resource onto itself is invalid
+    if (cache.ParamOutput[outputIndex] != static_cast<ID3D11Resource*>(cache.Output[outputIndex].SharedTexture))
+        Dx11DeviceContext->CopyResource(cache.ParamOutput[outputIndex], cache.Output[outputIndex].SharedTexture);
 
     // After a CPU wait the D3D11 queue is idle, submit right away instead of waiting for the next flush
     if (UseCpuWaitForDx12())

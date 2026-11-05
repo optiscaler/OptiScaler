@@ -11,16 +11,18 @@
 
 #include "menu_common.h"
 #include <shaders/menu_blur/MenuBlur_Vk.h>
+#include <misc/DeferredRelease.h>
+#include <framegen/IFGFeature_Vk.h>
+#include <State.h>
+
+#include <magic_enum.hpp>
 
 // Vulkan overlay code adopted from here:
 // https://gist.github.com/mem99/0ec31ca302927457f86b1d6756aaa8c4
 // Need to check resize & recreate fixes
 
-static bool _isInited = false;
-
-static bool _vulkanObjectsCreated = false;
+static std::atomic<bool> _vulkanObjectsCreated { false };
 static std::mutex _vkCleanMutex;
-static std::mutex _vkPresentMutex;
 
 // Family of every queue, games can present from queues the menu can't submit to
 static std::unordered_map<VkQueue, uint32_t> _queueFamilies;
@@ -35,7 +37,11 @@ static uint32_t _scImageCount;
 
 // Swapchain the menu's frames were made for, other swapchains are presented without the menu
 static VkSwapchainKHR _menuSwapchain = VK_NULL_HANDLE;
+static VkSwapchainKHR _menuOldSwapchain = VK_NULL_HANDLE;
 static ULONG64 _frameCount;
+
+// Window of a destroyed menu swapchain, probe windows can stay alive
+static std::atomic<HWND> _releasedHwnd { nullptr };
 
 // menu background blur
 // Raw pointer, static destruction at exit would use an already destroyed device
@@ -84,22 +90,13 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
         return;
     }
 
-    if (_vulkanObjectsCreated)
-    {
-        LOG_DEBUG("_vulkanObjectsCreated, releasing objects");
+    // Also objects of a half finished creation
+    MenuOverlayVk::DestroyVulkanObjects(false);
 
-        if (_ImVulkan_Info.Device != VK_NULL_HANDLE)
-            vkDeviceWaitIdle(_ImVulkan_Info.Device);
+    LOG_DEBUG("Swapchain format: {}", magic_enum::enum_name(pCreateInfo->imageFormat));
 
-        DestroyMenuBlur();
-
-        if (ImGui::GetIO().BackendRendererUserData != nullptr)
-            ImGui_ImplVulkan_Shutdown(false);
-
-        MenuOverlayVk::DestroyVulkanObjects(false);
-
-        _vulkanObjectsCreated = false;
-    }
+    const bool srgbTarget = IFGFeature_Vk::WithoutSrgb(pCreateInfo->imageFormat) != pCreateInfo->imageFormat;
+    const bool srgbChanged = std::exchange(State::Instance().menuTargetSrgb, srgbTarget) != srgbTarget;
 
     // Initialize ImGui
     if (!MenuOverlayBase::IsInited() || MenuOverlayBase::Handle() != hwnd)
@@ -109,6 +106,10 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
 
         LOG_DEBUG("MenuOverlayBase::Init");
         MenuOverlayBase::Init(hwnd, false);
+    }
+    else if (srgbChanged)
+    {
+        MenuOverlayBase::ApplyThemeStyle();
     }
 
     ImGuiIO& io = ImGui::GetIO();
@@ -153,7 +154,13 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
     {
         _ImVulkan_Frames = (ImGui_ImplVulkanH_Frame*) IM_ALLOC(sizeof(ImGui_ImplVulkanH_Frame) * _scImageCount);
         _ImVulkan_Semaphores = (VkSemaphore*) IM_ALLOC(sizeof(VkSemaphore) * _scImageCount);
+        memset(_ImVulkan_Frames, 0, sizeof(ImGui_ImplVulkanH_Frame) * _scImageCount);
+        memset(_ImVulkan_Semaphores, 0, sizeof(VkSemaphore) * _scImageCount);
     }
+
+    // Destroy can free a half finished creation
+    _ImVulkan_Info.Device = device;
+    _ImVulkan_Info.ImageCount = _scImageCount;
 
     // Select queue family.
     uint32_t queueFamily = 0;
@@ -165,8 +172,8 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
         // get queues
         if (count > 0)
         {
-            VkQueueFamilyProperties queues[8];
-            vkGetPhysicalDeviceQueueFamilyProperties(pd, &count, queues);
+            std::vector<VkQueueFamilyProperties> queues(count);
+            vkGetPhysicalDeviceQueueFamilyProperties(pd, &count, queues.data());
 
             // find graphic queue
             for (uint32_t i = 0; i < count; i++)
@@ -209,6 +216,8 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
             LOG_ERROR("vkCreateDescriptorPool error: {0:X}", (UINT) result);
             return;
         }
+
+        _ImVulkan_Info.DescriptorPool = pool;
     }
 
     // Create the render pass
@@ -399,7 +408,7 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
         }
     }
 
-    // Initialize ImGui and upload fonts
+    // Initialize ImGui, textures are uploaded while rendering
     {
         _ImVulkan_Info.Instance = instance;
         _ImVulkan_Info.PhysicalDevice = pd;
@@ -418,63 +427,19 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
 
         if (!initResult)
             return;
-
-        // Upload Fonts
-        // Use any command queue
-        VkCommandPool command_pool = _ImVulkan_Frames[0].CommandPool;
-        VkCommandBuffer command_buffer = _ImVulkan_Frames[0].CommandBuffer;
-        result = vkResetCommandPool(device, command_pool, 0);
-        if (result != VK_SUCCESS)
-        {
-            LOG_ERROR("vkBeginCommandBuffer error: {0:X}", (UINT) result);
-            return;
-        }
-
-        VkCommandBufferBeginInfo begin_info = {};
-        begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        begin_info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        result = vkBeginCommandBuffer(command_buffer, &begin_info);
-        if (result != VK_SUCCESS)
-        {
-            LOG_ERROR("vkBeginCommandBuffer error: {0:X}", (UINT) result);
-            return;
-        }
-
-        // initResult = ImGui_ImplVulkan_CreateFontsTexture();
-        // LOG_DEBUG("ImGui_ImplVulkan_CreateFontsTexture result: {}", initResult);
-
-        VkSubmitInfo end_info = {};
-        end_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        end_info.commandBufferCount = 1;
-        end_info.pCommandBuffers = &command_buffer;
-
-        result = vkEndCommandBuffer(command_buffer);
-        if (result != VK_SUCCESS)
-        {
-            LOG_ERROR("vkEndCommandBuffer error: {0:X}", (UINT) result);
-            return;
-        }
-
-        result = vkQueueSubmit(queue, 1, &end_info, VK_NULL_HANDLE);
-        if (result != VK_SUCCESS)
-        {
-            LOG_ERROR("vkQueueSubmit error: {0:X}", (UINT) result);
-            return;
-        }
-
-        result = vkDeviceWaitIdle(device);
-        if (result != VK_SUCCESS)
-        {
-            LOG_ERROR("vkDeviceWaitIdle error: {0:X}", (UINT) result);
-            return;
-        }
     }
 
-    _vulkanObjectsCreated = true;
-    LOG_FUNC_RESULT(_vulkanObjectsCreated);
+    // Present reads both under the lock
+    {
+        std::lock_guard lock(_vkCleanMutex);
+        _menuSwapchain = *pSwapchain;
+        _vulkanObjectsCreated = true;
+    }
+
+    LOG_FUNC_RESULT(true);
 }
 
-void MenuOverlayVk::DestroyVulkanObjects(bool shutdown)
+void MenuOverlayVk::DestroyVulkanObjects(bool shutdown, VkDevice device, VkSwapchainKHR swapchain)
 {
     if (_ImVulkan_Info.Device == VK_NULL_HANDLE)
         return;
@@ -484,21 +449,47 @@ void MenuOverlayVk::DestroyVulkanObjects(bool shutdown)
 
     _vkCleanMutex.lock();
 
-    auto result = vkDeviceWaitIdle(_ImVulkan_Info.Device);
-    if (result != VK_SUCCESS && !shutdown)
-        LOG_WARN("vkDeviceWaitIdle error: {0:X}", (UINT) result);
+    // Another thread can be done with it meanwhile, or have made the objects of a new swapchain
+    if (_ImVulkan_Info.Device == VK_NULL_HANDLE ||
+        (swapchain != VK_NULL_HANDLE && (swapchain != _menuSwapchain || device != _ImVulkan_Info.Device)))
+    {
+        _vkCleanMutex.unlock();
+        return;
+    }
+
+    // Only the menu's own submits use these, waiting the whole device would touch the game's queues
+    std::vector<VkFence> fences;
+    for (uint32_t i = 0; i < _ImVulkan_Info.ImageCount; i++)
+    {
+        if (_ImVulkan_Frames != nullptr && _ImVulkan_Frames[i].Fence != VK_NULL_HANDLE)
+            fences.push_back(_ImVulkan_Frames[i].Fence);
+    }
+
+    if (!fences.empty())
+    {
+        auto result = vkWaitForFences(_ImVulkan_Info.Device, static_cast<uint32_t>(fences.size()), fences.data(),
+                                      VK_TRUE, UINT64_MAX);
+        if (result != VK_SUCCESS && !shutdown)
+            LOG_WARN("vkWaitForFences error: {0:X}", (UINT) result);
+    }
 
     if (!shutdown)
         DestroyMenuBlur();
 
-    if (shutdown)
-    {
-        if (_vkRenderPass)
-            vkDestroyRenderPass(_ImVulkan_Info.Device, _vkRenderPass, VK_NULL_HANDLE);
+    // ImGui's pipeline and descriptor sets come from the render pass and pool below
+    if (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().BackendRendererUserData != nullptr &&
+        ImGui::GetIO().BackendRendererName != nullptr &&
+        strcmp(ImGui::GetIO().BackendRendererName, "imgui_impl_vulkan") == 0)
+        ImGui_ImplVulkan_Shutdown(false);
 
-        if (_ImVulkan_Info.DescriptorPool)
-            vkDestroyDescriptorPool(_ImVulkan_Info.Device, _ImVulkan_Info.DescriptorPool, VK_NULL_HANDLE);
+    if (_vkRenderPass != VK_NULL_HANDLE)
+    {
+        vkDestroyRenderPass(_ImVulkan_Info.Device, _vkRenderPass, VK_NULL_HANDLE);
+        _vkRenderPass = VK_NULL_HANDLE;
     }
+
+    if (_ImVulkan_Info.DescriptorPool != VK_NULL_HANDLE)
+        vkDestroyDescriptorPool(_ImVulkan_Info.Device, _ImVulkan_Info.DescriptorPool, VK_NULL_HANDLE);
 
     for (uint32_t i = 0; i < _ImVulkan_Info.ImageCount; i++)
     {
@@ -534,16 +525,36 @@ void MenuOverlayVk::DestroyVulkanObjects(bool shutdown)
             fd->Framebuffer = VK_NULL_HANDLE;
         }
 
+        // A present can still be waiting on it
         if (_ImVulkan_Semaphores[i] != VK_NULL_HANDLE)
         {
-            vkDestroySemaphore(_ImVulkan_Info.Device, _ImVulkan_Semaphores[i], VK_NULL_HANDLE);
+            DeferredRelease::Enqueue([vkDevice = _ImVulkan_Info.Device, semaphore = _ImVulkan_Semaphores[i]]()
+                                     { vkDestroySemaphore(vkDevice, semaphore, VK_NULL_HANDLE); },
+                                     (uint64_t) _ImVulkan_Info.Device);
             _ImVulkan_Semaphores[i] = VK_NULL_HANDLE;
         }
     }
 
+    // Allocated again with the next swapchain's image count
+    IM_FREE(_ImVulkan_Frames);
+    IM_FREE(_ImVulkan_Semaphores);
+    _ImVulkan_Frames = nullptr;
+    _ImVulkan_Semaphores = nullptr;
+
     _ImVulkan_Info = {};
+    _vulkanObjectsCreated = false;
+    _menuSwapchain = VK_NULL_HANDLE;
+
+    if (swapchain != VK_NULL_HANDLE)
+        _releasedHwnd = MenuOverlayBase::Handle();
 
     _vkCleanMutex.unlock();
+}
+
+void MenuOverlayVk::ReleaseDevice(VkDevice device)
+{
+    if (device != VK_NULL_HANDLE && device == _ImVulkan_Info.Device)
+        DestroyVulkanObjects(false);
 }
 
 void MenuOverlayVk::DeviceCreated(VkDevice device, const VkDeviceCreateInfo* pCreateInfo)
@@ -574,16 +585,17 @@ bool MenuOverlayVk::QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo)
     if (!_vulkanObjectsCreated)
         return true;
 
-    if (!MenuOverlayBase::IsInited() || _ImVulkan_Info.Device == VK_NULL_HANDLE)
+    if (!MenuOverlayBase::IsInited())
         return true;
 
     if (pPresentInfo->swapchainCount == 0)
         return false;
 
-    if (pPresentInfo->pSwapchains[0] != _menuSwapchain)
+    // Cleanup on another thread can be waiting on this present's queue, skip the menu instead of blocking
+    std::unique_lock cleanLock(_vkCleanMutex, std::try_to_lock);
+    if (!cleanLock.owns_lock() || !_vulkanObjectsCreated || pPresentInfo->pSwapchains[0] != _menuSwapchain)
         return true;
 
-    // std::lock_guard<std::mutex> lock(_vkPresentMutex);
     LOG_DEBUG("rendering menu, swapchain count: {0}", pPresentInfo->swapchainCount);
 
     ImGuiIO& io = ImGui::GetIO();
@@ -631,14 +643,15 @@ bool MenuOverlayVk::QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo)
             ImGui_ImplVulkanH_Frame* fd = &_ImVulkan_Frames[idx];
             const bool blurMenu = blurReady && MenuCommon::BackgroundBlurUsed();
 
+            if (fd->Fence == VK_NULL_HANDLE)
+                return true;
+
             if (auto wResult = vkWaitForFences(_ImVulkan_Info.Device, 1, &fd->Fence, VK_TRUE, UINT64_MAX);
                 wResult != VK_SUCCESS)
             {
                 LOG_ERROR("vkWaitForFences error: {}", (int32_t) wResult);
                 return true;
             }
-
-            vkResetFences(_ImVulkan_Info.Device, 1, &fd->Fence);
 
             {
                 vkResetCommandPool(_ImVulkan_Info.Device, fd->CommandPool, 0);
@@ -657,8 +670,7 @@ bool MenuOverlayVk::QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo)
                 info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
                 info.renderPass = _vkRenderPass;
                 info.framebuffer = fd->Framebuffer;
-                info.renderArea.extent.width = static_cast<uint32_t>(ImGui::GetIO().DisplaySize.x);
-                info.renderArea.extent.height = static_cast<uint32_t>(ImGui::GetIO().DisplaySize.y);
+                info.renderArea.extent = _scExtent;
                 vkCmdBeginRenderPass(fd->CommandBuffer, &info, VK_SUBPASS_CONTENTS_INLINE);
             }
 
@@ -677,24 +689,36 @@ bool MenuOverlayVk::QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo)
             // Submit queue and semaphores
             LOG_DEBUG("waitSemaphoreCount: {0}", pPresentInfo->waitSemaphoreCount);
             // Blur copies the image with a transfer, so everything has to wait for the game
-            VkPipelineStageFlags waitStages[8];
-            std::fill(std::begin(waitStages), std::end(waitStages),
-                      blurMenu ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            std::vector<VkPipelineStageFlags> waitStages(pPresentInfo->waitSemaphoreCount,
+                                                         blurMenu ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
+                                                                  : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
             VkSubmitInfo submit_info = {};
             submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
             submit_info.commandBufferCount = 1;
             submit_info.pCommandBuffers = &fd->CommandBuffer;
-            submit_info.pWaitDstStageMask = waitStages;
+            submit_info.pWaitDstStageMask = waitStages.data();
             submit_info.waitSemaphoreCount = pPresentInfo->waitSemaphoreCount;
             submit_info.pWaitSemaphores = pPresentInfo->pWaitSemaphores;
             submit_info.signalSemaphoreCount = 1;
             submit_info.pSignalSemaphores = &_ImVulkan_Semaphores[semaphoreIndex];
 
+            // Reset only when a submit follows, destroy waits on it
+            vkResetFences(_ImVulkan_Info.Device, 1, &fd->Fence);
             auto qResult = vkQueueSubmit(menuQueue, 1, &submit_info, fd->Fence);
             if (qResult != VK_SUCCESS)
             {
                 LOG_ERROR("vkQueueSubmit error: {0:X}", (UINT) qResult);
+
+                // Failed submit leaves the fence unsignaled, waits on it would never return
+                VkFenceCreateInfo fenceInfo {};
+                fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+                fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+                vkDestroyFence(_ImVulkan_Info.Device, fd->Fence, VK_NULL_HANDLE);
+                if (vkCreateFence(_ImVulkan_Info.Device, &fenceInfo, VK_NULL_HANDLE, &fd->Fence) != VK_SUCCESS)
+                    fd->Fence = VK_NULL_HANDLE;
+
                 return false;
             }
 
@@ -725,11 +749,7 @@ void MenuOverlayVk::CreateSwapchain(VkDevice device, VkPhysicalDevice pd, VkInst
 
         if (MenuOverlayBase::IsInited())
         {
-            if (_ImVulkan_Info.Device != VK_NULL_HANDLE)
-                vkDeviceWaitIdle(_ImVulkan_Info.Device);
-
-            DestroyMenuBlur();
-            ImGui_ImplVulkan_Shutdown(false);
+            DestroyVulkanObjects(false);
             LOG_DEBUG("MenuOverlayBase::Shutdown();");
             MenuOverlayBase::Shutdown();
         }
@@ -740,17 +760,36 @@ void MenuOverlayVk::CreateSwapchain(VkDevice device, VkPhysicalDevice pd, VkInst
 
     CreateVulkanObjects(device, pd, instance, hwnd, pCreateInfo, pSwapchain);
 
-    if (_ImVulkan_Info.Device != VK_NULL_HANDLE)
+    if (_vulkanObjectsCreated)
     {
-        _menuSwapchain = *pSwapchain;
-        _isInited = true;
+        _menuOldSwapchain = pCreateInfo->oldSwapchain;
+        _releasedHwnd = nullptr;
         MenuOverlayBase::VulkanReady();
         LOG_DEBUG("Vulkan ready");
     }
 }
 
+void MenuOverlayVk::DestroySwapchain(VkDevice device, VkSwapchainKHR swapchain)
+{
+    // Swapchain handles are only unique per device
+    if (swapchain == VK_NULL_HANDLE || swapchain != _menuSwapchain || device != _ImVulkan_Info.Device)
+        return;
+
+    // FG can give the new swapchain the retired one's handle, that destroy is the old one
+    if (swapchain == _menuOldSwapchain)
+    {
+        _menuOldSwapchain = VK_NULL_HANDLE;
+        return;
+    }
+
+    LOG_DEBUG("Menu swapchain {:X} destroyed", (UINT64) swapchain);
+
+    // Image views and framebuffers of its images go before it
+    DestroyVulkanObjects(false, device, swapchain);
+}
+
 bool MenuOverlayVk::OnOtherWindow(HWND hwnd)
 {
     auto menuHwnd = MenuOverlayBase::Handle();
-    return MenuOverlayBase::IsInited() && menuHwnd != hwnd && IsWindow(menuHwnd);
+    return MenuOverlayBase::IsInited() && menuHwnd != hwnd && menuHwnd != _releasedHwnd && IsWindow(menuHwnd);
 }

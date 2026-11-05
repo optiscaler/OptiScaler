@@ -47,56 +47,36 @@ const GUID IID_IUnwrappedDXGISwapChain = {
     0xe8a33b4a, 0x1405, 0x424c, { 0xae, 0x88, 0xd, 0x3e, 0x9d, 0x46, 0xc9, 0x14 }
 };
 
-static ID3D12Fence* resizeFence = nullptr;
-static UINT64 resizeFenceValue = 0;
-static HANDLE resizeFenceEvent = nullptr;
-
+// Object is the swapchain's command queue, resizes are rare so the fence is made on its device each time
 static void WaitForGPUIdle(IUnknown* object)
 {
-    if (State::Instance().currentD3D12Device == nullptr || object == nullptr)
+    if (object == nullptr)
         return;
 
-    ID3D12CommandQueue* queue = nullptr;
+    ComPtr<ID3D12CommandQueue> queue;
+    ComPtr<ID3D12Device> device;
+    ComPtr<ID3D12Fence> fence;
 
-    if (object->QueryInterface(IID_PPV_ARGS(&queue)) == S_OK)
+    if (object->QueryInterface(IID_PPV_ARGS(&queue)) != S_OK || queue->GetDevice(IID_PPV_ARGS(&device)) != S_OK ||
+        device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)) != S_OK ||
+        queue->Signal(fence.Get(), 1) != S_OK || fence->GetCompletedValue() >= 1)
     {
-        LOG_DEBUG("Command queue obtained for GPU idle wait");
-        queue->Release();
+        return;
     }
 
-    if (queue != nullptr && resizeFence != nullptr && resizeFenceEvent != nullptr)
+    HANDLE event = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+
+    if (event != nullptr && fence->SetEventOnCompletion(1, event) == S_OK)
     {
-        if (State::Instance().currentD3D12Device != nullptr)
-        {
-            if (resizeFence != nullptr)
-            {
-                resizeFence->Release();
-                resizeFence = nullptr;
-            }
-
-            if (resizeFenceEvent != nullptr)
-            {
-                CloseHandle(resizeFenceEvent);
-                resizeFenceEvent = nullptr;
-            }
-
-            State::Instance().currentD3D12Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&resizeFence));
-            resizeFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-        }
-
         LOG_DEBUG("Waiting for GPU to finish before resizing buffers");
 
-        resizeFenceValue++;
-        queue->Signal(resizeFence, resizeFenceValue);
-
-        if (resizeFence->GetCompletedValue() < resizeFenceValue)
-        {
-            resizeFence->SetEventOnCompletion(resizeFenceValue, resizeFenceEvent);
-            // Max 5 sec
-            auto waitResult = WaitForSingleObject(resizeFenceEvent, 5000);
-            LOG_DEBUG("WaitForSingleObject result: {:X}", waitResult);
-        }
+        // Max 5 sec
+        auto waitResult = WaitForSingleObject(event, 5000);
+        LOG_DEBUG("WaitForSingleObject result: {:X}", waitResult);
     }
+
+    if (event != nullptr)
+        CloseHandle(event);
 }
 
 #ifdef DXGI_DEBUG_ENABLED
@@ -559,7 +539,8 @@ HRESULT STDMETHODCALLTYPE ReprojectionDXGISwapChain::ResizeBuffers1(UINT BufferC
     WaitForGPUIdle(_device);
 
     _lastFlags = SwapChainFlags;
-    auto result = _real3->ResizeBuffers(BufferCount, Width, Height, Format, SwapChainFlags);
+    auto result = _real3->ResizeBuffers1(BufferCount, Width, Height, Format, SwapChainFlags, pCreationNodeMask,
+                                         ppPresentQueue);
 
     LOG_DEBUG("result: {0:X}", (UINT) result);
 

@@ -26,6 +26,9 @@ class FSRFG_Vk : public virtual IFGFeature_Vk
 
     // Selected FG version needs the swapchain from the other provider, the game recreates it on out of date
     bool _swapchainOutdated = false;
+
+    // Driver FG selected but not supported on this device, the SDK swapchain is used
+    bool _driverFgRejected = false;
     ffxQueryDescSwapchainReplacementFunctionsVK _functions {};
     feature_version _version { 0, 0, 0 };
 
@@ -56,6 +59,9 @@ class FSRFG_Vk : public virtual IFGFeature_Vk
 
     uint64_t _lastDispatchedFrameId = 0;
 
+    // Signaled by the prepare after the game's present semaphores, the present waits for it
+    VkSemaphore _preparedSemaphore[BUFFER_COUNT] {};
+
     void CreateContext();
     void QueryVersions();
     bool IsDriverVersionSelected();
@@ -64,7 +70,7 @@ class FSRFG_Vk : public virtual IFGFeature_Vk
     ffxReturnCode_t ConfigureEnabled(bool enabled);
     void ConfigureFramePaceTuning();
 
-    bool Dispatch();
+    VkSemaphore Dispatch(const VkPresentInfoKHR* pPresentInfo);
     ffxReturnCode_t DispatchCallback(ffxDispatchDescFrameGeneration* params);
     void DispatchHudShaders(ffxDispatchDescFrameGeneration* params);
     VkImageView PresentView(VkImage image);
@@ -90,6 +96,10 @@ class FSRFG_Vk : public virtual IFGFeature_Vk
                          const VkAllocationCallbacks* pAllocator, VkSwapchainKHR* pSwapchain) override final;
     bool DestroySwapchain(VkDevice device, VkSwapchainKHR swapchain,
                           const VkAllocationCallbacks* pAllocator) override final;
+    bool IsRetiredSwapchain(VkSwapchainKHR swapchain) const override final
+    {
+        return swapchain != VK_NULL_HANDLE && swapchain == _retiredSwapchain;
+    }
     VkResult GetSwapchainImages(VkDevice device, VkSwapchainKHR swapchain, uint32_t* pSwapchainImageCount,
                                 VkImage* pSwapchainImages) override final;
     VkResult AcquireNextImage(VkDevice device, VkSwapchainKHR swapchain, uint64_t timeout, VkSemaphore semaphore,

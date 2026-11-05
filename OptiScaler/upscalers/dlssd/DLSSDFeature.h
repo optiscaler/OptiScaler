@@ -12,7 +12,7 @@ class DLSSDFeature : public virtual IFeature
   protected:
     NVSDK_NGX_Handle _dlssdHandle = {};
     NVSDK_NGX_Handle* _p_dlssdHandle = nullptr;
-    inline static bool _dlssdInited = false;
+    bool _dlssdInited = false;
 
     void ProcessEvaluateParams(NVSDK_NGX_Parameter* InParameters);
     void ProcessInitParams(NVSDK_NGX_Parameter* InParameters);

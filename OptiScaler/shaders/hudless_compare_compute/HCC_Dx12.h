@@ -8,7 +8,7 @@
 #include <shaders/Shader_Dx12Utils.h>
 #include <shaders/Shader_Dx12.h>
 
-#define HCC_NUM_OF_HEAPS 2
+#define HCC_NUM_OF_HEAPS 3
 
 class HCC_Dx12 : public Shader_Dx12
 {

@@ -12,6 +12,7 @@ class D3D12Hooks
     static void Hook();
     static void HookAgility(HMODULE module);
     static void HookDevice(ID3D12Device* device);
+    static void CaptureDevice(ID3D12CommandQueue* queue);
     static void Unhook();
 
     // Enables/disables command list state recording for the CALLING THREAD.
@@ -21,4 +22,6 @@ class D3D12Hooks
     static bool CanRestoreRootSignature(ID3D12GraphicsCommandList* cmdList);
     static void HookToCommandListLate(ID3D12GraphicsCommandList* commandList);
     static void RestoreRoot(ID3D12GraphicsCommandList* cmdList);
+    static bool IsForcedHDRBuffer(ID3D12Resource* resource);
+    static DXGI_FORMAT ForcedHDRFormat();
 };

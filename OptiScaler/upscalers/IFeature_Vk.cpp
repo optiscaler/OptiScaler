@@ -138,19 +138,23 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
               } });
     }
 
-    _actualSharpness = _sharpness;
+    _actualSharpness.reset();
     if (useRcas)
     {
         pipeline.push_back(
             { // Setup
               [&](const VkImageInfo& nextOutput) -> VkImageInfo
               {
-                  InParameters->Set(NVSDK_NGX_Parameter_Sharpness, 0.0f);
-                  _sharpness = 0.0f;
-
-                  if (RCAS->CreateImageResource(Device, PhysicalDevice, nextOutput.Width, nextOutput.Height,
+                  // Same checks as Dispatch, a skipped pass must not take over the output
+                  if (paramMotion && paramOutput && RCAS->CanRender() &&
+                      RCAS->CreateImageResource(Device, PhysicalDevice, nextOutput.Width, nextOutput.Height,
                                                 nextOutput.Format, intermediateUsage))
                   {
+                      // Disable any built-in sharpness shaders
+                      InParameters->Set(NVSDK_NGX_Parameter_Sharpness, 0.0f);
+                      _actualSharpness = _sharpness;
+                      _sharpness = 0.0f;
+
                       RCAS->SetImageLayout(InCmdBuffer, RCAS->GetImage(), VK_IMAGE_LAYOUT_UNDEFINED,
                                            VK_IMAGE_LAYOUT_GENERAL, nextOutput.SubresourceRange);
 
@@ -200,9 +204,9 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
 
                   // In Vulkan we pass the Info structs instead of raw resources
                   VkImageInfo mvInfo = *(VkImageInfo*) &paramMotion->Resource.ImageViewInfo;
-                  VkImageInfo depthInfo = *(VkImageInfo*) &paramDepth->Resource.ImageViewInfo;
+                  VkImageInfo* depthInfo = paramDepth ? (VkImageInfo*) &paramDepth->Resource.ImageViewInfo : nullptr;
 
-                  if (!RCAS->Dispatch(Device, InCmdBuffer, rcasConstants, input, mvInfo, output, &depthInfo))
+                  if (!RCAS->Dispatch(Device, InCmdBuffer, rcasConstants, input, mvInfo, output, depthInfo))
                   {
                       Config::Instance()->RcasEnabled.set_volatile_value(false);
                       return false;
@@ -217,7 +221,9 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
             { // Setup
               [&](const VkImageInfo& nextOutput) -> VkImageInfo
               {
-                  if (Magnifier->CreateImageResource(Device, PhysicalDevice, nextOutput.Width, nextOutput.Height,
+                  // Same checks as Dispatch, a skipped pass must not take over the output
+                  if (paramMotion && paramOutput && Magnifier->CanRender() &&
+                      Magnifier->CreateImageResource(Device, PhysicalDevice, nextOutput.Width, nextOutput.Height,
                                                      nextOutput.Format, intermediateUsage))
                   {
                       Magnifier->SetImageLayout(InCmdBuffer, Magnifier->GetImage(), VK_IMAGE_LAYOUT_UNDEFINED,
@@ -234,19 +240,20 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
               // Dispatch
               [&](const VkImageInfo& input, const VkImageInfo& output) -> bool
               {
-                  if (!Magnifier->CanRender())
+                  if (!Magnifier->CanRender() || !paramMotion || !paramOutput)
                       return true;
 
                   Magnifier->SetImageLayout(InCmdBuffer, input.Image, VK_IMAGE_LAYOUT_GENERAL,
                                             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, input.SubresourceRange);
 
-                  // In Vulkan we pass the Info structs instead of raw resources
-                  VkImageInfo mvInfo = *(VkImageInfo*) &paramMotion->Resource.ImageViewInfo;
-                  VkImageInfo depthInfo = *(VkImageInfo*) &paramDepth->Resource.ImageViewInfo;
-
                   return Magnifier->Dispatch(InCmdBuffer, input, output);
               } });
     }
+
+    // RCAS setup and DLSS zero the game's sharpness, restored after EvaluateInternal
+    float originalSharpness = 0.0f;
+    bool hasSharpness =
+        InParameters->Get(NVSDK_NGX_Parameter_Sharpness, &originalSharpness) == NVSDK_NGX_Result_Success;
 
     // Iterate BACKWARDS to establish where each shader needs to pull its input from
     VkImageInfo currentTarget = originalOutput;
@@ -279,21 +286,6 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
 
     UpscalerTime->End(InCmdBuffer);
 
-    if (!evalResult)
-        return false;
-
-    // Iterate FORWARDS to execute the shaders in the defined order
-    for (auto& pass : pipeline)
-    {
-        if (pass.inputBuffer.Image != VK_NULL_HANDLE && pass.outputBuffer.Image != VK_NULL_HANDLE)
-        {
-            if (!pass.Dispatch(pass.inputBuffer, pass.outputBuffer))
-            {
-                return false;
-            }
-        }
-    }
-
     // Restore original output pointer
     if (paramOutput)
     {
@@ -303,6 +295,23 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
         paramOutput->Resource.ImageViewInfo.Format = originalOutput.Format;
         paramOutput->Resource.ImageViewInfo.Width = originalOutput.Width;
         paramOutput->Resource.ImageViewInfo.Height = originalOutput.Height;
+    }
+
+    if (hasSharpness)
+        InParameters->Set(NVSDK_NGX_Parameter_Sharpness, originalSharpness);
+
+    if (!evalResult)
+        return false;
+
+    // Iterate FORWARDS to execute the shaders in the defined order
+    for (auto& pass : pipeline)
+    {
+        if (pass.inputBuffer.Image != VK_NULL_HANDLE && pass.outputBuffer.Image != VK_NULL_HANDLE)
+        {
+            // Upscale succeeded, a failed pass only drops the remaining passes
+            if (!pass.Dispatch(pass.inputBuffer, pass.outputBuffer))
+                break;
+        }
     }
 
     _frameCount++;

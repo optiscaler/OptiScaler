@@ -47,8 +47,9 @@ inline int FrameLimit::combined_sleep(int64_t ns)
     else
         status = timer_sleep((ns - busywait_threshold) / 100);
 
-    if (int64_t sleep_deviation = ns - (Util::GetTimestamp() - current_time); sleep_deviation > 0 && !status)
-        status = busywait_sleep(sleep_deviation);
+    // Busy wait also covers a failed timer
+    if (int64_t sleep_deviation = ns - (Util::GetTimestamp() - current_time); sleep_deviation > 0)
+        busywait_sleep(sleep_deviation);
 
     return status;
 }
@@ -70,7 +71,7 @@ float FrameLimit::targetFps()
 
 void FrameLimit::sleep(bool fgActive)
 {
-    if (auto fpsCap = targetFps(); fpsCap != 0.0f)
+    if (auto fpsCap = targetFps(); fpsCap > 0.0f)
     {
         uint64_t min_interval_us = std::clamp((uint64_t) (1'000'000 / fpsCap), 0ULL, 100'000'000ULL);
 
@@ -86,8 +87,13 @@ void FrameLimit::sleep(bool fgActive)
         uint64_t frame_time = current_time - previous_frame_time;
         if (frame_time < 1000 * min_interval_us)
         {
-            if (auto res = combined_sleep(min_interval_us * 1000 - frame_time); res)
+            static bool errorLogged = false;
+
+            if (auto res = combined_sleep(min_interval_us * 1000 - frame_time); res && !errorLogged)
+            {
                 LOG_ERROR("Sleep command failed: {}", res);
+                errorLogged = true;
+            }
         }
         previous_frame_time = Util::GetTimestamp();
     }

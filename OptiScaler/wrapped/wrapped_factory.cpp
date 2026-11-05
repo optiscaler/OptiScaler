@@ -3,34 +3,86 @@
 
 #include <hooks/DxgiFactory_WrappedCalls.h>
 
+#include <DllNames.h>
 #include <detours/detours.h>
+
+#pragma intrinsic(_ReturnAddress)
 
 typedef HRESULT (*PFN_GetParent)(IDXGIAdapter* This, REFIID riid, void** ppParent);
 
 static PFN_GetParent o_GetParent = nullptr;
 
+// One wrapper per real factory, like DXGI returns the same parent every time
+static std::unordered_map<IUnknown*, WrappedIDXGIFactory7*> _wrappers;
+static std::recursive_mutex _wrappersMutex;
+
 static HRESULT hkGetParent(IDXGIAdapter* This, REFIID riid, void** ppParent)
 {
     auto result = o_GetParent(This, riid, ppParent);
 
-    if (State::Instance().skipParentWrapping)
-        return result;
-
-    if (result != S_OK)
-        return result;
-
-    auto f = reinterpret_cast<IDXGIFactory*>(*ppParent);
-    if (f == nullptr)
-        return result;
-
-    auto wf = new WrappedIDXGIFactory7(f);
-    *ppParent = wf;
+    if (result == S_OK)
+        WrappedIDXGIFactory7::WrapParent(riid, ppParent, _ReturnAddress());
 
     return result;
 }
 
+void WrappedIDXGIFactory7::WrapParent(REFIID riid, void** ppParent, void* returnAddress)
+{
+    if (State::Instance().skipParentWrapping || ppParent == nullptr || *ppParent == nullptr)
+        return;
+
+    // The wrapper only has the factory vtable
+    if (riid != __uuidof(IUnknown) && riid != __uuidof(IDXGIObject) && riid != __uuidof(IDXGIFactory) &&
+        riid != __uuidof(IDXGIFactory1) && riid != __uuidof(IDXGIFactory2) && riid != __uuidof(IDXGIFactory3) &&
+        riid != __uuidof(IDXGIFactory4) && riid != __uuidof(IDXGIFactory5) && riid != __uuidof(IDXGIFactory6) &&
+        riid != __uuidof(IDXGIFactory7))
+    {
+        return;
+    }
+
+    // Same as factory creation, these get the real factory
+    auto caller = Util::WhoIsTheCaller(returnAddress);
+    if (CheckDllName(&caller, &skipDxgiWrappingNames))
+        return;
+
+    auto parent = reinterpret_cast<IUnknown*>(*ppParent);
+
+    // Parent of a wrapped swapchain is already wrapped
+    WrappedIDXGIFactory7* wrapped = nullptr;
+    if (parent->QueryInterface(IID_PPV_ARGS(&wrapped)) == S_OK)
+    {
+        wrapped->Release();
+        return;
+    }
+
+    // Parent of an output is an adapter
+    IDXGIFactory* real = nullptr;
+    if (parent->QueryInterface(IID_PPV_ARGS(&real)) != S_OK)
+        return;
+
+    parent->Release();
+
+    IUnknown* identity = nullptr;
+    if (real->QueryInterface(IID_PPV_ARGS(&identity)) == S_OK)
+        identity->Release();
+
+    std::scoped_lock lock(_wrappersMutex);
+
+    if (auto it = _wrappers.find(identity); it != _wrappers.end() && it->second->TryAddRef())
+    {
+        real->Release();
+        *ppParent = it->second;
+        return;
+    }
+
+    *ppParent = new WrappedIDXGIFactory7(real);
+}
+
 static void AttachToAdapter(IDXGIAdapter* adapter)
 {
+    static std::mutex attachMutex;
+    std::scoped_lock lock(attachMutex);
+
     if (o_GetParent != nullptr)
         return;
 
@@ -56,17 +108,16 @@ static void AttachToAdapter(IDXGIAdapter* adapter)
     }
 }
 
-static UINT fCount = 0;
+static std::atomic<UINT> fCount = 0;
 
 WrappedIDXGIFactory7::WrappedIDXGIFactory7(IDXGIFactory* real)
 {
     if (real == nullptr)
         return;
 
-    fCount++;
-    _id = fCount;
+    _id = ++fCount;
 
-    LOG_WARN("{}", _id);
+    LOG_DEBUG("{}", _id);
 
     _real = real;
     _refCount = 1;
@@ -91,12 +142,41 @@ WrappedIDXGIFactory7::WrappedIDXGIFactory7(IDXGIFactory* real)
 
     if (real->QueryInterface(IID_PPV_ARGS(&_real7)) == S_OK)
         _real7->Release();
+
+    if (real->QueryInterface(IID_PPV_ARGS(&_identity)) == S_OK)
+    {
+        _identity->Release();
+
+        std::scoped_lock lock(_wrappersMutex);
+        _wrappers[_identity] = this;
+    }
 }
 
 WrappedIDXGIFactory7::~WrappedIDXGIFactory7() {}
 
+bool WrappedIDXGIFactory7::TryAddRef()
+{
+    // A wrapper at 0 is being destroyed
+    ULONG count = _refCount;
+
+    while (count != 0)
+    {
+        ULONG prev = InterlockedCompareExchange(&_refCount, count + 1, count);
+
+        if (prev == count)
+            return true;
+
+        count = prev;
+    }
+
+    return false;
+}
+
 HRESULT __stdcall WrappedIDXGIFactory7::QueryInterface(REFIID riid, void** ppvObject)
 {
+    if (ppvObject == nullptr)
+        return E_POINTER;
+
     if (riid == __uuidof(IDXGIFactory))
     {
         AddRef();
@@ -168,18 +248,22 @@ HRESULT __stdcall WrappedIDXGIFactory7::QueryInterface(REFIID riid, void** ppvOb
     return E_NOINTERFACE;
 }
 
-ULONG __stdcall WrappedIDXGIFactory7::AddRef()
-{
-    InterlockedIncrement(&_refCount);
-    return _refCount;
-}
+ULONG __stdcall WrappedIDXGIFactory7::AddRef() { return InterlockedIncrement(&_refCount); }
 
 ULONG __stdcall WrappedIDXGIFactory7::Release()
 {
     ULONG now = InterlockedDecrement(&_refCount);
     if (now == 0)
     {
-        LOG_WARN("id: {}", _id);
+        LOG_DEBUG("id: {}", _id);
+
+        {
+            std::scoped_lock lock(_wrappersMutex);
+
+            if (auto it = _wrappers.find(_identity); it != _wrappers.end() && it->second == this)
+                _wrappers.erase(it);
+        }
+
         _real->Release();
         delete this;
     }
@@ -230,12 +314,7 @@ HRESULT __stdcall WrappedIDXGIFactory7::GetWindowAssociation(HWND* pWindowHandle
 HRESULT STDMETHODCALLTYPE WrappedIDXGIFactory7::CreateSwapChain(IUnknown* pDevice, DXGI_SWAP_CHAIN_DESC* pDesc,
                                                                 IDXGISwapChain** ppSwapChain)
 {
-    auto result = DxgiFactoryWrappedCalls::CreateSwapChain(_real, this, pDevice, pDesc, ppSwapChain);
-
-    if (result == S_OK)
-        return result;
-
-    return _real->CreateSwapChain(pDevice, pDesc, ppSwapChain);
+    return DxgiFactoryWrappedCalls::CreateSwapChain(_real, this, pDevice, pDesc, ppSwapChain);
 }
 
 HRESULT __stdcall WrappedIDXGIFactory7::CreateSoftwareAdapter(HMODULE Module, IDXGIAdapter** ppAdapter)
@@ -280,26 +359,8 @@ WrappedIDXGIFactory7::CreateSwapChainForHwnd(IUnknown* pDevice, HWND hWnd, const
     if (_real2 == nullptr)
         return E_NOTIMPL;
 
-    HRESULT result;
-    DXGI_SWAP_CHAIN_DESC1 localDesc = *pDesc;
-
-    if (pFullscreenDesc != nullptr)
-    {
-        DXGI_SWAP_CHAIN_FULLSCREEN_DESC localFSDesc = *pFullscreenDesc;
-
-        result = DxgiFactoryWrappedCalls::CreateSwapChainForHwnd(_real2, this, pDevice, hWnd, &localDesc, &localFSDesc,
-                                                                 pRestrictToOutput, ppSwapChain);
-    }
-    else
-    {
-        result = DxgiFactoryWrappedCalls::CreateSwapChainForHwnd(_real2, this, pDevice, hWnd, &localDesc, nullptr,
-                                                                 pRestrictToOutput, ppSwapChain);
-    }
-
-    if (result == S_OK)
-        return result;
-
-    return _real2->CreateSwapChainForHwnd(pDevice, hWnd, pDesc, pFullscreenDesc, pRestrictToOutput, ppSwapChain);
+    return DxgiFactoryWrappedCalls::CreateSwapChainForHwnd(_real2, this, pDevice, hWnd, pDesc, pFullscreenDesc,
+                                                           pRestrictToOutput, ppSwapChain);
 }
 
 HRESULT __stdcall WrappedIDXGIFactory7::CreateSwapChainForCoreWindow(IUnknown* pDevice, IUnknown* pWindow,
@@ -310,15 +371,8 @@ HRESULT __stdcall WrappedIDXGIFactory7::CreateSwapChainForCoreWindow(IUnknown* p
     if (_real2 == nullptr)
         return E_NOTIMPL;
 
-    DXGI_SWAP_CHAIN_DESC1 localDesc = *pDesc;
-
-    auto result = DxgiFactoryWrappedCalls::CreateSwapChainForCoreWindow(_real2, pDevice, pWindow, &localDesc,
-                                                                        pRestrictToOutput, ppSwapChain);
-
-    if (result == S_OK)
-        return result;
-
-    return _real2->CreateSwapChainForCoreWindow(pDevice, pWindow, pDesc, pRestrictToOutput, ppSwapChain);
+    return DxgiFactoryWrappedCalls::CreateSwapChainForCoreWindow(_real2, pDevice, pWindow, pDesc, pRestrictToOutput,
+                                                                 ppSwapChain);
 }
 
 HRESULT __stdcall WrappedIDXGIFactory7::GetSharedResourceAdapterLuid(HANDLE hResource, LUID* pLuid)

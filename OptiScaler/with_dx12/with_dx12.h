@@ -4,6 +4,8 @@
 #include <d3d11.h>
 #include <dxgi.h>
 
+HRESULT CreateD3D12DeviceOnAdapter(IDXGIAdapter* adapter, D3D_FEATURE_LEVEL featureLevel, ID3D12Device** device);
+
 class WithDx12
 {
   private:

@@ -327,7 +327,7 @@ bool Sl_Inputs::reportResource(const sl::ResourceTag& tag, void* cmdBuffer, uint
 
     CheckForFrame(fgOutput, frameId);
 
-    if (tag.resource->native == nullptr)
+    if (tag.resource == nullptr || tag.resource->native == nullptr)
     {
         LOG_TRACE("tag.resource->native is null");
         return false;

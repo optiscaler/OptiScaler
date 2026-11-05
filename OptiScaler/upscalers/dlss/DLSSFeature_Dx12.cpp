@@ -84,6 +84,7 @@ bool DLSSFeatureDx12::InitDLSS(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
         if (nvResult != NVSDK_NGX_Result_Success)
         {
             LOG_ERROR("_CreateFeature result: {0:X}", (unsigned int) nvResult);
+            _p_dlssHandle = nullptr; // NGX never issued it
             return false;
         }
         else
@@ -141,11 +142,19 @@ void DLSSFeatureDx12::Shutdown(ID3D12Device* InDevice)
     if (_dlssInited)
     {
         if (_custom != nullptr)
+        {
             NVNGXProxy::ShutdownCustomDx12(*_custom, InDevice);
-        else if (NVNGXProxy::D3D12_Shutdown() != nullptr)
-            NVNGXProxy::D3D12_Shutdown()();
-        else if (NVNGXProxy::D3D12_Shutdown1() != nullptr)
-            NVNGXProxy::D3D12_Shutdown1()(InDevice);
+        }
+        // Inputs share the same NGX instance, it is shut down once. Skipped on exit like the inputs do
+        else if (NVNGXProxy::IsDx12Inited() && !State::Instance().isShuttingDown)
+        {
+            if (NVNGXProxy::D3D12_Shutdown() != nullptr)
+                NVNGXProxy::D3D12_Shutdown()();
+            else if (NVNGXProxy::D3D12_Shutdown1() != nullptr)
+                NVNGXProxy::D3D12_Shutdown1()(InDevice);
+
+            NVNGXProxy::SetDx12Inited(false);
+        }
     }
 
     DLSSFeature::Shutdown();

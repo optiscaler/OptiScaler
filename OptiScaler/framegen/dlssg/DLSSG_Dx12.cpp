@@ -10,6 +10,7 @@
 
 #include <hooks/DxgiFactory_Hooks.h>
 
+#include <misc/DeferredRelease.h>
 #include <magic_enum.hpp>
 
 HWND DLSSG_Dx12::Hwnd() { return _hwnd; }
@@ -60,7 +61,7 @@ bool DLSSG_Dx12::CreateSwapchainInternal(IDXGIFactory* factory, ID3D12CommandQue
         result = factory->CreateSwapChain(cmdQueue, desc, swapChain);
     }
 
-    if (result != S_OK)
+    if (FAILED(result))
     {
         LOG_ERROR("CreateSwapChain error: {:X}", (UINT) result);
         return false;
@@ -127,7 +128,7 @@ bool DLSSG_Dx12::CreateSwapchain1Internal(IDXGIFactory* factory, ID3D12CommandQu
         factory2->Release();
         factory2 = nullptr;
 
-        if (result != S_OK)
+        if (FAILED(result))
         {
             LOG_ERROR("CreateSwapChain error: {:X}", (UINT) result);
             return false;
@@ -164,7 +165,7 @@ void DLSSG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
 
 void DLSSG_Dx12::DestroyFGContext()
 {
-    Deactivate();
+    Disable();
     ReleaseObjects();
 }
 
@@ -297,7 +298,7 @@ void DLSSG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
     else
     {
         LOG_DEBUG("!FGEnabled");
-        Deactivate();
+        Disable();
         ReleaseResourceCopies();
 
         state.clearCapturedHudlesses = true;
@@ -329,11 +330,11 @@ void DLSSG_Dx12::ReleaseObjects()
 {
     for (size_t i = 0; i < BUFFER_COUNT; i++)
     {
-        SAFE_RELEASE(_uiCommandAllocator[i]);
-        SAFE_RELEASE(_uiCommandList[i]);
-        SAFE_RELEASE(_scCommandAllocator[i]);
-        SAFE_RELEASE(_scCommandList[i]);
-        SAFE_RELEASE(dlssgFence[i]);
+        DeferredRelease::Release(_uiCommandAllocator[i]);
+        DeferredRelease::Release(_uiCommandList[i]);
+        DeferredRelease::Release(_scCommandAllocator[i]);
+        DeferredRelease::Release(_scCommandList[i]);
+        DeferredRelease::Release(dlssgFence[i]);
 
         // Reset command list state
         _scCommandListResetted[i] = false;
@@ -342,6 +343,8 @@ void DLSSG_Dx12::ReleaseObjects()
         _uiCommandListResetted[i] = false;
         _uiAllocatorFenceValues[i] = 0;
     }
+
+    ReleaseFences();
 
     _renderUI.reset();
     _hudlessCompare.reset();
@@ -569,18 +572,7 @@ bool DLSSG_Dx12::Present()
             _uiCommandListResetted[fIndex] = false;
         }
 
-        if (_scCommandListResetted[fIndex])
-        {
-            LOG_DEBUG("Executing _scCommandList[{}]: {:X}", fIndex, (size_t) _scCommandList[fIndex]);
-            auto closeResult = _scCommandList[fIndex]->Close();
-
-            if (closeResult == S_OK)
-                _gameCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList**) &_scCommandList[fIndex]);
-            else
-                LOG_ERROR("_scCommandList[{}]->Close() error: {:X}", fIndex, (UINT) closeResult);
-
-            _scCommandListResetted[fIndex] = false;
-        }
+        SubmitSCCommandList(fIndex);
     }
 
     if ((_fgFramePresentId - _lastFGFramePresentId) > 3 && IsActive() && !_waitingNewFrameData)
@@ -689,6 +681,10 @@ bool DLSSG_Dx12::SetResource(Dx12Resource* inputResource)
     fResource->height = inputResource->height;
     fResource->cmdList = inputResource->cmdList;
 
+    // A new resource for the slot, its old copy is stale. A re-tag passes the slot itself
+    if (inputResource != fResource)
+        fResource->copy = nullptr;
+
     auto willFlip = State::Instance().activeFgInput == FGInput::Upscaler &&
                     Config::Instance()->FGResourceFlip.value_or_default() &&
                     (type == FG_ResourceType::Velocity || type == FG_ResourceType::Depth);
@@ -731,7 +727,9 @@ bool DLSSG_Dx12::SetResource(Dx12Resource* inputResource)
     if ((type == FG_ResourceType::Depth || type == FG_ResourceType::Velocity) ||
         fResource->validity != FG_ResourceValidity::UntilPresent)
     {
-        fResource->validity = (fResource->validity != FG_ResourceValidity::ValidNow || willFlip)
+        // Flip only made a copy when the shader ran
+        fResource->validity = (fResource->validity != FG_ResourceValidity::ValidNow ||
+                               (willFlip && fResource->copy != nullptr))
                                   ? FG_ResourceValidity::UntilPresent
                                   : FG_ResourceValidity::ValidNow;
 
@@ -742,6 +740,7 @@ bool DLSSG_Dx12::SetResource(Dx12Resource* inputResource)
 
             if (lastFormat[fIndex] != DXGI_FORMAT_UNKNOWN && lastFormat[fIndex] != desc.Format)
             {
+                std::fill_n(lastFormat, BUFFER_COUNT, desc.Format);
                 State::Instance().fgChanged = true;
                 return false;
             }
@@ -815,13 +814,6 @@ bool DLSSG_Dx12::SetResource(Dx12Resource* inputResource)
                 PauseAfterError();
                 return false;
             }
-        }
-
-        // Potentially we don't need to restore but do it just to be safe
-        if (inputResource->state == D3D12_RESOURCE_STATE_COPY_SOURCE)
-        {
-            ResourceBarrier(inputResource->cmdList, inputResource->resource, D3D12_RESOURCE_STATE_COPY_DEST,
-                            inputResource->state);
         }
 
         SetResourceReady(type, fIndex);

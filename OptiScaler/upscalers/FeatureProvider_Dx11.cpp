@@ -153,7 +153,12 @@ bool FeatureProvider_Dx11::ChangeFeature(Upscaler upscaler, ID3D11Device* device
             const bool isPassthrough = state.newBackend == Upscaler::DLSSD || state.newBackend == Upscaler::DLSS ||
                                        state.newBackend == Upscaler::DLSS_on12;
 
+            // A retry after a failed init still has the previous ones
+            if (!contextData->createParamsFromGame)
+                TryDestroyNGXParameters(contextData->createParams, NVNGXProxy::D3D11_DestroyParameters());
+
             contextData->createParams = isPassthrough ? parameters : GetNGXParameters(API::DX11, false);
+            contextData->createParamsFromGame = isPassthrough;
             contextData->createParams->Set(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags, dc->GetFeatureFlags());
             contextData->createParams->Set(NVSDK_NGX_Parameter_Width, dc->RenderWidth());
             contextData->createParams->Set(NVSDK_NGX_Parameter_Height, dc->RenderHeight());
@@ -178,11 +183,10 @@ bool FeatureProvider_Dx11::ChangeFeature(Upscaler upscaler, ID3D11Device* device
             state.newBackend = Upscaler::Reset;
             state.changeBackend[handleId] = false;
 
-            if (contextData->createParams != nullptr)
-            {
+            if (!contextData->createParamsFromGame)
                 TryDestroyNGXParameters(contextData->createParams, NVNGXProxy::D3D11_DestroyParameters());
-                contextData->createParams = nullptr;
-            }
+
+            contextData->createParams = nullptr;
 
             contextData->changeBackendCounter = 0;
 
@@ -201,6 +205,18 @@ bool FeatureProvider_Dx11::ChangeFeature(Upscaler upscaler, ID3D11Device* device
         if (!GetFeature(state.newBackend, handleId, contextData->createParams, &contextData->feature))
         {
             LOG_ERROR("Upscaler can't created");
+
+            // End the change, phase 3 would Init a null feature
+            contextData->feature.reset();
+            state.newBackend = Upscaler::Reset;
+            state.changeBackend[handleId] = false;
+
+            if (!contextData->createParamsFromGame)
+                TryDestroyNGXParameters(contextData->createParams, NVNGXProxy::D3D11_DestroyParameters());
+
+            contextData->createParams = nullptr;
+            contextData->changeBackendCounter = 0;
+
             return false;
         }
 
@@ -248,7 +264,8 @@ bool FeatureProvider_Dx11::ChangeFeature(Upscaler upscaler, ID3D11Device* device
 
         // if opti nvparam release it
         int optiParam = 0;
-        if (contextData->createParams->Get("OptiScaler", &optiParam) == NVSDK_NGX_Result_Success && optiParam == 1)
+        if (!contextData->createParamsFromGame &&
+            contextData->createParams->Get("OptiScaler", &optiParam) == NVSDK_NGX_Result_Success && optiParam == 1)
         {
             TryDestroyNGXParameters(contextData->createParams, NVNGXProxy::D3D11_DestroyParameters());
             contextData->createParams = nullptr;

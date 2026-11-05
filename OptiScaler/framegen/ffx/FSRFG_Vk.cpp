@@ -241,6 +241,7 @@ bool FSRFG_Vk::CreateSwapchain(VkDevice device, const VkSwapchainCreateInfoKHR* 
 
     QueryVersions();
     _swapchainOutdated = false;
+    _driverFgRejected = false;
 
     // ML FG only works with the swapchain of the same module, the version can't be switched without recreating it
     _ffxSwapchain = FfxApiProxy::VkFfxModule_FG();
@@ -248,9 +249,14 @@ bool FSRFG_Vk::CreateSwapchain(VkDevice device, const VkSwapchainCreateInfoKHR* 
     if (IsDriverVersionSelected())
     {
         if (FSR4DriverProviderVk::IsFgSupported(device, _physicalDevice, &VulkanHooks::GetDeviceProcAddr))
+        {
             _ffxSwapchain = FSR4DriverProviderVk::FgSwapchainModule();
+        }
         else
+        {
             LOG_WARN("Driver provided FG is not supported on this device, using the SDK one");
+            _driverFgRejected = true;
+        }
     }
 
     if (_ffxSwapchain->CreateContext == nullptr)
@@ -364,7 +370,35 @@ VkResult FSRFG_Vk::QueuePresent(VkQueue queue, const VkPresentInfoKHR* pPresentI
         LOG_WARN("Game presents from a different queue than the one given to FFX");
     }
 
-    return _functions.pOutQueuePresentKHR(queue, pPresentInfo);
+    VkSemaphore prepared = VK_NULL_HANDLE;
+
+    if (IsActive() && !IsPaused())
+    {
+        OwnedLockGuard lock(Mutex, 2);
+
+        // Game stopped sending new frames, menus and such
+        if ((_fgFramePresentId - _lastFGFramePresentId) > 3 && IsActive() && !_waitingNewFrameData)
+        {
+            LOG_DEBUG("Pausing FG");
+            Deactivate();
+            _waitingNewFrameData = true;
+        }
+        else
+        {
+            _fgFramePresentId++;
+            prepared = Dispatch(pPresentInfo);
+        }
+    }
+
+    if (prepared == VK_NULL_HANDLE)
+        return _functions.pOutQueuePresentKHR(queue, pPresentInfo);
+
+    // The prepare waited for the game's semaphores, the present only for the prepare
+    auto presentInfo = *pPresentInfo;
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores = &prepared;
+
+    return _functions.pOutQueuePresentKHR(queue, &presentInfo);
 }
 
 void FSRFG_Vk::SetHdrMetadata(VkDevice device, VkSwapchainKHR swapchain, const VkHdrMetadataEXT* pMetadata)
@@ -425,6 +459,15 @@ bool FSRFG_Vk::Shutdown()
     ReleaseSwapchainContext();
     DestroyCommandBuffers();
 
+    // The presents waiting for these are done after ReleaseSwapchainContext
+    for (auto& semaphore : _preparedSemaphore)
+    {
+        if (semaphore != VK_NULL_HANDLE)
+            vkDestroySemaphore(_device, semaphore, nullptr);
+
+        semaphore = VK_NULL_HANDLE;
+    }
+
     for (auto& copy : _hudlessCopies)
         DestroyCopy(copy);
 
@@ -443,7 +486,8 @@ void FSRFG_Vk::CreateContext()
 
     const bool driver = UsesDriver();
 
-    if (driver != IsDriverVersionSelected() && !_swapchainOutdated)
+    // A rejected driver FG would need the same swapchain again
+    if (driver != IsDriverVersionSelected() && !_driverFgRejected && !_swapchainOutdated)
     {
         LOG_INFO("Selected FG version needs a {} swapchain, making the game recreate it", driver ? "SDK" : "driver");
         _swapchainOutdated = true;
@@ -558,19 +602,28 @@ void FSRFG_Vk::CreateContext()
 
 void FSRFG_Vk::ConfigureFramePaceTuning()
 {
-    State::Instance().fsrfgFramePaceTuningChanged = false;
+    const bool changed = std::exchange(State::Instance().fsrfgFramePaceTuningChanged, false);
 
     auto config = Config::Instance();
 
     // Versions are FFX SDK ones here, 1.1.3 shipped FSR 3.1.3 which added the tuning
-    if (_swapChainContext == nullptr || _version < feature_version { 1, 1, 3 } ||
-        !config->FGFramePacingTuning.value_or_default())
+    if (_swapChainContext == nullptr || _version < feature_version { 1, 1, 3 })
         return;
 
-    // The Vulkan swapchain only reads safetyMarginInMs and varianceFactor
+    // A new swapchain keeps the SDK's own pacing until tuning is used
+    if (!config->FGFramePacingTuning.value_or_default() && !changed)
+        return;
+
+    // The Vulkan swapchain only reads safetyMarginInMs and varianceFactor, SDK defaults restore it when turned off
     FfxApiSwapchainFramePacingTuning fpt {};
-    fpt.safetyMarginInMs = config->FGFPTSafetyMarginInMs.value_or_default();
-    fpt.varianceFactor = config->FGFPTVarianceFactor.value_or_default();
+    fpt.safetyMarginInMs = 0.1f;
+    fpt.varianceFactor = 0.1f;
+
+    if (config->FGFramePacingTuning.value_or_default())
+    {
+        fpt.safetyMarginInMs = config->FGFPTSafetyMarginInMs.value_or_default();
+        fpt.varianceFactor = config->FGFPTVarianceFactor.value_or_default();
+    }
 
     ffxConfigureDescFrameGenerationSwapChainKeyValueVK cfgDesc {};
     cfgDesc.header.type = FFX_API_CONFIGURE_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_KEYVALUE_VK;
@@ -609,7 +662,7 @@ bool FSRFG_Vk::UsesDriver() const { return _ffxSwapchain == FSR4DriverProviderVk
 
 void FSRFG_Vk::DestroyFGContext()
 {
-    Deactivate();
+    Disable();
 
     if (_fgContext == nullptr)
         return;
@@ -705,7 +758,7 @@ void FSRFG_Vk::EvaluateState(FG_Constants& fgConstants)
     else
     {
         if (IsActive())
-            Deactivate();
+            Disable();
 
         // The change flags are cleared below, so a pending recreation (e.g. FFX FG version) must happen now
         if (state.scChanged)
@@ -723,32 +776,20 @@ void FSRFG_Vk::EvaluateState(FG_Constants& fgConstants)
 
 bool FSRFG_Vk::Present()
 {
-    OwnedLockGuard lock(Mutex, 2);
-
-    // Game stopped sending new frames, menus and such
-    if ((_fgFramePresentId - _lastFGFramePresentId) > 3 && IsActive() && !_waitingNewFrameData)
-    {
-        LOG_DEBUG("Pausing FG");
-        Deactivate();
-        _waitingNewFrameData = true;
-        return false;
-    }
-
-    _fgFramePresentId++;
-
-    return Dispatch();
+    // Done in QueuePresent, the prepare has to wait for the present's semaphores
+    return false;
 }
 
-bool FSRFG_Vk::Dispatch()
+VkSemaphore FSRFG_Vk::Dispatch(const VkPresentInfoKHR* pPresentInfo)
 {
     if (_fgContext == nullptr)
-        return false;
+        return VK_NULL_HANDLE;
 
     UINT64 willDispatchFrame = 0;
     auto fIndex = GetDispatchIndex(willDispatchFrame);
 
     if (fIndex < 0 || !IsActive() || IsPaused())
-        return false;
+        return VK_NULL_HANDLE;
 
     if (State::Instance().fsrfgFramePaceTuningChanged)
         ConfigureFramePaceTuning();
@@ -759,16 +800,30 @@ bool FSRFG_Vk::Dispatch()
     if (!depth || !velocity)
     {
         LOG_WARN("Depth or Velocity is not ready, skipping");
-        return false;
+        return VK_NULL_HANDLE;
     }
 
     auto& state = State::Instance();
     auto config = Config::Instance();
 
+    if (_preparedSemaphore[fIndex] == VK_NULL_HANDLE)
+    {
+        VkSemaphoreCreateInfo semaphoreInfo { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
+
+        if (vkCreateSemaphore(_device, &semaphoreInfo, nullptr, &_preparedSemaphore[fIndex]) != VK_SUCCESS)
+        {
+            LOG_ERROR("vkCreateSemaphore failed for {}", fIndex);
+            _preparedSemaphore[fIndex] = VK_NULL_HANDLE;
+            return VK_NULL_HANDLE;
+        }
+    }
+
     auto cmdBuffer = BeginCommandBuffer(fIndex);
 
     if (cmdBuffer == VK_NULL_HANDLE)
-        return false;
+        return VK_NULL_HANDLE;
+
+    const auto unblended = UnblendUi(cmdBuffer, fIndex);
 
     ffxConfigureDescFrameGeneration fgConfig {};
     fgConfig.header.type = FFX_API_CONFIGURE_DESC_TYPE_FRAMEGENERATION;
@@ -855,7 +910,7 @@ bool FSRFG_Vk::Dispatch()
 
     // The begun command buffer is just reset on the next use
     if (result != FFX_API_RETURN_OK || !_isActive)
-        return false;
+        return VK_NULL_HANDLE;
 
     ffxDispatchDescFrameGenerationPrepareCameraInfo dfgCameraData {};
     dfgCameraData.header.type = FFX_API_DISPATCH_DESC_TYPE_FRAMEGENERATION_PREPARE_CAMERAINFO;
@@ -908,20 +963,30 @@ bool FSRFG_Vk::Dispatch()
 
     vkEndCommandBuffer(cmdBuffer);
 
-    // FFX dispatches the interpolation on the game queue too, which keeps it after the prepare
+    // The game's copies can be on another queue, its present semaphores order them before the prepare.
+    // FFX dispatches the interpolation on the game queue too, which keeps it after the prepare.
+    std::vector<VkPipelineStageFlags> waitStages(pPresentInfo->waitSemaphoreCount, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+
     VkSubmitInfo submitInfo { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+    submitInfo.waitSemaphoreCount = pPresentInfo->waitSemaphoreCount;
+    submitInfo.pWaitSemaphores = pPresentInfo->pWaitSemaphores;
+    submitInfo.pWaitDstStageMask = waitStages.data();
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmdBuffer;
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = &_preparedSemaphore[fIndex];
 
     vkResetFences(_device, 1, &_fence[fIndex]);
 
     if (auto submitResult = vkQueueSubmit(_gameQueue, 1, &submitInfo, _fence[fIndex]); submitResult != VK_SUCCESS)
     {
         LOG_ERROR("vkQueueSubmit error: {}", magic_enum::enum_name(submitResult));
-        return false;
+        return VK_NULL_HANDLE;
     }
 
-    return result == FFX_API_RETURN_OK;
+    UiUnblendSubmitted(fIndex, unblended);
+
+    return _preparedSemaphore[fIndex];
 }
 
 ffxReturnCode_t FSRFG_Vk::DispatchCallback(ffxDispatchDescFrameGeneration* params)

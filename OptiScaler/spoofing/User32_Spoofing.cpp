@@ -18,15 +18,12 @@ inline static BOOL WINAPI hkEnumDisplayDevicesA(PSTR lpDevice, uint32_t iDevNum,
 {
     auto result = o_EnumDisplayDevicesA(lpDevice, iDevNum, lpDisplayDevice, dwFlags);
 
-    if (!result || lpDisplayDevice == nullptr)
+    // Monitors are enumerated with a device name
+    if (!result || lpDisplayDevice == nullptr || lpDevice != nullptr || lpDisplayDevice->cb < sizeof(DISPLAY_DEVICEA))
         return result;
 
     static std::string vendorId = std::format("VEN_{:04X}", Config::Instance()->SpoofedVendorId.value_or_default());
     static std::string deviceId = std::format("DEV_{:04X}", Config::Instance()->SpoofedDeviceId.value_or_default());
-
-    // Spoof DeviceString (GPU name)
-    auto gpuName = wstring_to_string(Config::Instance()->SpoofedGPUName.value_or_default());
-    strncpy_s(lpDisplayDevice->DeviceString, gpuName.c_str(), sizeof(lpDisplayDevice->DeviceString) - 1);
 
     // Spoof VEN_/DEV_ tokens in DeviceID (e.g. "PCI\VEN_1002&DEV_687F&...")
     std::string deviceIdStr(lpDisplayDevice->DeviceID);
@@ -56,6 +53,9 @@ inline static BOOL WINAPI hkEnumDisplayDevicesA(PSTR lpDevice, uint32_t iDevNum,
         }
         strncpy_s(lpDisplayDevice->DeviceID, deviceIdStr.c_str(), sizeof(lpDisplayDevice->DeviceID) - 1);
         LOG_INFO("Spoofed DeviceID: {}", deviceIdStr);
+
+        auto gpuName = wstring_to_string(Config::Instance()->SpoofedGPUName.value_or_default());
+        strncpy_s(lpDisplayDevice->DeviceString, gpuName.c_str(), sizeof(lpDisplayDevice->DeviceString) - 1);
     }
 
     return result;
@@ -66,16 +66,12 @@ inline static BOOL WINAPI hkEnumDisplayDevicesW(PWSTR lpDevice, uint32_t iDevNum
 {
     auto result = o_EnumDisplayDevicesW(lpDevice, iDevNum, lpDisplayDevice, dwFlags);
 
-    if (!result || lpDisplayDevice == nullptr)
+    // Monitors are enumerated with a device name
+    if (!result || lpDisplayDevice == nullptr || lpDevice != nullptr || lpDisplayDevice->cb < sizeof(DISPLAY_DEVICEW))
         return result;
 
     static std::wstring vendorId = std::format(L"VEN_{:04X}", Config::Instance()->SpoofedVendorId.value_or_default());
     static std::wstring deviceId = std::format(L"DEV_{:04X}", Config::Instance()->SpoofedDeviceId.value_or_default());
-
-    // Spoof DeviceString (GPU name)
-    auto gpuName = Config::Instance()->SpoofedGPUName.value_or_default();
-    wcsncpy_s(lpDisplayDevice->DeviceString, gpuName.c_str(),
-              sizeof(lpDisplayDevice->DeviceString) / sizeof(wchar_t) - 1);
 
     // Spoof VEN_/DEV_ tokens in DeviceID (e.g. L"PCI\VEN_1002&DEV_687F&...")
     std::wstring deviceIdStr(lpDisplayDevice->DeviceID);
@@ -106,6 +102,10 @@ inline static BOOL WINAPI hkEnumDisplayDevicesW(PWSTR lpDevice, uint32_t iDevNum
         wcsncpy_s(lpDisplayDevice->DeviceID, deviceIdStr.c_str(),
                   sizeof(lpDisplayDevice->DeviceID) / sizeof(wchar_t) - 1);
         LOG_INFO("Spoofed DeviceID: {}", wstring_to_string(deviceIdStr));
+
+        auto gpuName = Config::Instance()->SpoofedGPUName.value_or_default();
+        wcsncpy_s(lpDisplayDevice->DeviceString, gpuName.c_str(),
+                  sizeof(lpDisplayDevice->DeviceString) / sizeof(wchar_t) - 1);
     }
 
     return result;

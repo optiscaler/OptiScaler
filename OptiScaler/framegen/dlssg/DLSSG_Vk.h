@@ -3,6 +3,8 @@
 #include <framegen/IFGFeature_Vk.h>
 #include <framegen/dlssg/DLSSG_Common.h>
 
+#include <unordered_set>
+
 // DLSSG_Common overriding IFGFeature next to the API base is intended (C4250)
 #pragma warning(push)
 #pragma warning(disable : 4250)
@@ -23,6 +25,7 @@ class DLSSG_Vk : public virtual IFGFeature_Vk, public DLSSG_Common
 
     // Streamline is set up on the first device that creates a swapchain
     VkDevice _slDevice = VK_NULL_HANDLE;
+    std::unordered_set<VkSwapchainKHR> _slSwapchains;
 
     // What Streamline needs from the game's device, the extra queues are graphics ones first, then compute ones
     uint32_t _graphicsQueueCount = 0;

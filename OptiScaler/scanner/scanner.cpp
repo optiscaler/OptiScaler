@@ -54,7 +54,7 @@ uintptr_t FindPattern(uintptr_t startAddress, uintptr_t maxSize, const char* mas
     }
 
     const auto dataStart = reinterpret_cast<const uint8_t*>(startAddress);
-    const auto dataEnd = dataStart + maxSize + 1;
+    const auto dataEnd = dataStart + maxSize;
 
     auto sig = std::search(dataStart, dataEnd, pattern.begin(), pattern.end(),
                            [](uint8_t currentByte, std::pair<uint8_t, bool> Pattern)
@@ -83,7 +83,7 @@ uintptr_t scanner::GetAddress(const std::wstring_view moduleName, const std::str
         {
             auto section = &sections[i];
 
-            if (((uintptr_t) section->start < startAddress && (uintptr_t) section->end > startAddress))
+            if (((uintptr_t) section->start <= startAddress && (uintptr_t) section->end > startAddress))
             {
                 address = FindPattern(startAddress, (uintptr_t) section->end - startAddress, pattern.data());
 
@@ -137,7 +137,7 @@ uintptr_t scanner::GetAddress(HMODULE module, const std::string_view pattern, pt
         {
             auto section = &sections[i];
 
-            if (((uintptr_t) section->start < startAddress && (uintptr_t) section->end > startAddress))
+            if (((uintptr_t) section->start <= startAddress && (uintptr_t) section->end > startAddress))
             {
                 address = FindPattern(startAddress, (uintptr_t) section->end - startAddress, pattern.data());
 

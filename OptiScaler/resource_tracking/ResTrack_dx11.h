@@ -30,7 +30,7 @@ class ResTrack_Dx11
     inline static std::mutex _stateMutex;
     inline static std::array<std::vector<UINT>, static_cast<size_t>(Dx11ShaderStage::Count)> _graphicsSrvSlots;
     inline static std::vector<UINT> _csSrvSlots;
-    inline static UINT _omRtvCount = 0;
+    inline static std::atomic<UINT> _omRtvCount = 0; // Set on every OMSetRenderTargets, no lock
     inline static UINT _uavSlotCount = D3D11_PS_CS_UAV_REGISTER_COUNT;
 
     inline static std::mutex _hookMutex;

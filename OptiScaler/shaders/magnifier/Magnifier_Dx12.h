@@ -9,7 +9,7 @@
 #include <shaders/Shader_Dx12Utils.h>
 #include <shaders/Shader_Dx12.h>
 
-#define Magnifier_NUM_OF_HEAPS 2
+#define Magnifier_NUM_OF_HEAPS 3
 
 class Magnifier_Dx12 : public Shader_Dx12, public Magnifier_Common
 {

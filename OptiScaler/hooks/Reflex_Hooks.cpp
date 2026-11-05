@@ -13,7 +13,6 @@
 #include <misc/FrameLimit.h>
 
 static inline uint64_t _lastFrameId[20] = { 0 };
-static inline IUnknown* _lastDev[20] = { 0 };
 
 // #define LOG_REFLEX_CALLS
 
@@ -41,23 +40,9 @@ NvAPI_Status ReflexHooks::hkNvAPI_D3D_Sleep(IUnknown* pDev)
     LOG_FUNC();
 #endif
 
-    // Streamline's own sleep comes back here
-    static bool skip = false;
-
-    if (!skip)
-    {
-        skip = true;
-        bool slept = streamlineSleep();
-        skip = false;
-
-        if (slept)
-            return NVAPI_OK;
-    }
-    else
-    {
-        _lastSleepDev = pDev;
-        return o_NvAPI_D3D_Sleep(pDev);
-    }
+    // OptiScaler's Streamline sleep comes back here
+    if (!optiScalerCall && streamlineSleep())
+        return NVAPI_OK;
 
     _lastSleepDev = pDev;
     return o_NvAPI_D3D_Sleep(pDev);
@@ -127,8 +112,8 @@ NvAPI_Status ReflexHooks::processGameMarker(IUnknown* pDev, NV_LATENCY_MARKER_PA
     State::Instance().reflexFrameId = pSetLatencyMarkerParams->frameID;
 
     // if (pSetLatencyMarkerParams->markerType == PRESENT_END)
-    _lastFrameId[pSetLatencyMarkerParams->markerType] = pSetLatencyMarkerParams->frameID;
-    _lastDev[pSetLatencyMarkerParams->markerType] = pDev;
+    if (pSetLatencyMarkerParams->markerType < std::size(_lastFrameId))
+        _lastFrameId[pSetLatencyMarkerParams->markerType] = pSetLatencyMarkerParams->frameID;
 
     if (pSetLatencyMarkerParams->markerType == SIMULATION_START)
     {
@@ -575,7 +560,9 @@ void ReflexHooks::update(bool fgActive, bool isVulkan)
     if (lastFgNumFramesToGenerate != _FgNumFramesToGenerate)
     {
         lastFgNumFramesToGenerate = _FgNumFramesToGenerate;
-        setFPSLimit(currentFps);
+
+        // Applied below, after the FSR-FG halving
+        lastFps = 0;
 
         if (_FgNumFramesToGenerate == 0)
             LOG_DEBUG("DLSS FG no longer detected");
@@ -605,27 +592,41 @@ void ReflexHooks::update(bool fgActive, bool isVulkan)
 void ReflexHooks::setFPSLimit(float fps)
 {
     LOG_INFO("Set FPS Limit to: {}", fps);
-    if (fps == 0.0)
+    if (fps <= 0.0)
         _minimumIntervalUs = 0;
     else
         _minimumIntervalUs = static_cast<uint32_t>(std::round(1'000'000 / fps));
 
-    if (_lastSleepDev != nullptr)
+    if (auto device = _lastSleepDev.load(); device != nullptr)
     {
         NV_SET_SLEEP_MODE_PARAMS temp {};
         memcpy(&temp, &_lastSleepParams, sizeof(NV_SET_SLEEP_MODE_PARAMS));
-        temp.minimumIntervalUs = _minimumIntervalUs;
 
-        o_NvAPI_D3D_SetSleepMode(_lastSleepDev, &temp);
+        // Without OptiScaler's limit the game's own cap applies
+        if (_minimumIntervalUs != 0)
+            temp.minimumIntervalUs = _minimumIntervalUs;
+
+        o_NvAPI_D3D_SetSleepMode(device, &temp);
     }
 
-    if (_lastVkSleepDev != nullptr)
+    if (auto vkDevice = _lastVkSleepDev.load(); vkDevice != nullptr)
     {
         NV_VULKAN_SET_SLEEP_MODE_PARAMS temp {};
         memcpy(&temp, &_lastVkSleepParams, sizeof(NV_VULKAN_SET_SLEEP_MODE_PARAMS));
-        temp.minimumIntervalUs = _minimumIntervalUs;
-        o_NvAPI_Vulkan_SetSleepMode(_lastVkSleepDev, &temp);
+
+        if (_minimumIntervalUs != 0)
+            temp.minimumIntervalUs = _minimumIntervalUs;
+        o_NvAPI_Vulkan_SetSleepMode(vkDevice, &temp);
     }
+}
+
+void ReflexHooks::deviceDestroyed(void* device)
+{
+    IUnknown* expected = (IUnknown*) device;
+    _lastSleepDev.compare_exchange_strong(expected, nullptr);
+
+    HANDLE expectedVk = device;
+    _lastVkSleepDev.compare_exchange_strong(expectedVk, nullptr);
 }
 
 bool ReflexHooks::gameIsSendingMarkers()

@@ -29,12 +29,14 @@ class DxgiProxy
         {
             _dll = GetModuleHandle(L"dxgi.dll");
 
-            if (_dll == dllModule)
+            const bool isSelf = _dll == dllModule;
+            if (isSelf)
                 _dll = originalModule;
 
+            // As dxgi.dll the default search order would find OptiScaler itself
             if (_dll == nullptr)
             {
-                _dll = NtdllProxy::LoadLibraryExW_Ldr(L"dxgi.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+                _dll = NtdllProxy::LoadLibraryExW_Ldr(L"dxgi.dll", NULL, isSelf ? LOAD_LIBRARY_SEARCH_SYSTEM32 : 0);
             }
         }
         else

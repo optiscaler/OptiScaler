@@ -27,6 +27,7 @@ static constexpr uint32_t kMaxViewports = 16;
 static constexpr uint32_t kMaxScissors = 16;
 static constexpr uint32_t kMaxVertexBuffers = 32;      // Standard limit is often 32
 static constexpr uint32_t kMaxPushConstantBytes = 256; // 128 is min-spec, 256 covers most
+static constexpr size_t kMaxBindCallHistory = 64;      // Compacted to the calls still owning a set
 
 enum class BindPointIndex : uint32_t
 {
@@ -116,6 +117,37 @@ struct BindPointState
     std::vector<DescriptorBindCall> DescriptorBindCalls;
 
     BindPointState() { DescriptorBindCalls.reserve(4); }
+
+    // Drops calls whose sets were all bound again later, replay only uses the rest
+    void CompactBindCalls()
+    {
+        std::vector<uint32_t> newIndex(DescriptorBindCalls.size(), UINT32_MAX);
+
+        for (const auto& binding : Sets)
+        {
+            if (binding.Bound && binding.BindCallIndex < newIndex.size())
+                newIndex[binding.BindCallIndex] = 0;
+        }
+
+        std::vector<DescriptorBindCall> kept;
+
+        for (size_t i = 0; i < DescriptorBindCalls.size(); i++)
+        {
+            if (newIndex[i] == UINT32_MAX)
+                continue;
+
+            newIndex[i] = static_cast<uint32_t>(kept.size());
+            kept.push_back(std::move(DescriptorBindCalls[i]));
+        }
+
+        for (auto& binding : Sets)
+        {
+            if (binding.Bound && binding.BindCallIndex < newIndex.size())
+                binding.BindCallIndex = newIndex[binding.BindCallIndex];
+        }
+
+        DescriptorBindCalls = std::move(kept);
+    }
 };
 
 struct DynamicState
@@ -606,6 +638,9 @@ class CommandBufferStateTracker
             }
         }
 
+        if (bp.DescriptorBindCalls.size() >= kMaxBindCallHistory)
+            bp.CompactBindCalls();
+
         uint32_t bindCallIndex = static_cast<uint32_t>(bp.DescriptorBindCalls.size());
         bp.DescriptorBindCalls.push_back(std::move(bindCall));
 
@@ -660,6 +695,14 @@ class CommandBufferStateTracker
             LOG_ERROR("vkCmdPushConstants called with size={} but pValues=nullptr", size);
             return;
         }
+
+        // Replay order makes the later push of the same range win anyway
+        std::erase_if(entry->State->PushConstantHistory,
+                      [&pushEntry](const PushConstantEntry& old)
+                      {
+                          return old.Layout == pushEntry.Layout && old.Stages == pushEntry.Stages &&
+                                 old.Offset == pushEntry.Offset && old.Size == pushEntry.Size;
+                      });
 
         entry->State->PushConstantHistory.push_back(pushEntry);
     }
@@ -1095,6 +1138,18 @@ class CommandBufferStateTracker
         }
 
         return true;
+    }
+
+    std::vector<VkCommandBuffer> GetPoolCommandBuffers(VkCommandPool pool) const
+    {
+        std::vector<VkCommandBuffer> result;
+        std::shared_lock mapLock(_statesMapMutex);
+        for (const auto& [cmd, cmdPool] : _cmdBufferToPool)
+        {
+            if (cmdPool == pool)
+                result.push_back(cmd);
+        }
+        return result;
     }
 
     void SetFunctionTable(const VulkanCmdFns& fns)

@@ -214,7 +214,11 @@ void Hudfix_Dx11::ValidateCapturedIdentity(ID3D11Texture2D* texture, UINT64 iden
         LOG_DEBUG("DX11 Hudfix resource address reused: {:X}, identity {} -> {}", (size_t) texture, previousIdentity,
                   identity);
 
-        State::Instance().capturedHudlesses.erase(key);
+        {
+            std::scoped_lock hudlessLock(State::Instance().capturedHudlessesMutex);
+            State::Instance().capturedHudlesses.erase(key);
+        }
+
         _hudlessList.erase(previousIdentity);
 
         {
@@ -297,6 +301,8 @@ void Hudfix_Dx11::UpscaleStart()
         std::lock_guard<std::mutex> lock(_checkMutex);
 
         state.clearCapturedHudlesses = false;
+
+        std::scoped_lock hudlessLock(State::Instance().capturedHudlessesMutex);
         state.capturedHudlesses.clear();
         _capturedIdentity.clear();
     }
@@ -343,12 +349,6 @@ bool Hudfix_Dx11::IsResourceCheckActive()
     if (_skipTracking || state.isShuttingDown)
         return false;
 
-    {
-        std::lock_guard<std::mutex> lock(_counterMutex);
-        if (_upscaleCounter <= _fgCounter)
-            return false;
-    }
-
     if (!Config::Instance()->IsFGEnabled() || !Config::Instance()->FGHUDFix.value_or_default())
         return false;
 
@@ -361,7 +361,8 @@ bool Hudfix_Dx11::IsResourceCheckActive()
     if (!state.currentFG->IsActive())
         return false;
 
-    return true;
+    std::lock_guard<std::mutex> lock(_counterMutex);
+    return _upscaleCounter > _fgCounter;
 }
 
 bool Hudfix_Dx11::SkipHudlessChecks() { return _skipHudlessChecks; }
@@ -627,13 +628,17 @@ bool Hudfix_Dx11::CheckForHudless(ID3D11DeviceContext* context, Dx11ResourceInfo
     const auto upscaleFrame = ActiveUpscaleFrame();
 
     CapturedHudlessInfo* capturedHudlessInfo = nullptr;
-    if (auto it = state.capturedHudlesses.find(resource->texture); it != state.capturedHudlesses.end())
     {
-        capturedHudlessInfo = &it->second;
-        _capturedIdentity[resource->texture] = identity;
+        std::scoped_lock hudlessLock(State::Instance().capturedHudlessesMutex);
 
-        if (!capturedHudlessInfo->enabled)
-            return false;
+        if (auto it = state.capturedHudlesses.find(resource->texture); it != state.capturedHudlesses.end())
+        {
+            capturedHudlessInfo = &it->second;
+            _capturedIdentity[resource->texture] = identity;
+
+            if (!capturedHudlessInfo->enabled)
+                return false;
+        }
     }
 
     if (!ignoreBlocked && Config::Instance()->FGResourceBlocking.value_or_default())
@@ -730,15 +735,19 @@ bool Hudfix_Dx11::CheckForHudless(ID3D11DeviceContext* context, Dx11ResourceInfo
 
     HudlessFound();
 
-    if (capturedHudlessInfo != nullptr)
     {
-        ++capturedHudlessInfo->usageCount;
-        capturedHudlessInfo->captureInfo = resource->captureInfo;
-    }
-    else
-    {
-        state.capturedHudlesses.insert_or_assign(resource->texture,
-                                                 CapturedHudlessInfo { 1, resource->captureInfo, true });
+        std::scoped_lock hudlessLock(State::Instance().capturedHudlessesMutex);
+
+        if (capturedHudlessInfo != nullptr)
+        {
+            ++capturedHudlessInfo->usageCount;
+            capturedHudlessInfo->captureInfo = resource->captureInfo;
+        }
+        else
+        {
+            state.capturedHudlesses.insert_or_assign(resource->texture,
+                                                     CapturedHudlessInfo { 1, resource->captureInfo, true });
+        }
     }
 
     _capturedIdentity[resource->texture] = identity;
@@ -780,11 +789,15 @@ void Hudfix_Dx11::ReleaseResources()
         _captureList.clear();
     }
 
-    auto& capturedHudlesses = State::Instance().capturedHudlesses;
-    for (const auto& [resource, identity] : _capturedIdentity)
     {
-        UNREFERENCED_PARAMETER(identity);
-        capturedHudlesses.erase(resource);
+        auto& capturedHudlesses = State::Instance().capturedHudlesses;
+        std::scoped_lock hudlessLock(State::Instance().capturedHudlessesMutex);
+
+        for (const auto& [resource, identity] : _capturedIdentity)
+        {
+            UNREFERENCED_PARAMETER(identity);
+            capturedHudlesses.erase(resource);
+        }
     }
     _capturedIdentity.clear();
 

@@ -33,10 +33,11 @@ bool OS_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InSou
 {
     auto resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
+    auto oldBuffer = _buffer;
     auto result =
         Shader_Dx12::CreateBufferResource(InDevice, InSource, InState, &_buffer, resourceFlags, InWidth, InHeight);
 
-    if (result)
+    if (result && _buffer != oldBuffer)
     {
         _buffer->SetName(L"OS_Buffer");
         _bufferState = InState;
@@ -71,6 +72,11 @@ bool OS_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InR
                State::Instance().currentFeature->TargetWidth(), State::Instance().currentFeature->TargetHeight(),
                State::Instance().currentFeature->DisplayWidth(), State::Instance().currentFeature->DisplayHeight());
 
+    // EASU only upscales, downscaling stays on the shader's bilinear path
+    fsr1Constants.squaredRadius =
+        State::Instance().currentFeature->TargetWidth() < State::Instance().currentFeature->DisplayWidth() ? UINT32_MAX
+                                                                                                           : 0;
+
     constants.srcWidth = State::Instance().currentFeature->TargetWidth();
     constants.srcHeight = State::Instance().currentFeature->TargetHeight();
     constants.destWidth = State::Instance().currentFeature->DisplayWidth();
@@ -80,12 +86,11 @@ bool OS_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InR
     bool createdConstantsBuffer = false;
     if (Config::Instance()->OutputScalingDownscaler.value_or_default() == Scaler::FSR1)
     {
-        createdConstantsBuffer =
-            CreateConstantsBuffer(_device, _constantBuffer, fsr1Constants, currentHeap.GetCbvCPU(0));
+        createdConstantsBuffer = CreateConstantsBuffer(_device, currentHeap, fsr1Constants, currentHeap.GetCbvCPU(0));
     }
     else
     {
-        createdConstantsBuffer = CreateConstantsBuffer(_device, _constantBuffer, constants, currentHeap.GetCbvCPU(0));
+        createdConstantsBuffer = CreateConstantsBuffer(_device, currentHeap, constants, currentHeap.GetCbvCPU(0));
     }
 
     if (!createdConstantsBuffer)
@@ -134,11 +139,6 @@ OS_Dx12::OS_Dx12(std::string InName, ID3D12Device* InDevice, bool InUpsample)
         LOG_ERROR("Failed to setup root signature");
         return;
     }
-
-    D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(Constants));
-    auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-    InDevice->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ,
-                                      nullptr, IID_PPV_ARGS(&_constantBuffer));
 
     auto downscalerConfig = Config::Instance()->OutputScalingDownscaler.value_or_default();
 

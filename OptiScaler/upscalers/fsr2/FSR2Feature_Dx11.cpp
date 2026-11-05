@@ -38,6 +38,10 @@ bool FSR2FeatureDx11::CopyTexture(ID3D11Resource* InResource, D3D11_TEXTURE2D_RE
 
     if (desc.BindFlags == bindFlags)
     {
+        // Our copy isn't needed anymore
+        if (!OutTextureRes->usingOriginal && OutTextureRes->Texture != nullptr)
+            OutTextureRes->Texture->Release();
+
         ASSIGN_DESC(OutTextureRes->Desc, desc);
         OutTextureRes->Texture = originalTexture;
         OutTextureRes->usingOriginal = true;
@@ -203,6 +207,11 @@ bool FSR2FeatureDx11::InitFSR2(const NVSDK_NGX_Parameter* InParameters)
         if (errorCode != FFX_OK)
         {
             LOG_ERROR("ffxFsr2ContextCreate error: {0}", ResultToString(errorCode));
+
+            // The destructor frees it only for inited features
+            free(_contextDesc.callbacks.scratchBuffer);
+            _contextDesc.callbacks.scratchBuffer = nullptr;
+
             return false;
         }
     }
@@ -234,7 +243,7 @@ bool FSR2FeatureDx11::EvaluateInternal(ID3D11DeviceContext* InContext, NVSDK_NGX
     InParameters->Get(NVSDK_NGX_Parameter_Jitter_Offset_X, &params.jitterOffset.x);
     InParameters->Get(NVSDK_NGX_Parameter_Jitter_Offset_Y, &params.jitterOffset.y);
 
-    unsigned int reset;
+    unsigned int reset = 0;
     InParameters->Get(NVSDK_NGX_Parameter_Reset, &reset);
     params.reset = (reset == 1);
 
@@ -245,7 +254,7 @@ bool FSR2FeatureDx11::EvaluateInternal(ID3D11DeviceContext* InContext, NVSDK_NGX
     params.enableSharpening = _sharpness > 0.0f;
     params.sharpness = _sharpness;
 
-    ID3D11Resource* paramColor;
+    ID3D11Resource* paramColor = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_Color, &paramColor) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_Color, (void**) &paramColor);
 
@@ -270,7 +279,7 @@ bool FSR2FeatureDx11::EvaluateInternal(ID3D11DeviceContext* InContext, NVSDK_NGX
         return false;
     }
 
-    ID3D11Resource* paramVelocity;
+    ID3D11Resource* paramVelocity = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, &paramVelocity) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, (void**) &paramVelocity);
 
@@ -287,7 +296,7 @@ bool FSR2FeatureDx11::EvaluateInternal(ID3D11DeviceContext* InContext, NVSDK_NGX
 
     auto outIndex = _frameCount % 2;
 
-    ID3D11Resource* paramOutput;
+    ID3D11Resource* paramOutput = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_Output, &paramOutput) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_Output, (void**) &paramOutput);
 
@@ -303,7 +312,7 @@ bool FSR2FeatureDx11::EvaluateInternal(ID3D11DeviceContext* InContext, NVSDK_NGX
         return false;
     }
 
-    ID3D11Resource* paramDepth;
+    ID3D11Resource* paramDepth = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_Depth, &paramDepth) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_Depth, (void**) &paramDepth);
 

@@ -6,16 +6,17 @@
 #include <hudfix/Hudfix_Dx11.h>
 #include <menu/menu_overlay_dx.h>
 
+#include <misc/DeferredRelease.h>
 #include <magic_enum.hpp>
 
 void Reprojection_Dx12::ReleaseObjects()
 {
     for (size_t i = 0; i < BUFFER_COUNT; i++)
     {
-        SAFE_RELEASE(_uiCommandAllocator[i]);
-        SAFE_RELEASE(_uiCommandList[i]);
-        SAFE_RELEASE(_scCommandAllocator[i]);
-        SAFE_RELEASE(_scCommandList[i]);
+        DeferredRelease::Release(_uiCommandAllocator[i]);
+        DeferredRelease::Release(_uiCommandList[i]);
+        DeferredRelease::Release(_scCommandAllocator[i]);
+        DeferredRelease::Release(_scCommandList[i]);
 
         _scCommandListResetted[i] = false;
         _scAllocatorFenceValues[i] = 0;
@@ -23,6 +24,8 @@ void Reprojection_Dx12::ReleaseObjects()
         _uiCommandListResetted[i] = false;
         _uiAllocatorFenceValues[i] = 0;
     }
+
+    ReleaseFences();
 
     _renderUI.reset();
     _hudlessCompare.reset();
@@ -84,10 +87,10 @@ bool Reprojection_Dx12::CreateSwapchainInternal(IDXGIFactory* factory, ID3D12Com
     IDXGISwapChain* realSwapchain {};
     auto result = factory->CreateSwapChain(cmdQueue, desc, &realSwapchain);
 
-    if (result == S_OK && swapChain)
+    if (SUCCEEDED(result) && swapChain)
     {
         auto reprojectionSwapchain =
-            new ReprojectionDXGISwapChain(realSwapchain, _device, desc->OutputWindow, 0, false);
+            new ReprojectionDXGISwapChain(realSwapchain, cmdQueue, desc->OutputWindow, 0, false);
 
         *swapChain = reprojectionSwapchain;
 
@@ -113,9 +116,9 @@ bool Reprojection_Dx12::CreateSwapchain1Internal(IDXGIFactory* factory, ID3D12Co
     auto result = factory2->CreateSwapChainForHwnd(cmdQueue, hwnd, desc, pFullscreenDesc, nullptr, &realSwapchain1);
     factory2->Release();
 
-    if (result == S_OK && swapChain)
+    if (SUCCEEDED(result) && swapChain)
     {
-        auto reprojectionSwapchain1 = new ReprojectionDXGISwapChain(realSwapchain1, _device, hwnd, 0, false);
+        auto reprojectionSwapchain1 = new ReprojectionDXGISwapChain(realSwapchain1, cmdQueue, hwnd, 0, false);
 
         *swapChain = reprojectionSwapchain1;
 
@@ -330,13 +333,7 @@ bool Reprojection_Dx12::Present()
         _uiCommandListResetted[fIndex] = false;
     }
 
-    if (_scCommandListResetted[fIndex])
-    {
-        if (_scCommandList[fIndex]->Close() == S_OK)
-            _gameCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList**) &_scCommandList[fIndex]);
-
-        _scCommandListResetted[fIndex] = false;
-    }
+    SubmitSCCommandList(fIndex);
 
     // Returning false usually means "I didn't present, the caller still needs to call original Present",
     // which aligns with standard pass-through logic if you are purely injecting shaders before Present.
@@ -391,6 +388,10 @@ bool Reprojection_Dx12::SetResource(Dx12Resource* inputResource)
     fResource->left = inputResource->left;
     fResource->width = inputResource->width;
     fResource->height = inputResource->height;
+
+    // A new resource for the slot, its old copy is stale. A re-tag passes the slot itself
+    if (inputResource != fResource)
+        fResource->copy = nullptr;
 
     if (inputResource->cmdList != nullptr && fResource->validity == FG_ResourceValidity::ValidButMakeCopy)
     {

@@ -7,15 +7,13 @@
 
 void DLSSDFeature::ProcessEvaluateParams(NVSDK_NGX_Parameter* InParameters)
 {
-    // override sharpness
+    // override sharpness, _sharpness is zeroed by the base when RCAS runs this frame
     if (Config::Instance()->OverrideSharpness.value_or_default() && !Config::Instance()->RcasEnabled.value_or_default())
     {
-        auto sharpness = Config::Instance()->Sharpness.value_or_default();
-        sharpness = std::min(sharpness, 1.0f);
-        InParameters->Set(NVSDK_NGX_Parameter_Sharpness, sharpness);
+        InParameters->Set(NVSDK_NGX_Parameter_Sharpness, _sharpness);
     }
     // rcas enabled
-    else
+    else if (Config::Instance()->RcasEnabled.value_or_default())
     {
         InParameters->Set(NVSDK_NGX_Parameter_Sharpness, 0.0f);
     }
@@ -195,7 +193,7 @@ void DLSSDFeature::ProcessInitParams(NVSDK_NGX_Parameter* InParameters)
         }
         else
         {
-            if (State::Instance().dlssPresetsOverriddenExternally)
+            if (State::Instance().dlssdPresetsOverriddenExternally)
             {
                 InParameters->Set("RayReconstruction.Hint.Render.Preset.DLAA",
                                   State::Instance().dlssdRenderPresetExternal);

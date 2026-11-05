@@ -10,6 +10,7 @@ class AntiLag2 : public LowLatencyTech
   private:
     AMD::AntiLag2DX12::Context dx12_ctx = {};
     AMD::AntiLag2DX11::Context dx11_ctx = {};
+    ID3D12Device* dx12_device = nullptr;
 
     std::mutex amdxc64_load_mutex;
     uint64_t amdxc64_load_times = 0;
@@ -19,6 +20,8 @@ class AntiLag2 : public LowLatencyTech
     uint64_t last_sleep_framecount = 0;
     uint64_t simulation_framecount = 0;
     const uint64_t call_spot_switch_threshold = 20;
+
+    uint64_t previous_oob_frame_id = INVALID_ID;
 
     HRESULT al2_sleep();
 

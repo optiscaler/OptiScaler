@@ -2,6 +2,7 @@
 #include "GpuTime_Vk.h"
 
 #include <State.h>
+#include <misc/DeferredRelease.h>
 
 GpuTime_Vk::GpuTime_Vk(VkDevice device, VkPhysicalDevice physicalDevice) : _device(device)
 {
@@ -38,9 +39,11 @@ GpuTime_Vk::~GpuTime_Vk()
     if (State::Instance().isShuttingDown)
         return;
 
+    // Game's command buffers can still write its timestamps
     if (_queryPool != VK_NULL_HANDLE)
     {
-        vkDestroyQueryPool(_device, _queryPool, nullptr);
+        DeferredRelease::Enqueue([device = _device, pool = _queryPool]() { vkDestroyQueryPool(device, pool, nullptr); },
+                                 (uint64_t) _device);
         _queryPool = VK_NULL_HANDLE;
     }
 }
@@ -124,6 +127,8 @@ void GpuTime_Vk::PollInteropLocked()
     if (!_init || _queryPool == VK_NULL_HANDLE || !ResolveInteropCounterLocked())
         return;
 
+    uint64_t completedSerial = 0;
+
     for (int index = 0; index < QUERY_BUFFER_COUNT; ++index)
     {
         auto& slot = _interopSlots[index];
@@ -142,8 +147,14 @@ void GpuTime_Vk::PollInteropLocked()
             vkGetQueryPoolResults(_device, _queryPool, index * 2, 2, sizeof(timestamps), timestamps,
                                   2 * sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
 
-        if (queryResult == VK_NOT_READY)
+        // A later copy-back completed without this sample, its copy-back wasn't submitted (aborted upscale)
+        if (completedValue > slot.value &&
+            (queryResult == VK_NOT_READY || (queryResult == VK_SUCCESS && (timestamps[1] == 0 || timestamps[3] == 0))))
+        {
+            completedSerial = (std::max) (completedSerial, slot.serial);
+            slot = {};
             continue;
+        }
 
         if (queryResult != VK_SUCCESS)
         {
@@ -166,7 +177,15 @@ void GpuTime_Vk::PollInteropLocked()
         }
 
         // Safe to reset only after both a completed timeline value AND available timestamp results.
+        completedSerial = (std::max) (completedSerial, slot.serial);
         slot = {};
+    }
+
+    // Command buffers of older quarantined samples were recorded before a completed one
+    for (auto& slot : _interopSlots)
+    {
+        if (slot.state == InteropSlotState::Quarantined && slot.serial < completedSerial)
+            slot = {};
     }
 }
 

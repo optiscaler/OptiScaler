@@ -102,12 +102,9 @@ bool HudCopy_Vk::DispatchShader(VkCommandBuffer InCmdList, const VkImageInfo& In
     SetImageLayout(InCmdList, InHudlessInfo.Image, HudlessState, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                    InHudlessInfo.SubresourceRange);
 
-    if (_mappedConstantBuffer)
-        memcpy(_mappedConstantBuffer, InParams, InParamsSize);
-
     VkDescriptorSet descriptorSet = _descriptorSets[_currentSetIndex];
 
-    VkDescriptorBufferInfo bufferInfo { _constantBuffer, 0, InParamsSize };
+    const auto bufferInfo = WriteConstants(InParams, InParamsSize);
     VkDescriptorImageInfo hudlessInfo { _textureSampler, InHudlessInfo.ImageView,
                                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
     VkDescriptorImageInfo presentInfo { _textureSampler, InPresentInfo.ImageView,

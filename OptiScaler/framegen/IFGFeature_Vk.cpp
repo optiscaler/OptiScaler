@@ -46,7 +46,7 @@ static VkImageAspectFlags AspectMask(VkFormat format)
 }
 
 void IFGFeature_Vk::ImageBarrier(VkCommandBuffer cmdBuffer, VkImage image, VkFormat format, VkImageLayout oldLayout,
-                                 VkImageLayout newLayout)
+                                 VkImageLayout newLayout, bool firstSubresourceOnly)
 {
     VkImageMemoryBarrier barrier { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
     barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
@@ -56,7 +56,8 @@ void IFGFeature_Vk::ImageBarrier(VkCommandBuffer cmdBuffer, VkImage image, VkFor
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.image = image;
-    barrier.subresourceRange = { AspectMask(format), 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS };
+    barrier.subresourceRange = { AspectMask(format), 0, firstSubresourceOnly ? 1u : VK_REMAINING_MIP_LEVELS, 0,
+                                 firstSubresourceOnly ? 1u : VK_REMAINING_ARRAY_LAYERS };
 
     vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
                          nullptr, 0, nullptr, 1, &barrier);
@@ -313,7 +314,9 @@ bool IFGFeature_Vk::CopyImage(VkCommandBuffer cmdBuffer, VkFGResource& resource,
 
     auto aspect = AspectMask(resource.format);
 
-    ImageBarrier(cmdBuffer, resource.image, resource.format, resource.layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    // The copy reads mip 0 of layer 0, the resource's layout is the one of that view
+    ImageBarrier(cmdBuffer, resource.image, resource.format, resource.layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                 true);
     ImageBarrier(cmdBuffer, copy.image, copy.format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
     // A blit would decode/encode sRGB, a copy keeps the stored values as they are
@@ -338,7 +341,8 @@ bool IFGFeature_Vk::CopyImage(VkCommandBuffer cmdBuffer, VkFGResource& resource,
                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, VK_FILTER_NEAREST);
     }
 
-    ImageBarrier(cmdBuffer, resource.image, resource.format, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, resource.layout);
+    ImageBarrier(cmdBuffer, resource.image, resource.format, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, resource.layout,
+                 true);
 
     resource.image = copy.image;
     resource.view = copy.view;
@@ -483,19 +487,36 @@ bool IFGFeature_Vk::SetResource(VkFGResource* inputResource)
     return true;
 }
 
-void IFGFeature_Vk::RemoveUiFromHudless(VkCommandBuffer cmdBuffer, bool premultiplied)
+void IFGFeature_Vk::RequestUiUnblend(int fIndex, bool premultiplied)
 {
-    auto hudless = GetResource(FG_ResourceType::HudlessColor);
-    auto ui = GetResource(FG_ResourceType::UIColor);
+    if (fIndex >= 0 && fIndex < BUFFER_COUNT)
+        _uiUnblendPending[fIndex].store(premultiplied ? 2 : 1, std::memory_order_release);
+}
+
+void IFGFeature_Vk::UiUnblendSubmitted(int fIndex, uint8_t recorded)
+{
+    // A newer request of the frame stays
+    if (recorded != 0)
+        _uiUnblendPending[fIndex].compare_exchange_strong(recorded, 0, std::memory_order_acq_rel);
+}
+
+uint8_t IFGFeature_Vk::UnblendUi(VkCommandBuffer cmdBuffer, int fIndex)
+{
+    const auto pending = _uiUnblendPending[fIndex].load(std::memory_order_acquire);
+    if (pending == 0)
+        return 0;
+
+    auto hudless = GetResource(FG_ResourceType::HudlessColor, fIndex);
+    auto ui = GetResource(FG_ResourceType::UIColor, fIndex);
 
     if (!hudless || !ui || hudless->view == VK_NULL_HANDLE || ui->view == VK_NULL_HANDLE)
-        return;
+        return 0;
 
     if (_uiUnblend == nullptr)
         _uiUnblend = std::make_unique<UiUnblend_Vk>("UiUnblend", _device, _physicalDevice);
 
     if (!_uiUnblend->IsInit())
-        return;
+        return 0;
 
     auto imageInfo = [](const VkFGResource& resource) -> VkImageInfo
     {
@@ -503,7 +524,10 @@ void IFGFeature_Vk::RemoveUiFromHudless(VkCommandBuffer cmdBuffer, bool premulti
                  resource.format, resource.imageWidth, resource.imageHeight };
     };
 
-    _uiUnblend->Dispatch(cmdBuffer, imageInfo(*ui), ui->layout, imageInfo(*hudless), hudless->layout, premultiplied);
+    return _uiUnblend->Dispatch(cmdBuffer, imageInfo(*ui), ui->layout, imageInfo(*hudless), hudless->layout,
+                                pending == 2)
+               ? pending
+               : 0;
 }
 
 VkCommandBuffer IFGFeature_Vk::BeginCommandBuffer(int index)
@@ -620,6 +644,8 @@ void IFGFeature_Vk::NewFrame()
     }
 
     auto fIndex = GetIndex();
+
+    _uiUnblendPending[fIndex].store(0, std::memory_order_release);
 
     std::unique_lock lock(_resourceMutex[fIndex]);
     _frameResources[fIndex].clear();

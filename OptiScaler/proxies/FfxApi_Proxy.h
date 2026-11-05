@@ -929,7 +929,7 @@ class FfxApiProxy
         if (radiance_dx12.dll != nullptr)
         {
             wchar_t modulePath[MAX_PATH];
-            DWORD len = GetModuleFileNameW(denoiser_dx12.dll, modulePath, MAX_PATH);
+            DWORD len = GetModuleFileNameW(radiance_dx12.dll, modulePath, MAX_PATH);
             radiance_dx12.filePath = std::wstring(modulePath);
 
             LOG_INFO("Loaded from {}", wstring_to_string(radiance_dx12.filePath));
@@ -1117,11 +1117,18 @@ class FfxApiProxy
         if (upscaling_dx12.Query == nullptr)
             return VersionDx12();
 
-        if (upscaling_dx12.version.major == 0)
+        // FSR 4 is only listed for a device it supports, the device-less answer is kept apart until there is one
+        static feature_version deviceLessVersion {};
+        auto device = State::Instance().currentD3D12Device;
+
+        if (upscaling_dx12.version.major == 0 && (device != nullptr || deviceLessVersion.major == 0))
         {
+            ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
+
             ffxQueryDescGetVersions versionQuery {};
             versionQuery.header.type = FFX_API_QUERY_DESC_TYPE_GET_VERSIONS;
             versionQuery.createDescType = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE;
+            versionQuery.device = device;
             uint64_t versionCount = 0;
             versionQuery.outputCount = &versionCount;
 
@@ -1143,9 +1150,10 @@ class FfxApiProxy
 
                 if (queryResult == FFX_API_RETURN_OK)
                 {
-                    upscaling_dx12.version.parse_version(versionNames[0]);
-                    LOG_INFO("FfxApi Dx12 SR version: {}.{}.{}", upscaling_dx12.version.major,
-                             upscaling_dx12.version.minor, upscaling_dx12.version.patch);
+                    auto& version = device != nullptr ? upscaling_dx12.version : deviceLessVersion;
+                    version.parse_version(versionNames[0]);
+                    LOG_INFO("FfxApi Dx12 SR version: {}.{}.{}, device: {:X}", version.major, version.minor,
+                             version.patch, (size_t) device);
                 }
                 else
                 {
@@ -1158,7 +1166,7 @@ class FfxApiProxy
             }
         }
 
-        return upscaling_dx12.version;
+        return upscaling_dx12.version.major != 0 ? upscaling_dx12.version : deviceLessVersion;
     }
 
     static feature_version VersionDx12_FG()

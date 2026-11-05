@@ -10,6 +10,45 @@
 
 #pragma endregion
 
+// The hooked amdxc64 is the first one loaded, with two GPUs of a vendor it can belong to the other driver package.
+// A device only works with the extension of its own driver, which is loaded by d3d12 from its driver package
+static PFN_AmdExtD3DCreateInterface CreateInterfaceOf(IUnknown* pOuter)
+{
+    ID3D12Device* device = nullptr;
+    if (pOuter == nullptr || FAILED(pOuter->QueryInterface(IID_PPV_ARGS(&device))))
+        return Amdxc64Hooks::o_AmdExtD3DCreateInterface;
+
+    auto luid = device->GetAdapterLuid();
+    device->Release();
+
+    std::filesystem::path store;
+    for (const auto& gpu : IdentifyGpu::getAllGpus())
+    {
+        if (IsEqualLUID(gpu.luid, luid))
+            store = gpu.driverStore;
+    }
+
+    if (store.empty())
+        return Amdxc64Hooks::o_AmdExtD3DCreateInterface;
+
+    auto module = KernelBaseProxy::GetModuleHandleW_()((store / L"amdxc64.dll").c_str());
+
+    // The export of the hooked module would call the hook again
+    if (module == nullptr || module == Amdxc64Hooks::moduleAmdxc64)
+        return Amdxc64Hooks::o_AmdExtD3DCreateInterface;
+
+    auto createInterface = reinterpret_cast<PFN_AmdExtD3DCreateInterface>(
+        KernelBaseProxy::GetProcAddress_()(module, "AmdExtD3DCreateInterface"));
+
+    if (createInterface == nullptr)
+        return Amdxc64Hooks::o_AmdExtD3DCreateInterface;
+
+    static std::once_flag logOnce;
+    std::call_once(logOnce, [&] { LOG_INFO(L"Using amdxc64 of the device's driver: {}", store.wstring()); });
+
+    return createInterface;
+}
+
 struct AmdExtD3DFactory : public IAmdExtD3DFactory
 {
     IAmdExtD3DFactory* real = nullptr;
@@ -117,7 +156,9 @@ void Amdxc64Hooks::Init()
         // Pin the dll so that our hooks stay valid, mainly for Linux
         GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN, L"amdxc64.dll", &moduleAmdxc64);
 
-        LOG_INFO("amdxc64.dll loaded");
+        wchar_t amdxc64Path[MAX_PATH] {};
+        GetModuleFileNameW(moduleAmdxc64, amdxc64Path, MAX_PATH);
+        LOG_INFO(L"amdxc64.dll loaded from {}", amdxc64Path);
 
         static std::mutex initMutex;
         std::scoped_lock lock(initMutex);
@@ -168,7 +209,7 @@ HRESULT STDMETHODCALLTYPE Amdxc64Hooks::hkAmdExtD3DCreateInterface(IUnknown* pOu
         factory->fsr4ForcedSupport = primaryGpu.fsr4ForcedSupport;
 
         if (o_AmdExtD3DCreateInterface != nullptr &&
-            FAILED(o_AmdExtD3DCreateInterface(pOuter, riid, (void**) &factory->real)))
+            FAILED(CreateInterfaceOf(pOuter)(pOuter, riid, (void**) &factory->real)))
         {
             factory->real = nullptr;
         }
@@ -215,7 +256,15 @@ HRESULT STDMETHODCALLTYPE Amdxc64Hooks::hkAmdExtD3DCreateInterface(IUnknown* pOu
 
     else if (o_AmdExtD3DCreateInterface != nullptr)
     {
-        auto result = o_AmdExtD3DCreateInterface(pOuter, riid, ppvObject);
+        auto result = CreateInterfaceOf(pOuter)(pOuter, riid, ppvObject);
+
+        // The FSR 4 support checks of the FFX SDK and the driver rely on these
+        if (FAILED(result))
+        {
+            wchar_t iid[40] {};
+            StringFromGUID2(riid, iid, 40);
+            LOG_WARN(L"AmdExtD3DCreateInterface {} failed: {:X}", iid, (UINT) result);
+        }
 
         if (SUCCEEDED(result) && riid == __uuidof(IAmdExtD3DFactory) && *ppvObject != nullptr)
             HookFactory((IAmdExtD3DFactory*) *ppvObject);

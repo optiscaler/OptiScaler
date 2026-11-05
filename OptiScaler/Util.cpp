@@ -419,6 +419,31 @@ HWND Util::GetProcessWindow()
     return hwnd;
 }
 
+// Overlays and hook libraries use small swapchains, 0 size means the window's client size
+bool Util::IsOverlaySwapchain(HWND hwnd, UINT width, UINT height)
+{
+    RECT rect {};
+    bool windowSize = false;
+    if ((width == 0 || height == 0) && hwnd != nullptr && GetClientRect(hwnd, &rect))
+    {
+        windowSize = true;
+
+        if (width == 0)
+            width = static_cast<UINT>(rect.right - rect.left);
+
+        if (height == 0)
+            height = static_cast<UINT>(rect.bottom - rect.top);
+    }
+
+    const bool overlay = (width != 0 && width < 100) || (height != 0 && height < 100);
+
+    // Shows games which create their swapchain on a small window and resize it later
+    if (overlay && windowSize)
+        LOG_INFO("0 sized swapchain uses window size {}x{}, treating it as overlay", width, height);
+
+    return overlay;
+}
+
 static inline std::string LogLastError()
 {
     DWORD errorCode = GetLastError();

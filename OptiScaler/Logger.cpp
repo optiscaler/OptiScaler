@@ -136,8 +136,9 @@ void PrepareLogger()
                         (State::Instance().NVNGX_Logger.MinimumLoggingLevel == NVSDK_NGX_LOGGING_LEVEL_VERBOSE ||
                          msg.level >= spdlog::level::info))
                     {
-                        auto message = (char*) msg.payload.data();
-                        State::Instance().NVNGX_Logger.LoggingCallback(message, NVSDK_NGX_LOGGING_LEVEL_ON,
+                        // payload isn't null terminated
+                        std::string message(msg.payload.data(), msg.payload.size());
+                        State::Instance().NVNGX_Logger.LoggingCallback(message.c_str(), NVSDK_NGX_LOGGING_LEVEL_ON,
                                                                        NVSDK_NGX_Feature_SuperSampling);
                     }
                 });

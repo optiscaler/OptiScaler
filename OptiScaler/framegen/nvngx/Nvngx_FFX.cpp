@@ -133,10 +133,8 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
     if (!InOurHandle)
         return NVSDK_NGX_Result_FAIL_InvalidParameter;
 
-    if (InOurHandle->device)
-        InOurHandle->device->Release();
-
-    delete InOurHandle; // destroys FFX context automatically
+    // FFX can still have work in flight, the destructor releases the context and then the device
+    Util::DelayedDestroy(std::unique_ptr<Nvngx_FFX_Handle>(InOurHandle));
 
     return NVSDK_NGX_Result_Success;
 }
@@ -347,7 +345,7 @@ bool QueryHDRLuminanceRange(NVSDK_NGX_Parameter* InParameters, Nvngx_FFX_Handle*
         IdentifyGpu::getHardwareAdapter(factory.Get(), adapter.GetAddressOf(), D3D_FEATURE_LEVEL_12_0);
 
         // Then check the first HDR-capable output
-        for (uint32_t j = 0; adapter->EnumOutputs(j, &output) == S_OK; j++)
+        for (uint32_t j = 0; adapter != nullptr && adapter->EnumOutputs(j, &output) == S_OK; j++)
         {
             if (IDXGIOutput6* output6; output->QueryInterface(IID_PPV_ARGS(&output6)) == S_OK)
             {
@@ -561,6 +559,13 @@ NVSDK_NGX_Result Nvngx_FFX::Evaluate(const Nvngx_FFX_Api& api, ffxApiHeader* bac
         versionQuery.outputCount = &versionCount;
         // get number of versions for allocation
         api.Query(nullptr, &versionQuery.header);
+
+        if (versionCount == 0)
+        {
+            LOG_ERROR("No FFX FG version found");
+            InOurHandle->createFailed = true;
+            return NVSDK_NGX_Result_Fail;
+        }
 
         State::Instance().ffxFGVersionIds.resize(versionCount);
         State::Instance().ffxFGVersionNames.resize(versionCount);

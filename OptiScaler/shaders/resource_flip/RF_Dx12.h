@@ -7,7 +7,7 @@
 #include <shaders/Shader_Dx12Utils.h>
 #include <shaders/Shader_Dx12.h>
 
-#define RF_NUM_OF_HEAPS 2
+#define RF_NUM_OF_HEAPS 3
 
 class RF_Dx12 : public Shader_Dx12
 {

@@ -388,11 +388,9 @@ void Shader_Vk::SetImageLayout(VkCommandBuffer cmdBuffer, VkImage image, VkImage
     VkPipelineStageFlags sourceStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
     VkPipelineStageFlags destinationStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 
+    // Discarded contents can still be read by earlier commands, the transition waits for them
     if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED)
-    {
         barrier.srcAccessMask = 0;
-        sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    }
     else if (oldLayout == VK_IMAGE_LAYOUT_GENERAL)
     {
         barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -413,8 +411,31 @@ void Shader_Vk::SetImageLayout(VkCommandBuffer cmdBuffer, VkImage image, VkImage
     vkCmdPipelineBarrier(cmdBuffer, sourceStage, destinationStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 }
 
-void Shader_Vk::CreateConstantBuffer(VkDeviceSize bufferSize)
+VkDeviceSize Shader_Vk::UniformStride(VkPhysicalDevice physicalDevice, VkDeviceSize size)
 {
+    VkPhysicalDeviceProperties properties {};
+    vkGetPhysicalDeviceProperties(physicalDevice, &properties);
+
+    const auto alignment = std::max<VkDeviceSize>(properties.limits.minUniformBufferOffsetAlignment, 1);
+    return (size + alignment - 1) / alignment * alignment;
+}
+
+VkDescriptorBufferInfo Shader_Vk::WriteConstants(const void* data, VkDeviceSize size)
+{
+    const auto offset = _constantStride * _currentSetIndex;
+    size = std::min(size, _constantStride);
+
+    if (_mappedConstantBuffer != nullptr)
+        memcpy((uint8_t*) _mappedConstantBuffer + offset, data, size);
+
+    return { _constantBuffer, offset, size };
+}
+
+void Shader_Vk::CreateConstantBuffer(VkDeviceSize paramsSize)
+{
+    _constantStride = UniformStride(_physicalDevice, paramsSize);
+    const auto bufferSize = _constantStride * _maxFramesInFlight;
+
     if (!CreateBufferResource(_device, _physicalDevice, &_constantBuffer, &_constantBufferMemory, bufferSize,
                               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))

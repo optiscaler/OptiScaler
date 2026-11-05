@@ -6,33 +6,7 @@
 
 int IFGFeature::GetIndex() { return (_frameCount % BUFFER_COUNT); }
 
-int IFGFeature::GetIndexWillBeDispatched()
-{
-    UINT64 df;
-
-    auto diff = _frameCount - _lastDispatchedFrame;
-    if (diff > Config::Instance()->FGAllowedFrameAhead.value_or_default() || diff < 0 || _lastDispatchedFrame == 0)
-    {
-        // If current index has resources, skip to it
-        if (HasResource(FG_ResourceType::Depth))
-        {
-            LOG_DEBUG("Skipping not presented frames! _frameCount: {}, _lastDispatchedFrame: {}", _frameCount,
-                      _lastDispatchedFrame);
-
-            df = _frameCount; // Set dispatch frame as new one
-        }
-        else
-        {
-            df = _lastDispatchedFrame + 1; // Render next one
-        }
-    }
-    else
-    {
-        df = _lastDispatchedFrame + 1; // Render next one
-    }
-
-    return (df % BUFFER_COUNT);
-}
+int IFGFeature::GetIndexWillBeDispatched() { return (NextDispatchFrame() % BUFFER_COUNT); }
 
 UINT64 IFGFeature::StartNewFrame()
 {
@@ -141,19 +115,7 @@ int IFGFeature::GetDispatchIndex(UINT64& willDispatchFrame)
     if (_frameCount == _lastDispatchedFrame)
         return -1;
 
-    willDispatchFrame = _lastDispatchedFrame + 1; // By default render next one
-
-    auto diff = _frameCount - _lastDispatchedFrame;
-    if (diff > Config::Instance()->FGAllowedFrameAhead.value_or_default() || diff < 0 || _lastDispatchedFrame == 0)
-    {
-        auto index = GetIndex();
-
-        if (HasResource(FG_ResourceType::Depth, index) || HasResource(FG_ResourceType::Velocity, index) ||
-            HasResource(FG_ResourceType::UIColor, index) || HasResource(FG_ResourceType::HudlessColor, index))
-        {
-            willDispatchFrame = _frameCount; // Set dispatch frame as latest one
-        }
-    }
+    willDispatchFrame = NextDispatchFrame();
 
     _lastDispatchedFrame = willDispatchFrame;
     _lastFGFrame = State::Instance().fgLastFrame;
@@ -161,7 +123,33 @@ int IFGFeature::GetDispatchIndex(UINT64& willDispatchFrame)
     return (willDispatchFrame % BUFFER_COUNT);
 }
 
+// Shared by GetDispatchIndex and GetIndexWillBeDispatched so they pick the same slot
+UINT64 IFGFeature::NextDispatchFrame()
+{
+    auto frame = _lastDispatchedFrame + 1; // By default render next one
+
+    auto diff = _frameCount - _lastDispatchedFrame;
+    if (diff > Config::Instance()->FGAllowedFrameAhead.value_or_default() || _lastDispatchedFrame == 0)
+    {
+        auto index = GetIndex();
+
+        if (HasResource(FG_ResourceType::Depth, index) || HasResource(FG_ResourceType::Velocity, index) ||
+            HasResource(FG_ResourceType::UIColor, index) || HasResource(FG_ResourceType::HudlessColor, index))
+        {
+            frame = _frameCount; // Set dispatch frame as latest one
+        }
+    }
+
+    return frame;
+}
+
 bool IFGFeature::IsActive() { return _isActive || _waitingNewFrameData; }
+
+void IFGFeature::Disable()
+{
+    Deactivate();
+    _waitingNewFrameData = false;
+}
 
 bool IFGFeature::IsPaused() { return _targetFrame != 0 && _targetFrame >= _frameCount; }
 
@@ -194,6 +182,14 @@ void IFGFeature::SetFrameCount(UINT64 frameId)
     //    LOG_TRACE("Prevented setting frame count! Old: {}, New: {}", _frameCount, frameId);
     //}
 
+    // XeFG needs increasing frame ids, so it's only moved forward until its context is destroyed
+    if (frameId < _frameCount && State::Instance().activeFgOutput == FGOutput::XeFG && !_allowLowerFrameId)
+    {
+        LOG_TRACE("Prevented setting frame count! Old: {}, New: {}", _frameCount, frameId);
+        return;
+    }
+
+    _allowLowerFrameId = false;
     _frameCount = frameId;
 }
 
