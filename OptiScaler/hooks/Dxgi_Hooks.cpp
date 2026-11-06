@@ -21,6 +21,16 @@ static bool creatingD3D12DeviceForLuma = false;
 
 #pragma intrinsic(_ReturnAddress)
 
+// Special K calls our exports from its DXGI init and when passing on the game's calls
+static bool IsFromSpecialK(void* returnAddress)
+{
+    if (!Config::Instance()->LoadSpecialK.value_or_default())
+        return false;
+
+    auto module = Util::GetCallerModule(returnAddress);
+    return module != nullptr && module == GetModuleHandleW(L"SpecialK64.dll");
+}
+
 static void InitD3D12DeviceForLuma(IDXGIFactory* factory)
 {
     IDXGIAdapter* hardwareAdapter = nullptr;
@@ -39,7 +49,12 @@ static void InitD3D12DeviceForLuma(IDXGIFactory* factory)
 
 static void CheckLumaAndReShade(IDXGIFactory* factory)
 {
-    if (!Config::Instance()->LoadReShade.value_or_default() ||
+    if (DxgiHooks::PendingLoads != nullptr)
+        DxgiHooks::PendingLoads();
+
+    const bool loadSpecialK = skModule == nullptr && Config::Instance()->LoadSpecialK.value_or_default();
+
+    if ((!Config::Instance()->LoadReShade.value_or_default() && !loadSpecialK) ||
         !Config::Instance()->CreateD3D12DeviceForLuma.value_or_default() ||
         State::Instance().currentD3D12Device != nullptr || creatingD3D12DeviceForLuma)
     {
@@ -47,13 +62,15 @@ static void CheckLumaAndReShade(IDXGIFactory* factory)
     }
 
     auto rsFile = Util::ReShadePath();
-    if (reshadeModule == nullptr)
+    if (reshadeModule == nullptr && Config::Instance()->LoadReShade.value_or_default())
     {
         auto rsFileExist = std::filesystem::exists(rsFile);
         if (!rsFileExist)
         {
             Config::Instance()->LoadReShade.set_volatile_value(false);
-            return;
+
+            if (!loadSpecialK)
+                return;
         }
     }
 
@@ -72,13 +89,23 @@ static void CheckLumaAndReShade(IDXGIFactory* factory)
         creatingD3D12DeviceForLuma = false;
     }
 
-    // Loading Reshade after Luma's D3D12 device creation to prevent conflicts
-    if (reshadeModule == nullptr && Config::Instance()->LoadReShade.value_or_default())
+    // Special K loads ReShade itself, so it waits for Luma's device too
+    if (loadSpecialK)
+    {
+        auto skFile = Util::ExePath().parent_path() / L"SpecialK64.dll";
+        SetEnvironmentVariableW(L"RESHADE_DISABLE_GRAPHICS_HOOK", L"1");
+
+        State::EnableServeOriginal(200);
+        skModule = NtdllProxy::LoadLibraryExW_Ldr(skFile.c_str(), NULL, 0);
+        State::DisableServeOriginal(200);
+
+        LOG_INFO("Loading SpecialK64.dll, result: {0:X}", (UINT64) skModule);
+    }
+
+    // Loading Reshade after Luma's D3D12 device creation to prevent conflicts, Special K loads it itself
+    if (reshadeModule == nullptr && skModule == nullptr && Config::Instance()->LoadReShade.value_or_default())
     {
         SetEnvironmentVariableW(L"RESHADE_DISABLE_LOADING_CHECK", L"1");
-
-        if (skModule != nullptr)
-            SetEnvironmentVariableW(L"RESHADE_DISABLE_GRAPHICS_HOOK", L"1");
 
         State::EnableServeOriginal(201);
         reshadeModule = NtdllProxy::LoadLibraryExW_Ldr(rsFile.c_str(), NULL, 0);
@@ -143,7 +170,7 @@ inline static HRESULT hkCreateDXGIFactory(REFIID riid, IDXGIFactory** ppFactory)
         if (Config::Instance()->DxgiFactoryWrapping.value_or_default())
             *ppFactory = (IDXGIFactory*) (new WrappedIDXGIFactory7(*ppFactory));
         else
-            DxgiFactoryHooks::HookToFactory(*ppFactory);
+            DxgiFactoryHooks::HookToFactory(*ppFactory, IsFromSpecialK(_ReturnAddress()));
     }
 
     CheckLumaAndReShade(*ppFactory);
@@ -206,7 +233,7 @@ inline static HRESULT hkCreateDXGIFactory1(REFIID riid, IDXGIFactory1** ppFactor
         if (Config::Instance()->DxgiFactoryWrapping.value_or_default())
             *ppFactory = (IDXGIFactory1*) (new WrappedIDXGIFactory7(*ppFactory));
         else
-            DxgiFactoryHooks::HookToFactory(*ppFactory);
+            DxgiFactoryHooks::HookToFactory(*ppFactory, IsFromSpecialK(_ReturnAddress()));
     }
 
     CheckLumaAndReShade(*ppFactory);
@@ -271,7 +298,7 @@ inline static HRESULT hkCreateDXGIFactory2(UINT Flags, REFIID riid, IDXGIFactory
         if (Config::Instance()->DxgiFactoryWrapping.value_or_default())
             *ppFactory = (IDXGIFactory2*) (new WrappedIDXGIFactory7(*ppFactory));
         else
-            DxgiFactoryHooks::HookToFactory(*ppFactory);
+            DxgiFactoryHooks::HookToFactory(*ppFactory, IsFromSpecialK(_ReturnAddress()));
     }
 
     CheckLumaAndReShade(*ppFactory);
@@ -308,4 +335,27 @@ void DxgiHooks::Hook()
 
     if (o_CreateDXGIFactory2 == nullptr)
         o_CreateDXGIFactory2 = DxgiProxy::Hook_CreateDxgiFactory2(hkCreateDXGIFactory2);
+}
+
+void DxgiHooks::HookFactoryMethods()
+{
+    if (o_CreateDXGIFactory1 == nullptr || Config::Instance()->DxgiFactoryWrapping.value_or_default())
+        return;
+
+    IDXGIFactory1* factory = nullptr;
+    auto owner = State::GetOwner();
+    State::DisableChecks(owner, "dxgi");
+
+    {
+        ScopedCreatingD3DDevice creatingD3DDevice {};
+        o_CreateDXGIFactory1(__uuidof(IDXGIFactory1), &factory);
+    }
+
+    State::EnableChecks(owner);
+
+    if (factory == nullptr)
+        return;
+
+    DxgiFactoryHooks::HookToFactory(factory);
+    factory->Release();
 }

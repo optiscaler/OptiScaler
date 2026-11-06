@@ -8,7 +8,8 @@
 class DxgiFactoryHooks
 {
   public:
-    static void HookToFactory(IDXGIFactory* pFactory);
+    // fromSpecialK: created through Special K's hooks, waits for them to be installed first
+    static void HookToFactory(IDXGIFactory* pFactory, bool fromSpecialK = false);
     static void HookToDLSSGFactory(IDXGIFactory* pFactory);
 
     // Dx11wDx12 FG swapchain descs

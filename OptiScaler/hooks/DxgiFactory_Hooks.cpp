@@ -268,7 +268,7 @@ bool DxgiFactoryHooks::PrepareDx12InteropDesc1(DXGI_SWAP_CHAIN_DESC1& desc, bool
     return true;
 }
 
-void DxgiFactoryHooks::HookToFactory(IDXGIFactory* pFactory)
+void DxgiFactoryHooks::HookToFactory(IDXGIFactory* pFactory, bool fromSpecialK)
 {
     // Factories can be created from several threads
     static std::mutex hookMutex;
@@ -284,6 +284,21 @@ void DxgiFactoryHooks::HookToFactory(IDXGIFactory* pFactory)
         real = pFactory;
 
     void** pFactoryVTable = *reinterpret_cast<void***>(real);
+
+    // Special K hooks the factory from its init thread and the game's factories wait for it in its export hooks.
+    // Hooking after it puts our swapchain wrapper above Special K's, 15s is Special K's own wait limit.
+    if (fromSpecialK)
+    {
+        static ULONGLONG skWaitStart = GetTickCount64();
+        auto code = (const uint8_t*) pFactoryVTable[10];
+        bool skHooked = code[0] == 0xE9 || code[0] == 0xEB || (code[0] == 0xFF && code[1] == 0x25);
+
+        if (!skHooked && GetTickCount64() - skWaitStart < 15000)
+        {
+            LOG_DEBUG("Waiting for Special K to hook the factory");
+            return;
+        }
+    }
 
     LOG_DEBUG("CreateSwapChain: {}, CreateSwapChainForHwnd: {}", Util::WhoIsTheCaller(pFactoryVTable[10]),
               Util::WhoIsTheCaller(pFactoryVTable[15]));
