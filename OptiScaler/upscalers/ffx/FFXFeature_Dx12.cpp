@@ -52,20 +52,86 @@ bool FFXFeatureDx12::InitInternal(ID3D12GraphicsCommandList* InCommandList, NVSD
     return InitFFX(InParameters);
 }
 
+namespace
+{
+// Typed depth formats exist only with ALLOW_DEPTH_STENCIL; an ordinary texture takes their typeless form
+DXGI_FORMAT PlainTextureFormat(DXGI_FORMAT InFormat)
+{
+    switch (InFormat)
+    {
+    case DXGI_FORMAT_D32_FLOAT:
+        return DXGI_FORMAT_R32_TYPELESS;
+    case DXGI_FORMAT_D24_UNORM_S8_UINT:
+        return DXGI_FORMAT_R24G8_TYPELESS;
+    case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
+        return DXGI_FORMAT_R32G8X24_TYPELESS;
+    case DXGI_FORMAT_D16_UNORM:
+        return DXGI_FORMAT_R16_TYPELESS;
+    default:
+        return InFormat;
+    }
+}
+
+// Keeps *InTexture when it already has InDesc's size, format, flags, mips and array size, otherwise replaces it.
+// The old one goes through DeferredRelease: copies recorded for earlier frames may still read it on the GPU.
+bool EnsureTexture(ID3D12Device* InDevice, ID3D12Resource** InTexture, const D3D12_RESOURCE_DESC& InDesc,
+                   bool& OutCreated)
+{
+    OutCreated = false;
+
+    if (*InTexture != nullptr)
+    {
+        auto current = (*InTexture)->GetDesc();
+
+        if (current.Width == InDesc.Width && current.Height == InDesc.Height && current.Format == InDesc.Format &&
+            current.Flags == InDesc.Flags && current.MipLevels == InDesc.MipLevels &&
+            current.DepthOrArraySize == InDesc.DepthOrArraySize)
+        {
+            return true;
+        }
+
+        DeferredRelease::Release(*InTexture);
+    }
+
+    D3D12_HEAP_PROPERTIES heapProperties {};
+    heapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+    const auto hr = InDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &InDesc,
+                                                      D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, nullptr,
+                                                      IID_PPV_ARGS(InTexture));
+
+    if (hr != S_OK || *InTexture == nullptr)
+    {
+        LOG_WARN("Sub-rectangle copy texture {}x{} format {} could not be created: {:X}", InDesc.Width, InDesc.Height,
+                 (UINT) InDesc.Format, (UINT) hr);
+        *InTexture = nullptr;
+        return false;
+    }
+
+    OutCreated = true;
+    return true;
+}
+} // namespace
+
 // Triple-screen and split-screen games render every view into one texture and give each view's place in it through
 // the DLSS input sub-rectangle parameters (Assetto Corsa Competizione's triple screen: three 1280x720 views side by
 // side in a 3840-wide target, one upscaler context per view). The FFX API has no offset for its inputs, so every view
 // was upscaled from the first one and all three screens showed the left view. A view that does not start at (0, 0) is
 // copied into a texture of its own here. The source is expected in NON_PIXEL_SHADER_RESOURCE, the state the FFX
 // dispatch reads it in, and is left there; these transitions are not recorded for RestoreBarriers.
+//
+// The copy is always an ordinary texture, also for a depth-stencil source: into a depth-stencil scratch, RDNA 4 copied
+// wrong texels for depth-only formats (D32, D16) while the same box copy into an ordinary texture was exact. A box on a
+// depth-stencil copy source needs programmable sample positions; without them the source is first copied whole into
+// InWhole, and a view whose caller passes no InWhole stays uncropped.
 ID3D12Resource* FFXFeatureDx12::CropToSubrect(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InSource,
-                                              ID3D12Resource** InScratch, UINT InX, UINT InY, UINT InWidth,
-                                              UINT InHeight, const char* InName)
+                                              ID3D12Resource** InScratch, ID3D12Resource** InWhole, UINT InX, UINT InY,
+                                              UINT InWidth, UINT InHeight, const char* InName)
 {
     if (InSource == nullptr || (InX == 0 && InY == 0) || InWidth == 0 || InHeight == 0)
         return InSource;
 
-    auto desc = InSource->GetDesc();
+    const auto desc = InSource->GetDesc();
 
     if ((UINT64) InX + InWidth > desc.Width || (UINT64) InY + InHeight > desc.Height)
     {
@@ -74,50 +140,61 @@ ID3D12Resource* FFXFeatureDx12::CropToSubrect(ID3D12GraphicsCommandList* InComma
         return InSource;
     }
 
-    if (*InScratch != nullptr)
-    {
-        auto scratchDesc = (*InScratch)->GetDesc();
+    const bool depthStencil = (desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) != 0;
 
-        if (scratchDesc.Width != InWidth || scratchDesc.Height != InHeight || scratchDesc.Format != desc.Format ||
-            scratchDesc.Flags != desc.Flags)
-        {
-            (*InScratch)->Release();
-            *InScratch = nullptr;
-        }
+    if (depthStencil && !_depthStencilBoxCopy.has_value())
+    {
+        D3D12_FEATURE_DATA_D3D12_OPTIONS2 options {};
+        _depthStencilBoxCopy =
+            Device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS2, &options, sizeof(options)) == S_OK &&
+            options.ProgrammableSamplePositionsTier != D3D12_PROGRAMMABLE_SAMPLE_POSITIONS_TIER_NOT_SUPPORTED;
     }
 
-    if (*InScratch == nullptr)
+    const bool copyWholeFirst = depthStencil && !_depthStencilBoxCopy.value_or(false);
+
+    if (copyWholeFirst && InWhole == nullptr)
+        return InSource;
+
+    auto plainDesc = desc;
+    plainDesc.Flags &= ~(D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL | D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE);
+    plainDesc.Format = PlainTextureFormat(desc.Format);
+    plainDesc.Alignment = 0;
+    plainDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+
+    auto scratchDesc = plainDesc;
+    scratchDesc.Width = InWidth;
+    scratchDesc.Height = InHeight;
+    scratchDesc.DepthOrArraySize = 1;
+    scratchDesc.MipLevels = 1;
+
+    bool created = false;
+
+    if (!EnsureTexture(Device, InScratch, scratchDesc, created))
+        return InSource;
+
+    if (created)
     {
-        D3D12_HEAP_PROPERTIES heapProperties {};
-        D3D12_HEAP_FLAGS heapFlags {};
-
-        if (InSource->GetHeapProperties(&heapProperties, &heapFlags) != S_OK)
-        {
-            heapProperties = {};
-            heapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
-        }
-
-        desc.Width = InWidth;
-        desc.Height = InHeight;
-        desc.MipLevels = 1;
-
-        const auto hr = Device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &desc,
-                                                        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, nullptr,
-                                                        IID_PPV_ARGS(InScratch));
-
-        if (hr != S_OK || *InScratch == nullptr)
-        {
-            LOG_WARN("{} sub-rectangle copy could not be created ({:X}), using the texture as is", InName, (UINT) hr);
-            *InScratch = nullptr;
-            return InSource;
-        }
-
-        LOG_INFO("{} is taken from a {}x{} sub-rectangle at ({}, {}) of its texture", InName, InWidth, InHeight, InX,
-                 InY);
+        LOG_INFO("{} is taken from a {}x{} sub-rectangle at ({}, {}) of its texture{}", InName, InWidth, InHeight, InX,
+                 InY, copyWholeFirst ? ", copying the texture whole first" : "");
     }
+
+    if (copyWholeFirst && !EnsureTexture(Device, InWhole, plainDesc, created))
+        return InSource;
+
+    ID3D12Resource* boxSource = InSource;
 
     ResourceBarrier(InCommandList, InSource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
                     D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+    if (copyWholeFirst)
+    {
+        ResourceBarrier(InCommandList, *InWhole, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                        D3D12_RESOURCE_STATE_COPY_DEST);
+        InCommandList->CopyResource(*InWhole, InSource);
+        ResourceBarrier(InCommandList, *InWhole, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        boxSource = *InWhole;
+    }
+
     ResourceBarrier(InCommandList, *InScratch, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
                     D3D12_RESOURCE_STATE_COPY_DEST);
 
@@ -135,7 +212,7 @@ ID3D12Resource* FFXFeatureDx12::CropToSubrect(ID3D12GraphicsCommandList* InComma
     dstLocation.SubresourceIndex = 0;
 
     D3D12_TEXTURE_COPY_LOCATION srcLocation {};
-    srcLocation.pResource = InSource;
+    srcLocation.pResource = boxSource;
     srcLocation.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
     srcLocation.SubresourceIndex = 0;
 
@@ -143,6 +220,13 @@ ID3D12Resource* FFXFeatureDx12::CropToSubrect(ID3D12GraphicsCommandList* InComma
 
     ResourceBarrier(InCommandList, InSource, D3D12_RESOURCE_STATE_COPY_SOURCE,
                     D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+    if (copyWholeFirst)
+    {
+        ResourceBarrier(InCommandList, *InWhole, D3D12_RESOURCE_STATE_COPY_SOURCE,
+                        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    }
+
     ResourceBarrier(InCommandList, *InScratch, D3D12_RESOURCE_STATE_COPY_DEST,
                     D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
@@ -202,6 +286,9 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
     if (InParameters->Get(NVSDK_NGX_Parameter_Color, &paramColor) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_Color, (void**) &paramColor);
 
+    // This view's colour; the auto exposure below reads it too
+    ID3D12Resource* colorInput = nullptr;
+
     if (paramColor)
     {
         LOG_DEBUG("Color exist..");
@@ -223,8 +310,8 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
         UINT colorX = 0, colorY = 0;
         InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Color_Subrect_Base_X, &colorX);
         InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Color_Subrect_Base_Y, &colorY);
-        ID3D12Resource* colorInput = CropToSubrect(InCommandList, paramColor, &_subrectColor, colorX, colorY,
-                                                   params.renderSize.width, params.renderSize.height, "Color");
+        colorInput = CropToSubrect(InCommandList, paramColor, &_subrectColor, nullptr, colorX, colorY,
+                                   params.renderSize.width, params.renderSize.height, "Color");
 
         params.color = ffxApiGetResourceDX12(colorInput, FFX_API_RESOURCE_STATE_COMPUTE_READ);
     }
@@ -261,8 +348,8 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
         InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_MV_SubrectBase_Y, &mvY);
         const UINT mvWidth = LowResMV() ? params.renderSize.width : TargetWidth();
         const UINT mvHeight = LowResMV() ? params.renderSize.height : TargetHeight();
-        ID3D12Resource* mvInput =
-            CropToSubrect(InCommandList, paramVelocity, &_subrectMv, mvX, mvY, mvWidth, mvHeight, "MotionVectors");
+        ID3D12Resource* mvInput = CropToSubrect(InCommandList, paramVelocity, &_subrectMv, nullptr, mvX, mvY, mvWidth,
+                                                mvHeight, "MotionVectors");
 
         params.motionVectors = ffxApiGetResourceDX12(mvInput, FFX_API_RESOURCE_STATE_COMPUTE_READ);
     }
@@ -314,8 +401,9 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
         UINT depthX = 0, depthY = 0;
         InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Depth_Subrect_Base_X, &depthX);
         InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Depth_Subrect_Base_Y, &depthY);
-        ID3D12Resource* depthInput = CropToSubrect(InCommandList, paramDepth, &_subrectDepth, depthX, depthY,
-                                                   params.renderSize.width, params.renderSize.height, "Depth");
+        ID3D12Resource* depthInput =
+            CropToSubrect(InCommandList, paramDepth, &_subrectDepth, &_subrectDepthWhole, depthX, depthY,
+                          params.renderSize.width, params.renderSize.height, "Depth");
 
         params.depth = ffxApiGetResourceDX12(depthInput, FFX_API_RESOURCE_STATE_COMPUTE_READ);
     }
@@ -406,8 +494,9 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
                 UINT maskX = 0, maskY = 0;
                 InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_SubrectBase_X, &maskX);
                 InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_SubrectBase_Y, &maskY);
-                paramReactiveMask2 = CropToSubrect(InCommandList, paramReactiveMask2, &_subrectMask, maskX, maskY,
-                                                   params.renderSize.width, params.renderSize.height, "Bias mask");
+                paramReactiveMask2 =
+                    CropToSubrect(InCommandList, paramReactiveMask2, &_subrectMask, nullptr, maskX, maskY,
+                                  params.renderSize.width, params.renderSize.height, "Bias mask");
 
                 if (paramTransparency == nullptr && Config::Instance()->FsrUseMaskForTransparency.value_or_default())
                     params.transparencyAndComposition =
@@ -612,7 +701,8 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
 
     if (_customAutoExposure)
     {
-        if (_autoExposure->Dispatch(InCommandList, paramColor, params.renderSize.width, params.renderSize.height,
+        // The view's own colour: in a shared texture, paramColor's (0, 0) corner is the first view
+        if (_autoExposure->Dispatch(InCommandList, colorInput, params.renderSize.width, params.renderSize.height,
                                     params.preExposure, params.frameTimeDelta / 1000.0f, params.reset))
         {
             params.exposure = ffxApiGetResourceDX12(_autoExposure->Exposure(), FFX_API_RESOURCE_STATE_COMPUTE_READ);

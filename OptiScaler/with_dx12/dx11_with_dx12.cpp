@@ -446,9 +446,8 @@ bool Dx11WithDx12::CopyTextureFrom11To12(ID3D11Resource* InResource, D3D11_TEXTU
     // CreateTexture2D returns E_INVALIDARG, the upscaler gets no depth and the game shows black (Assetto Corsa
     // Competizione with [Dx11withDx12] DontUseNTShared=false). Such depth always goes through DepthTransfer_Dx11 below,
     // which writes a shareable copy, whatever the NT-shared setting is.
-    const bool depthNeedsTransfer =
-        InDepth &&
-        (sourceDesc.Format == DXGI_FORMAT_R24G8_TYPELESS || sourceDesc.Format == DXGI_FORMAT_R32G8X24_TYPELESS);
+    const bool depthNeedsTransfer = InDepth && (sourceDesc.Format == DXGI_FORMAT_R24G8_TYPELESS ||
+                                                sourceDesc.Format == DXGI_FORMAT_R32G8X24_TYPELESS);
 
     if (depthNeedsTransfer && !sourceHasLegacyShared && !sourceHasNTShared && !InDontUseNTShared)
     {
