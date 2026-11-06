@@ -15,6 +15,18 @@ class FFXFeatureDx12 : public FFXFeature, public IFeature_Dx12
     // Custom upscaler dll, nullptr for the regular FFX ones
     CustomFfxModule* _customUpscaler = nullptr;
 
+    // Inputs that start inside a bigger texture (the DLSS input sub-rectangles a triple-screen or split-screen game
+    // passes for each view) are copied here first: the FFX API takes no offset for its inputs.
+    ID3D12Resource* _subrectColor = nullptr;
+    ID3D12Resource* _subrectDepth = nullptr;
+    ID3D12Resource* _subrectMv = nullptr;
+    ID3D12Resource* _subrectMask = nullptr;
+    bool _outputSubrectWarned = false;
+
+    ID3D12Resource* CropToSubrect(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InSource,
+                                  ID3D12Resource** InScratch, UINT InX, UINT InY, UINT InWidth, UINT InHeight,
+                                  const char* InName);
+
     NVSDK_NGX_Parameter* SetParameters(NVSDK_NGX_Parameter* InParameters);
 
   protected:
@@ -49,5 +61,10 @@ class FFXFeatureDx12 : public FFXFeature, public IFeature_Dx12
 
         if (_context != nullptr)
             FfxApiProxy::D3D12_DestroyContext(&_context, NULL);
+
+        SAFE_RELEASE(_subrectColor);
+        SAFE_RELEASE(_subrectDepth);
+        SAFE_RELEASE(_subrectMv);
+        SAFE_RELEASE(_subrectMask);
     }
 };

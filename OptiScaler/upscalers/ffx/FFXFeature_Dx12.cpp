@@ -52,6 +52,103 @@ bool FFXFeatureDx12::InitInternal(ID3D12GraphicsCommandList* InCommandList, NVSD
     return InitFFX(InParameters);
 }
 
+// Triple-screen and split-screen games render every view into one texture and give each view's place in it through
+// the DLSS input sub-rectangle parameters (Assetto Corsa Competizione's triple screen: three 1280x720 views side by
+// side in a 3840-wide target, one upscaler context per view). The FFX API has no offset for its inputs, so every view
+// was upscaled from the first one and all three screens showed the left view. A view that does not start at (0, 0) is
+// copied into a texture of its own here. The source is expected in NON_PIXEL_SHADER_RESOURCE, the state the FFX
+// dispatch reads it in, and is left there; these transitions are not recorded for RestoreBarriers.
+ID3D12Resource* FFXFeatureDx12::CropToSubrect(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InSource,
+                                              ID3D12Resource** InScratch, UINT InX, UINT InY, UINT InWidth,
+                                              UINT InHeight, const char* InName)
+{
+    if (InSource == nullptr || (InX == 0 && InY == 0) || InWidth == 0 || InHeight == 0)
+        return InSource;
+
+    auto desc = InSource->GetDesc();
+
+    if ((UINT64) InX + InWidth > desc.Width || (UINT64) InY + InHeight > desc.Height)
+    {
+        LOG_WARN("{} sub-rectangle {}x{} at ({}, {}) is outside the {}x{} texture, using the texture as is", InName,
+                 InWidth, InHeight, InX, InY, desc.Width, desc.Height);
+        return InSource;
+    }
+
+    if (*InScratch != nullptr)
+    {
+        auto scratchDesc = (*InScratch)->GetDesc();
+
+        if (scratchDesc.Width != InWidth || scratchDesc.Height != InHeight || scratchDesc.Format != desc.Format ||
+            scratchDesc.Flags != desc.Flags)
+        {
+            (*InScratch)->Release();
+            *InScratch = nullptr;
+        }
+    }
+
+    if (*InScratch == nullptr)
+    {
+        D3D12_HEAP_PROPERTIES heapProperties {};
+        D3D12_HEAP_FLAGS heapFlags {};
+
+        if (InSource->GetHeapProperties(&heapProperties, &heapFlags) != S_OK)
+        {
+            heapProperties = {};
+            heapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
+        }
+
+        desc.Width = InWidth;
+        desc.Height = InHeight;
+        desc.MipLevels = 1;
+
+        const auto hr = Device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &desc,
+                                                        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, nullptr,
+                                                        IID_PPV_ARGS(InScratch));
+
+        if (hr != S_OK || *InScratch == nullptr)
+        {
+            LOG_WARN("{} sub-rectangle copy could not be created ({:X}), using the texture as is", InName, (UINT) hr);
+            *InScratch = nullptr;
+            return InSource;
+        }
+
+        LOG_INFO("{} is taken from a {}x{} sub-rectangle at ({}, {}) of its texture", InName, InWidth, InHeight, InX,
+                 InY);
+    }
+
+    ResourceBarrier(InCommandList, InSource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                    D3D12_RESOURCE_STATE_COPY_SOURCE);
+    ResourceBarrier(InCommandList, *InScratch, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                    D3D12_RESOURCE_STATE_COPY_DEST);
+
+    D3D12_BOX srcBox {};
+    srcBox.left = InX;
+    srcBox.top = InY;
+    srcBox.front = 0;
+    srcBox.right = InX + InWidth;
+    srcBox.bottom = InY + InHeight;
+    srcBox.back = 1;
+
+    D3D12_TEXTURE_COPY_LOCATION dstLocation {};
+    dstLocation.pResource = *InScratch;
+    dstLocation.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    dstLocation.SubresourceIndex = 0;
+
+    D3D12_TEXTURE_COPY_LOCATION srcLocation {};
+    srcLocation.pResource = InSource;
+    srcLocation.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    srcLocation.SubresourceIndex = 0;
+
+    InCommandList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, &srcBox);
+
+    ResourceBarrier(InCommandList, InSource, D3D12_RESOURCE_STATE_COPY_SOURCE,
+                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    ResourceBarrier(InCommandList, *InScratch, D3D12_RESOURCE_STATE_COPY_DEST,
+                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+    return *InScratch;
+}
+
 bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters)
 {
     LOG_FUNC();
@@ -122,7 +219,14 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
 
-        params.color = ffxApiGetResourceDX12(paramColor, FFX_API_RESOURCE_STATE_COMPUTE_READ);
+        // This view's place in a shared texture (triple / split screen, see CropToSubrect)
+        UINT colorX = 0, colorY = 0;
+        InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Color_Subrect_Base_X, &colorX);
+        InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Color_Subrect_Base_Y, &colorY);
+        ID3D12Resource* colorInput = CropToSubrect(InCommandList, paramColor, &_subrectColor, colorX, colorY,
+                                                   params.renderSize.width, params.renderSize.height, "Color");
+
+        params.color = ffxApiGetResourceDX12(colorInput, FFX_API_RESOURCE_STATE_COMPUTE_READ);
     }
     else
     {
@@ -151,7 +255,16 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
 
-        params.motionVectors = ffxApiGetResourceDX12(paramVelocity, FFX_API_RESOURCE_STATE_COMPUTE_READ);
+        // This view's place in a shared texture (see CropToSubrect)
+        UINT mvX = 0, mvY = 0;
+        InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_MV_SubrectBase_X, &mvX);
+        InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_MV_SubrectBase_Y, &mvY);
+        const UINT mvWidth = LowResMV() ? params.renderSize.width : TargetWidth();
+        const UINT mvHeight = LowResMV() ? params.renderSize.height : TargetHeight();
+        ID3D12Resource* mvInput =
+            CropToSubrect(InCommandList, paramVelocity, &_subrectMv, mvX, mvY, mvWidth, mvHeight, "MotionVectors");
+
+        params.motionVectors = ffxApiGetResourceDX12(mvInput, FFX_API_RESOURCE_STATE_COMPUTE_READ);
     }
     else
     {
@@ -166,6 +279,16 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
     if (paramOutput)
     {
         LOG_DEBUG("Output exist..");
+
+        UINT outX = 0, outY = 0;
+        InParameters->Get(NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_X, &outX);
+        InParameters->Get(NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_Y, &outY);
+
+        if ((outX != 0 || outY != 0) && !_outputSubrectWarned)
+        {
+            LOG_WARN("Output sub-rectangle at ({}, {}) is not supported by FFX, writing at (0, 0)", outX, outY);
+            _outputSubrectWarned = true;
+        }
 
         params.output = ffxApiGetResourceDX12(paramOutput, FFX_API_RESOURCE_STATE_UNORDERED_ACCESS);
     }
@@ -187,7 +310,14 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
             ForwardBarrier(InCommandList, paramDepth, (D3D12_RESOURCE_STATES) barrier.value(),
                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
-        params.depth = ffxApiGetResourceDX12(paramDepth, FFX_API_RESOURCE_STATE_COMPUTE_READ);
+        // This view's place in a shared texture (see CropToSubrect)
+        UINT depthX = 0, depthY = 0;
+        InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Depth_Subrect_Base_X, &depthX);
+        InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Depth_Subrect_Base_Y, &depthY);
+        ID3D12Resource* depthInput = CropToSubrect(InCommandList, paramDepth, &_subrectDepth, depthX, depthY,
+                                                   params.renderSize.width, params.renderSize.height, "Depth");
+
+        params.depth = ffxApiGetResourceDX12(depthInput, FFX_API_RESOURCE_STATE_COMPUTE_READ);
     }
     else
     {
@@ -271,6 +401,13 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
                 if (std::optional<int32_t> barrier = Config::Instance()->MaskResourceBarrier; barrier.has_value())
                     ForwardBarrier(InCommandList, paramReactiveMask2, (D3D12_RESOURCE_STATES) barrier.value(),
                                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+                // This view's place in a shared texture (see CropToSubrect)
+                UINT maskX = 0, maskY = 0;
+                InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_SubrectBase_X, &maskX);
+                InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_SubrectBase_Y, &maskY);
+                paramReactiveMask2 = CropToSubrect(InCommandList, paramReactiveMask2, &_subrectMask, maskX, maskY,
+                                                   params.renderSize.width, params.renderSize.height, "Bias mask");
 
                 if (paramTransparency == nullptr && Config::Instance()->FsrUseMaskForTransparency.value_or_default())
                     params.transparencyAndComposition =
