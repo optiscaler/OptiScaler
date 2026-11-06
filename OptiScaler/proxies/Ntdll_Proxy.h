@@ -19,6 +19,32 @@ class NtdllProxy
 
     typedef NTSTATUS(NTAPI* PFN_RtlGetVersion)(PRTL_OSVERSIONINFOW lpVersionInformation);
 
+    typedef NTSTATUS(NTAPI* PFN_LdrLockLoaderLock)(ULONG Flags, PULONG Disposition, PULONG_PTR Cookie);
+    typedef NTSTATUS(NTAPI* PFN_LdrUnlockLoaderLock)(ULONG Flags, ULONG_PTR Cookie);
+
+    // The loader lock is recursive, a thread that already holds it gets it again.
+    // True when it was taken, then call UnlockLoaderLock with the cookie.
+    // False when tryOnly is set and another thread holds it, or when ntdll has no LdrLockLoaderLock.
+    static bool LockLoaderLock(bool tryOnly, ULONG_PTR& cookie)
+    {
+        cookie = 0;
+
+        if (!IsLoaderLockAvailable())
+            return false;
+
+        constexpr ULONG FlagTryOnly = 0x2; // LDR_LOCK_LOADER_LOCK_FLAG_TRY_ONLY
+        constexpr ULONG LockAcquired = 1;  // LDR_LOCK_LOADER_LOCK_DISPOSITION_LOCK_ACQUIRED
+
+        ULONG disposition = 0;
+        auto status = o_LdrLockLoaderLock(tryOnly ? FlagTryOnly : 0, &disposition, &cookie);
+
+        return NT_SUCCESS(status) && disposition == LockAcquired;
+    }
+
+    static void UnlockLoaderLock(ULONG_PTR cookie) { o_LdrUnlockLoaderLock(0, cookie); }
+
+    static bool IsLoaderLockAvailable() { return o_LdrLockLoaderLock != nullptr && o_LdrUnlockLoaderLock != nullptr; }
+
     // It's a partial implementation
     static HMODULE LoadLibraryExW_Ldr(LPCWSTR lpLibFileName, HANDLE hFile, DWORD dwFlags)
     {
@@ -93,6 +119,8 @@ class NtdllProxy
         o_LdrLoadDll = (PFN_LdrLoadDll) GetProcAddress(_dll, "LdrLoadDll");
         o_LdrUnloadDll = (PFN_LdrUnloadDll) GetProcAddress(_dll, "LdrUnloadDll");
         o_NtLoadDll = (PFN_NtLoadDll) GetProcAddress(_dll, "NtLoadDll");
+        o_LdrLockLoaderLock = (PFN_LdrLockLoaderLock) GetProcAddress(_dll, "LdrLockLoaderLock");
+        o_LdrUnlockLoaderLock = (PFN_LdrUnlockLoaderLock) GetProcAddress(_dll, "LdrUnlockLoaderLock");
     }
 
     static HMODULE Module() { return _dll; }
@@ -176,4 +204,6 @@ class NtdllProxy
     inline static PFN_RtlInitUnicodeString o_RtlInitUnicodeString = nullptr;
     inline static PFN_RtlNtStatusToDosError o_RtlNtStatusToDosError = nullptr;
     inline static PFN_RtlGetVersion o_RtlGetVersion = nullptr;
+    inline static PFN_LdrLockLoaderLock o_LdrLockLoaderLock = nullptr;
+    inline static PFN_LdrUnlockLoaderLock o_LdrUnlockLoaderLock = nullptr;
 };
