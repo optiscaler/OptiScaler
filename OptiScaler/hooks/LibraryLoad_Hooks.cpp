@@ -834,9 +834,13 @@ HMODULE LibraryLoadHooks::LoadNvApi(LPCWSTR requestedName)
 
     HMODULE nvapi = nullptr;
 
-    // Opti exports a query function that nvapi would export
-    if (Config::Instance()->UseFakenvapi.value_or_default() &&
-        IdentifyGpu::getPrimaryGpu().vendorId != VendorId::Nvidia)
+    // Opti exports a query function that nvapi would export.
+    // Vendor is unknown when detection fails, then the real nvapi is used if it can be loaded.
+    // While detecting it's only unknown when the startup check found no Nvidia GPU.
+    const auto vendorId = IdentifyGpu::getPrimaryGpu().vendorId;
+    const bool vendorKnown = vendorId != VendorId::Invalid || IdentifyGpu::isDetecting();
+
+    if (Config::Instance()->UseFakenvapi.value_or_default() && vendorId != VendorId::Nvidia && vendorKnown)
     {
         nvapi = dllModule;
         fakenvapi::setUsingAsMainNvapi(true);
@@ -849,10 +853,10 @@ HMODULE LibraryLoadHooks::LoadNvApi(LPCWSTR requestedName)
     if (nvapi == nullptr)
         nvapi = NtdllProxy::LoadLibraryExW_Ldr(requestedName, NULL, 0);
 
-    // Fallback for Nvidia, doubt it's helpful
+    // Fallback for Nvidia and unknown vendors
     if (Config::Instance()->UseFakenvapi.value_or_default() && nvapi == nullptr)
     {
-        LOG_WARN("Using fakenvapi on Nvidia as the main nvapi");
+        LOG_WARN("Real nvapi can't be loaded, using fakenvapi as the main nvapi");
         nvapi = dllModule;
         fakenvapi::setUsingAsMainNvapi(true);
     }
