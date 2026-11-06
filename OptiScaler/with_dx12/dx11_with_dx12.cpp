@@ -442,6 +442,19 @@ bool Dx11WithDx12::CopyTextureFrom11To12(ID3D11Resource* InResource, D3D11_TEXTU
     const bool sourceHasLegacyShared = (sourceDesc.MiscFlags & D3D11_RESOURCE_MISC_SHARED) != 0;
     const bool sourceHasNTShared = (sourceDesc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_NTHANDLE) != 0;
 
+    // A typeless depth-stencil texture (R24G8 / R32G8X24) cannot be the template of an NT-shared texture:
+    // CreateTexture2D returns E_INVALIDARG, the upscaler gets no depth and the game shows black (Assetto Corsa
+    // Competizione with [Dx11withDx12] DontUseNTShared=false). Such depth always goes through DepthTransfer_Dx11 below,
+    // which writes a shareable copy, whatever the NT-shared setting is.
+    const bool depthNeedsTransfer = InDepth && (sourceDesc.Format == DXGI_FORMAT_R24G8_TYPELESS ||
+                                                sourceDesc.Format == DXGI_FORMAT_R32G8X24_TYPELESS);
+
+    if (depthNeedsTransfer && !sourceHasLegacyShared && !sourceHasNTShared && !InDontUseNTShared)
+    {
+        LOG_DEBUG("Depth format {} cannot be NT-shared, copying it through DepthTransfer", (UINT) sourceDesc.Format);
+        InDontUseNTShared = true;
+    }
+
     if (!sourceHasLegacyShared && !sourceHasNTShared && !InDontUseNTShared)
     {
         D3D11_TEXTURE2D_DESC sharedDesc = sourceDesc;
