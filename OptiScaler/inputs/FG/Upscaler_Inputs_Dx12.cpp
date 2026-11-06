@@ -55,6 +55,10 @@ static bool SetGameHudless(NVSDK_NGX_Parameter* parameters, IFGFeature_Dx12* fg)
     setResource.state = (D3D12_RESOURCE_STATES) state;
     setResource.validity = FG_ResourceValidity::UntilPresent;
 
+    unsigned int flip = 0;
+    parameters->Get("Opti.Hudless.Flip", &flip);
+    setResource.flip = flip != 0;
+
     fg->SetResource(&setResource);
     return true;
 }

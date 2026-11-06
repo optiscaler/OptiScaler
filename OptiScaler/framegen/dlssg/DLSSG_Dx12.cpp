@@ -350,6 +350,7 @@ void DLSSG_Dx12::ReleaseObjects()
     _hudlessCompare.reset();
     _mvFlip.reset();
     _depthFlip.reset();
+    _hudlessFlip.reset();
 
     ReleaseResourceCopies();
 }
@@ -680,18 +681,18 @@ bool DLSSG_Dx12::SetResource(Dx12Resource* inputResource)
     fResource->width = inputResource->width;
     fResource->height = inputResource->height;
     fResource->cmdList = inputResource->cmdList;
+    fResource->flip = inputResource->flip;
 
     // A new resource for the slot, its old copy is stale. A re-tag passes the slot itself
     if (inputResource != fResource)
         fResource->copy = nullptr;
 
-    auto willFlip = State::Instance().activeFgInput == FGInput::Upscaler &&
-                    Config::Instance()->FGResourceFlip.value_or_default() &&
-                    (type == FG_ResourceType::Velocity || type == FG_ResourceType::Depth);
+    // A re-tag at dispatch passes the slot, it's flipped already
+    auto willFlip = inputResource != fResource && WillFlip(fResource);
 
     // Resource flipping
     if (willFlip && _device != nullptr)
-        FlipResource(fResource);
+        FlipResource(fResource, fIndex);
 
     // We usually don't copy any resources for DLSSG, the ones with this tag are the exception
     if (inputResource->cmdList != nullptr && fResource->validity == FG_ResourceValidity::ValidButMakeCopy)

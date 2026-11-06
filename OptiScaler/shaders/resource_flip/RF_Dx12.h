@@ -18,8 +18,9 @@ class RF_Dx12 : public Shader_Dx12
     uint32_t InNumThreadsY = 16;
 
   public:
+    // color: whole texture with alpha, an sRGB input is stored encoded into a UNORM output
     bool Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InResource, ID3D12Resource* OutResource,
-                  UINT64 width, UINT height, bool velocity);
+                  UINT64 width, UINT height, bool velocity, bool color = false);
 
     RF_Dx12(std::string InName, ID3D12Device* InDevice);
 

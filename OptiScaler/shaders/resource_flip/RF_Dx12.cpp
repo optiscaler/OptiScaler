@@ -9,7 +9,7 @@
 #include "precompiled/RF_Shader.h"
 
 bool RF_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InResource, ID3D12Resource* OutResource,
-                       UINT64 width, UINT height, bool velocity)
+                       UINT64 width, UINT height, bool velocity, bool color)
 {
     if (!_init || _device == nullptr || InCmdList == nullptr || InResource == nullptr || OutResource == nullptr)
         return false;
@@ -35,6 +35,14 @@ bool RF_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InR
                            : 0;
     constants.velocity = velocity ? 1 : 0;
 
+    // UAVs can't be sRGB, the output has the UNORM format
+    if (color)
+    {
+        const bool srgb =
+            inDesc.Format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB || inDesc.Format == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+        constants.velocity = srgb ? 3 : 2;
+    }
+
     LOG_DEBUG("Width: {}, Height: {}, Offset: {}", constants.width, constants.height, constants.offset);
 
     if (!CreateConstantsBuffer(_device, currentHeap, constants, currentHeap.GetCbvCPU(0)))
@@ -54,7 +62,12 @@ bool RF_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InR
     UINT dispatchWidth = 0;
     UINT dispatchHeight = 0;
 
-    if ((State::Instance().currentFeature->GetFeatureFlags() & NVSDK_NGX_DLSS_Feature_Flags_MVLowRes) == 0)
+    if (color)
+    {
+        dispatchWidth = static_cast<UINT>((width + InNumThreadsX - 1) / InNumThreadsX);
+        dispatchHeight = (height + InNumThreadsY - 1) / InNumThreadsY;
+    }
+    else if ((State::Instance().currentFeature->GetFeatureFlags() & NVSDK_NGX_DLSS_Feature_Flags_MVLowRes) == 0)
     {
         dispatchWidth =
             static_cast<UINT>((State::Instance().currentFeature->DisplayWidth() + InNumThreadsX - 1) / InNumThreadsX);

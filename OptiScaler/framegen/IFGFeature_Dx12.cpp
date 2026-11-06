@@ -365,25 +365,78 @@ void IFGFeature_Dx12::ReleaseResourceCopies()
 
     _mvFlip.reset();
     _depthFlip.reset();
+    _hudlessFlip.reset();
 
     Hudfix_Dx12::ReleaseBuffers();
 }
 
-void IFGFeature_Dx12::FlipResource(Dx12Resource* resource)
+bool IFGFeature_Dx12::WillFlip(const Dx12Resource* resource) const
+{
+    if (State::Instance().activeFgInput != FGInput::Upscaler)
+        return false;
+
+    if (resource->type == FG_ResourceType::HudlessColor)
+        return resource->flip || Config::Instance()->FGHudlessFlip.value_or_default();
+
+    return Config::Instance()->FGResourceFlip.value_or_default() &&
+           (resource->type == FG_ResourceType::Velocity || resource->type == FG_ResourceType::Depth);
+}
+
+// UAV format keeping the hudless values, the shader encodes sRGB inputs
+static DXGI_FORMAT HudlessFlipFormat(ID3D12Device* device, DXGI_FORMAT format)
+{
+    switch (format)
+    {
+    case DXGI_FORMAT_R8G8B8A8_TYPELESS:
+    case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+        format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        break;
+
+    case DXGI_FORMAT_B8G8R8A8_TYPELESS:
+    case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+        format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        break;
+
+    case DXGI_FORMAT_R10G10B10A2_TYPELESS:
+        format = DXGI_FORMAT_R10G10B10A2_UNORM;
+        break;
+
+    case DXGI_FORMAT_R16G16B16A16_TYPELESS:
+        format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        break;
+
+    default:
+        break;
+    }
+
+    D3D12_FEATURE_DATA_FORMAT_SUPPORT support { format };
+    if (SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT, &support, sizeof(support))) &&
+        (support.Support2 & D3D12_FORMAT_SUPPORT2_UAV_TYPED_STORE) != 0)
+    {
+        return format;
+    }
+
+    // Typed UAV stores always work with it
+    return DXGI_FORMAT_R8G8B8A8_UNORM;
+}
+
+void IFGFeature_Dx12::FlipResource(Dx12Resource* resource, int fIndex)
 {
     auto type = resource->type;
+    const bool color = type == FG_ResourceType::HudlessColor;
 
-    if (type != FG_ResourceType::Depth && type != FG_ResourceType::Velocity)
+    if (type != FG_ResourceType::Depth && type != FG_ResourceType::Velocity && !color)
         return;
 
-    auto fIndex = GetIndex();
     ID3D12Resource* flipOutput = nullptr;
     std::unique_ptr<RF_Dx12>* flip = nullptr;
 
     flipOutput = _resourceCopy[fIndex][type];
 
+    const auto format = color ? HudlessFlipFormat(_device, resource->resource->GetDesc().Format) : DXGI_FORMAT_UNKNOWN;
+
     if (!CreateBufferResource(_device, resource->resource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, &flipOutput, true,
-                              resource->type == FG_ResourceType::Depth))
+                              resource->type == FG_ResourceType::Depth, format))
     {
         LOG_ERROR("{}, CreateBufferResource for flip is failed!", magic_enum::enum_name(type));
         return;
@@ -401,6 +454,16 @@ void IFGFeature_Dx12::FlipResource(Dx12Resource* resource)
 
         flip = &_depthFlip;
     }
+    else if (color)
+    {
+        if (_hudlessFlip.get() == nullptr)
+        {
+            _hudlessFlip = std::make_unique<RF_Dx12>("HudlessFlip", _device);
+            return;
+        }
+
+        flip = &_hudlessFlip;
+    }
     else
     {
         if (_mvFlip.get() == nullptr)
@@ -414,15 +477,26 @@ void IFGFeature_Dx12::FlipResource(Dx12Resource* resource)
 
     if (flip->get()->IsInit())
     {
-        auto cmdList = (resource->cmdList != nullptr) ? resource->cmdList : GetUICommandList(fIndex);
+        // Hudless captures come from the game's list mid recording, the shader's state can't be set there
+        auto cmdList = (resource->cmdList != nullptr && !color) ? resource->cmdList : GetUICommandList(fIndex);
         if (cmdList == nullptr)
         {
             LOG_ERROR("Can't flip {}: GetUICommandList({}) failed", magic_enum::enum_name(type), fIndex);
             return;
         }
 
+        // Hudless can come in any state
+        const auto readState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        const bool transition = color && (resource->state & readState) == 0;
+
+        if (transition)
+            ResourceBarrier((ID3D12GraphicsCommandList*) cmdList, resource->resource, resource->state, readState);
+
         auto result = flip->get()->Dispatch((ID3D12GraphicsCommandList*) cmdList, resource->resource, flipOutput,
-                                            resource->width, resource->height, true);
+                                            resource->width, resource->height, true, color);
+
+        if (transition)
+            ResourceBarrier((ID3D12GraphicsCommandList*) cmdList, resource->resource, readState, resource->state);
 
         if (result)
         {
@@ -430,6 +504,10 @@ void IFGFeature_Dx12::FlipResource(Dx12Resource* resource)
             resource->validity = FG_ResourceValidity::UntilPresent;
             resource->copy = flipOutput;
             resource->state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+
+            // Later work on it has to follow the flip on the UI list
+            if (color)
+                resource->cmdList = nullptr;
         }
     }
 }
@@ -553,7 +631,7 @@ void IFGFeature_Dx12::DestroyCopyCmdList()
 
 bool IFGFeature_Dx12::CreateBufferResource(ID3D12Device* device, ID3D12Resource* source,
                                            D3D12_RESOURCE_STATES initialState, ID3D12Resource** target, bool UAV,
-                                           bool depth)
+                                           bool depth, DXGI_FORMAT format)
 {
     if (device == nullptr || source == nullptr)
         return false;
@@ -565,6 +643,8 @@ bool IFGFeature_Dx12::CreateBufferResource(ID3D12Device* device, ID3D12Resource*
 
     if (depth)
         inDesc.Format = DXGI_FORMAT_R32_FLOAT;
+    else if (format != DXGI_FORMAT_UNKNOWN)
+        inDesc.Format = format;
 
     if (*target != nullptr)
     {

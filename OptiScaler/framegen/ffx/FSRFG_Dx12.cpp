@@ -1737,15 +1737,14 @@ bool FSRFG_Dx12::SetResource(Dx12Resource* inputResource)
     fResource->width = inputResource->width;
     fResource->height = inputResource->height;
     fResource->cmdList = inputResource->cmdList;
+    fResource->flip = inputResource->flip;
 
-    auto willFlip = State::Instance().activeFgInput == FGInput::Upscaler &&
-                    Config::Instance()->FGResourceFlip.value_or_default() &&
-                    (fResource->type == FG_ResourceType::Velocity || fResource->type == FG_ResourceType::Depth);
+    auto willFlip = WillFlip(fResource);
 
     // Resource flipping
     if (willFlip && _device != nullptr)
     {
-        FlipResource(fResource);
+        FlipResource(fResource, fIndex);
     }
 
     if (type == FG_ResourceType::UIColor)
@@ -1811,9 +1810,10 @@ bool FSRFG_Dx12::SetResource(Dx12Resource* inputResource)
     if (fResource->validity == FG_ResourceValidity::ValidButMakeCopy)
         fResource->validity = FG_ResourceValidity::ValidNow;
 
-    fResource->validity = (fResource->validity != FG_ResourceValidity::ValidNow || willFlip)
-                              ? FG_ResourceValidity::UntilPresent
-                              : FG_ResourceValidity::ValidNow;
+    fResource->validity =
+        (fResource->validity != FG_ResourceValidity::ValidNow || (willFlip && fResource->copy != nullptr))
+            ? FG_ResourceValidity::UntilPresent
+            : FG_ResourceValidity::ValidNow;
 
     // Copy ValidNow
     if (fResource->validity == FG_ResourceValidity::ValidNow)

@@ -94,6 +94,7 @@ class Hudfix_Dx11
 
     // Holds a reference until present
     inline static std::atomic<ID3D11Texture2D*> _gameHudless { nullptr };
+    inline static std::atomic<bool> _gameHudlessFlip { false };
 
     static bool CheckCapture();
     static void HudlessFound();
@@ -104,7 +105,8 @@ class Hudfix_Dx11
 
     static bool CreateCaptureResource(ID3D11DeviceContext* context, const Dx11ResourceInfo& source, int index);
     static bool CopyCaptureResource(ID3D11DeviceContext* context, Dx11ResourceInfo* source, int index);
-    static bool PublishCaptureToFg(ID3D11DeviceContext* context, Dx11ResourceInfo* source, int index);
+    static bool PublishCaptureToFg(ID3D11DeviceContext* context, Dx11ResourceInfo* source, int index,
+                                   bool flip = false);
 
   public:
     static void UpscaleStart();
@@ -125,7 +127,7 @@ class Hudfix_Dx11
 
     // Hudless the game passes with the upscaler inputs, takes the texture's reference.
     // It's finished only before present, PublishGameHudless copies it then.
-    static void SetGameHudless(ID3D11Texture2D* texture);
+    static void SetGameHudless(ID3D11Texture2D* texture, bool flip = false);
     static void PublishGameHudless(ID3D11DeviceContext* context);
 
     static void ResetCounters();

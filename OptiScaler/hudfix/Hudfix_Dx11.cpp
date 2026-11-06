@@ -512,7 +512,7 @@ bool Hudfix_Dx11::CopyCaptureResource(ID3D11DeviceContext* context, Dx11Resource
     return true;
 }
 
-bool Hudfix_Dx11::PublishCaptureToFg(ID3D11DeviceContext* context, Dx11ResourceInfo* source, int index)
+bool Hudfix_Dx11::PublishCaptureToFg(ID3D11DeviceContext* context, Dx11ResourceInfo* source, int index, bool flip)
 {
     if (context == nullptr || source == nullptr || _captureBuffer[index] == nullptr)
         return false;
@@ -554,6 +554,7 @@ bool Hudfix_Dx11::PublishCaptureToFg(ID3D11DeviceContext* context, Dx11ResourceI
     setResource.width = state.currentSwapchainDesc.BufferDesc.Width;
     setResource.height = state.currentSwapchainDesc.BufferDesc.Height;
     setResource.frameIndex = fg->GetIndexWillBeDispatched();
+    setResource.flip = flip;
 
     if (!CompareResourceFormats(source->format, state.currentSwapchainDesc.BufferDesc.Format))
     {
@@ -755,8 +756,10 @@ bool Hudfix_Dx11::CheckForHudless(ID3D11DeviceContext* context, Dx11ResourceInfo
     return true;
 }
 
-void Hudfix_Dx11::SetGameHudless(ID3D11Texture2D* texture)
+void Hudfix_Dx11::SetGameHudless(ID3D11Texture2D* texture, bool flip)
 {
+    _gameHudlessFlip.store(flip, std::memory_order_release);
+
     if (auto previous = _gameHudless.exchange(texture, std::memory_order_acq_rel); previous != nullptr)
         previous->Release();
 }
@@ -808,8 +811,11 @@ void Hudfix_Dx11::PublishGameHudless(ID3D11DeviceContext* context)
             // FG's slot of the frame, the hudless copies of earlier frames can still be read
             const auto index = fg->GetIndexWillBeDispatched();
 
-            if (!CopyCaptureResource(context, &info, index) || !PublishCaptureToFg(context, &info, index))
+            if (!CopyCaptureResource(context, &info, index) ||
+                !PublishCaptureToFg(context, &info, index, _gameHudlessFlip.load(std::memory_order_acquire)))
+            {
                 LOG_WARN("Opti.Hudless couldn't be passed to FG");
+            }
         }
     }
 

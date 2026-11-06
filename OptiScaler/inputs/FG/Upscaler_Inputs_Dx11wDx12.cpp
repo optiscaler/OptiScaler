@@ -275,7 +275,10 @@ void UpscalerInputsDx11wDx12::UpscaleEnd(NVSDK_NGX_Parameter* InParameters, IFea
         ID3D11Texture2D* hudlessTexture = nullptr;
         if (gameHudless != nullptr && SUCCEEDED(gameHudless->QueryInterface(IID_PPV_ARGS(&hudlessTexture))))
         {
-            Hudfix_Dx11::SetGameHudless(hudlessTexture);
+            unsigned int flip = 0;
+            InParameters->Get("Opti.Hudless.Flip", &flip);
+
+            Hudfix_Dx11::SetGameHudless(hudlessTexture, flip != 0);
             return;
         }
 

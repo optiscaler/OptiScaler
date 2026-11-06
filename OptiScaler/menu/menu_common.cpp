@@ -5955,6 +5955,13 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
             ImGui::SameLine(0.0f, 16.0f);
 
+            bool hudlessFlip = config->FGHudlessFlip.value_or_default();
+            if (ImGui::Checkbox("Flip HUDless", &hudlessFlip))
+                config->FGHudlessFlip = hudlessFlip;
+            ShowTooltip("Flip the HUDless texture\nGames can also request it with the Opti.Hudless.Flip parameter");
+
+            ImGui::SameLine(0.0f, 16.0f);
+
             bool resourceFlipOffset = config->FGResourceFlipOffset.value_or_default();
             if (ImGui::Checkbox("Flip Use Offset", &resourceFlipOffset))
                 config->FGResourceFlipOffset = resourceFlipOffset;
