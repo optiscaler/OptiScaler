@@ -11,6 +11,9 @@ class DLSSG_Common : public virtual IFGFeature
     sl::ViewportHandle _viewport { 0 };
     sl::FrameToken* _frameToken = nullptr;
 
+    // Streamline's own max, over _maxInterpolationCount when an nvngx provider generates fewer frames
+    int _streamlineMaxInterpolationCount = 1;
+
     // Max interpolation count and DMFG support, once the swapchain exists
     void QueryState();
 

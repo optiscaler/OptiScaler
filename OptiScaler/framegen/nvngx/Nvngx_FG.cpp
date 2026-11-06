@@ -150,6 +150,32 @@ int Nvngx_FG::getMaxFakeFramesCount()
     return provider->getMaxFakeFramesCount();
 }
 
+// Streamline's DLSSG on Vulkan makes its swapchain with MultiFrameCountMax + 1 images and assumes the driver made
+// exactly that many, it never asks. A driver or layer can make more (an RX 6900 XT with the GamePP layer made 3 for
+// 2), its present crashes on an acquired image past Streamline's count. Its maximum of 6 images stays at or over the
+// minimum counts they enforce, the provider's own max still limits the generated frames.
+int Nvngx_FG::streamlineMaxFakeFramesCount(API api)
+{
+    constexpr int streamlineVkMax = 5;
+
+    const int providerMax = std::max(1, getMaxFakeFramesCount());
+
+    if (api == API::Vulkan)
+        return std::max(providerMax, streamlineVkMax);
+
+    return providerMax;
+}
+
+int Nvngx_FG::limitToProvider(int count)
+{
+    if (State::Instance().activeFgNvngx == FGNvngxReplacement::None)
+        return count;
+
+    const int providerMax = getMaxFakeFramesCount();
+
+    return providerMax > 0 ? std::min(count, providerMax) : count;
+}
+
 bool Nvngx_FG::isDx12Available()
 {
     auto* provider = getProvider();
@@ -783,6 +809,9 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_PopulateParameters_Impl(NVSDK_NGX_Parameter* I
 
     auto result = provider->VULKAN_PopulateParameters_Impl(InParameters);
     WrapProviderCallbacks(InParameters);
+
+    // Providers report their own max, Streamline sizes its swapchain with this one
+    InParameters->Set("DLSSG.MultiFrameCountMax", streamlineMaxFakeFramesCount(API::Vulkan));
 
     return result;
 }

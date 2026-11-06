@@ -3,6 +3,7 @@
 #include "DLSSG_Common.h"
 
 #include <hooks/Reflex_Hooks.h>
+#include <framegen/nvngx/Nvngx_FG.h>
 
 #include <magic_enum.hpp>
 
@@ -67,9 +68,11 @@ void DLSSG_Common::QueryState()
     sl::DLSSGOptions dlssgOptions {};
     if (StreamlineProxy::DLSSGGetState()(_viewport, dlssgState, &dlssgOptions) == sl::Result::eOk)
     {
-        State::Instance().dlssgMfgMax = dlssgState.numFramesToGenerateMax;
-        _maxInterpolationCount = dlssgState.numFramesToGenerateMax;
-        LOG_INFO("Max supported interpolations: {}", dlssgState.numFramesToGenerateMax);
+        _streamlineMaxInterpolationCount = dlssgState.numFramesToGenerateMax;
+        _maxInterpolationCount = Nvngx_FG::limitToProvider(dlssgState.numFramesToGenerateMax);
+        State::Instance().dlssgMfgMax = _maxInterpolationCount;
+        LOG_INFO("Max supported interpolations: {} (Streamline's: {})", _maxInterpolationCount,
+                 dlssgState.numFramesToGenerateMax);
 
         _supportsDMFG = dlssgState.bIsDynamicMFGSupported == sl::Boolean::eTrue;
     }

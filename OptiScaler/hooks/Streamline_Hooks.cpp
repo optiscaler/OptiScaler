@@ -1367,7 +1367,7 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
             if (o_slDLSSGGetState(viewport, localState, &localOptions) == sl::Result::eOk &&
                 localState.numFramesToGenerateMax > 0 && localState.numFramesToGenerateMax < 6)
             {
-                state.dlssgMfgMax = localState.numFramesToGenerateMax;
+                state.dlssgMfgMax = Nvngx_FG::limitToProvider(localState.numFramesToGenerateMax);
                 LOG_TRACE("Saving original numFramesToGenerateMax: {}", state.dlssgMfgMax.value());
 
                 if (Config::Instance()->FGDLSSGOverrideInterpolationCount.has_value() &&
@@ -1387,6 +1387,13 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
             else if (!enableDynamicMode)
                 newOptions.mode = sl::DLSSGMode::eOff;
         }
+    }
+
+    // Streamline's max can be over what an nvngx provider generates
+    if (newOptions.numFramesToGenerate > 1)
+    {
+        newOptions.numFramesToGenerate =
+            (uint32_t) Nvngx_FG::limitToProvider(static_cast<int>(newOptions.numFramesToGenerate));
     }
 
     state.dlssgLastSetMode = newOptions.mode;
@@ -1441,6 +1448,10 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
         Config::Instance()->FGDLSSGOverrideForceDMFG.set_volatile_value(false);
     }
 
+    // Streamline's max can be over what an nvngx provider generates
+    if (originalStructVersion >= 2)
+        state.numFramesToGenerateMax = Nvngx_FG::limitToProvider(state.numFramesToGenerateMax);
+
     auto& optiState = State::Instance();
 
     if (optiState.streamlineVersion >= feature_version { 2, 7, 1 })
@@ -1452,7 +1463,7 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
             if (o_slDLSSGGetState(viewport, localState, &localOptions) == sl::Result::eOk &&
                 localState.numFramesToGenerateMax > 0 && localState.numFramesToGenerateMax < 6)
             {
-                optiState.dlssgMfgMax = localState.numFramesToGenerateMax;
+                optiState.dlssgMfgMax = Nvngx_FG::limitToProvider(localState.numFramesToGenerateMax);
                 LOG_TRACE("Saving original numFramesToGenerateMax: {}", optiState.dlssgMfgMax.value());
 
                 if (Config::Instance()->FGDLSSGOverrideInterpolationCount.has_value() &&

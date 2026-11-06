@@ -816,7 +816,7 @@ void InitNGXParameters(NVSDK_NGX_Parameter* InParams, API api)
         int countMax = 1;
 
         if (State::Instance().activeFgNvngx != FGNvngxReplacement::None)
-            countMax = std::max(1, Nvngx_FG::getMaxFakeFramesCount());
+            countMax = Nvngx_FG::streamlineMaxFakeFramesCount(api);
         else
             InParams->Get("DLSSG.MultiFrameCountMax", &countMax);
 

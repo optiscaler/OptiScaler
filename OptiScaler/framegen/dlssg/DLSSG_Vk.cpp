@@ -317,6 +317,20 @@ bool DLSSG_Vk::CreateSwapchain(VkDevice device, const VkSwapchainCreateInfoKHR* 
 
     QueryState();
 
+    // Streamline knows only the images it asked for, numFramesToGenerateMax + 1, an acquired one past them crashes
+    // its present
+    uint32_t imageCount = 0;
+    auto getImages = (PFN_vkGetSwapchainImagesKHR) VulkanHooks::OriginalSwapchainFunction("vkGetSwapchainImagesKHR");
+    const uint32_t streamlineImageCount = (uint32_t) _streamlineMaxInterpolationCount + 1;
+
+    if (getImages != nullptr && getImages(device, *pSwapchain, &imageCount, nullptr) == VK_SUCCESS &&
+        imageCount > streamlineImageCount)
+    {
+        LOG_ERROR("The driver or a Vulkan layer made {} swapchain images, Streamline expects {}, DLSSG will likely "
+                  "crash",
+                  imageCount, streamlineImageCount);
+    }
+
     _slSwapchains.insert(*pSwapchain);
     _swapchain = *pSwapchain;
     _swapchainFormat = pCreateInfo->imageFormat;
