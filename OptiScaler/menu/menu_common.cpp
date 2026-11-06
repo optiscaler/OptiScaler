@@ -21,6 +21,7 @@
 
 #include <nvapi/fakenvapi.h>
 #include <hooks/Reflex_Hooks.h>
+#include <hooks/Vulkan_Hooks.h>
 
 #include <BuildInfo.h>
 #include <version_check.h>
@@ -8893,6 +8894,57 @@ void MenuCommon::RenderVsyncSettings(RenderMenuContext& ctx)
                 LOG_DEBUG("V-Sync change detected, forcing XeFG reset");
                 state.WAR_xefgRequestFGToggle = true;
             }
+        }
+    }
+    else
+    {
+        SectionTitle("V-Sync Settings");
+        {
+            ScopedID sectionId { "V-Sync Settings" };
+
+            const auto& forced = config->VulkanPresentMode;
+            const char* preview = forced.has_value() ? VulkanHooks::PresentModeName(forced.value()) : "Game's";
+            bool changed = false;
+
+            if (ImGui::BeginCombo("Present Mode", preview))
+            {
+                if (ImGui::Selectable("Game's", !forced.has_value()))
+                {
+                    config->VulkanPresentMode.reset();
+                    changed = true;
+                }
+
+                for (uint32_t i = 0; i < std::size(VulkanHooks::PresentModes); i++)
+                {
+                    const auto& entry = VulkanHooks::PresentModes[i];
+
+                    if ((state.vkPresentModeMask & (1u << i)) == 0)
+                        continue;
+
+                    if (ImGui::Selectable(entry.name, forced.has_value() && forced.value() == entry.mode))
+                    {
+                        config->VulkanPresentMode = (int) entry.mode;
+                        changed = true;
+                    }
+                }
+
+                ImGui::EndCombo();
+            }
+
+            ShowTooltip("Overrides the game's Vulkan present mode, the game recreates its swapchain to apply it.\n\n"
+                        "Immediate: no V-Sync, tears.\n"
+                        "Mailbox: no tearing, newest frame replaces the queued one.\n"
+                        "FIFO: V-Sync.\n"
+                        "FIFO Relaxed: V-Sync, tears when below the refresh rate.\n"
+                        "FIFO Latest Ready: V-Sync, shows the newest ready frame at each refresh.\n\n"
+                        "Mailbox and FIFO Latest Ready can drop generated frames above the refresh rate.\n"
+                        "Only modes the display supports are listed.");
+
+            if (state.vkGamePresentMode >= 0)
+                ImGui::Text("Game's present mode: %s", VulkanHooks::PresentModeName(state.vkGamePresentMode));
+
+            if (changed)
+                state.vkPresentModeChanged = true;
         }
     }
 }

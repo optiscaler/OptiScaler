@@ -303,6 +303,12 @@ class State
 
     bool WAR_xefgRequestFGToggle = false;
 
+    // Vulkan present mode override: modes the game's surface supports (bit per VulkanHooks::PresentModeBit), the
+    // mode the game asked for, and a request for the game to recreate its swapchain with the new override
+    uint32_t vkPresentModeMask = 0;
+    int vkGamePresentMode = -1;
+    bool vkPresentModeChanged = false;
+
     // XeFG Dynamic MFG with "Use target as cap": its target while it runs (0 = no cap), the FPS limit when lower
     float xefgDynamicCapFps = 0.0f;
 

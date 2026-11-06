@@ -28,6 +28,8 @@
 
 #include <vulkan/vulkan.h>
 
+#include <algorithm>
+#include <span>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -90,6 +92,12 @@ PFN_vkAntiLagUpdateAMD VulkanHooks::o_vkAntiLagUpdateAMD = nullptr;
 
 // The device with VK_NV_low_latency2 enabled
 static VkDevice _lowLatency2Device = VK_NULL_HANDLE;
+
+// Device with VK_KHR/EXT_present_mode_fifo_latest_ready, the override can only use the mode on it
+static VkDevice _fifoLatestReadyDevice = VK_NULL_HANDLE;
+
+// The game's swapchain, its next acquire makes the game recreate it when the present mode override changes
+static VkSwapchainKHR _gameSwapchain = VK_NULL_HANDLE;
 
 // Set while the FG output handles a swapchain call
 static thread_local bool _inFGCall = false;
@@ -648,6 +656,9 @@ static void hkvkDestroyDevice(VkDevice device, const VkAllocationCallbacks* pAll
         if (device == _lowLatency2Device)
             VulkanHooks::ForgetLowLatencySwapchain(VulkanHooks::LowLatencySwapchain());
 
+        if (device == _fifoLatestReadyDevice)
+            _fifoLatestReadyDevice = VK_NULL_HANDLE;
+
         ReflexHooks::deviceDestroyed(device);
         InputCommon::vk_device_destroyed(device);
         NVNGXVkDeviceDestroyed(device);
@@ -736,6 +747,17 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
         timelineSemaphoresEnabled = TimelineSemaphoresEnabled(&localCreateInfo);
 
         result = o_vkCreateDevice(physicalDevice, &localCreateInfo, pAllocator, pDevice);
+    }
+
+    if (result == VK_SUCCESS && !State::Instance().creatingD3DDevice &&
+        std::ranges::any_of(std::span(localCreateInfo.ppEnabledExtensionNames, localCreateInfo.enabledExtensionCount),
+                            [](const char* ext)
+                            {
+                                return std::strcmp(ext, VK_KHR_PRESENT_MODE_FIFO_LATEST_READY_EXTENSION_NAME) == 0 ||
+                                       std::strcmp(ext, VK_EXT_PRESENT_MODE_FIFO_LATEST_READY_EXTENSION_NAME) == 0;
+                            }))
+    {
+        _fifoLatestReadyDevice = *pDevice;
     }
 
     if (result == VK_SUCCESS)
@@ -1005,6 +1027,71 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
         }
     }
 
+    // Present mode override, the FG outputs create their swapchains from this create info too
+    if (pCreateInfo != nullptr && !State::Instance().vulkanSkipHooks && !dxgiBacked && _PD != VK_NULL_HANDLE)
+    {
+        auto& state = State::Instance();
+        state.vkGamePresentMode = pCreateInfo->presentMode;
+
+        uint32_t count = 0;
+        std::vector<VkPresentModeKHR> supported;
+
+        if (vkGetPhysicalDeviceSurfacePresentModesKHR(_PD, pCreateInfo->surface, &count, nullptr) == VK_SUCCESS)
+        {
+            supported.resize(count);
+            vkGetPhysicalDeviceSurfacePresentModesKHR(_PD, pCreateInfo->surface, &count, supported.data());
+            supported.resize(count);
+        }
+
+        uint32_t mask = 0;
+        for (uint32_t i = 0; i < std::size(VulkanHooks::PresentModes); i++)
+        {
+            const auto mode = VulkanHooks::PresentModes[i].mode;
+
+            if (std::ranges::find(supported, mode) != supported.end() &&
+                (mode != VK_PRESENT_MODE_FIFO_LATEST_READY_KHR || device == _fifoLatestReadyDevice))
+            {
+                mask |= 1u << i;
+            }
+        }
+
+        state.vkPresentModeMask = mask;
+
+        // ponytail: games with VK_EXT_swapchain_maintenance1's present mode list keep their mode, the override would
+        // have to rewrite the list and the per present mode
+        bool gameModeList = false;
+        for (auto next = (const VkBaseInStructure*) pCreateInfo->pNext; next != nullptr; next = next->pNext)
+            gameModeList |= next->sType == VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODES_CREATE_INFO_EXT;
+
+        if (const auto& mode = Config::Instance()->VulkanPresentMode; mode.has_value() && !gameModeList)
+        {
+            const auto entry = std::ranges::find(VulkanHooks::PresentModes, (VkPresentModeKHR) mode.value(),
+                                                 &VulkanHooks::PresentModeEntry::mode);
+            const auto index = entry - std::begin(VulkanHooks::PresentModes);
+
+            if (entry != std::end(VulkanHooks::PresentModes) && (mask & (1u << index)) != 0)
+            {
+                LOG_INFO("Present mode {} -> {}", VulkanHooks::PresentModeName(pCreateInfo->presentMode), entry->name);
+
+                if (pCreateInfo != &localCreateInfo)
+                {
+                    localCreateInfo = *pCreateInfo;
+                    pCreateInfo = &localCreateInfo;
+                }
+
+                localCreateInfo.presentMode = entry->mode;
+            }
+            else
+            {
+                LOG_WARN("Present mode override {} isn't supported, keeping the game's", mode.value());
+            }
+        }
+        else if (gameModeList && mode.has_value())
+        {
+            LOG_WARN("Game uses a present mode list, keeping its present mode");
+        }
+    }
+
     // The Reflex output needs the swapchain's low latency mode, games with VK_NV_low_latency2 enable it themselves
     VkSwapchainLatencyCreateInfoNV latencyCreateInfo {};
     bool lowLatencySwapchain = false;
@@ -1081,6 +1168,8 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
         _device = device;
         LOG_DEBUG("_device captured: {0:X}", (UINT64) _device);
 
+        _gameSwapchain = *pSwapchain;
+
         auto hwnd = VulkanHooks::SurfaceWindow(pCreateInfo->surface);
         MenuOverlayVk::CreateSwapchain(device, _PD, _instance, hwnd != nullptr ? hwnd : _hwnd, pCreateInfo, pAllocator,
                                        pSwapchain);
@@ -1137,10 +1226,27 @@ static VkResult hkvkGetSwapchainImagesKHR(VkDevice device, VkSwapchainKHR swapch
     return o_GetSwapchainImagesKHR(device, swapchain, pSwapchainImageCount, pSwapchainImages);
 }
 
+// A changed present mode override needs a new swapchain, the game recreates it on VK_ERROR_OUT_OF_DATE_KHR.
+// Nothing gets acquired or signaled then.
+static bool PresentModeRecreateRequested(VkSwapchainKHR swapchain, void* returnAddress)
+{
+    auto& state = State::Instance();
+
+    if (!state.vkPresentModeChanged || swapchain != _gameSwapchain || FromFGOutput(returnAddress))
+        return false;
+
+    state.vkPresentModeChanged = false;
+    LOG_INFO("Present mode override changed, making the game recreate its swapchain");
+    return true;
+}
+
 VALIDATE_HOOK(hkvkAcquireNextImageKHR, PFN_vkAcquireNextImageKHR)
 static VkResult hkvkAcquireNextImageKHR(VkDevice device, VkSwapchainKHR swapchain, uint64_t timeout,
                                         VkSemaphore semaphore, VkFence fence, uint32_t* pImageIndex)
 {
+    if (PresentModeRecreateRequested(swapchain, _ReturnAddress()))
+        return VK_ERROR_OUT_OF_DATE_KHR;
+
     if (auto fg = State::Instance().currentVkFG;
         fg != nullptr && fg->OwnsSwapchain(swapchain) && !FromFGOutput(_ReturnAddress()))
     {
@@ -1157,6 +1263,9 @@ VALIDATE_HOOK(hkvkAcquireNextImage2KHR, PFN_vkAcquireNextImage2KHR)
 static VkResult hkvkAcquireNextImage2KHR(VkDevice device, const VkAcquireNextImageInfoKHR* pAcquireInfo,
                                          uint32_t* pImageIndex)
 {
+    if (pAcquireInfo != nullptr && PresentModeRecreateRequested(pAcquireInfo->swapchain, _ReturnAddress()))
+        return VK_ERROR_OUT_OF_DATE_KHR;
+
     if (auto fg = State::Instance().currentVkFG; fg != nullptr && pAcquireInfo != nullptr &&
                                                  fg->OwnsSwapchain(pAcquireInfo->swapchain) &&
                                                  !FromFGOutput(_ReturnAddress()))

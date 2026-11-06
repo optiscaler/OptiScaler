@@ -563,6 +563,9 @@ struct VulkanDeviceFeatureState::Impl
     VkPhysicalDeviceShaderIntegerDotProductFeatures integerDotProduct {
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_DOT_PRODUCT_FEATURES
     };
+    VkPhysicalDevicePresentModeFifoLatestReadyFeaturesKHR fifoLatestReady {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_MODE_FIFO_LATEST_READY_FEATURES_KHR
+    };
 
     Impl(VkDeviceCreateInfo* pCreateInfo, PFN_vkGetPhysicalDeviceFeatures2 getFeatures2)
         : pCreateInfo(pCreateInfo), getFeatures2(getFeatures2)
@@ -582,7 +585,7 @@ struct VulkanDeviceFeatureState::Impl
             CopyFeatureChain(pCreateInfo->pNext, features2, vulkan12Features, vulkan13Features, shaderFloat16Int8,
                              storage8Bit, descriptorIndexing, bufferDeviceAddress, vulkanMemoryModel, synchronization2,
                              subgroupSizeControl, timelineSemaphore, descriptorBuffer, shaderFloat8, cooperativeMatrix,
-                             cooperativeMatrix2, computeShaderDerivatives, integerDotProduct);
+                             cooperativeMatrix2, computeShaderDerivatives, integerDotProduct, fifoLatestReady);
     }
 
     bool CanUpgradeExtBufferDeviceAddress(VkPhysicalDevice physicalDevice)
@@ -884,6 +887,11 @@ struct VulkanDeviceFeatureState::Impl
 
         if (HasExtension(pCreateInfo, VK_NV_LOW_LATENCY_2_EXTENSION_NAME))
             EnableTimelineSemaphores(physicalDevice);
+
+        if (HasExtension(pCreateInfo, VK_KHR_PRESENT_MODE_FIFO_LATEST_READY_EXTENSION_NAME) ||
+            HasExtension(pCreateInfo, VK_EXT_PRESENT_MODE_FIFO_LATEST_READY_EXTENSION_NAME))
+            EnableFeatureStruct(pCreateInfo, getFeatures2, physicalDevice, modifiedFeatures, fifoLatestReady,
+                                &VkPhysicalDevicePresentModeFifoLatestReadyFeaturesKHR::presentModeFifoLatestReady);
     }
 
     void EnableFeatures(VkPhysicalDevice physicalDevice)
@@ -1233,6 +1241,12 @@ VkResult VulkanSpoofing::hkvkCreateDevice(VkPhysicalDevice physicalDevice, VkDev
     LOG_INFO("Adding QueueSubmit2 Vulkan extensions");
     addExtension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
 #endif
+
+    // For the Vulkan present mode override, it can be picked after the device is created
+    if (featureState != nullptr && HasExtension(newExtensionList, VK_KHR_SWAPCHAIN_EXTENSION_NAME) &&
+        !HasExtension(newExtensionList, VK_EXT_PRESENT_MODE_FIFO_LATEST_READY_EXTENSION_NAME) &&
+        !addExtension(VK_KHR_PRESENT_MODE_FIFO_LATEST_READY_EXTENSION_NAME))
+        addExtension(VK_EXT_PRESENT_MODE_FIFO_LATEST_READY_EXTENSION_NAME);
 
     if (State::Instance().vkAntiLagSupported)
     {

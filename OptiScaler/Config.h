@@ -792,6 +792,7 @@ class Config
     CustomOptional<bool, SoftDefault> OverrideVsync { false };
     CustomOptional<bool, NoDefault> ForceVsync;
     CustomOptional<UINT> VsyncInterval { 0 };
+    CustomOptional<int, NoDefault> VulkanPresentMode; // VkPresentModeKHR
 
     // Old configs for compat reasons
     CustomOptional<bool, NoDefault> _DONTUSE_Fsr4ForceEnableInt8;
