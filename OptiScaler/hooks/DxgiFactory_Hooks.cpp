@@ -270,6 +270,10 @@ bool DxgiFactoryHooks::PrepareDx12InteropDesc1(DXGI_SWAP_CHAIN_DESC1& desc, bool
 
 void DxgiFactoryHooks::HookToFactory(IDXGIFactory* pFactory)
 {
+    // Factories can be created from several threads
+    static std::mutex hookMutex;
+    std::lock_guard<std::mutex> lock(hookMutex);
+
     if (pFactory == nullptr || o_EnumAdapters != nullptr)
         return;
 
@@ -280,6 +284,9 @@ void DxgiFactoryHooks::HookToFactory(IDXGIFactory* pFactory)
         real = pFactory;
 
     void** pFactoryVTable = *reinterpret_cast<void***>(real);
+
+    LOG_DEBUG("CreateSwapChain: {}, CreateSwapChainForHwnd: {}", Util::WhoIsTheCaller(pFactoryVTable[10]),
+              Util::WhoIsTheCaller(pFactoryVTable[15]));
 
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
