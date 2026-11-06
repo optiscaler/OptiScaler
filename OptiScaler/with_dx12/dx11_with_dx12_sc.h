@@ -133,6 +133,7 @@ class DECLSPEC_UUID("23b064bb-482d-416c-93b1-829acedfb3d0") Dx11wDx12SC final : 
     UINT _currentFakeIndex = 0;
     DXGI_FORMAT _bufferFormat = DXGI_FORMAT_UNKNOWN;
     bool _interopInitialized = false;
+    BOOL _fgResizedFullscreen = FALSE;
 
     HWND _handle = nullptr;
 };
