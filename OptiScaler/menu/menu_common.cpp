@@ -9216,6 +9216,18 @@ static const char* ApiName(API api)
     return "Unknown";
 }
 
+// Set by the DLSS inputs, before an upscaler is created the swapchain shows it
+static API GameApi(const State& state)
+{
+    if (state.api != NotSelected)
+        return state.api;
+
+    if (state.swapchainInteropApi == SwapchainInteropApi::Dx11wDx12)
+        return DX11;
+
+    return state.swapchainApi;
+}
+
 // Filled dot for on / found, hollow dot for off / missing. Goes into the next table cell
 static void StatusFlag(const char* label, bool on, bool warnWhenOn = false)
 {
@@ -9385,7 +9397,7 @@ void MenuCommon::RenderStatusInfo(RenderMenuContext& ctx)
         {
             setupPairs();
 
-            pair("API", StrFmt("%s%s", ApiName(state.api),
+            pair("API", StrFmt("%s%s", ApiName(GameApi(state)),
                                IdentifyGpu::gameUsesDxvk()          ? " (DXVK)"
                                : IdentifyGpu::gameUsesVkd3dProton() ? " (VKD3D)"
                                                                     : ""));
@@ -10484,7 +10496,7 @@ static void RenderGameInfoRow(State& state, const GpuInformation& primaryGpu)
 {
     // Game name is in the window title
     ScopedCard card;
-    std::string line = StrFmt("%s%s | %s | Input: %s", ApiName(state.api),
+    std::string line = StrFmt("%s%s | %s | Input: %s", ApiName(GameApi(state)),
                               IdentifyGpu::gameUsesDxvk()          ? " (DXVK)"
                               : IdentifyGpu::gameUsesVkd3dProton() ? " (VKD3D)"
                                                                    : "",
