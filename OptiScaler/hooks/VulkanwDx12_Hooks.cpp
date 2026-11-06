@@ -16,6 +16,7 @@
 #include <atomic>
 #include <cstring>
 #include <misc/IdentifyGpu.h>
+#include <framegen/nvngx/NvngxVkLayouts.h>
 
 static PFN_vkQueueSubmit o_vkQueueSubmit = nullptr;
 static PFN_vkQueueSubmit2 o_vkQueueSubmit2 = nullptr;
@@ -32,6 +33,8 @@ static PFN_vkCreateCommandPool o_vkCreateCommandPool = nullptr;
 
 static std::mutex mutexCommandPoolToQueueFamilyMap;
 static std::unordered_map<VkCommandPool, uint32_t> commandPoolToQueueFamilyMap;
+
+static PFN_vkDestroyImage o_vkDestroyImage = nullptr;
 
 // #define LOG_ALL_RECORDS
 
@@ -1056,6 +1059,9 @@ void Vulkan_wDx12::hk_vkCmdPipelineBarrier(VkCommandBuffer commandBuffer, VkPipe
                                            uint32_t imageMemoryBarrierCount,
                                            const VkImageMemoryBarrier* pImageMemoryBarriers)
 {
+    std::vector<VkImageMemoryBarrier> fixedBarriers;
+    pImageMemoryBarriers = NvngxVkLayouts::Fixup(pImageMemoryBarriers, imageMemoryBarrierCount, fixedBarriers);
+
     auto primaryGpu = IdentifyGpu::getPrimaryGpu();
     if (State::Instance().gameQuirks & GameQuirk::VulkanDLSSBarrierFixup &&
         (primaryGpu.vendorId != VendorId::Nvidia || !primaryGpu.dlssCapable))
@@ -1128,6 +1134,12 @@ void Vulkan_wDx12::hk_vkCmdPipelineBarrier(VkCommandBuffer commandBuffer, VkPipe
     o_vkCmdPipelineBarrier(cmdBuffer, srcStageMask, dstStageMask, dependencyFlags, memoryBarrierCount, pMemoryBarriers,
                            bufferMemoryBarrierCount, pBufferMemoryBarriers, imageMemoryBarrierCount,
                            pImageMemoryBarriers);
+}
+
+void Vulkan_wDx12::hk_vkDestroyImage(VkDevice device, VkImage image, const VkAllocationCallbacks* pAllocator)
+{
+    NvngxVkLayouts::Forget(image);
+    o_vkDestroyImage(device, image, pAllocator);
 }
 
 void Vulkan_wDx12::hk_vkCmdBeginQuery(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query,
@@ -1560,6 +1572,10 @@ void Vulkan_wDx12::hk_vkCmdWaitEvents2(VkCommandBuffer commandBuffer, uint32_t e
 
 void Vulkan_wDx12::hk_vkCmdPipelineBarrier2(VkCommandBuffer commandBuffer, const VkDependencyInfo* pDependencyInfo)
 {
+    std::vector<VkImageMemoryBarrier2> fixedBarriers;
+    VkDependencyInfo fixedInfo;
+    pDependencyInfo = NvngxVkLayouts::Fixup(pDependencyInfo, fixedInfo, fixedBarriers);
+
     VkCommandBuffer cmdBuffer = commandBuffer;
 
     auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
@@ -2778,6 +2794,10 @@ void Vulkan_wDx12::hk_vkCmdWaitEvents2KHR(VkCommandBuffer commandBuffer, uint32_
 
 void Vulkan_wDx12::hk_vkCmdPipelineBarrier2KHR(VkCommandBuffer commandBuffer, const VkDependencyInfo* pDependencyInfo)
 {
+    std::vector<VkImageMemoryBarrier2> fixedBarriers;
+    VkDependencyInfo fixedInfo;
+    pDependencyInfo = NvngxVkLayouts::Fixup(pDependencyInfo, fixedInfo, fixedBarriers);
+
     VkCommandBuffer cmdBuffer = commandBuffer;
 
     auto mappedVirtualCmdBuffer = GetVirtualCommandBuffer(cmdBuffer);
@@ -7447,6 +7467,13 @@ PFN_vkVoidFunction Vulkan_wDx12::GetAddress(const PFN_vkVoidFunction original, c
 
         return (PFN_vkVoidFunction) hk_vkCmdWaitEvents;
     }
+    if (procName == std::string("vkDestroyImage"))
+    {
+        if (o_vkDestroyImage == nullptr)
+            o_vkDestroyImage = (PFN_vkDestroyImage) original;
+
+        return (PFN_vkVoidFunction) hk_vkDestroyImage;
+    }
     if (procName == std::string("vkCmdPipelineBarrier"))
     {
         // LOG_DEBUG("vkCmdPipelineBarrier");
@@ -9637,6 +9664,7 @@ void Vulkan_wDx12::Hook(HMODULE vulkanModule)
     o_vkCmdResetEvent = (PFN_vkCmdResetEvent) DetouredExport(vulkanModule, "vkCmdResetEvent");
     o_vkCmdWaitEvents = (PFN_vkCmdWaitEvents) DetouredExport(vulkanModule, "vkCmdWaitEvents");
     o_vkCmdPipelineBarrier = (PFN_vkCmdPipelineBarrier) DetouredExport(vulkanModule, "vkCmdPipelineBarrier");
+    o_vkDestroyImage = (PFN_vkDestroyImage) DetouredExport(vulkanModule, "vkDestroyImage");
     o_vkCmdBeginQuery = (PFN_vkCmdBeginQuery) DetouredExport(vulkanModule, "vkCmdBeginQuery");
     o_vkCmdEndQuery = (PFN_vkCmdEndQuery) DetouredExport(vulkanModule, "vkCmdEndQuery");
     o_vkCmdResetQueryPool = (PFN_vkCmdResetQueryPool) DetouredExport(vulkanModule, "vkCmdResetQueryPool");
@@ -10169,6 +10197,9 @@ void Vulkan_wDx12::Hook(HMODULE vulkanModule)
 
         if (o_vkCmdPipelineBarrier)
             DetourAttach(&(PVOID&) o_vkCmdPipelineBarrier, hk_vkCmdPipelineBarrier);
+
+        if (o_vkDestroyImage)
+            DetourAttach(&(PVOID&) o_vkDestroyImage, hk_vkDestroyImage);
 
         if (o_vkCmdBeginQuery)
             DetourAttach(&(PVOID&) o_vkCmdBeginQuery, hk_vkCmdBeginQuery);

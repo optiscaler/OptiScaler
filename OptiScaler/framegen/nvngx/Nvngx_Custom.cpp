@@ -13,17 +13,11 @@ void Nvngx_Custom::LoadLibraries()
     LoadNgxExports();
 
     // Max fake frames are reported like DLSSG does, which only reports them once inited
-    auto populate = _DLSSG_D3D12_PopulateParameters_Impl != nullptr
-                        ? _DLSSG_D3D12_PopulateParameters_Impl
-                        : (PFN_D3D12_PopulateParameters_Impl) _DLSSG_VULKAN_PopulateParameters_Impl;
-    NVNGX_Parameters params(API::DX12, false);
-    int countMax = 0;
+    QueryReportedParameters();
 
-    if (populate != nullptr && populate(&params) == NVSDK_NGX_Result_Success &&
-        params.Get("DLSSG.MultiFrameCountMax", &countMax) == NVSDK_NGX_Result_Success && countMax > 0)
-    {
-        _maxFakeFrames = countMax;
-    }
-
-    LOG_INFO("Custom DLSSG {} initialized, max fake frames: {}", _name, _maxFakeFrames);
+    if (!Nvngx_DllProxy::supportsDispatchFlags())
+        LOG_INFO("Custom DLSSG {} initialized, max fake frames: {}", _name, getMaxFakeFramesCount());
+    else
+        LOG_INFO("Custom DLSSG {} initialized, max fake frames: {}, antighosting version: {}.{}", _name,
+                 getMaxFakeFramesCount(), antighostingVersion.major, antighostingVersion.minor);
 }

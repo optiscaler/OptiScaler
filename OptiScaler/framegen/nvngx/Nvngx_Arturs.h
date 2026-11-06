@@ -3,8 +3,6 @@
 
 class Nvngx_Arturs : public Nvngx_DllProxy
 {
-    feature_version ghostbusterVersion {};
-
     void QueryVersions();
 
   protected:
@@ -15,5 +13,7 @@ class Nvngx_Arturs : public Nvngx_DllProxy
 
     int getMaxFakeFramesCount() override { return 5; }
     FGNvngxReplacement getType() override { return FGNvngxReplacement::Arturs; }
-    feature_version extraVersion() override;
+
+    // DLSS Enabler's own, even when it doesn't report its antighosting version
+    bool supportsDispatchFlags() override { return true; }
 };

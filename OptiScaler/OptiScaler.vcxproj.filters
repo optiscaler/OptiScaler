@@ -884,6 +884,9 @@
     <ClInclude Include="framegen\nvngx\Nvngx_FG.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="framegen\nvngx\NvngxVkLayouts.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="NVNGX_Parameter.h">
       <Filter>Header Files</Filter>
     </ClInclude>

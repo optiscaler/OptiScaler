@@ -12,6 +12,7 @@
 #include "Nvngx_FFX.h"
 #include "Nvngx_Combo.h"
 #include "Nvngx_Custom.h"
+#include "NvngxVkLayouts.h"
 #include <imgui/ImGuiNotify.hpp>
 #include <nvsdk_ngx_vk.h>
 
@@ -187,6 +188,16 @@ feature_version Nvngx_FG::extraVersion()
         return {};
 
     return provider->extraVersion();
+}
+
+bool Nvngx_FG::supportsDispatchFlags()
+{
+    auto* provider = getProvider();
+
+    if (!provider)
+        return false;
+
+    return provider->supportsDispatchFlags();
 }
 
 void Nvngx_FG::setDebugView(bool enabled)
@@ -730,9 +741,37 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_EvaluateFeature(VkCommandBuffer InCmdList, con
     if (Config::Instance()->NvngxFGDisableHudless.value_or_default())
         InParameters->Set("DLSSG.HUDLess", (void*) nullptr);
 
+    static constexpr const char* trackedImages[] = {
+        "DLSSG.Backbuffer",
+        "DLSSG.MVecs",
+        "DLSSG.Depth",
+        "DLSSG.HUDLess",
+        "DLSSG.UI",
+        "DLSSG.UIAlpha",
+        "DLSSG.NoWarp",
+        "DLSSG.BidirectionalDistortionField",
+        "DLSSG.OutputInterpolated",
+        "DLSSG.OutputReal",
+        "DLSSG.OutputDisableInterpolation",
+    };
+
+    for (auto name : trackedImages)
+    {
+        NVSDK_NGX_Resource_VK* resource = nullptr;
+
+        if (InParameters->Get(name, (void**) &resource) == NVSDK_NGX_Result_Success && resource != nullptr &&
+            resource->Type == NVSDK_NGX_RESOURCE_VK_TYPE_VK_IMAGEVIEW)
+        {
+            NvngxVkLayouts::Track(resource->Resource.ImageViewInfo.Image);
+        }
+    }
+
     // LOG_TRACE("Handle received from the game: {:X}", (uint64_t) InFeatureHandle);
 
-    return provider->VULKAN_EvaluateFeature(InCmdList, ourHandle->nativeHandle, InParameters, InCallback);
+    NvngxVkLayouts::inEvaluate = true;
+    auto result = provider->VULKAN_EvaluateFeature(InCmdList, ourHandle->nativeHandle, InParameters, InCallback);
+    NvngxVkLayouts::inEvaluate = false;
+    return result;
 }
 
 NVSDK_NGX_Result Nvngx_FG::VULKAN_PopulateParameters_Impl(NVSDK_NGX_Parameter* InParameters)

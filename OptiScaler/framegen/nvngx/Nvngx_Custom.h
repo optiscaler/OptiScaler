@@ -5,7 +5,6 @@
 class Nvngx_Custom : public Nvngx_DllProxy
 {
     std::string _name;
-    int _maxFakeFrames = 1;
 
   protected:
     void LoadLibraries() override final;
@@ -13,6 +12,6 @@ class Nvngx_Custom : public Nvngx_DllProxy
   public:
     explicit Nvngx_Custom(std::string name) : _name(std::move(name)) { LoadLibraries(); }
 
-    int getMaxFakeFramesCount() override { return _maxFakeFrames; }
+    int getMaxFakeFramesCount() override { return reportedMaxFakeFrames > 0 ? reportedMaxFakeFrames : 1; }
     FGNvngxReplacement getType() override { return FGNvngxReplacement::Custom; }
 };

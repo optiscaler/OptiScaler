@@ -34,9 +34,19 @@ class Nvngx_DllProxy : public IFGNvngx
     PFN_VULKAN_EvaluateFeature _DLSSG_VULKAN_EvaluateFeature = nullptr;
     PFN_VULKAN_PopulateParameters_Impl _DLSSG_VULKAN_PopulateParameters_Impl = nullptr;
 
+    // What PopulateParameters reports before init
+    int reportedMaxFakeFrames = 0;
+    feature_version antighostingVersion {};
+
     virtual void LoadLibraries() = 0;
 
     void LoadNgxExports();
+
+    // Fills reportedMaxFakeFrames and antighostingVersion from PopulateParameters, D3D12's or else Vulkan's
+    void QueryReportedParameters();
+
+    // DLSSG.ShowDebug and DLSSG.DispatchFlags from the config
+    static void SetDispatchFlags(NVSDK_NGX_Parameter* InParameters);
 
   public:
     Nvngx_DllProxy() = default;
@@ -51,6 +61,11 @@ class Nvngx_DllProxy : public IFGNvngx
 
     bool isDx12Available() override final { return _DLSSG_D3D12_Init != nullptr; };
     bool isVulkanAvailable() override final { return _DLSSG_VULKAN_Init != nullptr; };
+
+    // A provider reporting the antighosting (GhostBuster) version is DLSS Enabler's frame generation or passes its
+    // parameters through, so it takes DLSS Enabler's DLSSG.DispatchFlags
+    feature_version extraVersion() override { return antighostingVersion; }
+    bool supportsDispatchFlags() override { return antighostingVersion.major != 0 || antighostingVersion.minor != 0; }
 
     // D3D12
     NVSDK_NGX_Result D3D12_Init(unsigned long long InApplicationId, const wchar_t* InApplicationDataPath,

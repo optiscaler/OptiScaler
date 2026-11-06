@@ -44,6 +44,7 @@ class Nvngx_FG
     static bool isVulkanAvailable();
     static feature_version version();
     static feature_version extraVersion();
+    static bool supportsDispatchFlags();
 
     // TODO: nukem-specific, unify
     static void setDebugView(bool enabled);

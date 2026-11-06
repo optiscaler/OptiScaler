@@ -37,6 +37,37 @@ void Nvngx_DllProxy::LoadNgxExports()
         (PFN_VULKAN_PopulateParameters_Impl) GetProcAddress(dll, "NVSDK_NGX_VULKAN_PopulateParameters_Impl");
 }
 
+void Nvngx_DllProxy::QueryReportedParameters()
+{
+    // Both take the same parameters, which aren't tied to an API
+    auto populate = _DLSSG_D3D12_PopulateParameters_Impl != nullptr
+                        ? _DLSSG_D3D12_PopulateParameters_Impl
+                        : (PFN_D3D12_PopulateParameters_Impl) _DLSSG_VULKAN_PopulateParameters_Impl;
+    NVNGX_Parameters params(API::DX12, false);
+
+    if (populate == nullptr || populate(&params) != NVSDK_NGX_Result_Success)
+        return;
+
+    int countMax = 0;
+    if (params.Get("DLSSG.MultiFrameCountMax", &countMax) == NVSDK_NGX_Result_Success && countMax > 0)
+        reportedMaxFakeFrames = countMax;
+
+    if (params.Get("FrameInterpolation.GhostbusterVersionMajor", &antighostingVersion.major) ==
+        NVSDK_NGX_Result_Success)
+    {
+        params.Get("FrameInterpolation.GhostbusterVersionMinor", &antighostingVersion.minor);
+    }
+}
+
+void Nvngx_DllProxy::SetDispatchFlags(NVSDK_NGX_Parameter* InParameters)
+{
+    bool showDebug = Config::Instance()->NvngxFGShowDebug.value_or_default();
+    uint32_t flags = Config::Instance()->NvngxFGDispatchFlags.value_or_default();
+
+    InParameters->Set("DLSSG.ShowDebug", showDebug);
+    InParameters->Set("DLSSG.DispatchFlags", flags);
+}
+
 NVSDK_NGX_Result Nvngx_DllProxy::D3D12_Init(unsigned long long InApplicationId, const wchar_t* InApplicationDataPath,
                                             ID3D12Device* InDevice, const NVSDK_NGX_FeatureCommonInfo* InFeatureInfo,
                                             NVSDK_NGX_Version InSDKVersion)
@@ -224,11 +255,7 @@ NVSDK_NGX_Result Nvngx_DllProxy::D3D12_EvaluateFeature(ID3D12GraphicsCommandList
             DeferredRelease::Release(depthCopy[1]);
         }
 
-        bool showDebug = Config::Instance()->NvngxFGShowDebug.value_or_default();
-        uint32_t flags = Config::Instance()->NvngxFGDispatchFlags.value_or_default();
-
-        InParameters->Set("DLSSG.ShowDebug", showDebug);
-        InParameters->Set("DLSSG.DispatchFlags", flags);
+        SetDispatchFlags(InParameters);
 
         return _DLSSG_D3D12_EvaluateFeature(InCmdList, InFeatureHandle, InParameters, InCallback);
     }
@@ -350,6 +377,8 @@ NVSDK_NGX_Result Nvngx_DllProxy::VULKAN_EvaluateFeature(VkCommandBuffer InCmdLis
 {
     if (isVulkanAvailable())
     {
+        SetDispatchFlags(InParameters);
+
         return _DLSSG_VULKAN_EvaluateFeature(InCmdList, InFeatureHandle, InParameters, InCallback);
     }
 

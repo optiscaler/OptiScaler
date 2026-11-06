@@ -154,6 +154,7 @@ class Vulkan_wDx12
                                         const VkBufferMemoryBarrier* pBufferMemoryBarriers,
                                         uint32_t imageMemoryBarrierCount,
                                         const VkImageMemoryBarrier* pImageMemoryBarriers);
+    static void hk_vkDestroyImage(VkDevice device, VkImage image, const VkAllocationCallbacks* pAllocator);
     static void hk_vkCmdBeginQuery(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query,
                                    VkQueryControlFlags flags);
     static void hk_vkCmdEndQuery(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query);
@@ -655,6 +656,7 @@ class Vulkan_wDx12
     VALIDATE_MEMBER_HOOK(hk_vkCmdResetEvent, PFN_vkCmdResetEvent)
     VALIDATE_MEMBER_HOOK(hk_vkCmdWaitEvents, PFN_vkCmdWaitEvents)
     VALIDATE_MEMBER_HOOK(hk_vkCmdPipelineBarrier, PFN_vkCmdPipelineBarrier)
+    VALIDATE_MEMBER_HOOK(hk_vkDestroyImage, PFN_vkDestroyImage)
     VALIDATE_MEMBER_HOOK(hk_vkCmdBeginQuery, PFN_vkCmdBeginQuery)
     VALIDATE_MEMBER_HOOK(hk_vkCmdEndQuery, PFN_vkCmdEndQuery)
     VALIDATE_MEMBER_HOOK(hk_vkCmdResetQueryPool, PFN_vkCmdResetQueryPool)

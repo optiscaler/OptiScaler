@@ -24,6 +24,10 @@ class IFGNvngx
     virtual bool isVulkanAvailable() = 0;
     virtual feature_version extraVersion() { return {}; }; // extra version the provider may want to report
 
+    // Whether the provider takes the DLSSG.DispatchFlags of DLSS Enabler's frame generation: antighosting, HUD handling
+    // and debug views
+    virtual bool supportsDispatchFlags() { return false; }
+
     // D3D12
     virtual NVSDK_NGX_Result D3D12_Init(unsigned long long InApplicationId, const wchar_t* InApplicationDataPath,
                                         ID3D12Device* InDevice, const NVSDK_NGX_FeatureCommonInfo* InFeatureInfo,

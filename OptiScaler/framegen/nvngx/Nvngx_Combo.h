@@ -68,4 +68,5 @@ class Nvngx_Combo : public IFGNvngx
     FGNvngxReplacement getType() override { return FGNvngxReplacement::Combo; }
     feature_version version() override;
     feature_version extraVersion() override;
+    bool supportsDispatchFlags() override { return artursProvider->supportsDispatchFlags(); }
 };

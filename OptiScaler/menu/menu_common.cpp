@@ -6350,12 +6350,21 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
         if (isLoaded)
         {
-            if (activeNvngxFg == FGNvngxReplacement::Arturs || activeNvngxFg == FGNvngxReplacement::Combo)
+            // DLSS Enabler's own, or any custom provider reporting its antighosting version
+            if (Nvngx_FG::supportsDispatchFlags())
             {
-                auto featureVer = Nvngx_FG::version();
                 auto antighostingVer = Nvngx_FG::extraVersion();
-                ImGui::Text("DE Ver: %d.%d.%d.%d   GB Ver: %d.%d", featureVer.major, featureVer.minor, featureVer.patch,
-                            featureVer.reserved, antighostingVer.major, antighostingVer.minor);
+
+                if (activeNvngxFg == FGNvngxReplacement::Arturs || activeNvngxFg == FGNvngxReplacement::Combo)
+                {
+                    auto featureVer = Nvngx_FG::version();
+                    ImGui::Text("DE Ver: %d.%d.%d.%d   GB Ver: %d.%d", featureVer.major, featureVer.minor,
+                                featureVer.patch, featureVer.reserved, antighostingVer.major, antighostingVer.minor);
+                }
+                else
+                {
+                    ImGui::Text("GB Ver: %d.%d", antighostingVer.major, antighostingVer.minor);
+                }
 
                 static std::vector<FlagDefinition> common_flags = {
                     { "Antighosting (GB)", 0x00100000, "Enable anti-ghosting correction" },
