@@ -12,6 +12,7 @@ struct Nvngx_FFX_Api
     PfnFfxConfigure Configure;
     PfnFfxQuery Query;
     PfnFfxDispatch Dispatch;
+    ffxReturnCode_t (*QueryFgVersions)(void* device, std::vector<uint64_t>& ids, std::vector<const char*>& names);
     FfxApiResource (*GetResource)(NVSDK_NGX_Parameter* InParameters, const char* name, uint32_t state);
     void (*CopyTexture)(void* cmdList, const FfxApiResource* Destination, const FfxApiResource* Source);
 };

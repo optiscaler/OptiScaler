@@ -638,7 +638,7 @@ void FSRFG_Vk::ConfigureFramePaceTuning()
 void FSRFG_Vk::QueryVersions()
 {
     auto& state = State::Instance();
-    FfxApiProxy::VULKAN_QueryFgVersions(state.ffxFGVersionIds, state.ffxFGVersionNames);
+    FfxApiProxy::VULKAN_QueryFgVersions(nullptr, state.ffxFGVersionIds, state.ffxFGVersionNames);
 
     auto config = Config::Instance();
 

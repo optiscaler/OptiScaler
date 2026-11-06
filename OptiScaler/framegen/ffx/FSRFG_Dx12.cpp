@@ -1298,23 +1298,9 @@ void FSRFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
         return;
     }
 
-    ffxQueryDescGetVersions versionQuery {};
-    versionQuery.header.type = FFX_API_QUERY_DESC_TYPE_GET_VERSIONS;
-    versionQuery.createDescType = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION;
-    versionQuery.device = device; // only for DirectX 12 applications
-    uint64_t versionCount = 0;
-    versionQuery.outputCount = &versionCount;
-    // get number of versions for allocation
-    FfxApiProxy::D3D12_Query(nullptr, &versionQuery.header);
+    FfxApiProxy::D3D12_QueryFgVersions(device, State::Instance().ffxFGVersionIds, State::Instance().ffxFGVersionNames);
 
-    State::Instance().ffxFGVersionIds.resize(versionCount);
-    State::Instance().ffxFGVersionNames.resize(versionCount);
-    versionQuery.versionIds = State::Instance().ffxFGVersionIds.data();
-    versionQuery.versionNames = State::Instance().ffxFGVersionNames.data();
-    // fill version ids and names arrays.
-    FfxApiProxy::D3D12_Query(nullptr, &versionQuery.header);
-
-    if (versionCount == 0)
+    if (State::Instance().ffxFGVersionIds.empty())
     {
         static bool logged = false;
         if (!std::exchange(logged, true))

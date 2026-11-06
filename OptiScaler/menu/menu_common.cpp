@@ -4599,7 +4599,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
     auto constexpr fgNvngxFfxIndex = (uint32_t) FGNvngxReplacement::FFX;
     if (state.swapchainApi == API::Vulkan)
-        nvngxOptions[fgNvngxFfxIndex].set_disabled(!FfxApiProxy::IsFGReadyVk(),
+        nvngxOptions[fgNvngxFfxIndex].set_disabled(!FfxApiProxy::IsFGReadyVk() && !FSR4DriverProviderVk::InitFg(),
                                                    "Missing amd_fidelityfx_framegeneration_vk.dll");
     else
         nvngxOptions[fgNvngxFfxIndex].set_disabled(!FfxApiProxy::IsFGReady(false),

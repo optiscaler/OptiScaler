@@ -1564,6 +1564,38 @@ class FfxApiProxy
         return D3D12_QuerySdk(context, desc);
     }
 
+    // Versions of the FFX SDK frame generation, the driver's ML FG is given to the SDK through AmdExtFfxApi
+    static ffxReturnCode_t D3D12_QueryFgVersions(void* device, std::vector<uint64_t>& ids,
+                                                 std::vector<const char*>& names)
+    {
+        ffxQueryDescGetVersions versionQuery {};
+        versionQuery.header.type = FFX_API_QUERY_DESC_TYPE_GET_VERSIONS;
+        versionQuery.createDescType = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION;
+        versionQuery.device = device;
+        uint64_t versionCount = 0;
+        versionQuery.outputCount = &versionCount;
+
+        ids.clear();
+        names.clear();
+
+        auto result = D3D12_Query(nullptr, &versionQuery.header);
+
+        if (result == FFX_API_RETURN_OK && versionCount > 0)
+        {
+            ids.resize(versionCount);
+            names.resize(versionCount);
+            versionQuery.versionIds = ids.data();
+            versionQuery.versionNames = names.data();
+
+            result = D3D12_Query(nullptr, &versionQuery.header);
+
+            ids.resize(result == FFX_API_RETURN_OK ? versionCount : 0);
+            names.resize(ids.size());
+        }
+
+        return result;
+    }
+
     // Versions of the FFX SDK upscalers and the upscaler of the driver
     static ffxReturnCode_t D3D12_QueryUpscalerVersions(ffxQueryDescGetVersions* desc,
                                                        FSR4DriverProviderDx12::Listing driverListing)
@@ -1886,13 +1918,33 @@ class FfxApiProxy
                                                 const ffxAllocationCallbacks* memCb)
     {
         auto type = GetType(desc->type);
+        auto overrideVersion = FindOverrideVersion(desc);
 
-        if (auto overrideVersion = FindOverrideVersion(desc); type == FFXStructType::Upscaling && overrideVersion &&
-                                                              FSR4DriverProviderVk::IsAvailable() &&
-                                                              *overrideVersion == FSR4DriverProviderVk::VersionId())
+        FfxModule* driver = nullptr;
+        if (overrideVersion && type == FFXStructType::Upscaling && FSR4DriverProviderVk::IsAvailable() &&
+            *overrideVersion == FSR4DriverProviderVk::VersionId())
+            driver = FSR4DriverProviderVk::Module();
+        else if (overrideVersion && type == FFXStructType::FG && FSR4DriverProviderVk::IsFgAvailable() &&
+                 *overrideVersion == FSR4DriverProviderVk::FgVersionId())
+            driver = FSR4DriverProviderVk::FgModule();
+
+        if (driver != nullptr)
         {
-            auto driver = FSR4DriverProviderVk::Module();
+            // The driver FG logs an error without the SDK 2.x version
+            ffxCreateContextDescFrameGenerationVersionV2 fgVersion {};
+            fgVersion.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION_VERSION_V2;
+            fgVersion.version = FFX_FRAMEGENERATION_VERSION_V2;
+
+            ffxApiHeader* last = desc;
+            while (last->pNext != nullptr)
+                last = last->pNext;
+
+            if (type == FFXStructType::FG)
+                last->pNext = &fgVersion.header;
+
+            LOG_DEBUG("Creating with the driver provided {}", type == FFXStructType::FG ? "FG" : "upscaler");
             auto result = CreateContextVk(driver, context, desc, memCb);
+            last->pNext = nullptr;
 
             if (result == FFX_API_RETURN_OK)
             {
@@ -2152,11 +2204,13 @@ class FfxApiProxy
     }
 
     // Versions of the FFX SDK frame generation followed by the frame generation of the driver
-    static ffxReturnCode_t VULKAN_QueryFgVersions(std::vector<uint64_t>& ids, std::vector<const char*>& names)
+    static ffxReturnCode_t VULKAN_QueryFgVersions(void* device, std::vector<uint64_t>& ids,
+                                                  std::vector<const char*>& names)
     {
         ffxQueryDescGetVersions versionQuery {};
         versionQuery.header.type = FFX_API_QUERY_DESC_TYPE_GET_VERSIONS;
         versionQuery.createDescType = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION;
+        versionQuery.device = device;
         uint64_t versionCount = 0;
         versionQuery.outputCount = &versionCount;
 
