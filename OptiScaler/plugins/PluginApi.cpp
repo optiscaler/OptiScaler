@@ -41,6 +41,7 @@ std::vector<HMODULE> _initedModules;
 std::vector<std::shared_ptr<PluginTab>> _tabs;
 std::vector<std::shared_ptr<PluginTab>> _pendingTabs;
 std::mutex _mutex;
+std::atomic<bool> _reInitRequested = false;
 
 // State of the draw callback that is running, widgets do nothing without it
 struct TabDrawState
@@ -454,6 +455,17 @@ void Api_Log(OptiPlugin* plugin, OptiLogLevel level, const char* message)
     }
 }
 
+bool Api_ReInitUpscalers(OptiPlugin* plugin)
+{
+    // Applied by the menu
+    if (plugin == nullptr || !MenuCommon::IsInited())
+        return false;
+
+    LOG_INFO("[{}] Requested upscaler re-init", plugin->name);
+    _reInitRequested = true;
+    return true;
+}
+
 const OptiPluginApi _api = {
     .size = sizeof(OptiPluginApi),
     .version = OPTI_PLUGIN_API_VERSION,
@@ -494,6 +506,8 @@ const OptiPluginApi _api = {
     .SaveSettings = Api_SaveSettings,
 
     .Log = Api_Log,
+
+    .ReInitUpscalers = Api_ReInitUpscalers,
 };
 } // namespace
 
@@ -563,6 +577,8 @@ void PluginApi::InitPlugin(HMODULE module, PFN_OptiPluginInit init, const std::s
 
     std::erase_if(_pendingTabs, [plugin](const auto& tab) { return tab->plugin == plugin; });
 }
+
+bool PluginApi::TakeReInitRequest() { return _reInitRequested.exchange(false); }
 
 std::vector<PluginApi::TabInfo> PluginApi::GetTabs()
 {

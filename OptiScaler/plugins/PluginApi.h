@@ -22,6 +22,9 @@ class PluginApi
     // Same for any other dll, name is its [Plugin.<name>] section
     static void InitPlugin(HMODULE module, PFN_OptiPluginInit init, const std::string& name);
 
+    // True once after a plugin asked for an upscaler re-init
+    static bool TakeReInitRequest();
+
     static std::vector<TabInfo> GetTabs();
 
     // Draws a registered tab inside of the menu, colorMap adjusts colors for the HDR menu
