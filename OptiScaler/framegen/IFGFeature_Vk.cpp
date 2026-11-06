@@ -23,6 +23,14 @@ VkFormat IFGFeature_Vk::WithoutSrgb(VkFormat format)
     }
 }
 
+static VkFormat VelocityFormat(VkFormat format)
+{
+    if (format == VK_FORMAT_R16G16_SNORM || format == VK_FORMAT_R16G16_UNORM)
+        return VK_FORMAT_R16G16_SFLOAT;
+
+    return format;
+}
+
 static VkImageAspectFlags AspectMask(VkFormat format)
 {
     switch (format)
@@ -362,11 +370,13 @@ bool IFGFeature_Vk::FlipResource(VkCommandBuffer cmdBuffer, VkFGResource& resour
 
     if (velocity)
     {
+        auto velocityFormat = VelocityFormat(resource.format);
+
         VkFormatProperties properties {};
-        vkGetPhysicalDeviceFormatProperties(_physicalDevice, resource.format, &properties);
+        vkGetPhysicalDeviceFormatProperties(_physicalDevice, velocityFormat, &properties);
 
         format = (properties.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT)
-                     ? resource.format
+                     ? velocityFormat
                      : VK_FORMAT_R16G16B16A16_SFLOAT;
     }
 
@@ -449,7 +459,35 @@ bool IFGFeature_Vk::SetResource(VkFGResource* inputResource)
     auto willFlip = State::Instance().activeFgInput == FGInput::Upscaler && config->FGResourceFlip.value_or_default() &&
                     (type == FG_ResourceType::Depth || type == FG_ResourceType::Velocity);
 
-    if (resource.validity == FG_ResourceValidity::ValidNow || willFlip)
+    auto copyFormat = resource.format;
+
+    if (type == FG_ResourceType::Velocity)
+    {
+        auto velocityFormat = VelocityFormat(resource.format);
+
+        if (velocityFormat != resource.format)
+        {
+            // Converting copy is a blit
+            VkFormatProperties srcProperties {};
+            VkFormatProperties dstProperties {};
+            vkGetPhysicalDeviceFormatProperties(_physicalDevice, resource.format, &srcProperties);
+            vkGetPhysicalDeviceFormatProperties(_physicalDevice, velocityFormat, &dstProperties);
+
+            if ((srcProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_SRC_BIT) &&
+                (dstProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_DST_BIT))
+            {
+                copyFormat = velocityFormat;
+            }
+            else if (static bool warned = false; !willFlip && !warned)
+            {
+                warned = true;
+                LOG_WARN("Can't blit Velocity from format {} to {}, keeping it", (UINT) resource.format,
+                         (UINT) velocityFormat);
+            }
+        }
+    }
+
+    if (resource.validity == FG_ResourceValidity::ValidNow || willFlip || copyFormat != resource.format)
     {
         if (resource.cmdBuffer == VK_NULL_HANDLE)
         {
@@ -464,7 +502,7 @@ bool IFGFeature_Vk::SetResource(VkFGResource* inputResource)
 
         if (!flipped)
         {
-            if (!CopyImage(resource.cmdBuffer, resource, _copies[fIndex][type], resource.format))
+            if (!CopyImage(resource.cmdBuffer, resource, _copies[fIndex][type], copyFormat))
                 return false;
 
             if (willFlip)
