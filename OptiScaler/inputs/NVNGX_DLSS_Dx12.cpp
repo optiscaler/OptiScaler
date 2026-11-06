@@ -48,6 +48,7 @@ static std::atomic<bool> _d3d12DeviceDestroyed { false };
 static int evalCounter = 0;
 static bool shutdown = false;
 static bool _skipInit = false;
+static NVNGXClients _clients;
 
 class ScopedInitDx12
 {
@@ -77,6 +78,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Init_Ext(unsigned long long InApp
                                                         const NVSDK_NGX_FeatureCommonInfo* InFeatureInfo)
 {
     LOG_FUNC();
+    _clients.Add(_ReturnAddress());
 
     NVSDK_NGX_FeatureCommonInfo localFeatureInfo = {};
 
@@ -160,6 +162,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Init(unsigned long long InApplica
                                                     NVSDK_NGX_Version InSDKVersion)
 {
     LOG_FUNC();
+    _clients.Add(_ReturnAddress());
 
     NVSDK_NGX_FeatureCommonInfo localFeatureInfo = {};
 
@@ -218,6 +221,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Init_ProjectID(const char* InProj
                                                               const NVSDK_NGX_FeatureCommonInfo* InFeatureInfo)
 {
     LOG_FUNC();
+    _clients.Add(_ReturnAddress());
 
     NVSDK_NGX_FeatureCommonInfo localFeatureInfo = {};
 
@@ -276,6 +280,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Init_with_ProjectID(
     NVSDK_NGX_Version InSDKVersion)
 {
     LOG_FUNC();
+    _clients.Add(_ReturnAddress());
 
     LOG_INFO("InProjectId: {0}", InProjectId);
     LOG_INFO("InEngineType: {0}", (int) InEngineType);
@@ -308,6 +313,9 @@ void NVNGXDx12DeviceDestroyed(IUnknown* device)
 
 NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Shutdown(void)
 {
+    if (!_clients.Remove(_ReturnAddress()))
+        return NVSDK_NGX_Result_Success;
+
     shutdown = true;
     State::Instance().nvngxDx12Inited = false;
 
@@ -366,6 +374,9 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Shutdown(void)
 
 NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Shutdown1(ID3D12Device* InDevice)
 {
+    if (!_clients.Remove(_ReturnAddress()))
+        return NVSDK_NGX_Result_Success;
+
     shutdown = true;
     State::Instance().nvngxDx12Inited = false;
 
