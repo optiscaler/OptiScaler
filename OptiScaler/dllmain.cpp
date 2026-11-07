@@ -432,10 +432,10 @@ static bool ShouldLoadReShade()
 
 static void LoadInjectedDlls()
 {
+    // No RESHADE_DISABLE_GRAPHICS_HOOK, Special K sets it itself when it wants ReShade without hooks
     if (ShouldLoadSpecialK())
     {
         auto skFile = Util::ExePath().parent_path() / L"SpecialK64.dll";
-        SetEnvironmentVariableW(L"RESHADE_DISABLE_GRAPHICS_HOOK", L"1");
 
         State::EnableServeOriginal(200);
         skModule = NtdllProxy::LoadLibraryExW_Ldr(skFile.c_str(), NULL, 0);

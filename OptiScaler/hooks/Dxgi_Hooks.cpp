@@ -93,7 +93,6 @@ static void CheckLumaAndReShade(IDXGIFactory* factory)
     if (loadSpecialK)
     {
         auto skFile = Util::ExePath().parent_path() / L"SpecialK64.dll";
-        SetEnvironmentVariableW(L"RESHADE_DISABLE_GRAPHICS_HOOK", L"1");
 
         State::EnableServeOriginal(200);
         skModule = NtdllProxy::LoadLibraryExW_Ldr(skFile.c_str(), NULL, 0);
