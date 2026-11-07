@@ -118,6 +118,25 @@ bool DLSSFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
     {
         ProcessEvaluateParams(InParameters);
 
+        // HelixSR reads which upscaler API the game's inputs came from (0 FidelityFX, 1 NGX, 2 XeSS) and whether the
+        // reactive mask is disabled
+        if (_helixSRInput)
+        {
+            const auto api = State::Instance().currentInputApiName;
+            unsigned int inputApi = 0;
+
+            if (api == ApiUpscalerInput::DLSS_DX11 || api == ApiUpscalerInput::DLSS_DX12 ||
+                api == ApiUpscalerInput::DLSS_VK)
+                inputApi = 1;
+            else if (api == ApiUpscalerInput::XeSS_DX11 || api == ApiUpscalerInput::XeSS_DX12 ||
+                     api == ApiUpscalerInput::XeSS_VK)
+                inputApi = 2;
+
+            InParameters->Set("HelixSR.Upscale.Input.API", inputApi);
+            InParameters->Set("HelixSR.Upscale.MaskOff",
+                              Config::Instance()->DisableReactiveMask.value_or(false) ? 1u : 0u);
+        }
+
         nvResult = EvaluateFeature()(InCommandList, _p_dlssHandle, InParameters, NULL);
 
         if (nvResult != NVSDK_NGX_Result_Success)
@@ -168,6 +187,15 @@ DLSSFeatureDx12::DLSSFeatureDx12(unsigned int InHandleId, NVSDK_NGX_Parameter* I
     {
         _custom = NVNGXProxy::LoadCustomDx12(customUpscaler);
         _moduleLoaded = _custom != nullptr;
+
+        if (_custom != nullptr)
+        {
+            typedef unsigned int (*PFN_HelixSR_UpscaleInputVersion)();
+            auto inputVersion = (PFN_HelixSR_UpscaleInputVersion) KernelBaseProxy::GetProcAddress_()(
+                _custom->module.dll, "HelixSR_UpscaleInputVersion");
+
+            _helixSRInput = inputVersion != nullptr && inputVersion() >= 1;
+        }
 
         if (!_moduleLoaded)
             ImGui::InsertNotification(

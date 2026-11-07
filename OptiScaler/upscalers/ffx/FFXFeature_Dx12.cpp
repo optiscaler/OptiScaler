@@ -549,7 +549,16 @@ bool FFXFeatureDx12::InitFFX(const NVSDK_NGX_Parameter* InParameters)
         if (upscalerIndex.value_or_default() < 0 || upscalerIndex.value_or_default() >= versions.ids.size())
             upscalerIndex.set_volatile_value(0);
 
-        parse_version(versions.names[upscalerIndex.value_or_default()]);
+        const char* versionName = versions.names[upscalerIndex.value_or_default()];
+        parse_version(versionName);
+
+        // A custom dll can list other upscalers too, e.g. the FSR it falls back to
+        if (_customUpscaler != nullptr)
+            LOG_INFO("FFX upscaler: {} (index {} of custom {})", versionName != nullptr ? versionName : "unknown",
+                     upscalerIndex.value_or_default(), _customUpscaler->name);
+        else
+            LOG_INFO("FFX upscaler: {} (index {})", versionName != nullptr ? versionName : "unknown",
+                     upscalerIndex.value_or_default());
 
         ffxOverrideVersion override = { 0 };
         override.header.type = FFX_API_DESC_TYPE_OVERRIDE_VERSION;
@@ -560,10 +569,12 @@ bool FFXFeatureDx12::InitFFX(const NVSDK_NGX_Parameter* InParameters)
         // outside the view can hold garbage that makes it think the scene is very bright and black out the frame.
         // Run our own auto exposure instead and hand FSR4 the result as a regular exposure texture.
         // Only linear input is affected, color space changes recreate the feature.
+        // Not for HLX FSR 4, it keeps its own exposure path and expects the game's auto exposure flag.
         _customAutoExposure = false;
         auto& cfg = *Config::Instance();
+        const bool hlxFsr4 = versionName != nullptr && std::string_view(versionName).starts_with("HLX FSR 4");
 
-        if (Version().major >= 4 && AutoExposure() && !cfg.FsrNonLinearPQ.value_or_default() &&
+        if (!hlxFsr4 && Version().major >= 4 && AutoExposure() && !cfg.FsrNonLinearPQ.value_or_default() &&
             !cfg.FsrNonLinearSRGB.value_or_default() && !cfg.FsrNonLinearColorSpace.value_or_default())
         {
             if (_autoExposure == nullptr)
