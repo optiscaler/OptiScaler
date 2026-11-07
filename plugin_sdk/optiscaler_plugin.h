@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 OptiScaler contributors
+
 /*
  * OptiScaler plugin API
  *

@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: MIT -->
 # OptiScaler plugin SDK
 
 Dlls loaded by OptiScaler can add their own tabs to the OptiScaler menu and keep their settings in `OptiScaler.ini`. Two kinds of dlls get the API:
@@ -66,3 +67,7 @@ To build it:
 4. Build → Build Solution.
 
 The plugin is written to `sample/bin/Release/SamplePlugin.asi`. Copy it to the `plugins` folder next to OptiScaler and set `LoadAsiPlugins=true` in `OptiScaler.ini`.
+
+## License
+
+The SDK files that carry an `SPDX-License-Identifier: MIT` tag are licensed under the [MIT License](LICENSE), so plugins can use them under any license. OptiScaler itself is licensed under the GNU GPL v3.
