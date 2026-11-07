@@ -430,6 +430,13 @@ static bool ShouldLoadReShade()
            !Config::Instance()->CreateD3D12DeviceForLuma.value_or_default();
 }
 
+static bool ShouldLoadForLuma()
+{
+    return Config::Instance()->CreateD3D12DeviceForLuma.value_or_default() &&
+           ((skModule == nullptr && Config::Instance()->LoadSpecialK.value_or_default()) ||
+            (reshadeModule == nullptr && Config::Instance()->LoadReShade.value_or_default()));
+}
+
 static void LoadInjectedDlls()
 {
     // No RESHADE_DISABLE_GRAPHICS_HOOK, Special K sets it itself when it wants ReShade without hooks
@@ -489,12 +496,13 @@ static void RunEntryLoads()
     LOG_INFO("Loading injected dlls");
 
     // So ReShade hooks the factory methods after us, Special K should hook before us
-    if (!ShouldLoadSpecialK())
+    if (skModule != nullptr || !Config::Instance()->LoadSpecialK.value_or_default())
         DxgiHooks::HookFactoryMethods();
 
     // Detection fails under the loader lock, nvapi loaded by an injected dll's DllMain would pick fakenvapi
     IdentifyGpu::getAllGpus();
 
+    DxgiHooks::LoadForLuma();
     LoadInjectedDlls();
 
     if (_asiAtEntry)
@@ -1345,6 +1353,10 @@ static void CheckWorkingMode()
 
     if ((ShouldLoadSpecialK() || ShouldLoadReShade()) && (!_staticLoad || !HookExeEntry()))
         LoadInjectedDlls();
+
+    // Luma's device can't be created under the loader lock, without the entry hook the first factory does it
+    if (_staticLoad && ShouldLoadForLuma())
+        HookExeEntry();
 
     // Version check
     if (Config::Instance()->CheckForUpdate.value_or_default())

@@ -358,3 +358,34 @@ void DxgiHooks::HookFactoryMethods()
     DxgiFactoryHooks::HookToFactory(factory);
     factory->Release();
 }
+
+void DxgiHooks::LoadForLuma()
+{
+    if (!Config::Instance()->CreateD3D12DeviceForLuma.value_or_default() ||
+        State::Instance().currentD3D12Device != nullptr)
+    {
+        return;
+    }
+
+    auto createFactory = o_CreateDXGIFactory1 != nullptr ? o_CreateDXGIFactory1 : DxgiProxy::CreateDxgiFactory1_();
+
+    if (createFactory == nullptr)
+        return;
+
+    IDXGIFactory1* factory = nullptr;
+    auto owner = State::GetOwner();
+    State::DisableChecks(owner, "dxgi");
+
+    {
+        ScopedCreatingD3DDevice creatingD3DDevice {};
+        createFactory(__uuidof(IDXGIFactory1), &factory);
+    }
+
+    State::EnableChecks(owner);
+
+    if (factory == nullptr)
+        return;
+
+    CheckLumaAndReShade(factory);
+    factory->Release();
+}
