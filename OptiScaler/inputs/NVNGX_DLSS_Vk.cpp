@@ -952,7 +952,9 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_EvaluateFeature(VkCommandBuffer 
         state.setInputApiName = state.currentInputApiName;
 
     const auto targetApiName =
-        !state.setInputApiName.has_value() ? ApiUpscalerInput::DLSS_VK : state.setInputApiName.value();
+        !state.setInputApiName.has_value()
+            ? (state.rrHandles.contains(handleId) ? ApiUpscalerInput::DLSSD_VK : ApiUpscalerInput::DLSS_VK)
+            : state.setInputApiName.value();
 
     if (state.currentInputApiName != targetApiName)
         state.currentInputApiName = targetApiName;

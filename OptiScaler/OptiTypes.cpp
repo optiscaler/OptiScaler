@@ -12,6 +12,9 @@ std::string ApiUpscalerInputName(ApiUpscalerInput upscaler)
     case ApiUpscalerInput::DLSS_DX12:
     case ApiUpscalerInput::DLSS_VK:
         return "DLSS";
+    case ApiUpscalerInput::DLSSD_DX12:
+    case ApiUpscalerInput::DLSSD_VK:
+        return "DLSSD";
     case ApiUpscalerInput::XeSS_DX11:
     case ApiUpscalerInput::XeSS_DX12:
     case ApiUpscalerInput::XeSS_VK:

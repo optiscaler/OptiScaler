@@ -75,6 +75,8 @@ enum class ApiUpscalerInput
     DLSS_DX11,
     DLSS_DX12,
     DLSS_VK,
+    DLSSD_DX12,
+    DLSSD_VK,
     XeSS_DX11,
     XeSS_DX12,
     XeSS_VK,

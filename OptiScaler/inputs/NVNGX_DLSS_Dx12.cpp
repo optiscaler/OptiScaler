@@ -976,7 +976,9 @@ static NVSDK_NGX_Result TryEvaluateOptiFeature(ID3D12GraphicsCommandList* InCmdL
         state.setInputApiName = state.currentInputApiName;
 
     const auto targetApiName =
-        !state.setInputApiName.has_value() ? ApiUpscalerInput::DLSS_DX12 : state.setInputApiName.value();
+        !state.setInputApiName.has_value()
+            ? (state.rrHandles.contains(handleId) ? ApiUpscalerInput::DLSSD_DX12 : ApiUpscalerInput::DLSS_DX12)
+            : state.setInputApiName.value();
 
     if (state.currentInputApiName != targetApiName)
         state.currentInputApiName = targetApiName;
