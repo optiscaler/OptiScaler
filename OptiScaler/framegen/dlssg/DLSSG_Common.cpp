@@ -27,6 +27,9 @@ void DLSSG_Common::Activate()
     {
         UpdateTarget();
         _isActive = true;
+
+        // FG back on: Dynamic MFG starts its averages over but keeps what it learned
+        _dynamic.Restart();
     }
 }
 
@@ -78,7 +81,7 @@ void DLSSG_Common::QueryState()
     }
 }
 
-void DLSSG_Common::SetOptions(bool gameMarkersReachStreamline)
+void DLSSG_Common::SetOptions(bool gameMarkersReachStreamline, HWND window)
 {
     auto config = Config::Instance();
 
@@ -93,11 +96,31 @@ void DLSSG_Common::SetOptions(bool gameMarkersReachStreamline)
         std::clamp(config->FGInterpolationCount(config->FGDLSSGInterpolationCount.value_or_default()), 1,
                    std::max(_maxInterpolationCount, 1));
 
-    if (_framesToInterpolate != targetCount)
-    {
-        LOG_INFO("Interpolation count changed {} -> {}", _framesToInterpolate, targetCount);
+    auto& state = State::Instance();
 
-        _framesToInterpolate = targetCount;
+    // Dynamic MFG in software, the Frame Gen setting is the most. Streamline's own Dynamic mode takes over when it's
+    // forced. 1X is left out, DLSSG's off is its mode and that rebuilds its swapchain.
+    XeFG_DynamicMFG::Settings dynamicSettings;
+    dynamicSettings.enabled = config->FGDLSSGDynamicMFG.value_or_default() &&
+                              !config->FGDLSSGForceDMFG.value_or_default() && !config->FGFollowsGame() &&
+                              targetCount > 1;
+    dynamicSettings.targetFps = config->FGDLSSGFramerateTargetDMFG.value_or_default();
+    dynamicSettings.rounding = config->FGDLSSGRoundingDMFG.value_or_default();
+    dynamicSettings.allow1X = false;
+    dynamicSettings.targetAsCap = config->FGDLSSGTargetAsCapDMFG.value_or_default();
+
+    // The FPS limiter's sleep in the game's last present, the cap can't see it otherwise
+    dynamicSettings.limiterSleepMs = std::exchange(state.lastFrameLimitSleepMs, 0.0);
+
+    // What the game waited in the present path is its last present
+    const auto dynamic = _dynamic.Update(dynamicSettings, targetCount, _framesToInterpolate, false,
+                                         state.lastFGPresentMs, window);
+
+    if (_framesToInterpolate != dynamic.count)
+    {
+        LOG_INFO("Interpolation count changed {} -> {}", _framesToInterpolate, dynamic.count);
+
+        _framesToInterpolate = dynamic.count;
     }
 
     sl::DLSSGOptions options {};

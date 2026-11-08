@@ -27,6 +27,9 @@ class DLSSG_Vk : public virtual IFGFeature_Vk, public DLSSG_Common
     VkDevice _slDevice = VK_NULL_HANDLE;
     std::unordered_set<VkSwapchainKHR> _slSwapchains;
 
+    // The game's window, Dynamic MFG takes the refresh rate and the focus from it
+    HWND _hwnd = nullptr;
+
     // What Streamline needs from the game's device, the extra queues are graphics ones first, then compute ones
     uint32_t _graphicsQueueCount = 0;
     uint32_t _computeQueueCount = 0;
