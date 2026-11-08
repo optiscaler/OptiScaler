@@ -389,7 +389,8 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Shutdown1(ID3D12Device* InDevice)
     if (Config::Instance()->DLSSEnabled.value_or_default() && NVNGXProxy::IsDx12Inited() &&
         NVNGXProxy::D3D12_Shutdown1() != nullptr && !State::Instance().isShuttingDown)
     {
-        auto result = NVNGXProxy::D3D12_Shutdown1()(InDevice);
+        unsigned int remaining = 0;
+        auto result = NVNGXProxy::D3D12_Shutdown1()(InDevice, &remaining);
         NVNGXProxy::SetDx12Inited(false);
     }
 

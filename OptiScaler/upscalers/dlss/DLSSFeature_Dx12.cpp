@@ -151,7 +151,10 @@ void DLSSFeatureDx12::Shutdown(ID3D12Device* InDevice)
             if (NVNGXProxy::D3D12_Shutdown() != nullptr)
                 NVNGXProxy::D3D12_Shutdown()();
             else if (NVNGXProxy::D3D12_Shutdown1() != nullptr)
-                NVNGXProxy::D3D12_Shutdown1()(InDevice);
+            {
+                unsigned int remaining = 0;
+                NVNGXProxy::D3D12_Shutdown1()(InDevice, &remaining);
+            }
 
             NVNGXProxy::SetDx12Inited(false);
         }
