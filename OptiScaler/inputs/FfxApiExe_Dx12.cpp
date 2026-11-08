@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "FfxApi_Dx12.h"
+#include "NVNGX_DLSS.h"
 #include "Config.h"
 #include "Util.h"
 
@@ -211,7 +212,7 @@ static ffxReturnCode_t ffxCreateContext_Dx12(ffxContext* context, ffxCreateConte
         NVSDK_NGX_FeatureCommonInfo fcInfo {};
         auto exePath = Util::ExePath().remove_filename();
 
-        auto nvResult = NVSDK_NGX_D3D12_Init_with_ProjectID(
+        auto nvResult = NVNGXDx12InputInit(
             OPTI_GUID, State::Instance().NVNGX_Engine, OPTI_VERSION, exePath.c_str(), _d3d12Device, &fcInfo,
             State::Instance().NVNGX_Version == 0 ? NVSDK_NGX_Version_API : State::Instance().NVNGX_Version);
 

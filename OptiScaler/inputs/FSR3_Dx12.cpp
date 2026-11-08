@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "FSR3_Dx12.h"
+#include "NVNGX_DLSS.h"
 
 #include "Config.h"
 #include "Util.h"
@@ -266,9 +267,9 @@ static Fsr3::FfxErrorCode ffxFsr3ContextCreate_Dx12(Fsr3::FfxFsr3UpscalerContext
         NVSDK_NGX_FeatureCommonInfo fcInfo {};
         auto exePath = Util::ExePath().remove_filename();
 
-        auto nvResult = NVSDK_NGX_D3D12_Init_with_ProjectID(
-            OPTI_GUID, state.NVNGX_Engine, OPTI_VERSION, exePath.c_str(), _d3d12Device, &fcInfo,
-            state.NVNGX_Version == 0 ? NVSDK_NGX_Version_API : state.NVNGX_Version);
+        auto nvResult =
+            NVNGXDx12InputInit(OPTI_GUID, state.NVNGX_Engine, OPTI_VERSION, exePath.c_str(), _d3d12Device, &fcInfo,
+                               state.NVNGX_Version == 0 ? NVSDK_NGX_Version_API : state.NVNGX_Version);
 
         if (nvResult != NVSDK_NGX_Result_Success)
             return Fsr3::FFX_ERROR_BACKEND_API_ERROR;
@@ -471,9 +472,9 @@ ffxFsr3ContextCreate_Pattern_Dx12(Fsr3::FfxFsr3UpscalerContext* pContext,
 
         auto exePath = Util::ExePath().remove_filename();
 
-        auto nvResult = NVSDK_NGX_D3D12_Init_with_ProjectID(
-            OPTI_GUID, state.NVNGX_Engine, OPTI_VERSION, exePath.c_str(), _d3d12Device, &fcInfo,
-            state.NVNGX_Version == 0 ? NVSDK_NGX_Version_API : state.NVNGX_Version);
+        auto nvResult =
+            NVNGXDx12InputInit(OPTI_GUID, state.NVNGX_Engine, OPTI_VERSION, exePath.c_str(), _d3d12Device, &fcInfo,
+                               state.NVNGX_Version == 0 ? NVSDK_NGX_Version_API : state.NVNGX_Version);
 
         if (nvResult != NVSDK_NGX_Result_Success)
             return Fsr3::FFX_ERROR_BACKEND_API_ERROR;

@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "FSR2_Dx11.h"
+#include "NVNGX_DLSS.h"
 
 #include "Util.h"
 #include "Config.h"
@@ -223,9 +224,9 @@ static FfxErrorCode ffxFsr2ContextCreate_Dx11(FfxFsr2Context* context, FfxFsr2Co
         NVSDK_NGX_FeatureCommonInfo fcInfo {};
         auto exePath = Util::ExePath().remove_filename();
 
-        auto nvResult = NVSDK_NGX_D3D11_Init_with_ProjectID(
-            OPTI_GUID, state.NVNGX_Engine, OPTI_VERSION, exePath.c_str(), _d3d11Device, &fcInfo,
-            state.NVNGX_Version == 0 ? NVSDK_NGX_Version_API : state.NVNGX_Version);
+        auto nvResult =
+            NVNGXDx11InputInit(OPTI_GUID, state.NVNGX_Engine, OPTI_VERSION, exePath.c_str(), _d3d11Device, &fcInfo,
+                               state.NVNGX_Version == 0 ? NVSDK_NGX_Version_API : state.NVNGX_Version);
 
         if (nvResult != NVSDK_NGX_Result_Success)
             return FFX_ERROR_BACKEND_API_ERROR;

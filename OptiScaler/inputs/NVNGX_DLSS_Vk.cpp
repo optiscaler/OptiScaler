@@ -26,7 +26,7 @@ PFN_vkGetDeviceProcAddr vkGDPA;
 static ankerl::unordered_dense::map<unsigned int, ContextData<IFeature_Vk>> VkContexts;
 static int evalCounter = 0;
 static bool shutdown = false;
-static bool _skipInit = false;
+static thread_local bool _skipInit = false;
 static NVNGXClients _clients;
 
 class ScopedInitVk
@@ -255,6 +255,17 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_Init_ProjectID_Ext(
     State::Instance().NVNGX_EngineVersion = std::string(InEngineVersion);
 
     return result;
+}
+
+NVSDK_NGX_Result NVNGXVkInputInit(const char* InProjectId, NVSDK_NGX_EngineType InEngineType,
+                                  const char* InEngineVersion, const wchar_t* InApplicationDataPath,
+                                  VkInstance InInstance, VkPhysicalDevice InPD, VkDevice InDevice,
+                                  PFN_vkGetInstanceProcAddr InGIPA, PFN_vkGetDeviceProcAddr InGDPA,
+                                  NVSDK_NGX_Version InSDKVersion, const NVSDK_NGX_FeatureCommonInfo* InFeatureInfo)
+{
+    ScopedInitVk scopedInit {};
+    return NVSDK_NGX_VULKAN_Init_ProjectID_Ext(InProjectId, InEngineType, InEngineVersion, InApplicationDataPath,
+                                               InInstance, InPD, InDevice, InGIPA, InGDPA, InSDKVersion, InFeatureInfo);
 }
 
 NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_Init(unsigned long long InApplicationId,
@@ -723,12 +734,12 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_CreateFeature1(VkDevice InDevice
     {
         Upscaler upscalerChoice = Upscaler::FSR22; // Default FSR 2.2.1
 
-        // If original NVNGX available use DLSS as base upscaler
-        if (IdentifyGpu::getPrimaryGpu().dlssCapable && NVNGXProxy::IsVulkanInited())
-            upscalerChoice = Upscaler::DLSS;
-
+        // If original NVNGX starts use DLSS as base upscaler, Opti's own inputs don't start it
         if (Config::Instance()->VulkanUpscaler.has_value())
             upscalerChoice = Config::Instance()->VulkanUpscaler.value();
+        else if (IdentifyGpu::getPrimaryGpu().dlssCapable && Config::Instance()->DLSSEnabled.value_or_default() &&
+                 NVNGXProxy::InitVulkan(vkInstance, vkPD, InDevice, vkGIPA, vkGDPA))
+            upscalerChoice = Upscaler::DLSS;
 
         LOG_INFO("Creating new {} upscaler", UpscalerDisplayName(upscalerChoice));
 

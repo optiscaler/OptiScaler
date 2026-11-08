@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "FSR2_Vk.h"
+#include "NVNGX_DLSS.h"
 
 #include "Util.h"
 #include "Config.h"
@@ -345,7 +346,7 @@ static FfxErrorCode ffxFsr2ContextCreate_Vk(FfxFsr2Context* context, FfxFsr2Cont
         NVSDK_NGX_FeatureCommonInfo fcInfo {};
         auto exePath = Util::ExePath().remove_filename();
 
-        auto nvResult = NVSDK_NGX_VULKAN_Init_ProjectID_Ext(
+        auto nvResult = NVNGXVkInputInit(
             OPTI_GUID, state.NVNGX_Engine, OPTI_VERSION, exePath.c_str(), State::Instance().VulkanInstance,
             _vkPhysicalDevice, _vkDevice, vkGetInstanceProcAddr, vkGetDeviceProcAddr,
             state.NVNGX_Version == 0 ? NVSDK_NGX_Version_API : state.NVNGX_Version, &fcInfo);

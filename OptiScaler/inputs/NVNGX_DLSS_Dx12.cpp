@@ -47,7 +47,7 @@ static bool IsSoftwareDevice(ID3D12Device* device)
 static std::atomic<bool> _d3d12DeviceDestroyed { false };
 static int evalCounter = 0;
 static bool shutdown = false;
-static bool _skipInit = false;
+static thread_local bool _skipInit = false;
 static NVNGXClients _clients;
 
 class ScopedInitDx12
@@ -299,6 +299,16 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_Init_with_ProjectID(
     auto result = NVSDK_NGX_D3D12_Init_Ext(0x1337, InApplicationDataPath, InDevice, InSDKVersion, InFeatureInfo);
 
     return result;
+}
+
+NVSDK_NGX_Result NVNGXDx12InputInit(const char* InProjectId, NVSDK_NGX_EngineType InEngineType,
+                                    const char* InEngineVersion, const wchar_t* InApplicationDataPath,
+                                    ID3D12Device* InDevice, const NVSDK_NGX_FeatureCommonInfo* InFeatureInfo,
+                                    NVSDK_NGX_Version InSDKVersion)
+{
+    ScopedInitDx12 scopedInit {};
+    return NVSDK_NGX_D3D12_Init_with_ProjectID(InProjectId, InEngineType, InEngineVersion, InApplicationDataPath,
+                                               InDevice, InFeatureInfo, InSDKVersion);
 }
 
 #pragma endregion
@@ -557,20 +567,22 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_DestroyParameters(NVSDK_NGX_Param
 
 static Upscaler GetUpscalerBackend()
 {
-    Upscaler upscaler = Upscaler::XeSS; // Default
+    if (Config::Instance()->Dx12Upscaler.has_value())
+        return Config::Instance()->Dx12Upscaler.value();
 
     auto primaryGpu = IdentifyGpu::getPrimaryGpu();
 
-    if (NVNGXProxy::IsDx12Inited() && primaryGpu.dlssCapable)
-        upscaler = Upscaler::DLSS;
-
     if (primaryGpu.fsr4Support != FSR4Support::None)
-        upscaler = Upscaler::FFX;
+        return Upscaler::FFX;
 
-    if (Config::Instance()->Dx12Upscaler.has_value())
-        upscaler = Config::Instance()->Dx12Upscaler.value();
+    // Opti's own inputs don't start NVIDIA's runtime, DLSS is the default only when it starts
+    if (primaryGpu.dlssCapable && Config::Instance()->DLSSEnabled.value_or_default() && D3D12Device != nullptr &&
+        NVNGXProxy::InitDx12(D3D12Device))
+    {
+        return Upscaler::DLSS;
+    }
 
-    return upscaler;
+    return Upscaler::XeSS;
 }
 
 static bool EnsureD3D12Device(ID3D12GraphicsCommandList* cmdList)
