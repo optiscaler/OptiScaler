@@ -309,8 +309,13 @@ class State
     int vkGamePresentMode = -1;
     bool vkPresentModeChanged = false;
 
-    // XeFG Dynamic MFG with "Use target as cap": its target while it runs (0 = no cap), the FPS limit when lower
+    // Dynamic MFG with "Use target as cap" (XeFG and DLSSG outputs): its target while it runs (0 = no cap), the FPS
+    // limit when lower
     float xefgDynamicCapFps = 0.0f;
+
+    // How long OptiScaler's own FPS limiter slept in the last present, the DLSSG output's cap counts it as a limiter
+    // sleep
+    double lastFrameLimitSleepMs = 0.0;
 
     bool dlssgGameDMFGSupported = false;
     sl::DLSSGMode dlssgLastSetMode = sl::DLSSGMode::eOff;
