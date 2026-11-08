@@ -59,8 +59,11 @@ float FrameLimit::targetFps()
     auto& state = State::Instance();
     auto fpsLimit = Config::Instance()->FramerateLimit.value_or_default();
 
-    if (auto fg = state.currentFG; fg != nullptr && fg->IsActive() && !fg->IsPaused() &&
-                                   state.activeFgOutput == FGOutput::XeFG && state.xefgDynamicCapFps > 0.0f &&
+    // Dynamic MFG's cap, the XeFG and the DLSSG outputs have one
+    const bool dynamicCapOutput = state.activeFgOutput == FGOutput::XeFG || state.activeFgOutput == FGOutput::DLSSG;
+
+    if (auto fg = state.currentFG; fg != nullptr && fg->IsActive() && !fg->IsPaused() && dynamicCapOutput &&
+                                   state.xefgDynamicCapFps > 0.0f &&
                                    (fpsLimit <= 0.0f || state.xefgDynamicCapFps < fpsLimit))
     {
         return state.xefgDynamicCapFps;
@@ -85,6 +88,9 @@ void FrameLimit::sleep(bool fgActive)
         static uint64_t previous_frame_time = 0;
         uint64_t current_time = Util::GetTimestamp();
         uint64_t frame_time = current_time - previous_frame_time;
+
+        State::Instance().lastFrameLimitSleepMs = 0.0;
+
         if (frame_time < 1000 * min_interval_us)
         {
             static bool errorLogged = false;
@@ -94,6 +100,9 @@ void FrameLimit::sleep(bool fgActive)
                 LOG_ERROR("Sleep command failed: {}", res);
                 errorLogged = true;
             }
+
+            // Dynamic MFG's cap counts it as time the game could have used
+            State::Instance().lastFrameLimitSleepMs = (Util::GetTimestamp() - current_time) / 1'000'000.0;
         }
         previous_frame_time = Util::GetTimestamp();
     }
