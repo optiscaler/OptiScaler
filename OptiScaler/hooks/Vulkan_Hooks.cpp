@@ -951,6 +951,7 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
     }
 
     // original call
+    const auto presentStart = Util::MillisecondsNow();
     ScopedVulkanCreatingSC scopedVulkanCreatingSC {};
     VkResult result;
 
@@ -971,6 +972,11 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
     // The limit counts presented frames, the FG output presents its generated frames from the game's present
     if (!State::Instance().reflexLimitsFps && !InputCommon::can_limit_fps())
         FrameLimit::sleep(fgPresent && fg->IsActive() && !fg->IsPaused());
+
+    // What the game waited in the FG output's present path, the FPS limiter's sleep too. Dynamic MFG counts it as a
+    // wait
+    if (fgPresent)
+        State::Instance().lastFGPresentMs = Util::MillisecondsNow() - presentStart;
 
     LOG_FUNC_RESULT(result);
     return result;
