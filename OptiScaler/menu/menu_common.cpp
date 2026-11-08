@@ -5625,19 +5625,35 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             }
         }
 
+        // Dynamic MFG in software, for a provider without Streamline's Dynamic mode: Frame Gen is the most it uses
+        const int dlssgMax = dlssg->GetMaxInterpolationCount();
+        const bool dlssgAtTwoX =
+            std::clamp(config->FGDLSSGInterpolationCount.value_or_default(), 1, std::max(dlssgMax, 1)) == 1;
+        const bool softwareDynamic = dlssgMax > 1 && !dlssg->GetDMFGSupport() && !config->FGFollowsGame() &&
+                                     !dlssgAtTwoX && config->FGDLSSGDynamicMFG.value_or_default();
+
         ImGui::Text("Current DLSSG state:");
         ImGui::SameLine();
         if (auto count = state.dlssgDetectedInterpolationCount; count > 0)
         {
             ImGui::TextColored(toneMapColor(ImVec4(0.f, 1.f, 0.25f, 1.f)), std::format("ON {}x", count + 1).c_str());
+
+            if (softwareDynamic)
+            {
+                ImGui::SameLine();
+                ImGui::TextDisabled("(Dynamic)");
+            }
         }
         else
         {
             ImGui::TextColored(StatusError(), "OFF");
         }
 
-        RenderFGModeSlider(ctx, "Frame Gen##dlssg", dlssg->GetMaxInterpolationCount(),
-                           &config->FGDLSSGInterpolationCount);
+        if (softwareDynamic)
+            RenderFGModeSlider(ctx, "Max Frame Gen###dlssgMode", dlssgMax, &config->FGDLSSGInterpolationCount,
+                               "The highest multiplier Dynamic MFG may use");
+        else
+            RenderFGModeSlider(ctx, "Frame Gen###dlssgMode", dlssgMax, &config->FGDLSSGInterpolationCount);
 
         if (dlssg->GetMaxInterpolationCount() > 1)
         {
@@ -5673,6 +5689,73 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 }
 
                 ImGui::EndDisabled();
+            }
+            else if (!config->FGFollowsGame())
+            {
+                // Needs 3X or more to choose from, 1X would be DLSSG's off mode and that rebuilds its swapchain
+                ImGui::SameLine(0.0f, 16.0f);
+
+                ImGui::BeginDisabled(dlssgAtTwoX);
+
+                if (bool dynamic = softwareDynamic; ImGui::Checkbox("Dynamic MFG##dlssg", &dynamic))
+                    config->FGDLSSGDynamicMFG = dynamic;
+
+                ShowTooltip("Changes the multiplier on the fly to hit the target FPS,\n"
+                            "between 2X and the Frame Gen setting. Needs 3X or more:\n"
+                            "DLSSG can't turn off (1X) without rebuilding its swapchain.");
+
+                ImGui::EndDisabled();
+
+                if (softwareDynamic)
+                {
+                    // Applied on release, dragging doesn't restart Dynamic MFG every frame.
+                    // The slider's lowest step (9) is Auto, the lowest target is 10.
+                    constexpr float autoStep = 9.0f;
+                    static float dlssgFpsTarget =
+                        std::max(config->FGDLSSGFramerateTargetDMFG.value_or_default(), autoStep);
+                    const float fpsSliderMax = (float) std::max(200, refreshRate);
+
+                    ImGui::SetNextItemWidth(150.0f * menuResScale);
+                    ImGui::SliderFloat("Target FPS##dlssg", &dlssgFpsTarget, autoStep, fpsSliderMax,
+                                       dlssgFpsTarget < autoStep + 0.5f ? "Auto" : "%.0f",
+                                       ImGuiSliderFlags_AlwaysClamp);
+
+                    if (ImGui::IsItemDeactivatedAfterEdit())
+                    {
+                        if (dlssgFpsTarget < autoStep + 0.5f)
+                            config->FGDLSSGFramerateTargetDMFG.reset();
+                        else
+                            config->FGDLSSGFramerateTargetDMFG = dlssgFpsTarget;
+                    }
+
+                    ShowTooltip("Presented FPS to aim for, never above the FPS limit.\n"
+                                "Auto: the FPS limit, or just under the refresh rate.");
+
+                    // The cap holds the target with its own count logic
+                    const bool targetAsCap = config->FGDLSSGTargetAsCapDMFG.value_or_default();
+
+                    ImGui::SameLine(0.0f, 16.0f);
+
+                    if (bool cap = targetAsCap; ImGui::Checkbox("Use as FPS limit##dlssg", &cap))
+                        config->FGDLSSGTargetAsCapDMFG = cap;
+
+                    ShowTooltip("Also limits FPS to the target and uses the lowest\n"
+                                "multiplier that reaches it.");
+
+                    ImGui::BeginDisabled(targetAsCap);
+
+                    const char* roundings[] = { "At most target", "Around target", "At least target" };
+                    int rounding = std::clamp(config->FGDLSSGRoundingDMFG.value_or_default(), 0, 2);
+
+                    ImGui::SetNextItemWidth(150.0f * menuResScale);
+                    if (ImGui::Combo("##dlssgRounding", &rounding, roundings, IM_ARRAYSIZE(roundings)))
+                        config->FGDLSSGRoundingDMFG = rounding;
+
+                    ShowTooltip("Where FPS may land, as multipliers only come in steps:\n"
+                                "at most, around or at least the target FPS.");
+
+                    ImGui::EndDisabled();
+                }
             }
         }
 
