@@ -308,6 +308,7 @@ class Config
     CustomOptional<bool> LogSingleFile { true };
     CustomOptional<bool> LogAsync { false };
     CustomOptional<int> LogAsyncThreads { 4 };
+    CustomOptional<bool> CreateDumps { false };
 
     // XeSS
     CustomOptional<bool> BuildPipelines { true };

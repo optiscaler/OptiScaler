@@ -444,6 +444,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             LogSingleFile.set_from_config(readBool("Log", "SingleFile"));
             LogAsync.set_from_config(readBool("Log", "LogAsync"));
             LogAsyncThreads.set_from_config(readInt("Log", "LogAsyncThreads"));
+            CreateDumps.set_from_config(readBool("Log", "CreateDumps"));
 
             {
                 auto setting = readString("Log", "LogFileName", false);
@@ -1935,6 +1936,7 @@ bool Config::SaveIni()
                      wstring_to_string(Instance()->LogFileName.value_for_config_or(L"auto")).c_str());
         ini.SetValue("Log", "LogAsync", GetBoolValue(Instance()->LogAsync.value_for_config()).c_str());
         ini.SetValue("Log", "LogAsyncThreads", GetIntValue(Instance()->LogAsyncThreads.value_for_config()).c_str());
+        ini.SetValue("Log", "CreateDumps", GetBoolValue(Instance()->CreateDumps.value_for_config()).c_str());
     }
 
     // NvApi
