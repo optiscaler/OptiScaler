@@ -8,6 +8,7 @@
 #include <nvapi/fakenvapi.h>
 #include <misc/IdentifyGpu.h>
 #include <framegen/nvngx/Nvngx_FG.h>
+#include <framegen/dlssg/DLSSG_NvngxDynamic.h>
 #include <framegen/xefg/XeFG_Dx12.h>
 #include <proxies/KernelBase_Proxy.h>
 #include <imgui/ImGuiNotify.hpp>
@@ -1395,6 +1396,11 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
         newOptions.numFramesToGenerate =
             (uint32_t) Nvngx_FG::limitToProvider(static_cast<int>(newOptions.numFramesToGenerate));
     }
+
+    // Dynamic MFG in software for the custom nvngx replacement, the count the game or the override asks for is the
+    // most. Streamline's own Dynamic mode, when forced, has taken over before.
+    if (newOptions.mode == sl::DLSSGMode::eOn && newOptions.numFramesToGenerate > 1 && DlssgNvngxDynamic::Supported())
+        newOptions.numFramesToGenerate = DlssgNvngxDynamic::Apply(newOptions.numFramesToGenerate);
 
     state.dlssgLastSetMode = newOptions.mode;
 
