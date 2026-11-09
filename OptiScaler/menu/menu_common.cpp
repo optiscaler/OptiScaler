@@ -5196,9 +5196,12 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                         {
                             Util::SetFlagEnvVar(L"MLFI-WATERMARK", config->FSRFGEnableWatermark.value_or_default());
 
-                            // The driver reads the variable on context creation
+                            // The driver reads the variable on context creation, SCchanged also required
                             if (config->IsFGEnabled())
+                            {
                                 state.fgChanged = true;
+                                state.scChanged = true;
+                            }
                         }
                     }
 
