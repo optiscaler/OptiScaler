@@ -98,12 +98,15 @@ void DLSSG_Common::SetOptions(bool gameMarkersReachStreamline, HWND window)
 
     auto& state = State::Instance();
 
-    // Dynamic MFG in software, the Frame Gen setting is the most. Streamline's own Dynamic mode takes over when it's
-    // forced. 1X is left out, DLSSG's off is its mode and that rebuilds its swapchain.
+    // Dynamic MFG in software, the Frame Gen setting is the most. It is chosen on purpose, so it wins over Streamline's
+    // own Dynamic mode when both are on, at 2X too where it has nothing to choose from. The custom replacement (XeMFG
+    // XMX) has it next to Streamline's own, other providers only when Streamline's own is missing.
+    const bool softwareChosen = config->FGDLSSGDynamicMFG.value_or_default() && !config->FGFollowsGame() &&
+                                (!_supportsDMFG || state.activeFgNvngx == FGNvngxReplacement::Custom);
+
+    // 1X is left out, DLSSG's off is its mode and that rebuilds its swapchain
     XeFG_DynamicMFG::Settings dynamicSettings;
-    dynamicSettings.enabled = config->FGDLSSGDynamicMFG.value_or_default() &&
-                              !config->FGDLSSGForceDMFG.value_or_default() && !config->FGFollowsGame() &&
-                              targetCount > 1;
+    dynamicSettings.enabled = softwareChosen && targetCount > 1;
     dynamicSettings.targetFps = config->FGDLSSGFramerateTargetDMFG.value_or_default();
     dynamicSettings.rounding = config->FGDLSSGRoundingDMFG.value_or_default();
     dynamicSettings.allow1X = false;
@@ -128,7 +131,7 @@ void DLSSG_Common::SetOptions(bool gameMarkersReachStreamline, HWND window)
     options.numFramesToGenerate = _framesToInterpolate;
     options.queueParallelismMode = sl::DLSSGQueueParallelismMode::eBlockPresentingClientQueue;
 
-    if (config->FGDLSSGForceDMFG.value_or_default())
+    if (config->FGDLSSGForceDMFG.value_or_default() && !softwareChosen)
     {
         options.mode = sl::DLSSGMode::eDynamic;
         options.dynamicTargetFrameRate = config->FGDLSSGFramerateTargetDMFG.value_or_default();
