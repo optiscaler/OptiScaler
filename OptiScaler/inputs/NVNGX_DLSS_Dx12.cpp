@@ -10,6 +10,7 @@
 #include "upscalers/dlss/DLSSFeature_Dx12.h"
 
 #include <framegen/nvngx/Nvngx_FG.h>
+#include <framegen/dlssg/DLSSG_NvngxDynamic.h>
 #include "FG/FSR3_Dx12_FG.h"
 #include "FG/Upscaler_Inputs_Dx12.h"
 #include "FG/XeFG_Inputs_Dx12.h"
@@ -1102,6 +1103,13 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
         InParameters->Get("DLSSG.MultiFrameCount", &frameCount);
         State::Instance().dlssgDetectedInterpolationCount = frameCount;
         ReflexHooks::setDlssgFrameCount(frameCount);
+
+        // Older DLSSG doesn't set the index, each evaluate is a real frame then
+        int frameIndex = 1;
+        if (InParameters->Get("DLSSG.MultiFrameIndex", &frameIndex) != NVSDK_NGX_Result_Success)
+            frameIndex = 1;
+
+        DlssgNvngxDynamic::OnEvaluate(frameIndex);
 
         float dlssgCameraNear = 0.0f;
         float dlssgCameraFar = 0.0f;

@@ -5,6 +5,7 @@
 
 #include "NVNGX_DLSS.h"
 #include <framegen/nvngx/Nvngx_FG.h>
+#include <framegen/dlssg/DLSSG_NvngxDynamic.h>
 #include <inputs/FG/Upscaler_Inputs_Vk.h>
 #include "NVNGX_Parameter.h"
 #include "proxies/NVNGX_Proxy.h"
@@ -900,6 +901,16 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_EvaluateFeature(VkCommandBuffer 
         state.dlssgDetectedInterpolationCount = frameCount;
         evalWithoutFG = 0;
         fgEvalSeen = true;
+
+        // Older DLSSG doesn't set the index, each evaluate is a real frame then
+        int frameIndex = 1;
+        if (InParameters == nullptr ||
+            InParameters->Get("DLSSG.MultiFrameIndex", &frameIndex) != NVSDK_NGX_Result_Success)
+        {
+            frameIndex = 1;
+        }
+
+        DlssgNvngxDynamic::OnEvaluate(frameIndex);
     }
     else if (fgEvalSeen && ++evalWithoutFG == 6)
     {
