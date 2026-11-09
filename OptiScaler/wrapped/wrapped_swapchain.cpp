@@ -56,10 +56,12 @@ static bool IsCurrentSwapchain(IDXGISwapChain* swapchain)
     return State::Instance().currentSwapchain == swapchain || State::Instance().currentWrappedSwapchain == swapchain;
 }
 
-// The menu draws on whichever swapchain presented last, it can be another window's
+// Menu draws on the last presenting window, other windows' swapchains must not tear it down.
+// Without the overlay menu the cleanup only stops FG, which the game's swapchain still needs
 static bool HasMenu(IDXGISwapChain* swapchain, HWND hwnd)
 {
-    return IsCurrentSwapchain(swapchain) || MenuOverlayBase::Handle() == hwnd;
+    return MenuOverlayBase::Handle() == hwnd ||
+           (!Config::Instance()->OverlayMenu.value_or_default() && IsCurrentSwapchain(swapchain));
 }
 
 static void WaitForGPUIdle(IUnknown* object)
