@@ -200,7 +200,12 @@ HRESULT DxgiSpoofing::hkGetDesc1(IDXGIAdapter1* This, DXGI_ADAPTER_DESC1* pDesc)
             pDesc->DedicatedVideoMemory = newMemSize;
         }
 
-        if (pDesc->VendorId != VendorId::Microsoft &&
+        // amdxcffx64 and FFX's FSR4 / ML FG support checks need to see AMD vendor id
+        auto keepRealAmd = pDesc->VendorId == VendorId::AMD &&
+                           (caller.starts_with("amdxcffx64") || caller.starts_with("amd_fidelityfx_upscaler_dx12") ||
+                            caller.starts_with("amd_fidelityfx_framegeneration_dx12"));
+
+        if (pDesc->VendorId != VendorId::Microsoft && !keepRealAmd &&
             (!Config::Instance()->TargetVendorId.has_value() ||
              Config::Instance()->TargetVendorId.value() == pDesc->VendorId) &&
             (!Config::Instance()->TargetDeviceId.has_value() ||
