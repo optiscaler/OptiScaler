@@ -5626,12 +5626,16 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             }
         }
 
-        // Dynamic MFG in software, for a provider without Streamline's Dynamic mode: Frame Gen is the most it uses
+        // Dynamic MFG in software: for a provider without Streamline's Dynamic mode, and next to it for the custom
+        // replacement (XeMFG XMX). Frame Gen is the most it uses. It and Streamline's own are exclusive.
         const int dlssgMax = dlssg->GetMaxInterpolationCount();
+        const bool nativeDynamicSupported = dlssg->GetDMFGSupport();
         const bool dlssgAtTwoX =
             std::clamp(config->FGDLSSGInterpolationCount.value_or_default(), 1, std::max(dlssgMax, 1)) == 1;
-        const bool softwareDynamic = dlssgMax > 1 && !dlssg->GetDMFGSupport() && !config->FGFollowsGame() &&
-                                     !dlssgAtTwoX && config->FGDLSSGDynamicMFG.value_or_default();
+        const bool softwareAvailable = dlssgMax > 1 && !config->FGFollowsGame() &&
+                                       (!nativeDynamicSupported || state.activeFgNvngx == FGNvngxReplacement::Custom);
+        const bool softwareChosen = softwareAvailable && config->FGDLSSGDynamicMFG.value_or_default();
+        const bool softwareDynamic = softwareChosen && !dlssgAtTwoX;
 
         ImGui::Text("Current DLSSG state:");
         ImGui::SameLine();
@@ -5656,20 +5660,25 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         else
             RenderFGModeSlider(ctx, "Frame Gen###dlssgMode", dlssgMax, &config->FGDLSSGInterpolationCount);
 
-        if (dlssg->GetMaxInterpolationCount() > 1)
+        if (dlssgMax > 1)
         {
-            if (dlssg->GetDMFGSupport())
+            if (nativeDynamicSupported)
             {
                 ImGui::SameLine(0.0f, 16.0f);
 
-                if (bool dynamicMFG = config->FGDLSSGForceDMFG.value_or_default();
+                // Streamline's own Dynamic mode, off while OptiScaler's is chosen
+                if (bool dynamicMFG = config->FGDLSSGForceDMFG.value_or_default() && !softwareChosen;
                     ImGui::Checkbox("Force Dynamic MFG", &dynamicMFG))
                 {
                     config->FGDLSSGForceDMFG = dynamicMFG;
+
+                    if (dynamicMFG)
+                        config->FGDLSSGDynamicMFG = false;
+
                     state.fgChanged = true;
                 }
 
-                ImGui::BeginDisabled(!config->FGDLSSGForceDMFG.value_or_default());
+                ImGui::BeginDisabled(!config->FGDLSSGForceDMFG.value_or_default() || softwareChosen);
                 static float fpsTarget = config->FGDLSSGFramerateTargetDMFG.value_or_default();
                 float fpsSliderMax = (float) std::max(200, refreshRate);
                 ImGui::SliderFloat("DMFG FPS Target", &fpsTarget, 0, fpsSliderMax, "%.0f");
@@ -5691,15 +5700,27 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
                 ImGui::EndDisabled();
             }
-            else if (!config->FGFollowsGame())
+
+            if (softwareAvailable)
             {
-                // Needs 3X or more to choose from, 1X would be DLSSG's off mode and that rebuilds its swapchain
-                ImGui::SameLine(0.0f, 16.0f);
+                // Needs 3X or more to choose from, 1X would be DLSSG's off mode and that rebuilds its swapchain.
+                // On the slider's line when Streamline's own has none, else on a line of its own.
+                if (!nativeDynamicSupported)
+                    ImGui::SameLine(0.0f, 16.0f);
 
                 ImGui::BeginDisabled(dlssgAtTwoX);
 
-                if (bool dynamic = softwareDynamic; ImGui::Checkbox("Dynamic MFG##dlssg", &dynamic))
+                if (bool dynamic = softwareChosen; ImGui::Checkbox("Dynamic MFG (OptiScaler)##dlssg", &dynamic))
+                {
                     config->FGDLSSGDynamicMFG = dynamic;
+
+                    // Streamline's own Dynamic mode and OptiScaler's are exclusive
+                    if (dynamic && config->FGDLSSGForceDMFG.value_or_default())
+                    {
+                        config->FGDLSSGForceDMFG = false;
+                        state.fgChanged = true;
+                    }
+                }
 
                 ShowTooltip("Changes the multiplier on the fly to hit the target FPS,\n"
                             "between 2X and the Frame Gen setting. Needs 3X or more:\n"
@@ -5712,14 +5733,20 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                     // Applied on release, dragging doesn't restart Dynamic MFG every frame.
                     // The slider's lowest step (9) is Auto, the lowest target is 10.
                     constexpr float autoStep = 9.0f;
-                    static float dlssgFpsTarget =
-                        std::max(config->FGDLSSGFramerateTargetDMFG.value_or_default(), autoStep);
+                    static float dlssgFpsTarget = autoStep;
+                    static bool dlssgFpsTargetDragged = false;
                     const float fpsSliderMax = (float) std::max(200, refreshRate);
+
+                    // Follows the config unless it is being dragged: Streamline's own Dynamic mode shares the target
+                    if (!dlssgFpsTargetDragged)
+                        dlssgFpsTarget = std::max(config->FGDLSSGFramerateTargetDMFG.value_or_default(), autoStep);
 
                     ImGui::SetNextItemWidth(150.0f * menuResScale);
                     ImGui::SliderFloat("Target FPS##dlssg", &dlssgFpsTarget, autoStep, fpsSliderMax,
                                        dlssgFpsTarget < autoStep + 0.5f ? "Auto" : "%.0f",
                                        ImGuiSliderFlags_AlwaysClamp);
+
+                    dlssgFpsTargetDragged = ImGui::IsItemActive();
 
                     if (ImGui::IsItemDeactivatedAfterEdit())
                     {
