@@ -17,6 +17,7 @@
 #include <proxies/Streamline_Proxy.h>
 
 #include <framegen/nvngx/Nvngx_FG.h>
+#include <framegen/dlssg/DLSSG_NvngxDynamic.h>
 #include <framegen/reprojection/Reprojection_Dx12.h>
 
 #include <nvapi/fakenvapi.h>
@@ -6427,6 +6428,78 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                     }
                     ShowTooltip("Makes a copy of the depth buffer\nCan fix broken visuals in some games on AMD "
                                 "GPUs under Windows\nCan cause stutters, so best to use only when necessary");
+                }
+            }
+
+            // Dynamic MFG in software, the game's Frame Gen setting or Override DLSSG Ratio is the most it uses
+            if (DlssgNvngxDynamic::Supported() && !dmfgActive && state.dlssgMfgMax.value_or(0) > 1)
+            {
+                // Needs 3X or more to choose from, 1X would be DLSSG's off mode and that rebuilds its swapchain
+                const bool atTwoX = DlssgNvngxDynamic::MaxCount() == 1;
+
+                ImGui::BeginDisabled(atTwoX);
+
+                if (bool dynamic = config->FGDLSSGDynamicMFG.value_or_default() && !atTwoX;
+                    ImGui::Checkbox("Dynamic MFG##nvngx", &dynamic))
+                {
+                    config->FGDLSSGDynamicMFG = dynamic;
+                    StreamlineHooks::updateDlssgOptions();
+                }
+
+                ShowTooltip("Changes the multiplier on the fly to hit the target FPS, between 2X and\n"
+                            "the game's Frame Gen setting (or Override DLSSG Ratio). Needs 3X or more:\n"
+                            "DLSSG can't turn off (1X) without rebuilding its swapchain.");
+
+                ImGui::EndDisabled();
+
+                if (config->FGDLSSGDynamicMFG.value_or_default() && !atTwoX)
+                {
+                    // Applied on release. The slider's lowest step (9) is Auto, the lowest target is 10.
+                    constexpr float autoStep = 9.0f;
+                    static float nvngxFpsTarget =
+                        std::max(config->FGDLSSGFramerateTargetDMFG.value_or_default(), autoStep);
+                    const float fpsSliderMax = (float) std::max(200, refreshRate);
+
+                    ImGui::SetNextItemWidth(150.0f * menuResScale);
+                    ImGui::SliderFloat("Target FPS##nvngx", &nvngxFpsTarget, autoStep, fpsSliderMax,
+                                       nvngxFpsTarget < autoStep + 0.5f ? "Auto" : "%.0f",
+                                       ImGuiSliderFlags_AlwaysClamp);
+
+                    if (ImGui::IsItemDeactivatedAfterEdit())
+                    {
+                        if (nvngxFpsTarget < autoStep + 0.5f)
+                            config->FGDLSSGFramerateTargetDMFG.reset();
+                        else
+                            config->FGDLSSGFramerateTargetDMFG = nvngxFpsTarget;
+                    }
+
+                    ShowTooltip("Presented FPS to aim for, never above the FPS limit.\n"
+                                "Auto: the FPS limit, or just under the refresh rate.");
+
+                    // The cap holds the target with its own count logic
+                    const bool targetAsCap = config->FGDLSSGTargetAsCapDMFG.value_or_default();
+
+                    ImGui::SameLine(0.0f, 16.0f);
+
+                    if (bool cap = targetAsCap; ImGui::Checkbox("Use as FPS limit##nvngx", &cap))
+                        config->FGDLSSGTargetAsCapDMFG = cap;
+
+                    ShowTooltip("Also limits FPS to the target and uses the lowest\n"
+                                "multiplier that reaches it.");
+
+                    ImGui::BeginDisabled(targetAsCap);
+
+                    const char* roundings[] = { "At most target", "Around target", "At least target" };
+                    int rounding = std::clamp(config->FGDLSSGRoundingDMFG.value_or_default(), 0, 2);
+
+                    ImGui::SetNextItemWidth(150.0f * menuResScale);
+                    if (ImGui::Combo("##nvngxRounding", &rounding, roundings, IM_ARRAYSIZE(roundings)))
+                        config->FGDLSSGRoundingDMFG = rounding;
+
+                    ShowTooltip("Where FPS may land, as multipliers only come in steps:\n"
+                                "at most, around or at least the target FPS.");
+
+                    ImGui::EndDisabled();
                 }
             }
         }
