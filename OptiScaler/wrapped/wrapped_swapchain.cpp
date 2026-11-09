@@ -191,11 +191,8 @@ static bool IsGameOutput(IDXGISwapChain* swapchain, HWND hwnd)
            (State::Instance().currentFGSwapchain != nullptr && !FGHooks::IsOtherWindowThanFG(hwnd));
 }
 
-// Menu draws on the current swapchain and the last presenting window
-static bool HasMenu(IDXGISwapChain* swapchain, HWND hwnd)
-{
-    return IsCurrentSwapchain(swapchain) || MenuOverlayBase::Handle() == hwnd;
-}
+// Menu draws on the last presenting window, other windows' swapchains must not tear it down
+static bool HasMenu(HWND hwnd) { return MenuOverlayBase::Handle() == hwnd; }
 
 static void WaitForGPUIdle(IUnknown* object)
 {
@@ -875,7 +872,7 @@ ULONG STDMETHODCALLTYPE WrappedIDXGISwapChain4::Release()
             const bool isCurrent = IsCurrentSwapchain(this);
 
             // Menu's last command list can still be running
-            if (HasMenu(this, _handle))
+            if (HasMenu(_handle))
             {
                 WaitForGPUIdle(_device);
                 MenuOverlayDx::CleanupRenderTarget(true, _handle);
@@ -1099,7 +1096,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers(UINT BufferCount
         State::Instance().scChanged = true;
     }
 
-    if (HasMenu(this, _handle))
+    if (HasMenu(_handle))
         MenuOverlayDx::CleanupRenderTarget(true, _handle);
 
     // V-Sync override creates flip model with ALLOW_TEARING, game's resize params must follow it
@@ -1451,7 +1448,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDXGISwapChain4::ResizeBuffers1(UINT BufferCoun
         State::Instance().scChanged = true;
     }
 
-    if (HasMenu(this, _handle))
+    if (HasMenu(_handle))
         MenuOverlayDx::CleanupRenderTarget(true, _handle);
 
     // V-Sync override creates flip model with ALLOW_TEARING, game's resize params must follow it
