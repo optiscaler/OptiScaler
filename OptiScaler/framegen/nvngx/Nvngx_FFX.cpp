@@ -317,7 +317,8 @@ static constexpr Nvngx_FFX_Api ApiDx12 {
     FfxApiProxy::D3D12_Configure,
     FfxApiProxy::D3D12_Query,
     FfxApiProxy::D3D12_Dispatch,
-    FfxApiProxy::D3D12_QueryFgVersions,
+    [](void* device, std::vector<uint64_t>& ids, std::vector<const char*>& names)
+    { return FfxApiProxy::D3D12_QueryFgVersions(device, ids, names); },
     GetResourceDx12,
     CopyTextureDx12,
 };
@@ -328,7 +329,8 @@ static constexpr Nvngx_FFX_Api ApiVk {
     FfxApiProxy::VULKAN_Configure,
     FfxApiProxy::VULKAN_Query,
     FfxApiProxy::VULKAN_Dispatch,
-    FfxApiProxy::VULKAN_QueryFgVersions,
+    [](void* device, std::vector<uint64_t>& ids, std::vector<const char*>& names)
+    { return FfxApiProxy::VULKAN_QueryFgVersions(device, ids, names); },
     GetResourceVk,
     CopyTextureVk,
 };

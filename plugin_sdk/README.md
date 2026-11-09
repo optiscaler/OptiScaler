@@ -4,7 +4,7 @@
 Dlls loaded by OptiScaler can add their own tabs to the OptiScaler menu and keep their settings in `OptiScaler.ini`. Two kinds of dlls get the API:
 
 - **ASI plugins** in the `plugins` folder, loaded when `LoadAsiPlugins=true`.
-- **Custom upscaler and FG dlls** in `custom/<name>/<kind>` (`ffx`, `ffx_vk`, `dlss`, `dlssg` or `dlssd`).
+- **Custom upscaler and FG dlls** in `custom/<name>/<kind>` (`ffx`, `ffx_vk`, `ffx_fg`, `ffx_fg_vk`, `dlss`, `dlssg` or `dlssd`).
 
 Both use the API the same way. Below, "plugin" means either kind.
 
@@ -55,9 +55,33 @@ Settings are stored in the `[Plugin.<name>]` section of `OptiScaler.ini`, where 
 - `Set*` only changes the value in memory. `SaveSettings`, or **Save INI** in the menu, writes the file.
 - `ResetValue` removes the key.
 
+## Providers
+
+An ASI plugin can be an upscaler or FG itself, without a dll in `custom`. Register it from `OptiPluginInit`:
+
+```cpp
+static void* GetProc(void* userData, const char* exportName)
+{
+    if (strcmp(exportName, "ffxCreateContext") == 0)
+        return (void*) MyCreateContext;
+    // ffxDestroyContext, ffxConfigure, ffxQuery, ffxDispatch ...
+    return nullptr;
+}
+
+if (OPTI_API_HAS(api, RegisterProvider))
+    api->RegisterProvider(plugin, "My Upscaler", OptiProvider_Ffx, GetProc, nullptr);
+```
+
+- `GetProc` returns the functions a dll of that kind would export, under the same names. OptiScaler calls them exactly like the dll's.
+- The name shows up in the upscaler or FG lists like a `custom/<name>` folder and can be put in `OptiScaler.ini` (`Dx12Upscaler=My Upscaler`). A registered name replaces a folder with the same name.
+- `OptiProvider_Ffx` and `OptiProvider_Dlss` also run in DX11 games through DX12, `OptiProvider_Ffx` in Vulkan games too.
+- `OptiProvider_FfxFg` and `OptiProvider_FfxFgVk` are picked as the FSR FG Provider. They create the frame generation swapchain context as well, so the plugin runs its own swapchain.
+- `OptiProvider_Dlssd` runs the game's ray reconstruction, it's picked as the RR upscaler (`RRUpscaler=<name>`).
+- Vulkan FFX providers take the FFX SDK 2.x backend type, `FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK_V2`.
+
 ## Sample
 
-[`sample/`](sample) contains a plugin that uses every function of the API.
+[`sample/`](sample) contains a plugin that uses every function of the API. It registers two upscaler providers, "Sample FSR" and "Sample DLSS", whose functions always fail, to show the registration without a real upscaler.
 
 To build it:
 

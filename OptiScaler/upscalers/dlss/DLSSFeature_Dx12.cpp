@@ -51,7 +51,7 @@ bool DLSSFeatureDx12::InitDLSS(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
         if (!_dlssInited)
             return false;
 
-        // LoadCustomDx12 already checked the functions of a custom runtime
+        // LoadCustom already checked the functions of a custom runtime
         if (_custom == nullptr)
         {
             _moduleLoaded =
@@ -169,7 +169,7 @@ DLSSFeatureDx12::DLSSFeatureDx12(unsigned int InHandleId, NVSDK_NGX_Parameter* I
 {
     if (!customUpscaler.empty())
     {
-        _custom = NVNGXProxy::LoadCustomDx12(customUpscaler);
+        _custom = NVNGXProxy::LoadCustom(customUpscaler, API::DX12);
         _moduleLoaded = _custom != nullptr;
 
         if (!_moduleLoaded)

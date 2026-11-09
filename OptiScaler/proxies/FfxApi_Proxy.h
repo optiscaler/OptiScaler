@@ -55,7 +55,7 @@ enum class FFXStructType
     Unknown,
 };
 
-// Upscaler dll from custom/<name>/ffx or ffx_vk, only used by Opti and never hooked for inputs
+// Upscaler or FG from custom/<name>/<kind> or a plugin, only used by Opti and never hooked for inputs
 struct CustomFfxModule
 {
     std::string name;
@@ -96,6 +96,8 @@ class FfxApiProxy
     // std::map so the pointers handed out stay valid
     inline static std::map<std::string, CustomFfxModule> custom_dx12;
     inline static std::map<std::string, CustomFfxModule> custom_vk;
+    inline static std::map<std::string, CustomFfxModule> custom_fg_dx12;
+    inline static std::map<std::string, CustomFfxModule> custom_fg_vk;
     inline static std::recursive_mutex customMutex;
     inline static ankerl::unordered_dense::map<ffxContext, FfxModule*> customContexts;
 
@@ -117,7 +119,8 @@ class FfxApiProxy
 
         std::scoped_lock lock(customMutex);
         auto matches = [module](const auto& custom) { return custom.second.module.dll == module; };
-        return std::ranges::any_of(custom_dx12, matches) || std::ranges::any_of(custom_vk, matches);
+        return std::ranges::any_of(custom_dx12, matches) || std::ranges::any_of(custom_vk, matches) ||
+               std::ranges::any_of(custom_fg_dx12, matches) || std::ranges::any_of(custom_fg_vk, matches);
     }
 
     // Util::LoadProxyLibrary that never returns a custom upscaler dll, those can't be hooked for inputs
@@ -176,8 +179,8 @@ class FfxApiProxy
         }
 
         std::scoped_lock lock(customMutex);
-        return std::ranges::any_of(custom_vk,
-                                   [module](const auto& custom) { return custom.second.module.dll == module; });
+        auto matches = [module](const auto& custom) { return custom.second.module.dll == module; };
+        return std::ranges::any_of(custom_vk, matches) || std::ranges::any_of(custom_fg_vk, matches);
     }
 
     static bool IsCustomUpscalerModule(HMODULE module)
@@ -214,6 +217,25 @@ class FfxApiProxy
                                         "Can't load amd_fidelityfx_dx12\nDid you forget to extract that dll?" });
 
         return result;
+    }
+
+    // Custom FFX FG picked for FSR FG output (State::activeFsrFgProvider), nullptr for the regular one
+    static CustomFfxModule* ActiveCustomFgDx12()
+    {
+        auto& name = State::Instance().activeFsrFgProvider;
+        return CustomProviders::Has(name, CustomProviders::Kind::FfxFg) ? LoadCustomFgDx12(name) : nullptr;
+    }
+
+    static CustomFfxModule* ActiveCustomFgVk()
+    {
+        auto& name = State::Instance().activeFsrFgProvider;
+        return CustomProviders::Has(name, CustomProviders::Kind::FfxFgVk) ? LoadCustomFgVk(name) : nullptr;
+    }
+
+    // FSR FG output can run on DX12, with the active custom FG or the regular FFX dlls
+    static bool IsFsrFgReady(bool sendNotification = true)
+    {
+        return ActiveCustomFgDx12() != nullptr || IsFGReady(sendNotification);
     }
 
     static bool IsSRReady(bool sendNotification = true)
@@ -1020,24 +1042,28 @@ class FfxApiProxy
     // Loading is only tried once per name, nullptr if it failed
     static CustomFfxModule* LoadCustomUpscalerDx12(const std::string& name)
     {
-        return LoadCustomUpscaler(custom_dx12, name, CustomProviders::FfxDllPath(name));
+        return LoadCustom(custom_dx12, name, CustomProviders::Kind::Ffx);
     }
 
     static CustomFfxModule* LoadCustomUpscalerVk(const std::string& name)
     {
-        return LoadCustomUpscaler(custom_vk, name, CustomProviders::FfxVkDllPath(name));
+        return LoadCustom(custom_vk, name, CustomProviders::Kind::FfxVk);
+    }
+
+    static CustomFfxModule* LoadCustomFgDx12(const std::string& name)
+    {
+        return LoadCustom(custom_fg_dx12, name, CustomProviders::Kind::FfxFg);
+    }
+
+    static CustomFfxModule* LoadCustomFgVk(const std::string& name)
+    {
+        return LoadCustom(custom_fg_vk, name, CustomProviders::Kind::FfxFgVk);
     }
 
     // Already loaded custom upscaler, doesn't try loading it
-    static CustomFfxModule* FindCustomUpscalerDx12(const std::string& name)
-    {
-        return FindCustomUpscaler(custom_dx12, name);
-    }
+    static CustomFfxModule* FindCustomUpscalerDx12(const std::string& name) { return FindCustom(custom_dx12, name); }
 
-    static CustomFfxModule* FindCustomUpscalerVk(const std::string& name)
-    {
-        return FindCustomUpscaler(custom_vk, name);
-    }
+    static CustomFfxModule* FindCustomUpscalerVk(const std::string& name) { return FindCustom(custom_vk, name); }
 
     // Context made by the given module, later calls with it go to the same module
     static ffxReturnCode_t D3D12_CreateContext(FfxModule* module, ffxContext* context, ffxCreateContextDescHeader* desc,
@@ -1564,10 +1590,14 @@ class FfxApiProxy
         return D3D12_QuerySdk(context, desc);
     }
 
-    // Versions of the FFX SDK frame generation, the driver's ML FG is given to the SDK through AmdExtFfxApi
+    // Versions of the FFX SDK frame generation, the driver's ML FG is given to the SDK through AmdExtFfxApi.
+    // A custom module is asked for its own instead.
     static ffxReturnCode_t D3D12_QueryFgVersions(void* device, std::vector<uint64_t>& ids,
-                                                 std::vector<const char*>& names)
+                                                 std::vector<const char*>& names, FfxModule* custom = nullptr)
     {
+        auto query = [custom](ffxQueryDescHeader* header)
+        { return custom != nullptr ? custom->Query(nullptr, header) : D3D12_Query(nullptr, header); };
+
         ffxQueryDescGetVersions versionQuery {};
         versionQuery.header.type = FFX_API_QUERY_DESC_TYPE_GET_VERSIONS;
         versionQuery.createDescType = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION;
@@ -1578,7 +1608,7 @@ class FfxApiProxy
         ids.clear();
         names.clear();
 
-        auto result = D3D12_Query(nullptr, &versionQuery.header);
+        auto result = query(&versionQuery.header);
 
         if (result == FFX_API_RETURN_OK && versionCount > 0)
         {
@@ -1587,7 +1617,7 @@ class FfxApiProxy
             versionQuery.versionIds = ids.data();
             versionQuery.versionNames = names.data();
 
-            result = D3D12_Query(nullptr, &versionQuery.header);
+            result = query(&versionQuery.header);
 
             ids.resize(result == FFX_API_RETURN_OK ? versionCount : 0);
             names.resize(ids.size());
@@ -2203,10 +2233,14 @@ class FfxApiProxy
         return FFX_API_RETURN_OK;
     }
 
-    // Versions of the FFX SDK frame generation followed by the frame generation of the driver
+    // Versions of the FFX SDK frame generation followed by the frame generation of the driver.
+    // A custom module is asked for its own instead.
     static ffxReturnCode_t VULKAN_QueryFgVersions(void* device, std::vector<uint64_t>& ids,
-                                                  std::vector<const char*>& names)
+                                                  std::vector<const char*>& names, FfxModule* custom = nullptr)
     {
+        auto query = [custom](ffxQueryDescHeader* header)
+        { return custom != nullptr ? custom->Query(nullptr, header) : VULKAN_QuerySdk(nullptr, header); };
+
         ffxQueryDescGetVersions versionQuery {};
         versionQuery.header.type = FFX_API_QUERY_DESC_TYPE_GET_VERSIONS;
         versionQuery.createDescType = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION;
@@ -2218,7 +2252,7 @@ class FfxApiProxy
         names.clear();
 
         // Driver provided ML FG works without the FFX SDK
-        auto result = VULKAN_QuerySdk(nullptr, &versionQuery.header);
+        auto result = query(&versionQuery.header);
 
         if (result == FFX_API_RETURN_OK && versionCount > 0)
         {
@@ -2227,13 +2261,14 @@ class FfxApiProxy
             versionQuery.versionIds = ids.data();
             versionQuery.versionNames = names.data();
 
-            result = VULKAN_QuerySdk(nullptr, &versionQuery.header);
+            result = query(&versionQuery.header);
 
             ids.resize(result == FFX_API_RETURN_OK ? versionCount : 0);
             names.resize(ids.size());
         }
 
-        FSR4DriverProviderVk::AddFgToVersionList(ids, names);
+        if (custom == nullptr)
+            FSR4DriverProviderVk::AddFgToVersionList(ids, names);
 
         return ids.empty() ? result : FFX_API_RETURN_OK;
     }
@@ -2481,8 +2516,8 @@ class FfxApiProxy
                            (LPCWSTR) legacy_vk.dll, &pinned);
     }
 
-    static CustomFfxModule* LoadCustomUpscaler(std::map<std::string, CustomFfxModule>& customs, const std::string& name,
-                                               const std::filesystem::path& path)
+    static CustomFfxModule* LoadCustom(std::map<std::string, CustomFfxModule>& customs, const std::string& name,
+                                       CustomProviders::Kind kind)
     {
         std::scoped_lock lock(customMutex);
 
@@ -2492,22 +2527,29 @@ class FfxApiProxy
         if (inserted)
         {
             it->second.name = name;
-            module.dll = CustomProviders::LoadDll(name, path);
+            auto exports = CustomProviders::Load(name, kind);
 
-            if (module.dll == nullptr)
+            if (!exports)
                 return nullptr;
 
-            module.filePath = path.wstring();
-            module.vkBackendV2 = !CustomProviders::IsLegacyFfxVkDll(path);
-            FSR4Presets::Hook(module.dll);
-            FSR4Models::Hook(module.dll);
-            GetMethods(module);
+            module.dll = exports.dll;
+            module.filePath = exports.path.wstring();
+            module.vkBackendV2 = !exports.IsLegacyFfxVk();
+
+            // FSR4 presets and models are patched in the dll, a plugin has neither
+            if (module.dll != nullptr)
+            {
+                FSR4Presets::Hook(module.dll);
+                FSR4Models::Hook(module.dll);
+            }
+
+            GetMethods(module, exports);
         }
 
         return module.CreateContext != nullptr && module.Query != nullptr ? &it->second : nullptr;
     }
 
-    static CustomFfxModule* FindCustomUpscaler(std::map<std::string, CustomFfxModule>& customs, const std::string& name)
+    static CustomFfxModule* FindCustom(std::map<std::string, CustomFfxModule>& customs, const std::string& name)
     {
         std::scoped_lock lock(customMutex);
 
@@ -2515,14 +2557,15 @@ class FfxApiProxy
         return it != customs.end() && it->second.module.CreateContext != nullptr ? &it->second : nullptr;
     }
 
-    static void GetMethods(FfxModule& module)
+    static void GetMethods(FfxModule& module) { GetMethods(module, { .dll = module.dll }); }
+
+    static void GetMethods(FfxModule& module, const CustomProviders::Exports& exports)
     {
-        module.Configure = (PfnFfxConfigure) KernelBaseProxy::GetProcAddress_()(module.dll, "ffxConfigure");
-        module.CreateContext = (PfnFfxCreateContext) KernelBaseProxy::GetProcAddress_()(module.dll, "ffxCreateContext");
-        module.DestroyContext =
-            (PfnFfxDestroyContext) KernelBaseProxy::GetProcAddress_()(module.dll, "ffxDestroyContext");
-        module.Dispatch = (PfnFfxDispatch) KernelBaseProxy::GetProcAddress_()(module.dll, "ffxDispatch");
-        module.Query = (PfnFfxQuery) KernelBaseProxy::GetProcAddress_()(module.dll, "ffxQuery");
+        module.Configure = (PfnFfxConfigure) exports("ffxConfigure");
+        module.CreateContext = (PfnFfxCreateContext) exports("ffxCreateContext");
+        module.DestroyContext = (PfnFfxDestroyContext) exports("ffxDestroyContext");
+        module.Dispatch = (PfnFfxDispatch) exports("ffxDispatch");
+        module.Query = (PfnFfxQuery) exports("ffxQuery");
     }
 
     static feature_version QueryVersionVk(FfxModule& module, uint64_t createDescType, const char* label)

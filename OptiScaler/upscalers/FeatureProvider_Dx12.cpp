@@ -25,7 +25,7 @@ bool FeatureProvider_Dx12::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NG
     auto primaryGpu = IdentifyGpu::getPrimaryGpu();
     ScopedSkipHeapCapture skipHeapCapture {};
 
-    const auto custom = cfg.CustomUpscaler.value_or("");
+    const auto custom = CustomProviders::Selected(API::DX12, upscaler);
 
     switch (upscaler)
     {
@@ -42,11 +42,11 @@ bool FeatureProvider_Dx12::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NG
         break;
 
     case Upscaler::FFX:
-        *feature = std::make_unique<FFXFeatureDx12>(handleId, parameters, CustomProviders::IsFfx(custom) ? custom : "");
+        *feature = std::make_unique<FFXFeatureDx12>(handleId, parameters, custom);
         break;
 
     case Upscaler::DLSS:
-        if (CustomProviders::IsDlss(custom))
+        if (!custom.empty())
         {
             *feature = std::make_unique<DLSSFeatureDx12>(handleId, parameters, custom);
             break;
@@ -128,7 +128,7 @@ bool FeatureProvider_Dx12::ChangeFeature(Upscaler upscaler, ID3D12Device* device
     Upscaler& backend = rayReconstruction ? rrBackend : state.newBackend;
 
     const bool dlssOnNonCapable = !IdentifyGpu::getPrimaryGpu().dlssCapable && backend == Upscaler::DLSS &&
-                                  !CustomProviders::IsDlss(cfg.CustomUpscaler.value_or(""));
+                                  CustomProviders::Selected(API::DX12, backend).empty();
     if (backend == Upscaler::Reset || dlssOnNonCapable)
         backend = cfg.Dx12Upscaler.value_or_default();
 

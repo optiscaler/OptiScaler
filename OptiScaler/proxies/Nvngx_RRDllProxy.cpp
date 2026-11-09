@@ -5,13 +5,12 @@
 
 Nvngx_RRDllProxy::Nvngx_RRDllProxy(const std::string& name)
 {
-    auto path = CustomProviders::DlssdDllPath(name);
-    ngx.dll = CustomProviders::LoadDll(name, path);
+    auto exports = CustomProviders::Load(name, CustomProviders::Kind::Dlssd);
 
-    if (ngx.dll == nullptr)
+    if (!exports)
         return;
 
-    ngx.filePath = path.wstring();
+    ngx.SetSource(exports);
     ngx.LoadExports();
 
     LOG_INFO("Custom DLSSD {} DX12: {}, Vulkan: {}", name, IsDx12Available(), IsVulkanAvailable());

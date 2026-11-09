@@ -51,7 +51,7 @@ Nvngx_RRDllProxy* Nvngx_RR::Find(const std::string& name, API api, bool load)
 
     if (it == _modules.end())
     {
-        if (!load || !CustomProviders::IsDlssd(name))
+        if (!load || !CustomProviders::Has(name, CustomProviders::Kind::Dlssd))
             return nullptr;
 
         // Kept when it fails so it's not loaded again
@@ -79,7 +79,7 @@ std::string Nvngx_RR::SelectedName(API api, bool load)
     if (NativeAvailable())
         return {};
 
-    for (const auto& name : CustomProviders::Scan().dlssd)
+    for (const auto& name : CustomProviders::List(CustomProviders::Kind::Dlssd))
     {
         if (Find(name, api, load) != nullptr)
             return name;

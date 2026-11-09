@@ -128,7 +128,7 @@ static bool CheckForFGStatus()
     if (State::Instance().activeFgOutput == FGOutput::FSRFG)
     {
         FfxApiProxy::InitFfxDx12();
-        if (!FfxApiProxy::IsFGReady())
+        if (!FfxApiProxy::IsFsrFgReady())
         {
             ImGui::InsertNotification(
                 { ImGuiToastType::Error, 20000, "Can't init FSR FG\nAre you missing the required DLLs?" });
