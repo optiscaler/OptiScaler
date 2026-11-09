@@ -66,6 +66,7 @@ XeFG_DynamicMFG::Result XeFG_DynamicMFG::Update(const Settings& settings, int ta
             _capActive = false;
         }
         const double waitMs = sleepMs + presentWaitMs;
+        const double frameMs = settings.realFrameMs > 0.0 ? settings.realFrameMs : state.lastFGFrameTime;
         const int rounding = std::clamp(settings.rounding, 0, 2);
         const int minCount = settings.allow1X || targetCount == 1 ? 0 : 1;
 
@@ -82,8 +83,7 @@ XeFG_DynamicMFG::Result XeFG_DynamicMFG::Update(const Settings& settings, int ta
             if (!_capActive)
                 _cap.Reset();
 
-            count = _cap.Update(
-                { now, state.lastFGFrameTime, sleepMs + settings.limiterSleepMs, target, targetCount, count1 });
+            count = _cap.Update({ now, frameMs, sleepMs + settings.limiterSleepMs, target, targetCount, count1 });
 
             if (count != current || now - _logMs >= 5000.0)
             {
@@ -109,9 +109,8 @@ XeFG_DynamicMFG::Result XeFG_DynamicMFG::Update(const Settings& settings, int ta
             if (_capActive)
                 _count.Restart();
 
-            count =
-                _count.Update({ now, state.lastFGFrameTime, waitMs, target, refresh,
-                                config->FramerateLimit.value_or_default(), targetCount, current, rounding, minCount });
+            count = _count.Update({ now, frameMs, waitMs, target, refresh, config->FramerateLimit.value_or_default(),
+                                   targetCount, current, rounding, minCount });
         }
 
         _capActive = cap;

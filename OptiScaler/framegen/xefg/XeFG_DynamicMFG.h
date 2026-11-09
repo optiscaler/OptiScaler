@@ -29,6 +29,11 @@ class XeFG_DynamicMFG
         // OptiScaler's own FPS limiter's sleep in the game's last present. The cap counts it as a limiter sleep. The
         // XeFG output leaves it at 0, its limiter is a low latency sleep that is measured already.
         double limiterSleepMs = 0.0;
+
+        // The time between the last two real frames when the output measures it itself, 0 = State::lastFGFrameTime.
+        // The game's DLSSG through an nvngx provider takes it from the NGX evaluates, the swapchain it presents to
+        // may see the generated frames too.
+        double realFrameMs = 0.0;
     };
 
     // XeFG output: the settings come from its config
