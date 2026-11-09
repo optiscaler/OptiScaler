@@ -1461,7 +1461,13 @@ void InputCommon::update()
         bool driverCountsFg = fgActive && activeOutput == LowLatencyMode::Reflex && output_api == API::Vulkan &&
                               vkFg != nullptr && vkFg->OwnsSwapchain(VulkanHooks::LowLatencySwapchain());
 
-        if (xefg_paced() || driverCountsFg)
+        // The game's own DLSSG (NvngxFG input) presents its generated frames to the same swapchain, so the driver
+        // counts those too. Counted again here, a 72 FPS limit at 4x became 18 presents per second (Endfield).
+        bool driverCountsGameDlssg = !fgActive && state.dlssgDetectedInterpolationCount > 0 &&
+                                     activeOutput == LowLatencyMode::Reflex && output_api == API::Vulkan &&
+                                     VulkanHooks::LowLatencySwapchain() != VK_NULL_HANDLE;
+
+        if (xefg_paced() || driverCountsFg || driverCountsGameDlssg)
         {
             // XeLL already counts XeFG's generated frames, the driver DLSSG's
         }

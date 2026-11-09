@@ -2,7 +2,9 @@
 #include "input_xell.h"
 #include <proxies/XeLL_Proxy.h>
 #include <inputs/FG/XeFG_Inputs_Dx12.h>
+#include <misc/IdentifyGpu.h>
 
+#include <mutex>
 #include <shared_mutex>
 #include <unordered_set>
 
@@ -46,6 +48,52 @@ template <typename Fn, typename... Args> static xell_result_t CallForeign(const 
 template <typename Fn, typename... Args> static xell_result_t CallReal(Fn real, Args... args)
 {
     return real != nullptr ? real(args...) : XELL_RESULT_ERROR_NOT_IMPLEMENTED;
+}
+
+// xellSetDisplayInfo's argument, not in XeLL's headers: libxess_fg 1.3 fills it, libxell 1.3 reads it. XeFG reports
+// every display as fixed refresh, with V-Sync on or off. XeLL takes at most one present mode.
+struct XeLLDisplayInfo
+{
+    uint32_t version; // 1
+    uint32_t syncInterval;
+    uint64_t refreshPeriodNs;
+    uint64_t vrrMinIntervalNs;
+    uint64_t vrrMaxIntervalNs;
+    uint32_t vrrVsync;
+    uint32_t vrrTearing;
+    uint32_t fixedVsync;
+    uint32_t fixedTearing;
+};
+
+static_assert(sizeof(XeLLDisplayInfo) == 48);
+
+// XeLL's cross-vendor pacing (every GPU but Intel's, whose driver gives XeLL the vblank times) paces fixed refresh
+// V-Sync at (generated frames + 1) refreshes per frame, counted from the last frame's GPU end. Without the vblanks it
+// can settle a refresh behind them: the game then waits with the GPU underused until V-Sync is toggled. Shown V-Sync
+// off, XeLL paces back to back and the V-Sync wait in the present still caps the frame rate.
+static const XeLLDisplayInfo* XeLLPacedDisplayInfo(const XeLLDisplayInfo* info, XeLLDisplayInfo& vsyncOff)
+{
+    static const bool rewrite = []
+    {
+        auto version = XeLLProxy::Version();
+
+        return !Config::Instance()->XeLLVsyncPacing.value_or_default() && version.major == 1 && version.minor == 3 &&
+               IdentifyGpu::getPrimaryGpu().vendorId != VendorId::Intel;
+    }();
+
+    if (!rewrite || info == nullptr || info->version != 1 || !info->fixedVsync || info->fixedTearing ||
+        info->vrrVsync || info->vrrTearing)
+    {
+        return info;
+    }
+
+    // What XeFG sends with V-Sync off
+    vsyncOff = *info;
+    vsyncOff.syncInterval = 0;
+    vsyncOff.fixedVsync = 0;
+    vsyncOff.fixedTearing = 1;
+
+    return &vsyncOff;
 }
 
 bool InputXeLL::CreateReal(xell_input_handle_t context)
@@ -469,7 +517,31 @@ xell_result_t InputXeLL::SetDisplayInfo(xell_input_handle_t context, void* displ
     if (!context)
         return XELL_RESULT_ERROR_INVALID_CONTEXT;
 
-    return context->real ? CallReal(XeLLProxy::RealSetDisplayInfo(), context->real, displayInfo) : XELL_RESULT_SUCCESS;
+    if (!context->real)
+        return XELL_RESULT_SUCCESS;
+
+    auto info = (const XeLLDisplayInfo*) displayInfo;
+    XeLLDisplayInfo vsyncOff {};
+    auto paced = XeLLPacedDisplayInfo(info, vsyncOff);
+
+    // XeFG sends it again when V-Sync changes
+    static std::mutex loggedMutex;
+    static XeLLDisplayInfo logged {};
+
+    if (info != nullptr)
+    {
+        std::lock_guard lock(loggedMutex);
+
+        if (memcmp(&logged, info, sizeof(logged)) != 0)
+        {
+            logged = *info;
+            LOG_INFO("XeFG display info: sync interval {}, refresh {:.3f} ms, V-Sync {}{}", info->syncInterval,
+                     info->refreshPeriodNs / 1'000'000.0, info->fixedVsync ? "on" : "off",
+                     paced != info ? ", XeLL paces it as V-Sync off" : "");
+        }
+    }
+
+    return CallReal(XeLLProxy::RealSetDisplayInfo(), context->real, (void*) paced);
 }
 xell_result_t InputXeLL::SetFgEnabled(xell_input_handle_t context, uint32_t enabled, uint32_t frameId)
 {

@@ -46,6 +46,9 @@ static ID3D12Fence* g_menuFence = nullptr;
 static HANDLE g_menuFenceEvent = nullptr;
 static UINT64 g_menuFenceValue = 0;
 static UINT64 g_allocatorFenceValues[NUM_BACK_BUFFERS] = {};
+// Allocators are used in draw order, not per back buffer. Keyed to the back buffer index the CPU would wait for the
+// menu draw only BufferCount presents back, behind whatever else is queued on the present queue
+static UINT g_menuSlot = 0;
 
 // current command queue for dx12 swapchain
 static IUnknown* currentSCCommandQueue = nullptr;
@@ -208,6 +211,7 @@ static void CleanupRenderTargetDx12(bool clearQueue)
 
         g_menuFenceValue = 0;
         memset(g_allocatorFenceValues, 0, sizeof(g_allocatorFenceValues));
+        g_menuSlot = 0;
 
         if (g_pd3dCommandQueue != nullptr)
             g_pd3dCommandQueue = nullptr;
@@ -525,6 +529,7 @@ static void RenderImGui_DX12(IDXGISwapChain* pSwapChainPlain)
         g_menuFence->SetName(L"MenuFence");
         g_menuFenceValue = 0;
         memset(g_allocatorFenceValues, 0, sizeof(g_allocatorFenceValues));
+        g_menuSlot = 0;
 
         DXGI_SWAP_CHAIN_DESC scDesc;
         pSwapChain->GetDesc(&scDesc);
@@ -595,10 +600,10 @@ static void RenderImGui_DX12(IDXGISwapChain* pSwapChainPlain)
                 ImGui::Render();
 
                 const bool blurMenu = blurReady && MenuCommon::BackgroundBlurUsed();
-                ID3D12CommandAllocator* commandAllocator = g_commandAllocators[backBufferIdx];
+                ID3D12CommandAllocator* commandAllocator = g_commandAllocators[g_menuSlot];
 
                 // Previous command list recorded with this allocator might still be executing
-                const UINT64 waitValue = g_allocatorFenceValues[backBufferIdx];
+                const UINT64 waitValue = g_allocatorFenceValues[g_menuSlot];
                 if (g_menuFence != nullptr && g_menuFence->GetCompletedValue() < waitValue)
                 {
                     DWORD waitResult = WAIT_FAILED;
@@ -644,7 +649,8 @@ static void RenderImGui_DX12(IDXGISwapChain* pSwapChainPlain)
                     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
                     g_pd3dCommandList->ResourceBarrier(1, &barrier);
 
-                    g_menuBlur->Dispatch(g_pd3dCommandList, g_mainRenderTargetResource[backBufferIdx], backBufferIdx);
+                    // The blur's descriptor slot follows the allocator, it is fenced the same way
+                    g_menuBlur->Dispatch(g_pd3dCommandList, g_mainRenderTargetResource[backBufferIdx], g_menuSlot);
 
                     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
                     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -677,10 +683,13 @@ static void RenderImGui_DX12(IDXGISwapChain* pSwapChainPlain)
                     result = ((ID3D12CommandQueue*) currentSCCommandQueue)->Signal(g_menuFence, ++g_menuFenceValue);
 
                     if (result == S_OK)
-                        g_allocatorFenceValues[backBufferIdx] = g_menuFenceValue;
+                        g_allocatorFenceValues[g_menuSlot] = g_menuFenceValue;
                     else
                         LOG_ERROR("Menu fence Signal: {:X}", (unsigned long) result);
                 }
+
+                // The submitted list still uses this allocator, never reset it on the next draw
+                g_menuSlot = (g_menuSlot + 1) % NUM_BACK_BUFFERS;
             }
         }
         else

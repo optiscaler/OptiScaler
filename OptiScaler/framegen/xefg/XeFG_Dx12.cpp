@@ -12,6 +12,8 @@
 
 #include <DirectXMath.h>
 
+#include <atomic>
+
 using namespace DirectX;
 
 void XeFG_Dx12::xefgLogCallback(const char* message, xefg_swapchain_logging_level_t level, void* userData)
@@ -1441,7 +1443,25 @@ bool XeFG_Dx12::SetResource(Dx12Resource* inputResource)
 
     if ((type == FG_ResourceType::Depth || type == FG_ResourceType::Velocity) && _frameResources[fIndex].contains(type))
     {
-        return false;
+        if (!inputResource->lastTagWins)
+            return false;
+
+        const auto& first = _frameResources[fIndex][type];
+        const bool same = first.resource == inputResource->resource && first.width == inputResource->width &&
+                          first.height == inputResource->height;
+
+        // One line per type and outcome settles what a game's second tag changes
+        static std::atomic<bool> noted[2][2] {};
+        if (!noted[type == FG_ResourceType::Velocity ? 1 : 0][same ? 1 : 0].exchange(true))
+        {
+            LOG_INFO("Streamline re-tagged {} for one frame: {:X} {}x{} state {:X} -> {:X} {}x{} state {:X}, {}",
+                     magic_enum::enum_name(type), (size_t) first.resource, first.width, first.height,
+                     (UINT) first.state, (size_t) inputResource->resource, inputResource->width, inputResource->height,
+                     (UINT) inputResource->state, same ? "same, ignored" : "using the last");
+        }
+
+        if (same)
+            return false;
     }
 
     if (inputResource->cmdList == nullptr && inputResource->validity == FG_ResourceValidity::ValidNow)

@@ -29,6 +29,7 @@ struct Dx12Resource
     ID3D12Resource* copy = nullptr;
     int frameIndex = -1;
     bool waitingExecution = false;
+    bool lastTagWins = false; // a later tag of Depth / Velocity for this frame replaces the first
 
     ID3D12Resource* GetResource() { return (copy == nullptr) ? resource : copy; }
 };

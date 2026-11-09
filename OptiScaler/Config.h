@@ -644,6 +644,7 @@ class Config
     CustomOptional<bool> FGVelocityValidNow { false };
     CustomOptional<bool> FGHudlessValidNow { false };
     CustomOptional<bool> FGOnlyAcceptFirstHudless { false };
+    CustomOptional<bool> FGStreamlineLastTagWins { true };
     CustomOptional<bool, SoftDefault> FGPreserveSwapChain { true };
     CustomOptional<bool, SoftDefault> FGSkipResizeBuffers { false };
     CustomOptional<bool> FGModifyBufferState { false };
@@ -761,6 +762,7 @@ class Config
     // fakenvapi
     CustomOptional<bool, SoftDefault> UseFakenvapi { true };
     CustomOptional<bool> ForceXeLL { false };
+    CustomOptional<bool> XeLLVsyncPacing { false }; // XeLL's own fixed refresh V-Sync pacing on non-Intel GPUs
     CustomOptional<bool> FN_ForceLatencyFlex { false };
     CustomOptional<LFXMode> FN_LatencyFlexMode { LFXMode::Conservative };
     CustomOptional<ForceReflex> FN_ForceReflex { ForceReflex::InGame };

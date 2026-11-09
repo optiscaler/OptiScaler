@@ -440,6 +440,9 @@ bool Sl_Inputs::reportResource(const sl::ResourceTag& tag, void* cmdBuffer, uint
         res.validity = validity;
         res.frameIndex = frameIndex;
 
+        // Games can tag the upscaler's set, then FG's: a later tag of a type replaces the frame's first
+        res.lastTagWins = frameId > 0 && config->FGStreamlineLastTagWins.value_or_default();
+
         state.currentFG->SetResource(&res);
     }
 

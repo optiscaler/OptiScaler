@@ -6,7 +6,14 @@
 #include <proxies/KernelBase_Proxy.h>
 #include <proxies/Ntdll_Proxy.h>
 
+#include <algorithm>
+#include <cstddef>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <string_view>
+#include <vector>
 
 // Dlls in custom/<name>/<kind> of the Opti folder, each kind a folder has is an entry in the upscaler or FG list:
 //   custom/<name>/ffx      DX12 FFX upscaler
@@ -16,8 +23,88 @@
 // The dll can have any name. When the folder has more dlls, like ones the dll loads itself, the standard name
 // is used (amd_fidelityfx_upscaler_dx12.dll, amd_fidelityfx_upscaler_vk.dll then amd_fidelityfx_vk.dll, nvngx.dll,
 // nvngx_dlssg.dll), else the first one. A Vulkan dll with another name is taken as amd_fidelityfx_upscaler_vk.dll.
+// For dlssg the first dll with NGX's entry points comes before the first one (DlssgDllPath).
 namespace CustomProviders
 {
+// Whether the dll file exports one of `names`. Read from the file's export table: nothing is loaded or run.
+inline bool FileExportsAny(const std::filesystem::path& path, std::initializer_list<std::string_view> names)
+{
+    std::ifstream file(path, std::ios::binary);
+
+    if (!file)
+        return false;
+
+    const std::vector<char> data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    const auto at = [&data](size_t offset, size_t size) -> const char*
+    { return offset <= data.size() && size <= data.size() - offset ? data.data() + offset : nullptr; };
+
+    const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(at(0, sizeof(IMAGE_DOS_HEADER)));
+
+    if (dos == nullptr || dos->e_magic != IMAGE_DOS_SIGNATURE || dos->e_lfanew < 0)
+        return false;
+
+    const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(at(size_t(dos->e_lfanew), sizeof(IMAGE_NT_HEADERS64)));
+
+    if (nt == nullptr || nt->Signature != IMAGE_NT_SIGNATURE ||
+        nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC)
+        return false;
+
+    const auto& directory = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+
+    if (directory.VirtualAddress == 0 || directory.Size == 0)
+        return false;
+
+    const WORD sectionCount = nt->FileHeader.NumberOfSections;
+    const auto* sections = reinterpret_cast<const IMAGE_SECTION_HEADER*>(
+        at(size_t(dos->e_lfanew) + offsetof(IMAGE_NT_HEADERS64, OptionalHeader) + nt->FileHeader.SizeOfOptionalHeader,
+           sectionCount * sizeof(IMAGE_SECTION_HEADER)));
+
+    if (sections == nullptr)
+        return false;
+
+    const auto offsetOf = [&](DWORD rva) -> size_t
+    {
+        for (WORD i = 0; i < sectionCount; i++)
+        {
+            const auto& section = sections[i];
+            const DWORD size = std::max(section.Misc.VirtualSize, section.SizeOfRawData);
+
+            if (rva >= section.VirtualAddress && rva - section.VirtualAddress < size)
+                return size_t(rva - section.VirtualAddress) + section.PointerToRawData;
+        }
+
+        return SIZE_MAX;
+    };
+
+    const auto* exports = reinterpret_cast<const IMAGE_EXPORT_DIRECTORY*>(
+        at(offsetOf(directory.VirtualAddress), sizeof(IMAGE_EXPORT_DIRECTORY)));
+
+    if (exports == nullptr)
+        return false;
+
+    const auto* nameRvas = reinterpret_cast<const DWORD*>(
+        at(offsetOf(exports->AddressOfNames), size_t(exports->NumberOfNames) * sizeof(DWORD)));
+
+    if (nameRvas == nullptr)
+        return false;
+
+    for (DWORD i = 0; i < exports->NumberOfNames; i++)
+    {
+        const size_t offset = offsetOf(nameRvas[i]);
+        const char* begin = at(offset, 1);
+
+        if (begin == nullptr)
+            continue;
+
+        const std::string_view exported(begin, strnlen(begin, data.size() - offset));
+
+        if (std::ranges::find(names, exported) != names.end())
+            return true;
+    }
+
+    return false;
+}
+
 inline std::filesystem::path Root()
 {
     return std::filesystem::path(Config::Instance()->MainDllPath.value()) / L"custom";
@@ -65,9 +152,32 @@ inline bool IsLegacyFfxVkDll(const std::filesystem::path& path)
 
 inline std::filesystem::path NgxDllPath(const std::string& name) { return DllPath(name, L"dlss", { L"nvngx.dll" }); }
 
+// nvngx_dlssg.dll, else the first dll with NGX's entry points, else the first dll. A provider's own dependencies can
+// sit beside it and come first in the folder (such as XeSS's libxell.dll and libxess_fg.dll): taken as the provider,
+// they made it unavailable.
 inline std::filesystem::path DlssgDllPath(const std::string& name)
 {
-    return DllPath(name, L"dlssg", { L"nvngx_dlssg.dll" });
+    auto folder = Folder(name) / L"dlssg";
+    std::error_code error;
+
+    if (std::filesystem::exists(folder / L"nvngx_dlssg.dll", error))
+        return folder / L"nvngx_dlssg.dll";
+
+    std::filesystem::path first;
+
+    for (auto& entry : std::filesystem::directory_iterator(folder, error))
+    {
+        if (_wcsicmp(entry.path().extension().c_str(), L".dll") != 0)
+            continue;
+
+        if (FileExportsAny(entry.path(), { "NVSDK_NGX_D3D12_Init", "NVSDK_NGX_VULKAN_Init" }))
+            return entry.path();
+
+        if (first.empty())
+            first = entry.path();
+    }
+
+    return first;
 }
 
 // nullptr when the path is empty or the dll can't be loaded
@@ -77,7 +187,17 @@ inline HMODULE LoadDll(const std::string& name, const std::filesystem::path& pat
 
     if (dll == nullptr)
     {
-        LOG_ERROR("Can't load custom {} from {}", name, wstring_to_string(Folder(name).wstring()));
+        if (path.empty())
+        {
+            LOG_ERROR("Can't load custom {}: no dll in {}", name, wstring_to_string(Folder(name).wstring()));
+            return nullptr;
+        }
+
+        // ERROR_DLL_INIT_FAILED: the dll refused to load, e.g. a provider that needs another module loaded first
+        const DWORD error = GetLastError();
+        LOG_ERROR("Can't load custom {} from {}, error {}{}", name, wstring_to_string(path.wstring()), error,
+                  error == ERROR_DLL_INIT_FAILED ? " (the dll refused to load; it needs something this process lacks)"
+                                                 : "");
         return nullptr;
     }
 

@@ -3,6 +3,33 @@
 
 #include <misc/DeferredRelease.h>
 
+void Nvngx_DllProxy::ClearNgxExports()
+{
+    _DLSSG_D3D12_Init = nullptr;
+    _DLSSG_D3D12_Init_Ext = nullptr;
+    _DLSSG_D3D12_Shutdown = nullptr;
+    _DLSSG_D3D12_Shutdown1 = nullptr;
+    _DLSSG_D3D12_GetScratchBufferSize = nullptr;
+    _DLSSG_D3D12_CreateFeature = nullptr;
+    _DLSSG_D3D12_ReleaseFeature = nullptr;
+    _DLSSG_D3D12_GetFeatureRequirements = nullptr;
+    _DLSSG_D3D12_EvaluateFeature = nullptr;
+    _DLSSG_D3D12_PopulateParameters_Impl = nullptr;
+
+    _DLSSG_VULKAN_Init = nullptr;
+    _DLSSG_VULKAN_Init_Ext = nullptr;
+    _DLSSG_VULKAN_Init_Ext2 = nullptr;
+    _DLSSG_VULKAN_Shutdown = nullptr;
+    _DLSSG_VULKAN_Shutdown1 = nullptr;
+    _DLSSG_VULKAN_GetScratchBufferSize = nullptr;
+    _DLSSG_VULKAN_CreateFeature = nullptr;
+    _DLSSG_VULKAN_CreateFeature1 = nullptr;
+    _DLSSG_VULKAN_ReleaseFeature = nullptr;
+    _DLSSG_VULKAN_GetFeatureRequirements = nullptr;
+    _DLSSG_VULKAN_EvaluateFeature = nullptr;
+    _DLSSG_VULKAN_PopulateParameters_Impl = nullptr;
+}
+
 void Nvngx_DllProxy::LoadNgxExports()
 {
     _DLSSG_D3D12_Init = (PFN_D3D12_Init) GetProcAddress(dll, "NVSDK_NGX_D3D12_Init");
@@ -51,6 +78,8 @@ void Nvngx_DllProxy::QueryReportedParameters()
     int countMax = 0;
     if (params.Get("DLSSG.MultiFrameCountMax", &countMax) == NVSDK_NGX_Result_Success && countMax > 0)
         reportedMaxFakeFrames = countMax;
+
+    params.Get("FrameGeneration.Available", &reportedAvailable);
 
     if (params.Get("FrameInterpolation.GhostbusterVersionMajor", &antighostingVersion.major) ==
         NVSDK_NGX_Result_Success)

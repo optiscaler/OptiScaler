@@ -36,6 +36,7 @@ class Nvngx_DllProxy : public IFGNvngx
 
     // What PopulateParameters reports before init
     int reportedMaxFakeFrames = 0;
+    int reportedAvailable = 1;
     feature_version antighostingVersion {};
 
     virtual void LoadLibraries() = 0;
@@ -47,6 +48,9 @@ class Nvngx_DllProxy : public IFGNvngx
 
     // DLSSG.ShowDebug and DLSSG.DispatchFlags from the config
     static void SetDispatchFlags(NVSDK_NGX_Parameter* InParameters);
+
+    // The provider stays loaded but unused: isDx12Available and isVulkanAvailable become false
+    void ClearNgxExports();
 
   public:
     Nvngx_DllProxy() = default;

@@ -144,6 +144,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             FGVelocityValidNow.set_from_config(readBool("FrameGen", "VelocityValidNow"));
             FGHudlessValidNow.set_from_config(readBool("FrameGen", "HudlessValidNow"));
             FGOnlyAcceptFirstHudless.set_from_config(readBool("FrameGen", "OnlyAcceptFirstHudless"));
+            FGStreamlineLastTagWins.set_from_config(readBool("FrameGen", "StreamlineLastTagWins"));
             FGPreserveSwapChain.set_from_config(readBool("FrameGen", "PreserveSwapChain"));
             FGSkipResizeBuffers.set_from_config(readBool("FrameGen", "SkipResizeBuffers"));
             FGModifyBufferState.set_from_config(readBool("FrameGen", "ModifyBufferState"));
@@ -746,6 +747,7 @@ bool Config::Reload(std::filesystem::path iniPath)
         {
             UseFakenvapi.set_from_config(readBool("fakenvapi", "UseFakenvapi"));
             ForceXeLL.set_from_config(readBool("fakenvapi", "ForceXeLL"));
+            XeLLVsyncPacing.set_from_config(readBool("fakenvapi", "XeLLVsyncPacing"));
             FN_ForceLatencyFlex.set_from_config(readBool("fakenvapi", "ForceLatencyFlex"));
 
             if (auto v = readEnum<LFXMode>("fakenvapi", "LatencyFlexMode"))
@@ -1399,6 +1401,8 @@ bool Config::SaveIni()
         ini.SetValue("FrameGen", "RectHeight", GetIntValue(Instance()->FGRectHeight.value_for_config()).c_str());
         ini.SetValue("FrameGen", "AllowedFrameAhead",
                      GetIntValue(Instance()->FGAllowedFrameAhead.value_for_config()).c_str());
+        ini.SetValue("FrameGen", "StreamlineLastTagWins",
+                     GetBoolValue(Instance()->FGStreamlineLastTagWins.value_for_config()).c_str());
         ini.SetValue("FrameGen", "DepthValidNow", GetBoolValue(Instance()->FGDepthValidNow.value_for_config()).c_str());
         ini.SetValue("FrameGen", "VelocityValidNow",
                      GetBoolValue(Instance()->FGVelocityValidNow.value_for_config()).c_str());
@@ -2005,6 +2009,8 @@ bool Config::SaveIni()
     {
         ini.SetValue("fakenvapi", "UseFakenvapi", GetBoolValue(Instance()->UseFakenvapi.value_for_config()).c_str());
         ini.SetValue("fakenvapi", "ForceXeLL", GetBoolValue(Instance()->ForceXeLL.value_for_config()).c_str());
+        ini.SetValue("fakenvapi", "XeLLVsyncPacing",
+                     GetBoolValue(Instance()->XeLLVsyncPacing.value_for_config()).c_str());
         ini.SetValue("fakenvapi", "ForceLatencyFlex",
                      GetBoolValue(Instance()->FN_ForceLatencyFlex.value_for_config()).c_str());
         ini.SetValue("fakenvapi", "LatencyFlexMode",

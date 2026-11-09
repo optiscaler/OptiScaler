@@ -312,13 +312,16 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_GetScratchBufferSize(NVSDK_NGX_Feature InFeatur
 NVSDK_NGX_Result Nvngx_FG::D3D12_CreateFeature(ID3D12GraphicsCommandList* InCmdList, NVSDK_NGX_Feature InFeatureID,
                                                NVSDK_NGX_Parameter* InParameters, NVSDK_NGX_Handle** OutHandle)
 {
+    if (!OutHandle)
+        return NVSDK_NGX_Result_FAIL_InvalidParameter;
+
+    // A failed create leaves no handle, its callers can check it
+    *OutHandle = nullptr;
+
     auto* provider = getProvider();
 
     if (!provider)
         return NVSDK_NGX_Result_Fail;
-
-    if (!OutHandle)
-        return NVSDK_NGX_Result_FAIL_InvalidParameter;
 
     auto proxyHandle = new Nvngx_FG_Handle(lastIdCreated++ + NVNGX_PROVIDER_ID_OFFSET);
 
@@ -610,13 +613,16 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_GetScratchBufferSize(NVSDK_NGX_Feature InFeatu
 NVSDK_NGX_Result Nvngx_FG::VULKAN_CreateFeature(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Feature InFeatureID,
                                                 NVSDK_NGX_Parameter* InParameters, NVSDK_NGX_Handle** OutHandle)
 {
+    if (!OutHandle)
+        return NVSDK_NGX_Result_FAIL_InvalidParameter;
+
+    // A failed create leaves no handle, its callers can check it
+    *OutHandle = nullptr;
+
     auto* provider = getProvider();
 
     if (!provider)
         return NVSDK_NGX_Result_Fail;
-
-    if (!OutHandle)
-        return NVSDK_NGX_Result_FAIL_InvalidParameter;
 
     auto proxyHandle = new Nvngx_FG_Handle(lastIdCreated++ + NVNGX_PROVIDER_ID_OFFSET);
     auto result = provider->VULKAN_CreateFeature(InCmdBuffer, InFeatureID, InParameters, &proxyHandle->nativeHandle);
@@ -639,13 +645,16 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_CreateFeature1(VkDevice InDevice, VkCommandBuf
                                                  NVSDK_NGX_Feature InFeatureID, NVSDK_NGX_Parameter* InParameters,
                                                  NVSDK_NGX_Handle** OutHandle)
 {
+    if (!OutHandle)
+        return NVSDK_NGX_Result_FAIL_InvalidParameter;
+
+    // A failed create leaves no handle, its callers can check it
+    *OutHandle = nullptr;
+
     auto* provider = getProvider();
 
     if (!provider)
         return NVSDK_NGX_Result_Fail;
-
-    if (!OutHandle)
-        return NVSDK_NGX_Result_FAIL_InvalidParameter;
 
     auto proxyHandle = new Nvngx_FG_Handle(lastIdCreated++ + NVNGX_PROVIDER_ID_OFFSET);
     auto result =
