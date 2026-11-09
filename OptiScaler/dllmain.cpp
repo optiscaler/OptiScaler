@@ -496,8 +496,9 @@ static void RunEntryLoads()
 
     LOG_INFO("Loading injected dlls");
 
-    // So ReShade hooks the factory methods after us, Special K should hook before us
-    if (skModule != nullptr || !Config::Instance()->LoadSpecialK.value_or_default())
+    // Special K and ReShade should hook before us, ReShade above our FG swapchain uses freed objects
+    if ((skModule != nullptr || !Config::Instance()->LoadSpecialK.value_or_default()) &&
+        !Config::Instance()->LoadReShade.value_or_default())
         DxgiHooks::HookFactoryMethods();
 
     // Detection fails under the loader lock, nvapi loaded by an injected dll's DllMain would pick fakenvapi
