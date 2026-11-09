@@ -351,13 +351,127 @@ void HookCreateModel(HMODULE module)
     freeSlot->module = module;
     LOG_INFO("Hooked FSR 4 model selection of {:X} at {:X}", (uintptr_t) module, (uintptr_t) createModel);
 }
-} // namespace
 
-uint8_t FSR4ModelSelection::hkAmdInt8Check(void* a1, void* device)
+// In the order FFX checks them, the first supported one runs. The index is Fsr4ForceEnableInt8's value
+constexpr std::pair<const char*, const char*> modelProviders[] = {
+    { "FP8", ".?AVffxProvider_FSR4@@" },
+    { "INT8", ".?AVffxProvider_FSR4_Int8@@" },
+    { "INT8 RDNA2", ".?AVffxProvider_FSR4_Int8_Navi2@@" },
+    { "INT8 Lite", ".?AVffxProvider_FSR4Lite_Int8@@" },
+};
+
+// ffxProvider::IsSupported(void* device), the vtable layout of FFX SDK 2.0+ providers
+constexpr size_t isSupportedIndex = 2;
+
+typedef bool (*PFN_IsSupported)(void* provider, void* device);
+
+struct PatchedProvider
 {
-    LOG_DEBUG("Called with a1: {:X}, device: {:X}", (uintptr_t) a1, (uintptr_t) device);
-    return 1;
+    HMODULE module;
+    void** vtable;
+    size_t model;
+    API api;
+    PFN_IsSupported o_IsSupported;
+    bool lastSupported;
+};
+
+std::vector<PatchedProvider> patchedProviders;
+HMODULE lastCheckedModule = nullptr;
+
+bool HasModel(HMODULE module, size_t model)
+{
+    return std::ranges::any_of(patchedProviders, [&](const PatchedProvider& patched)
+                               { return patched.module == module && patched.model == model; });
 }
+
+size_t ForcedModel() { return Config::Instance()->Fsr4ForceEnableInt8.value_or_default(); }
+
+bool hkIsSupported(void* provider, void* device)
+{
+    auto vtable = *static_cast<void***>(provider);
+    auto forced = ForcedModel();
+    PatchedProvider patched {};
+    bool useForced = false;
+
+    {
+        std::scoped_lock lock(hookMutex);
+
+        auto found = std::ranges::find(patchedProviders, vtable, &PatchedProvider::vtable);
+        if (found == patchedProviders.end())
+            return false;
+
+        patched = *found;
+        useForced = forced > 0 && HasModel(patched.module, forced);
+    }
+
+    // The forced model wins even where FFX doesn't allow it, the ones before it (FP8 on RDNA 4) have to fail
+    auto supported = useForced ? patched.model == forced : patched.o_IsSupported(provider, device);
+
+    LOG_DEBUG("{}: {}", modelProviders[patched.model].first, supported);
+
+    if (device == nullptr)
+        return supported;
+
+    std::scoped_lock lock(hookMutex);
+
+    if (auto found = std::ranges::find(patchedProviders, vtable, &PatchedProvider::vtable);
+        found != patchedProviders.end())
+    {
+        found->lastSupported = supported;
+        lastCheckedModule = found->module;
+    }
+
+    return supported;
+}
+
+bool PatchVtableEntry(void** entry, void* value)
+{
+    DWORD oldProtection = 0;
+    if (!VirtualProtect(entry, sizeof(*entry), PAGE_READWRITE, &oldProtection))
+        return false;
+
+    *entry = value;
+
+    VirtualProtect(entry, sizeof(*entry), oldProtection, &oldProtection);
+    return true;
+}
+
+void HookModelProviders(HMODULE module, API api)
+{
+    std::scoped_lock lock(hookMutex);
+
+    if (std::ranges::find(patchedProviders, module, &PatchedProvider::module) != patchedProviders.end())
+        return;
+
+    std::vector<PatchedProvider> found;
+
+    for (size_t i = 0; i < std::size(modelProviders); i++)
+    {
+        if (auto vtable = Util::FindVTableByRtti(module, modelProviders[i].second))
+            found.push_back({ module, vtable, i, api });
+    }
+
+    // Older modules have a single model and a different vtable layout
+    if (found.size() < 2)
+        return;
+
+    for (auto& provider : found)
+    {
+        auto entry = &provider.vtable[isSupportedIndex];
+        provider.o_IsSupported = reinterpret_cast<PFN_IsSupported>(*entry);
+
+        if (!PatchVtableEntry(entry, reinterpret_cast<void*>(&hkIsSupported)))
+        {
+            LOG_ERROR("Failed to patch the support check of {} in {:X}", modelProviders[provider.model].first,
+                      (uintptr_t) module);
+            continue;
+        }
+
+        LOG_INFO("Hooked the support check of {} in {:X}", modelProviders[provider.model].first, (uintptr_t) module);
+        patchedProviders.push_back(provider);
+    }
+}
+} // namespace
 
 void FSR4ModelSelection::Hook(HMODULE module, FSR4Source source, API api)
 {
@@ -365,47 +479,53 @@ void FSR4ModelSelection::Hook(HMODULE module, FSR4Source source, API api)
         return;
 
     HookCreateModel(module);
+    HookModelProviders(module, api);
+}
 
-    auto& o_amdInt8Check = api == API::DX12 ? o_amdInt8Check_Dx12 : o_amdInt8Check_Vk;
+bool FSR4ModelSelection::IsInt8FsrHookedDx12()
+{
+    auto forced = ForcedModel();
 
-    if (o_amdInt8Check || source != FSR4Source::DriverDll)
-        return;
+    if (forced == 0)
+        return false;
 
-    void** vtable = nullptr;
+    std::scoped_lock lock(hookMutex);
 
-    switch (Config::Instance()->Fsr4ForceEnableInt8.value_or_default())
+    return std::ranges::any_of(patchedProviders, [&](const PatchedProvider& patched)
+                               { return patched.api == API::DX12 && patched.model == forced; });
+}
+
+const char* FSR4ModelSelection::ActiveModel()
+{
+    std::scoped_lock lock(hookMutex);
+
+    // The providers are in the order FFX checks them, it stops at the first supported one
+    for (auto& patched : patchedProviders)
     {
-    case 1:
-        vtable = Util::FindVTableByRtti(module, ".?AVffxProvider_FSR4_Int8@@");
-        break;
-
-    case 2:
-        vtable = Util::FindVTableByRtti(module, ".?AVffxProvider_FSR4_Int8_Navi2@@");
-        break;
-
-    case 3:
-        vtable = Util::FindVTableByRtti(module, ".?AVffxProvider_FSR4Lite_Int8@@");
-        break;
-
-    default:
-        return;
+        if (patched.module == lastCheckedModule && patched.lastSupported)
+            return modelProviders[patched.model].first;
     }
 
-    // slot 2 of ffxProvider is IsSupported(void* device)
-    if (vtable == nullptr)
-        return;
+    return nullptr;
+}
 
-    o_amdInt8Check = (AmdInt8Check) vtable[2];
-    LOG_INFO("Found AmdInt8Check at {:X}", (size_t) o_amdInt8Check);
+std::vector<uint32_t> FSR4ModelSelection::SelectableModels()
+{
+    std::scoped_lock lock(hookMutex);
 
-    DetourTransactionBegin();
-    DetourUpdateThread(GetCurrentThread());
-    DetourAttach(&(PVOID&) o_amdInt8Check, hkAmdInt8Check);
+    std::vector<uint32_t> models;
 
-    auto detourResult = DetourTransactionCommit();
-    if (detourResult != NO_ERROR)
+    // FP8 is left to auto, FFX picks it wherever it runs
+    for (auto& patched : patchedProviders)
     {
-        LOG_ERROR("DetourTransactionCommit result: {:X}", detourResult);
-        o_amdInt8Check = nullptr;
+        if (patched.module == lastCheckedModule && patched.model > 0)
+            models.push_back((uint32_t) patched.model);
     }
+
+    return models;
+}
+
+const char* FSR4ModelSelection::ModelName(uint32_t model)
+{
+    return model < std::size(modelProviders) ? modelProviders[model].first : "Unknown";
 }

@@ -55,8 +55,6 @@ struct FfxModule
     PfnFfxDispatch Dispatch = nullptr;
 };
 
-using AmdInt8Check = uint8_t(__fastcall*)(void* a1, void* device);
-
 class FfxApiProxy
 {
   private:
@@ -79,13 +77,6 @@ class FfxApiProxy
     inline static ankerl::unordered_dense::map<ffxContext, FFXStructType> contextToType;
 
     inline static bool _skipDestroyCalls = false;
-
-    inline static AmdInt8Check o_amdInt8Check_Dx12 = nullptr;
-    inline static uint8_t hkAmdInt8Check(void* a1, void* device)
-    {
-        LOG_DEBUG("Called with a1: {:X}, device: {:X}", (uintptr_t) a1, (uintptr_t) device);
-        return 1;
-    }
 
     static inline void parse_version(const char* version_str, feature_version* _version)
     {
@@ -473,49 +464,6 @@ class FfxApiProxy
 
         if (!loadResult)
             upscaling_dx12.dll = nullptr;
-
-        AmdInt8Check o_amdInt8Check_Dx12 = nullptr;
-        auto forceInt8 = Config::Instance()->Fsr4ForceEnableInt8.value_or_default();
-        void** vtable = nullptr;
-
-        switch (forceInt8)
-        {
-        case 1:
-            vtable = Util::FindVTableByRtti(upscaling_dx12.dll, ".?AVffxProvider_FSR4_Int8@@");
-            break;
-
-        case 2:
-            vtable = Util::FindVTableByRtti(upscaling_dx12.dll, ".?AVffxProvider_FSR4_Int8_Navi2@@");
-            break;
-
-        case 3:
-            vtable = Util::FindVTableByRtti(upscaling_dx12.dll, ".?AVffxProvider_FSR4Lite_Int8@@");
-            break;
-
-        default:
-            break;
-        }
-
-        if (vtable != nullptr)
-            o_amdInt8Check_Dx12 = (AmdInt8Check) vtable[2];
-
-        if (o_amdInt8Check_Dx12 != nullptr)
-        {
-            LOG_INFO("Found AmdInt8Check at {:X}", (size_t) o_amdInt8Check_Dx12);
-
-            DetourTransactionBegin();
-            DetourUpdateThread(GetCurrentThread());
-
-            if (o_amdInt8Check_Dx12 != nullptr)
-                DetourAttach(&(PVOID&) o_amdInt8Check_Dx12, hkAmdInt8Check);
-
-            auto detourResult = DetourTransactionCommit();
-            if (detourResult != NO_ERROR)
-            {
-                LOG_ERROR("DetourTransactionCommit result: {:X}", detourResult);
-                o_amdInt8Check_Dx12 = nullptr;
-            }
-        }
 
         return loadResult;
     }
@@ -1786,49 +1734,6 @@ class FfxApiProxy
 
         if (!loadResult)
             upscaling_vk.dll = nullptr;
-
-        AmdInt8Check o_amdInt8Check_Dx12 = nullptr;
-        auto forceInt8 = Config::Instance()->Fsr4ForceEnableInt8.value_or_default();
-        void** vtable = nullptr;
-
-        switch (forceInt8)
-        {
-        case 1:
-            vtable = Util::FindVTableByRtti(upscaling_vk.dll, ".?AVffxProvider_FSR4_Int8@@");
-            break;
-
-        case 2:
-            vtable = Util::FindVTableByRtti(upscaling_vk.dll, ".?AVffxProvider_FSR4_Int8_Navi2@@");
-            break;
-
-        case 3:
-            vtable = Util::FindVTableByRtti(upscaling_vk.dll, ".?AVffxProvider_FSR4Lite_Int8@@");
-            break;
-
-        default:
-            break;
-        }
-
-        if (vtable != nullptr)
-            o_amdInt8Check_Dx12 = (AmdInt8Check) vtable[2];
-
-        if (o_amdInt8Check_Dx12 != nullptr)
-        {
-            LOG_INFO("Found AmdInt8Check at {:X}", (size_t) o_amdInt8Check_Dx12);
-
-            DetourTransactionBegin();
-            DetourUpdateThread(GetCurrentThread());
-
-            if (o_amdInt8Check_Dx12 != nullptr)
-                DetourAttach(&(PVOID&) o_amdInt8Check_Dx12, hkAmdInt8Check);
-
-            auto detourResult = DetourTransactionCommit();
-            if (detourResult != NO_ERROR)
-            {
-                LOG_ERROR("DetourTransactionCommit result: {:X}", detourResult);
-                o_amdInt8Check_Dx12 = nullptr;
-            }
-        }
         return loadResult;
     }
 

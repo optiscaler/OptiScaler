@@ -3353,8 +3353,8 @@ bool MenuCommon::RenderMenu()
                                                "PQ: Rarest, might increase ghosting and break lights.");
 
                                 // FSR 4 Presets
-                                const char* presets[] = { "Default",     "NativeAA", "Quality",      "Balanced",
-                                                          "Performance", "DRS",      "U.Performance" };
+                                const char* presets[] = { "Default",  "Preset 0", "Preset 1", "Preset 2",
+                                                          "Preset 3", "Preset 4", "Preset 5" };
                                 int currentPresetIdx =
                                     config->Fsr4Preset.has_value() ? config->Fsr4Preset.value() + 1 : 0;
 
@@ -3391,6 +3391,53 @@ bool MenuCommon::RenderMenu()
                                                        "(Potential FSR3 fallback)");
                                 else
                                     ImGui::TextDisabled("(Failed to hook)");
+
+                                // FSR 4 models of the module FFX checked last, only listed when it has INT8 ones
+                                if (auto models = FSR4ModelSelection::SelectableModels(); !models.empty())
+                                {
+                                    auto selected = config->Fsr4ForceEnableInt8.value_or_default();
+                                    auto selectedName = selected > 0 ? FSR4ModelSelection::ModelName(selected) : "Auto";
+                                    bool modelChanged = false;
+
+                                    ImGui::SetNextItemWidth(150.0f * menuResScale);
+                                    if (ImGui::BeginCombo("FSR4 Model", selectedName))
+                                    {
+                                        if (ImGui::Selectable("Auto", selected == 0) && selected != 0)
+                                        {
+                                            config->Fsr4ForceEnableInt8.reset();
+                                            modelChanged = true;
+                                        }
+
+                                        for (auto model : models)
+                                        {
+                                            if (ImGui::Selectable(FSR4ModelSelection::ModelName(model),
+                                                                  selected == model) &&
+                                                selected != model)
+                                            {
+                                                config->Fsr4ForceEnableInt8 = model;
+                                                modelChanged = true;
+                                            }
+                                        }
+
+                                        ImGui::EndCombo();
+                                    }
+
+                                    if (modelChanged)
+                                    {
+                                        state.newBackend = currentBackend;
+                                        MARK_ALL_BACKENDS_CHANGED();
+                                    }
+
+                                    ShowHelpMarker("FSR 4 network to run.\n"
+                                                   "Auto lets FFX pick the best one the GPU supports.");
+
+                                    ImGui::SameLine();
+                                    if (auto activeModel = FSR4ModelSelection::ActiveModel())
+                                        ImGui::TextDisabled("(Active: %s)", activeModel);
+                                    else
+                                        ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.8f, 0.f, 1.f)),
+                                                           "(Potential FSR3 fallback)");
+                                }
                             }
 
                             if (majorFsrVersion >= 3)
@@ -3436,6 +3483,9 @@ bool MenuCommon::RenderMenu()
                                         config->Fsr4EnableWatermark = fsr4wm;
 
                                         Util::SetFlagEnvVar(L"MLSR-WATERMARK", fsr4wm);
+
+                                        if (fsr4wm && !config->FpsOverlayPos.has_value())
+                                            config->FpsOverlayPos.set_volatile_value(1); // Top right
 
                                         // The driver reads the variable on context creation
                                         state.newBackend = currentBackend;
@@ -4197,6 +4247,9 @@ bool MenuCommon::RenderMenu()
                                 config->FSRFGEnableWatermark = fgwm;
 
                                 Util::SetFlagEnvVar(L"MLFI-WATERMARK", fgwm);
+
+                                if (fgwm && !config->FpsOverlayPos.has_value())
+                                    config->FpsOverlayPos.set_volatile_value(1); // Top right
 
                                 // The driver reads the variable on context creation, SCchanged also required
                                 if (config->FGEnabled.value_or_default())
