@@ -11,6 +11,7 @@
 #include "upscalers/FeatureProvider_Vk.h"
 
 #include <upscaler_time/UpscalerTime_Vk.h>
+#include <misc/DeferredRelease.h>
 
 #include <vulkan/vulkan.hpp>
 #include <ankerl/unordered_dense.h>
@@ -1020,6 +1021,9 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_EvaluateFeature(VkCommandBuffer 
     {
         return DLSSGMod::VULKAN_EvaluateFeature(InCmdList, InFeatureHandle, InParameters, InCallback);
     }
+
+    // Without hooked presents deferred objects of the upscalers still go after a fallback age
+    DeferredRelease::Collect();
 
     evalCounter++;
     if (Config::Instance()->SkipFirstFrames.has_value() && evalCounter < Config::Instance()->SkipFirstFrames.value())

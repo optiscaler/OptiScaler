@@ -7,6 +7,7 @@
 #include "precompile/da_rcas_sharpen_Shader.h"
 
 #include <Config.h>
+#include <misc/DeferredRelease.h>
 
 bool RCAS_Dx12::CreatePipelineState(ID3D12Device* InDevice, const void* InShaderData, size_t InShaderSize,
                                     ID3D12PipelineState** OutPipelineState)
@@ -151,9 +152,12 @@ bool RCAS_Dx12::DispatchRCAS(ID3D12Device* InDevice, ID3D12GraphicsCommandList* 
     InternalConstants constants {};
     FillMotionConstants(constants, InConstants);
 
+    // The GPU can still read the previous heaps' constants
+    auto constantBuffer = _constantBuffers[_counter];
+
     BYTE* pCBDataBegin;
     CD3DX12_RANGE readRange(0, 0);
-    auto result = _constantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pCBDataBegin));
+    auto result = constantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pCBDataBegin));
 
     if (result != S_OK)
     {
@@ -167,16 +171,16 @@ bool RCAS_Dx12::DispatchRCAS(ID3D12Device* InDevice, ID3D12GraphicsCommandList* 
 
     if (pCBDataBegin == nullptr)
     {
-        _constantBuffer->Unmap(0, nullptr);
+        constantBuffer->Unmap(0, nullptr);
         LOG_ERROR("[{0}] pCBDataBegin is null!", _name);
         return false;
     }
 
     memcpy(pCBDataBegin, &constants, sizeof(constants));
-    _constantBuffer->Unmap(0, nullptr);
+    constantBuffer->Unmap(0, nullptr);
 
     D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-    cbvDesc.BufferLocation = _constantBuffer->GetGPUVirtualAddress();
+    cbvDesc.BufferLocation = constantBuffer->GetGPUVirtualAddress();
     cbvDesc.SizeInBytes = sizeof(constants);
     InDevice->CreateConstantBufferView(&cbvDesc, currentHeap.GetCbvCPU(0));
 
@@ -236,9 +240,12 @@ bool RCAS_Dx12::DispatchDepthAdaptive(ID3D12Device* InDevice, ID3D12GraphicsComm
     InternalConstantsDA constants {};
     FillMotionConstants(constants, InConstants);
 
+    // The GPU can still read the previous heaps' constants
+    auto constantBuffer = _constantBuffers[_counter];
+
     BYTE* pCBDataBegin;
     CD3DX12_RANGE readRange(0, 0);
-    auto result = _constantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pCBDataBegin));
+    auto result = constantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pCBDataBegin));
 
     if (result != S_OK)
     {
@@ -252,16 +259,16 @@ bool RCAS_Dx12::DispatchDepthAdaptive(ID3D12Device* InDevice, ID3D12GraphicsComm
 
     if (pCBDataBegin == nullptr)
     {
-        _constantBuffer->Unmap(0, nullptr);
+        constantBuffer->Unmap(0, nullptr);
         LOG_ERROR("[{0}] pCBDataBegin is null!", _name);
         return false;
     }
 
     memcpy(pCBDataBegin, &constants, sizeof(constants));
-    _constantBuffer->Unmap(0, nullptr);
+    constantBuffer->Unmap(0, nullptr);
 
     D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-    cbvDesc.BufferLocation = _constantBuffer->GetGPUVirtualAddress();
+    cbvDesc.BufferLocation = constantBuffer->GetGPUVirtualAddress();
     cbvDesc.SizeInBytes = sizeof(constants);
     InDevice->CreateConstantBufferView(&cbvDesc, currentHeap.GetCbvCPU(0));
 
@@ -321,9 +328,12 @@ bool RCAS_Dx12::DispatchDASDepthAdaptive(ID3D12Device* InDevice, ID3D12GraphicsC
     InternalConstantsDA constants {};
     FillMotionConstants(constants, InConstants);
 
+    // The GPU can still read the previous heaps' constants
+    auto constantBuffer = _constantBuffers[_counter];
+
     BYTE* pCBDataBegin;
     CD3DX12_RANGE readRange(0, 0);
-    auto result = _constantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pCBDataBegin));
+    auto result = constantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pCBDataBegin));
 
     if (result != S_OK)
     {
@@ -337,16 +347,16 @@ bool RCAS_Dx12::DispatchDASDepthAdaptive(ID3D12Device* InDevice, ID3D12GraphicsC
 
     if (pCBDataBegin == nullptr)
     {
-        _constantBuffer->Unmap(0, nullptr);
+        constantBuffer->Unmap(0, nullptr);
         LOG_ERROR("[{0}] pCBDataBegin is null!", _name);
         return false;
     }
 
     memcpy(pCBDataBegin, &constants, sizeof(constants));
-    _constantBuffer->Unmap(0, nullptr);
+    constantBuffer->Unmap(0, nullptr);
 
     D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-    cbvDesc.BufferLocation = _constantBuffer->GetGPUVirtualAddress();
+    cbvDesc.BufferLocation = constantBuffer->GetGPUVirtualAddress();
     cbvDesc.SizeInBytes = sizeof(constants);
     InDevice->CreateConstantBufferView(&cbvDesc, currentHeap.GetCbvCPU(0));
 
@@ -443,14 +453,17 @@ RCAS_Dx12::RCAS_Dx12(std::string InName, ID3D12Device* InDevice) : Shader_Dx12(I
     D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(InternalConstantsDA));
     auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 
-    auto result =
-        InDevice->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ,
-                                          nullptr, IID_PPV_ARGS(&_constantBuffer));
-
-    if (result != S_OK)
+    for (int i = 0; i < RCAS_NUM_OF_HEAPS; i++)
     {
-        LOG_ERROR("[{0}] CreateCommittedResource error {1:x}", _name, (unsigned int) result);
-        return;
+        auto result = InDevice->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
+                                                        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                                                        IID_PPV_ARGS(&_constantBuffers[i]));
+
+        if (result != S_OK)
+        {
+            LOG_ERROR("[{0}] CreateCommittedResource error {1:x}", _name, (unsigned int) result);
+            return;
+        }
     }
 
     ID3DBlob* errorBlob;
@@ -554,44 +567,17 @@ RCAS_Dx12::~RCAS_Dx12()
     if (!_init || State::Instance().isShuttingDown)
         return;
 
-    if (_rootSignature != nullptr)
-    {
-        _rootSignature->Release();
-        _rootSignature = nullptr;
-    }
-
-    if (_pipelineState != nullptr)
-    {
-        _pipelineState->Release();
-        _pipelineState = nullptr;
-    }
-
-    if (_pipelineStateDA != nullptr)
-    {
-        _pipelineStateDA->Release();
-        _pipelineStateDA = nullptr;
-    }
-
-    if (_pipelineStateLCDA != nullptr)
-    {
-        _pipelineStateLCDA->Release();
-        _pipelineStateLCDA = nullptr;
-    }
+    // Command lists in flight can still reference these
+    DeferredRelease::Release(_rootSignature);
+    DeferredRelease::Release(_pipelineState);
+    DeferredRelease::Release(_pipelineStateDA);
+    DeferredRelease::Release(_pipelineStateLCDA);
 
     for (int i = 0; i < RCAS_NUM_OF_HEAPS; i++)
     {
         _frameHeaps[i].ReleaseHeaps();
+        DeferredRelease::Release(_constantBuffers[i]);
     }
 
-    if (_buffer != nullptr)
-    {
-        _buffer->Release();
-        _buffer = nullptr;
-    }
-
-    if (_constantBuffer != nullptr)
-    {
-        _constantBuffer->Release();
-        _constantBuffer = nullptr;
-    }
+    DeferredRelease::Release(_buffer);
 }

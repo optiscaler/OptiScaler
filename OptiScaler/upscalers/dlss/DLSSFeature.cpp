@@ -6,38 +6,32 @@
 
 void DLSSFeature::ProcessEvaluateParams(NVSDK_NGX_Parameter* InParameters)
 {
-    // Before the game's sharpness is cleared below
     _sharpness = GetSharpness(InParameters);
 
     LOG_FUNC();
 
-    // override sharpness
+    // override sharpness, Evaluate restores the game's value and zeroes it only when RCAS runs
     if (Config::Instance()->OverrideSharpness.value_or_default() && !Config::Instance()->RcasEnabled.value_or_default())
     {
         auto sharpness = Config::Instance()->Sharpness.value_or_default();
         sharpness = std::min(sharpness, 1.0f);
         InParameters->Set(NVSDK_NGX_Parameter_Sharpness, sharpness);
     }
-    // rcas enabled
+
+    UINT hwDepth = 10;
+    if (InParameters->Get("DLSS.Use.HW.Depth", &hwDepth) == NVSDK_NGX_Result_Success)
+    {
+        LOG_DEBUG("DLSS.Use.HW.Depth: {}", hwDepth);
+
+        if (hwDepth == 0)
+            Config::Instance()->DADepthIsLinear.set_volatile_value(true);
+        else
+            Config::Instance()->DADepthIsLinear.set_volatile_value(false);
+    }
     else
     {
-        InParameters->Set(NVSDK_NGX_Parameter_Sharpness, 0.0f);
-
-        UINT hwDepth = 10;
-        if (InParameters->Get("DLSS.Use.HW.Depth", &hwDepth) == NVSDK_NGX_Result_Success)
-        {
-            LOG_DEBUG("DLSS.Use.HW.Depth: {}", hwDepth);
-
-            if (hwDepth == 0)
-                Config::Instance()->DADepthIsLinear.set_volatile_value(true);
-            else
-                Config::Instance()->DADepthIsLinear.set_volatile_value(false);
-        }
-        else
-        {
-            if (Config::Instance()->DADepthIsLinear.value_for_config_ignore_default() == std::nullopt)
-                Config::Instance()->DADepthIsLinear.set_volatile_value(false);
-        }
+        if (Config::Instance()->DADepthIsLinear.value_for_config_ignore_default() == std::nullopt)
+            Config::Instance()->DADepthIsLinear.set_volatile_value(false);
     }
 
     // Read render resolution

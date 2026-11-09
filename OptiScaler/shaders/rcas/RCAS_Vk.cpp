@@ -7,6 +7,7 @@
 #include "precompile/da_rcas_sharpen_Shader_Vk.h"
 
 #include <Config.h>
+#include <misc/DeferredRelease.h>
 
 RCAS_Vk::RCAS_Vk(std::string InName, VkDevice InDevice, VkPhysicalDevice InPhysicalDevice)
     : Shader_Vk(InName, InDevice, InPhysicalDevice)
@@ -70,115 +71,63 @@ RCAS_Vk::RCAS_Vk(std::string InName, VkDevice InDevice, VkPhysicalDevice InPhysi
 
 RCAS_Vk::~RCAS_Vk()
 {
-    if (_pipelineDA != VK_NULL_HANDLE)
-    {
-        vkDestroyPipeline(_device, _pipelineDA, nullptr);
-        _pipelineDA = VK_NULL_HANDLE;
-    }
-
-    if (_pipelineDASDA != VK_NULL_HANDLE)
-    {
-        vkDestroyPipeline(_device, _pipelineDASDA, nullptr);
-        _pipelineDASDA = VK_NULL_HANDLE;
-    }
-
-    if (_descriptorPoolDA != VK_NULL_HANDLE)
-    {
-        vkDestroyDescriptorPool(_device, _descriptorPoolDA, nullptr);
-        _descriptorPoolDA = VK_NULL_HANDLE;
-    }
-
-    if (_descriptorPoolLCDA != VK_NULL_HANDLE)
-    {
-        vkDestroyDescriptorPool(_device, _descriptorPoolLCDA, nullptr);
-        _descriptorPoolLCDA = VK_NULL_HANDLE;
-    }
-
-    if (_descriptorPool != VK_NULL_HANDLE)
-    {
-        vkDestroyDescriptorPool(_device, _descriptorPool, nullptr);
-        _descriptorPool = VK_NULL_HANDLE;
-    }
-
-    if (_descriptorSetLayoutDA != VK_NULL_HANDLE)
-    {
-        vkDestroyDescriptorSetLayout(_device, _descriptorSetLayoutDA, nullptr);
-        _descriptorSetLayoutDA = VK_NULL_HANDLE;
-    }
-
-    if (_descriptorSetLayoutLCDA != VK_NULL_HANDLE)
-    {
-        vkDestroyDescriptorSetLayout(_device, _descriptorSetLayoutLCDA, nullptr);
-        _descriptorSetLayoutLCDA = VK_NULL_HANDLE;
-    }
-
-    if (_descriptorSetLayout != VK_NULL_HANDLE)
-    {
-        vkDestroyDescriptorSetLayout(_device, _descriptorSetLayout, nullptr);
-        _descriptorSetLayout = VK_NULL_HANDLE;
-    }
-
-    if (_pipelineLayoutDA != VK_NULL_HANDLE)
-    {
-        vkDestroyPipelineLayout(_device, _pipelineLayoutDA, nullptr);
-        _pipelineLayoutDA = VK_NULL_HANDLE;
-    }
-
-    if (_pipelineLayoutDASDA != VK_NULL_HANDLE)
-    {
-        vkDestroyPipelineLayout(_device, _pipelineLayoutDASDA, nullptr);
-        _pipelineLayoutDASDA = VK_NULL_HANDLE;
-    }
-
-    if (_pipelineLayout != VK_NULL_HANDLE)
-    {
-        vkDestroyPipelineLayout(_device, _pipelineLayout, nullptr);
-        _pipelineLayout = VK_NULL_HANDLE;
-    }
-
-    if (_constantBuffer != VK_NULL_HANDLE)
-    {
-        vkDestroyBuffer(_device, _constantBuffer, nullptr);
-        _constantBuffer = VK_NULL_HANDLE;
-    }
-
-    if (_constantBufferDA != VK_NULL_HANDLE)
-    {
-        vkDestroyBuffer(_device, _constantBufferDA, nullptr);
-        _constantBufferDA = VK_NULL_HANDLE;
-    }
-
-    if (_constantBufferLCDA != VK_NULL_HANDLE)
-    {
-        vkDestroyBuffer(_device, _constantBufferLCDA, nullptr);
-        _constantBufferLCDA = VK_NULL_HANDLE;
-    }
-
-    if (_constantBufferMemory != VK_NULL_HANDLE)
-    {
-        vkFreeMemory(_device, _constantBufferMemory, nullptr);
-        _constantBufferMemory = VK_NULL_HANDLE;
-    }
-
-    if (_constantBufferMemoryDA != VK_NULL_HANDLE)
-    {
-        vkFreeMemory(_device, _constantBufferMemoryDA, nullptr);
-        _constantBufferMemoryDA = VK_NULL_HANDLE;
-    }
-
-    if (_constantBufferMemoryLCDA != VK_NULL_HANDLE)
-    {
-        vkFreeMemory(_device, _constantBufferMemoryLCDA, nullptr);
-        _constantBufferMemoryLCDA = VK_NULL_HANDLE;
-    }
-
-    if (_nearestSampler != VK_NULL_HANDLE)
-    {
-        vkDestroySampler(_device, _nearestSampler, nullptr);
-        _nearestSampler = VK_NULL_HANDLE;
-    }
-
     ReleaseImageResource();
+
+    // Command buffers in flight can still reference these
+    DeferredRelease::Enqueue(
+        [device = _device, pipeline = _pipeline, pipelineDA = _pipelineDA, pipelineDASDA = _pipelineDASDA,
+         descriptorPool = _descriptorPool, descriptorPoolDA = _descriptorPoolDA,
+         descriptorPoolLCDA = _descriptorPoolLCDA, descriptorSetLayout = _descriptorSetLayout,
+         descriptorSetLayoutDA = _descriptorSetLayoutDA, descriptorSetLayoutLCDA = _descriptorSetLayoutLCDA,
+         pipelineLayout = _pipelineLayout, pipelineLayoutDA = _pipelineLayoutDA,
+         pipelineLayoutDASDA = _pipelineLayoutDASDA, constantBuffer = _constantBuffer,
+         constantBufferDA = _constantBufferDA, constantBufferLCDA = _constantBufferLCDA,
+         constantBufferMemory = _constantBufferMemory, constantBufferMemoryDA = _constantBufferMemoryDA,
+         constantBufferMemoryLCDA = _constantBufferMemoryLCDA, nearestSampler = _nearestSampler]()
+        {
+            for (auto p : { pipeline, pipelineDA, pipelineDASDA })
+            {
+                if (p != VK_NULL_HANDLE)
+                    vkDestroyPipeline(device, p, nullptr);
+            }
+
+            for (auto p : { descriptorPool, descriptorPoolDA, descriptorPoolLCDA })
+            {
+                if (p != VK_NULL_HANDLE)
+                    vkDestroyDescriptorPool(device, p, nullptr);
+            }
+
+            for (auto l : { descriptorSetLayout, descriptorSetLayoutDA, descriptorSetLayoutLCDA })
+            {
+                if (l != VK_NULL_HANDLE)
+                    vkDestroyDescriptorSetLayout(device, l, nullptr);
+            }
+
+            for (auto l : { pipelineLayout, pipelineLayoutDA, pipelineLayoutDASDA })
+            {
+                if (l != VK_NULL_HANDLE)
+                    vkDestroyPipelineLayout(device, l, nullptr);
+            }
+
+            for (auto b : { constantBuffer, constantBufferDA, constantBufferLCDA })
+            {
+                if (b != VK_NULL_HANDLE)
+                    vkDestroyBuffer(device, b, nullptr);
+            }
+
+            for (auto m : { constantBufferMemory, constantBufferMemoryDA, constantBufferMemoryLCDA })
+            {
+                if (m != VK_NULL_HANDLE)
+                    vkFreeMemory(device, m, nullptr);
+            }
+
+            if (nearestSampler != VK_NULL_HANDLE)
+                vkDestroySampler(device, nearestSampler, nullptr);
+        },
+        (uint64_t) _device);
+
+    // Released above, the base destructor would destroy it right away
+    _pipeline = VK_NULL_HANDLE;
 }
 
 void RCAS_Vk::CreateDescriptorSetLayout()
@@ -471,7 +420,7 @@ void RCAS_Vk::UpdateDescriptorSet(VkCommandBuffer cmdList, int setIndex, VkImage
     // 0: UBO
     VkDescriptorBufferInfo bufferInfo {};
     bufferInfo.buffer = _constantBuffer;
-    bufferInfo.offset = 0;
+    bufferInfo.offset = sizeof(InternalConstants) * setIndex;
     bufferInfo.range = sizeof(InternalConstants);
 
     VkWriteDescriptorSet descriptorWriteUBO {};
@@ -547,7 +496,7 @@ void RCAS_Vk::UpdateDescriptorSetDA(VkCommandBuffer cmdList, int setIndex, VkIma
 
     VkDescriptorBufferInfo bufferInfo {};
     bufferInfo.buffer = _constantBufferDA;
-    bufferInfo.offset = 0;
+    bufferInfo.offset = sizeof(InternalConstantsDA) * setIndex;
     bufferInfo.range = sizeof(InternalConstantsDA);
 
     VkWriteDescriptorSet descriptorWriteUBO {};
@@ -635,7 +584,7 @@ void RCAS_Vk::UpdateDescriptorSetLCDA(VkCommandBuffer cmdList, int setIndex, VkI
 
     VkDescriptorBufferInfo bufferInfo {};
     bufferInfo.buffer = _constantBufferLCDA;
-    bufferInfo.offset = 0;
+    bufferInfo.offset = sizeof(InternalConstantsDA) * setIndex;
     bufferInfo.range = sizeof(InternalConstantsDA);
 
     VkWriteDescriptorSet descriptorWriteUBO {};
@@ -801,12 +750,13 @@ bool RCAS_Vk::DispatchRCAS(VkDevice InDevice, VkCommandBuffer InCmdList, RcasCon
     InternalConstants constants {};
     FillMotionConstants(constants, InConstants);
 
-    if (_mappedConstantBuffer)
-    {
-        memcpy(_mappedConstantBuffer, &constants, sizeof(InternalConstants));
-    }
-
+    // Each set has its own constants slot, the GPU can still read the previous ones
     _currentSetIndex = (_currentSetIndex + 1) % MAX_FRAMES_IN_FLIGHT;
+
+    if (_mappedConstantBuffer)
+        memcpy((uint8_t*) _mappedConstantBuffer + sizeof(InternalConstants) * _currentSetIndex, &constants,
+               sizeof(InternalConstants));
+
     UpdateDescriptorSet(InCmdList, _currentSetIndex, InResourceView, InMotionVectorsView, OutResourceView);
 
     vkCmdBindPipeline(InCmdList, VK_PIPELINE_BIND_POINT_COMPUTE, _pipeline);
@@ -833,12 +783,13 @@ bool RCAS_Vk::DispatchDepthAdaptive(VkDevice InDevice, VkCommandBuffer InCmdList
     InternalConstantsDA constants {};
     FillMotionConstants(constants, InConstants);
 
-    if (_mappedConstantBufferDA)
-    {
-        memcpy(_mappedConstantBufferDA, &constants, sizeof(InternalConstantsDA));
-    }
-
+    // Each set has its own constants slot, the GPU can still read the previous ones
     _currentSetIndex = (_currentSetIndex + 1) % MAX_FRAMES_IN_FLIGHT;
+
+    if (_mappedConstantBufferDA)
+        memcpy((uint8_t*) _mappedConstantBufferDA + sizeof(InternalConstantsDA) * _currentSetIndex, &constants,
+               sizeof(InternalConstantsDA));
+
     UpdateDescriptorSetDA(InCmdList, _currentSetIndex, InResourceView, InMotionVectorsView, InDepthView,
                           OutResourceView);
 
@@ -866,12 +817,13 @@ bool RCAS_Vk::DispatchDASDepthAdaptive(VkDevice InDevice, VkCommandBuffer InCmdL
     InternalConstantsDA constants {};
     FillMotionConstants(constants, InConstants);
 
-    if (_mappedConstantBufferLCDA)
-    {
-        memcpy(_mappedConstantBufferLCDA, &constants, sizeof(InternalConstantsDA));
-    }
-
+    // Each set has its own constants slot, the GPU can still read the previous ones
     _currentSetIndex = (_currentSetIndex + 1) % MAX_FRAMES_IN_FLIGHT;
+
+    if (_mappedConstantBufferLCDA)
+        memcpy((uint8_t*) _mappedConstantBufferLCDA + sizeof(InternalConstantsDA) * _currentSetIndex, &constants,
+               sizeof(InternalConstantsDA));
+
     UpdateDescriptorSetLCDA(InCmdList, _currentSetIndex, InResourceView, InMotionVectorsView, InDepthView,
                             OutResourceView);
 
@@ -1015,23 +967,28 @@ bool RCAS_Vk::CreateImageResource(VkDevice device, VkPhysicalDevice physicalDevi
 
 void RCAS_Vk::ReleaseImageResource()
 {
-    if (_intermediateImageView != VK_NULL_HANDLE)
-    {
-        vkDestroyImageView(_device, _intermediateImageView, nullptr);
-        _intermediateImageView = VK_NULL_HANDLE;
-    }
+    if (_intermediateImageView == VK_NULL_HANDLE && _intermediateImage == VK_NULL_HANDLE &&
+        _intermediateMemory == VK_NULL_HANDLE)
+        return;
 
-    if (_intermediateImage != VK_NULL_HANDLE)
-    {
-        vkDestroyImage(_device, _intermediateImage, nullptr);
-        _intermediateImage = VK_NULL_HANDLE;
-    }
+    // The previous frames can still be using them
+    DeferredRelease::Enqueue(
+        [device = _device, view = _intermediateImageView, image = _intermediateImage, memory = _intermediateMemory]()
+        {
+            if (view != VK_NULL_HANDLE)
+                vkDestroyImageView(device, view, nullptr);
 
-    if (_intermediateMemory != VK_NULL_HANDLE)
-    {
-        vkFreeMemory(_device, _intermediateMemory, nullptr);
-        _intermediateMemory = VK_NULL_HANDLE;
-    }
+            if (image != VK_NULL_HANDLE)
+                vkDestroyImage(device, image, nullptr);
+
+            if (memory != VK_NULL_HANDLE)
+                vkFreeMemory(device, memory, nullptr);
+        },
+        (uint64_t) _device);
+
+    _intermediateImageView = VK_NULL_HANDLE;
+    _intermediateImage = VK_NULL_HANDLE;
+    _intermediateMemory = VK_NULL_HANDLE;
 }
 
 void RCAS_Vk::SetImageLayout(VkCommandBuffer cmdBuffer, VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout,
@@ -1053,11 +1010,9 @@ void RCAS_Vk::SetImageLayout(VkCommandBuffer cmdBuffer, VkImage image, VkImageLa
     VkPipelineStageFlags sourceStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
     VkPipelineStageFlags destinationStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 
+    // Discarded contents can still be read by earlier commands, the transition waits for them
     if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED)
-    {
         barrier.srcAccessMask = 0;
-        sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    }
     else if (oldLayout == VK_IMAGE_LAYOUT_GENERAL)
     {
         barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -1080,7 +1035,8 @@ void RCAS_Vk::SetImageLayout(VkCommandBuffer cmdBuffer, VkImage image, VkImageLa
 
 void RCAS_Vk::CreateConstantBuffer()
 {
-    VkDeviceSize bufferSize = sizeof(InternalConstants);
+    // alignas(256) covers minUniformBufferOffsetAlignment, the spec caps it at 256
+    VkDeviceSize bufferSize = sizeof(InternalConstants) * MAX_FRAMES_IN_FLIGHT;
 
     // Create buffer using Shader_Vk helper
     if (!Shader_Vk::CreateBufferResource(_device, _physicalDevice, &_constantBuffer, &_constantBufferMemory, bufferSize,
@@ -1096,7 +1052,8 @@ void RCAS_Vk::CreateConstantBuffer()
 
 void RCAS_Vk::CreateConstantBufferDA()
 {
-    VkDeviceSize bufferSize = sizeof(InternalConstantsDA);
+    // alignas(256) covers minUniformBufferOffsetAlignment, the spec caps it at 256
+    VkDeviceSize bufferSize = sizeof(InternalConstantsDA) * MAX_FRAMES_IN_FLIGHT;
 
     if (!Shader_Vk::CreateBufferResource(_device, _physicalDevice, &_constantBufferDA, &_constantBufferMemoryDA,
                                          bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
@@ -1111,7 +1068,8 @@ void RCAS_Vk::CreateConstantBufferDA()
 
 void RCAS_Vk::CreateConstantBufferDASDA()
 {
-    VkDeviceSize bufferSize = sizeof(InternalConstantsDA);
+    // alignas(256) covers minUniformBufferOffsetAlignment, the spec caps it at 256
+    VkDeviceSize bufferSize = sizeof(InternalConstantsDA) * MAX_FRAMES_IN_FLIGHT;
 
     if (!Shader_Vk::CreateBufferResource(_device, _physicalDevice, &_constantBufferLCDA, &_constantBufferMemoryLCDA,
                                          bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,

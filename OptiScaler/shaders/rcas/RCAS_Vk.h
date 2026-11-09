@@ -108,7 +108,8 @@ class RCAS_Vk : public Shader_Vk
     std::vector<VkDescriptorSet> _descriptorSetsDA;
     std::vector<VkDescriptorSet> _descriptorSetsLCDA;
     uint32_t _currentSetIndex = 0;
-    static const int MAX_FRAMES_IN_FLIGHT = 3;
+    // Sets and constants slots are reused in turn, presents limit how far the GPU lags behind
+    static const int MAX_FRAMES_IN_FLIGHT = 8;
 
     void CreateDescriptorSetLayout();
     void CreateDescriptorSetLayoutDA();

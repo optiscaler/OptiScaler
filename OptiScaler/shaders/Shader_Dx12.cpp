@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "Shader_Dx12.h"
 #include <d3dx/d3dx12.h>
+#include <misc/DeferredRelease.h>
 
 Shader_Dx12::Shader_Dx12(std::string InName, ID3D12Device* InDevice) : _name(InName), _device(InDevice) {}
 
@@ -18,7 +19,7 @@ DXGI_FORMAT Shader_Dx12::TranslateTypelessFormats(DXGI_FORMAT format)
         return DXGI_FORMAT_R16G16B16A16_FLOAT;
 
     case DXGI_FORMAT_R10G10B10A2_TYPELESS:
-        return DXGI_FORMAT_R10G10B10A2_UINT;
+        return DXGI_FORMAT_R10G10B10A2_UNORM;
 
     case DXGI_FORMAT_R8G8B8A8_TYPELESS:
         return DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -45,6 +46,7 @@ DXGI_FORMAT Shader_Dx12::TranslateTypelessFormats(DXGI_FORMAT format)
     case DXGI_FORMAT_D32_FLOAT:
         return DXGI_FORMAT_R32_FLOAT;
 
+    case DXGI_FORMAT_R16_TYPELESS:
     case DXGI_FORMAT_D16_UNORM:
         return DXGI_FORMAT_R16_UNORM;
 
@@ -102,8 +104,8 @@ bool Shader_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* I
 
         if (bufDesc.Width != inDesc.Width || bufDesc.Height != inDesc.Height || bufDesc.Format != inDesc.Format)
         {
-            (*OutResource)->Release();
-            (*OutResource) = nullptr;
+            // Previous frames can still be using it
+            DeferredRelease::Release(*OutResource);
             LOG_WARN("Release {}x{}, new one: {}x{}", bufDesc.Width, bufDesc.Height, inDesc.Width, inDesc.Height);
         }
         else

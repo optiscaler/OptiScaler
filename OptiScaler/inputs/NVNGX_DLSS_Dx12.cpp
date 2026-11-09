@@ -14,6 +14,7 @@
 #include "FG/Upscaler_Inputs_Dx12.h"
 
 #include <upscaler_time/UpscalerTime_Dx12.h>
+#include <misc/DeferredRelease.h>
 
 #include <hooks/D3D12_Hooks.h>
 
@@ -884,6 +885,9 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
     }
 
     State::Instance().setInputApiName.clear();
+
+    // Without hooked presents deferred objects of the upscalers still go after a fallback age
+    DeferredRelease::Collect();
 
     evalCounter++;
     if (Config::Instance()->SkipFirstFrames.has_value() && evalCounter < Config::Instance()->SkipFirstFrames.value())

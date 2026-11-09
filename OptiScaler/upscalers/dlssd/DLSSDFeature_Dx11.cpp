@@ -149,6 +149,11 @@ bool DLSSDFeatureDx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_
         ID3D11RenderTargetView* nullRTVs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
         InDeviceContext->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, nullRTVs, nullptr);
 
+        // ProcessEvaluateParams and RCAS change the game's sharpness, restored after the evaluate
+        float gameSharpness = 0.0f;
+        const bool hasGameSharpness =
+            InParameters->Get(NVSDK_NGX_Parameter_Sharpness, &gameSharpness) == NVSDK_NGX_Result_Success;
+
         ProcessEvaluateParams(InParameters);
 
         ID3D11Resource* paramOutput = nullptr;
@@ -194,6 +199,9 @@ bool DLSSDFeatureDx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_
 
         // set original output texture back
         InParameters->Set(NVSDK_NGX_Parameter_Output, paramOutput);
+
+        if (hasGameSharpness)
+            InParameters->Set(NVSDK_NGX_Parameter_Sharpness, gameSharpness);
 
         if (nvResult != NVSDK_NGX_Result_Success)
         {

@@ -5518,11 +5518,10 @@ bool MenuCommon::RenderMenu()
                             ImGui::BeginDisabled(!config->ContrastEnabled.value_or_default());
 
                             float contrast = config->Contrast.value_or_default();
-                            if (ImGui::SliderFloat("Contrast", &contrast, -2.0f, 2.0f, "%.2f"))
+                            if (ImGui::SliderFloat("Contrast", &contrast, 0.0f, 2.0f, "%.2f"))
                                 config->Contrast = contrast;
 
-                            ShowHelpMarker("Positive values decrease sharpness at high contrast areas.\n"
-                                           "Negative values increase sharpness at high contrast areas.");
+                            ShowHelpMarker("Lowers sharpness at high contrast areas.");
 
                             ImGui::EndDisabled();
                         }

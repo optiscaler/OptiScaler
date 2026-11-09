@@ -6,7 +6,7 @@
 #include <shaders/Shader_Dx12Utils.h>
 #include <shaders/Shader_Dx12.h>
 
-#define RCAS_NUM_OF_HEAPS 2
+#define RCAS_NUM_OF_HEAPS 3
 
 class RCAS_Dx12 : public Shader_Dx12
 {
@@ -75,6 +75,7 @@ class RCAS_Dx12 : public Shader_Dx12
     };
 
     FrameDescriptorHeap _frameHeaps[RCAS_NUM_OF_HEAPS];
+    ID3D12Resource* _constantBuffers[RCAS_NUM_OF_HEAPS] {};
 
     ID3D12Resource* _buffer = nullptr;
     D3D12_RESOURCE_STATES _bufferState = D3D12_RESOURCE_STATE_COMMON;

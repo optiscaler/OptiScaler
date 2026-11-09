@@ -117,6 +117,11 @@ bool DLSSDFeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_
 
     if (NVNGXProxy::D3D12_EvaluateFeature() != nullptr)
     {
+        // ProcessEvaluateParams and RCAS change the game's sharpness, restored after the evaluate
+        float gameSharpness = 0.0f;
+        const bool hasGameSharpness =
+            InParameters->Get(NVSDK_NGX_Parameter_Sharpness, &gameSharpness) == NVSDK_NGX_Result_Success;
+
         ProcessEvaluateParams(InParameters);
 
         ID3D12Resource* paramOutput = nullptr;
@@ -177,6 +182,9 @@ bool DLSSDFeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_
 
         // set original output texture back
         InParameters->Set(NVSDK_NGX_Parameter_Output, paramOutput);
+
+        if (hasGameSharpness)
+            InParameters->Set(NVSDK_NGX_Parameter_Sharpness, gameSharpness);
 
         if (nvResult != NVSDK_NGX_Result_Success)
         {

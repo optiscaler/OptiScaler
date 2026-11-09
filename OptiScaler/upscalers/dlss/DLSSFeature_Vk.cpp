@@ -103,6 +103,11 @@ bool DLSSFeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* I
 
     if (NVNGXProxy::VULKAN_EvaluateFeature() != nullptr)
     {
+        // ProcessEvaluateParams and RCAS change the game's sharpness, restored after the evaluate
+        float gameSharpness = 0.0f;
+        const bool hasGameSharpness =
+            InParameters->Get(NVSDK_NGX_Parameter_Sharpness, &gameSharpness) == NVSDK_NGX_Result_Success;
+
         ProcessEvaluateParams(InParameters);
 
         NVSDK_NGX_Resource_VK* paramOutput = nullptr;
@@ -134,7 +139,6 @@ bool DLSSFeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* I
 
         if (rcasEnabled)
         {
-            InParameters->Set(NVSDK_NGX_Parameter_Sharpness, 0.0f);
             VkImage oldImage = RCAS->GetImage();
 
             if (RCAS->CreateImageResource(
@@ -142,6 +146,9 @@ bool DLSSFeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* I
                     paramOutput->Resource.ImageViewInfo.Height, paramOutput->Resource.ImageViewInfo.Format,
                     VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT))
             {
+                // Disable DLSS sharpness
+                InParameters->Set(NVSDK_NGX_Parameter_Sharpness, 0.0f);
+
                 VkImageLayout oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
                 if (oldImage != VK_NULL_HANDLE && oldImage == paramOutput->Resource.ImageViewInfo.Image)
                     oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -203,6 +210,9 @@ bool DLSSFeatureVk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* I
             paramOutput->Resource.ImageViewInfo.Image = finalOutputImage;
             paramOutput->Resource.ImageViewInfo.ImageView = finalOutputView;
         }
+
+        if (hasGameSharpness)
+            InParameters->Set(NVSDK_NGX_Parameter_Sharpness, gameSharpness);
 
         if (nvResult != NVSDK_NGX_Result_Success)
         {
