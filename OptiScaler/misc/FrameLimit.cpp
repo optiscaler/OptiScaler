@@ -4,6 +4,7 @@
 #include "Config.h"
 #include "State.h"
 #include <framegen/IFGFeature.h>
+#include <framegen/dlssg/DLSSG_NvngxDynamic.h>
 // #include "hooks/D3D11Hooks.h"
 
 // https://learn.microsoft.com/en-us/windows/win32/sync/using-waitable-timer-objects
@@ -69,6 +70,13 @@ float FrameLimit::targetFps()
         return state.xefgDynamicCapFps;
     }
 
+    // The same for the game's own DLSSG through the custom nvngx replacement, there is no FG object for it
+    if (const float nvngxCap = DlssgNvngxDynamic::CapFps();
+        nvngxCap > 0.0f && (fpsLimit <= 0.0f || nvngxCap < fpsLimit))
+    {
+        return nvngxCap;
+    }
+
     return fpsLimit;
 }
 
@@ -102,7 +110,9 @@ void FrameLimit::sleep(bool fgActive)
             }
 
             // Dynamic MFG's cap counts it as time the game could have used
-            State::Instance().lastFrameLimitSleepMs = (Util::GetTimestamp() - current_time) / 1'000'000.0;
+            const double sleptMs = (Util::GetTimestamp() - current_time) / 1'000'000.0;
+            State::Instance().lastFrameLimitSleepMs = sleptMs;
+            DlssgNvngxDynamic::AddLimiterSleep(sleptMs);
         }
         previous_frame_time = Util::GetTimestamp();
     }
