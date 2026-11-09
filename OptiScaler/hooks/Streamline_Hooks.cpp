@@ -518,6 +518,9 @@ sl::Result StreamlineHooks::hkslSetTag(const sl::ViewportHandle& viewport, const
     {
         const auto typeEnum = (BufferType) tags[i].type;
 
+        if (State::Instance().activeFgInput == FGInput::DLSSG)
+            State::Instance().slFGInputs.reportTagState(tags[i]);
+
         if (tags[i].resource == nullptr || tags[i].resource->native == nullptr)
         {
             LOG_TRACE("Resource of type: {} is null, continuing", magic_enum::enum_name(typeEnum));
@@ -606,6 +609,9 @@ sl::Result StreamlineHooks::hkslSetTagForFrame(const sl::FrameToken& frame, cons
     for (uint32_t i = 0; i < numResources; i++)
     {
         const auto typeEnum = (BufferType) resources[i].type;
+
+        if (State::Instance().activeFgInput == FGInput::DLSSG)
+            State::Instance().slFGInputs.reportTagState(resources[i]);
 
         if (resources[i].resource == nullptr || resources[i].resource->native == nullptr)
         {
@@ -1326,6 +1332,7 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
     newOptions.structVersion = newStructVer;
 
     auto& state = State::Instance();
+    state.slFGInputs.reportGameMode(newOptions.mode);
 
     // Disable game's DLSSG when we are trying to create our own instance of DLSSG
     if (state.activeFgInput != FGInput::DLSSG && state.activeFgOutput == FGOutput::DLSSG)
