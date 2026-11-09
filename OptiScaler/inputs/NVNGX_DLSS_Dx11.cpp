@@ -359,7 +359,8 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_Shutdown1(ID3D11Device* InDevice)
     if (Config::Instance()->DLSSEnabled.value_or_default() && NVNGXProxy::IsDx11Inited() &&
         NVNGXProxy::D3D11_Shutdown1() != nullptr)
     {
-        auto result = NVNGXProxy::D3D11_Shutdown1()(InDevice);
+        unsigned int remaining = 0;
+        auto result = NVNGXProxy::D3D11_Shutdown1()(InDevice, &remaining);
         NVNGXProxy::SetDx11Inited(false);
     }
 

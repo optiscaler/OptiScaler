@@ -1107,7 +1107,8 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_Shutdown1(VkDevice InDevice)
     if (Config::Instance()->DLSSEnabled.value_or_default() && NVNGXProxy::IsVulkanInited() &&
         NVNGXProxy::VULKAN_Shutdown1() != nullptr)
     {
-        auto result = NVNGXProxy::VULKAN_Shutdown1()(InDevice);
+        unsigned int remaining = 0;
+        auto result = NVNGXProxy::VULKAN_Shutdown1()(InDevice, &remaining);
         NVNGXProxy::SetVulkanInited(false);
     }
 

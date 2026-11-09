@@ -44,6 +44,10 @@ void DxgiFactoryHooks::CheckAdapter(IUnknown* unkAdapter)
 
 void DxgiFactoryHooks::HookToFactory(IDXGIFactory* pFactory)
 {
+    // Factories can be created from several threads
+    static std::mutex hookMutex;
+    std::lock_guard<std::mutex> lock(hookMutex);
+
     if (pFactory == nullptr)
         return;
 
