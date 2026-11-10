@@ -246,6 +246,17 @@ HRESULT STDMETHODCALLTYPE Amdxc64Hooks::hkAmdExtD3DCreateInterface(IUnknown* pOu
         if (amdExtAntiLagApi == nullptr)
             amdExtAntiLagApi = new AmdExtAntiLagApi();
 
+        // The game's device, AL2 is initialized before the swapchain sets currentD3D12Device
+        if (pOuter != nullptr)
+        {
+            ID3D12Device* device = nullptr;
+            if (SUCCEEDED(pOuter->QueryInterface(IID_PPV_ARGS(&device))) && device != nullptr)
+            {
+                amdExtAntiLagApi->device = device;
+                device->Release();
+            }
+        }
+
         // Return custom one
         *ppvObject = amdExtAntiLagApi;
 
