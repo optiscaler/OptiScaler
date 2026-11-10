@@ -138,10 +138,10 @@ using enum GameQuirk;
 const std::vector<GameConfig> gameConfigs = {
 
     // BeamNG
-    // Spoofing not required for DLSS inputs for both Dx12 and Vk
+    // Spoofing not required for DLSS inputs for both Dx12 and Vk, Auto Exposure required for XeSS
     {
         .exes = { "beamng.drive.x64.exe" },
-        .defaults = { DxgiSpoofing = false },
+        .defaults = { DxgiSpoofing = false, AutoExposure = true },
         .quirks = { HideFsr4 },
     },
 
