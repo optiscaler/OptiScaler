@@ -590,8 +590,10 @@ std::optional<std::filesystem::path> Util::FindFilePath(const std::filesystem::p
                                                         const std::filesystem::path& fileName)
 {
     std::filesystem::path optiPath(Config::Instance()->MainDllPath.value());
-    optiPath /= L"streamline";
-    auto normalizedStreamlinePath = optiPath.lexically_normal();
+    auto normalizedStreamlinePath = (optiPath / L"streamline").lexically_normal();
+
+    // Custom provider dlls use the standard names but are only loaded from their own folders
+    auto normalizedCustomPath = (optiPath / L"custom").lexically_normal();
 
     const bool isDlssgOutput = State::Instance().activeFgOutput == FGOutput::DLSSG;
 
@@ -630,7 +632,8 @@ std::optional<std::filesystem::path> Util::FindFilePath(const std::filesystem::p
                 else if (entry.path().filename() == fileName)
                 {
                     auto normalizedPath = entry.path().lexically_normal();
-                    if (isDlssgOutput || !IsSubpath(normalizedPath, normalizedStreamlinePath))
+                    if (!IsSubpath(normalizedPath, normalizedCustomPath) &&
+                        (isDlssgOutput || !IsSubpath(normalizedPath, normalizedStreamlinePath)))
                     {
                         return entry.path();
                     }

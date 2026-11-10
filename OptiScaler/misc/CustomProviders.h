@@ -13,9 +13,11 @@
 //   custom/<name>/ffx_vk   Vulkan FFX upscaler
 //   custom/<name>/dlss     NGX runtime that runs DLSS
 //   custom/<name>/dlssg    nvngx_dlssg replacement, an FG Nvngx entry
+//   custom/<name>/dlssd    nvngx_dlssd replacement, a ray reconstruction (RRUpscaler) entry
 // The dll can have any name. When the folder has more dlls, like ones the dll loads itself, the standard name
 // is used (amd_fidelityfx_upscaler_dx12.dll, amd_fidelityfx_upscaler_vk.dll then amd_fidelityfx_vk.dll, nvngx.dll,
-// nvngx_dlssg.dll), else the first one. A Vulkan dll with another name is taken as amd_fidelityfx_upscaler_vk.dll.
+// nvngx_dlssg.dll, nvngx_dlssd.dll), else the first one. A Vulkan dll with another name is taken as
+// amd_fidelityfx_upscaler_vk.dll.
 namespace CustomProviders
 {
 inline std::filesystem::path Root()
@@ -70,6 +72,11 @@ inline std::filesystem::path DlssgDllPath(const std::string& name)
     return DllPath(name, L"dlssg", { L"nvngx_dlssg.dll" });
 }
 
+inline std::filesystem::path DlssdDllPath(const std::string& name)
+{
+    return DllPath(name, L"dlssd", { L"nvngx_dlssd.dll" });
+}
+
 // nullptr when the path is empty or the dll can't be loaded
 inline HMODULE LoadDll(const std::string& name, const std::filesystem::path& path)
 {
@@ -96,6 +103,7 @@ struct Names
     std::vector<std::string> ffxVk;
     std::vector<std::string> dlss;
     std::vector<std::string> dlssg;
+    std::vector<std::string> dlssd;
 };
 
 // Scanned once
@@ -121,6 +129,9 @@ inline const Names& Scan()
 
             if (!DlssgDllPath(name).empty())
                 found.dlssg.push_back(name);
+
+            if (!DlssdDllPath(name).empty())
+                found.dlssd.push_back(name);
         }
 
         return found;
@@ -139,6 +150,7 @@ inline bool IsFfx(const std::string& name) { return Contains(Scan().ffx, name); 
 inline bool IsFfxVk(const std::string& name) { return Contains(Scan().ffxVk, name); }
 inline bool IsDlss(const std::string& name) { return Contains(Scan().dlss, name); }
 inline bool IsDlssg(const std::string& name) { return Contains(Scan().dlssg, name); }
+inline bool IsDlssd(const std::string& name) { return Contains(Scan().dlssd, name); }
 
 // Dx12Upscaler from the ini as a custom folder's kind, a folder with both is used as FFX
 inline void ResolveDx12Upscaler()
@@ -199,6 +211,19 @@ inline void ResolveFGNvngx()
                  wstring_to_string(Root().wstring()));
         name.clear();
         Config::Instance()->FGNvngxReplacement.reset();
+    }
+}
+
+// RRUpscaler from the ini as a custom folder with dlssd
+inline void ResolveRRUpscaler()
+{
+    auto cfg = Config::Instance();
+    auto name = cfg->CustomRRUpscaler.value_or("");
+
+    if (!name.empty() && !IsDlssd(name))
+    {
+        LOG_WARN("RRUpscaler={} isn't a folder with dlssd in {}", name, wstring_to_string(Root().wstring()));
+        cfg->CustomRRUpscaler.reset();
     }
 }
 } // namespace CustomProviders

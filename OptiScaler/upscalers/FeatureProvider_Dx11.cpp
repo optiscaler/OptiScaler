@@ -26,6 +26,9 @@ bool FeatureProvider_Dx11::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NG
     Config& cfg = *Config::Instance();
     auto primaryGpu = IdentifyGpu::getPrimaryGpu();
 
+    // DLSSD is only the game's ray reconstruction, it isn't one of the upscalers
+    const bool rayReconstruction = upscaler == Upscaler::DLSSD;
+
     switch (upscaler)
     {
     case Upscaler::XeSS:
@@ -112,11 +115,8 @@ bool FeatureProvider_Dx11::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NG
         loaded = true; // Assuming the fallback always loads successfully
     }
 
-    // DLSSD is stored in the config as DLSS
-    if (upscaler == Upscaler::DLSSD)
-        upscaler = Upscaler::DLSS;
-
-    cfg.Dx11Upscaler = upscaler;
+    if (!rayReconstruction)
+        cfg.Dx11Upscaler = upscaler;
 
     return loaded;
 }

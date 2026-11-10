@@ -4,7 +4,7 @@
 Dlls loaded by OptiScaler can add their own tabs to the OptiScaler menu and keep their settings in `OptiScaler.ini`. Two kinds of dlls get the API:
 
 - **ASI plugins** in the `plugins` folder, loaded when `LoadAsiPlugins=true`.
-- **Custom upscaler and FG dlls** in `custom/<name>/<kind>` (`ffx`, `ffx_vk`, `dlss` or `dlssg`).
+- **Custom upscaler and FG dlls** in `custom/<name>/<kind>` (`ffx`, `ffx_vk`, `dlss`, `dlssg` or `dlssd`).
 
 Both use the API the same way. Below, "plugin" means either kind.
 
@@ -30,7 +30,7 @@ Both use the API the same way. Below, "plugin" means either kind.
    Tabs registered here show up once it returns `true`. Return `false` to opt out; the tabs you registered are then dropped and `RegisterTab` fails from then on.
 2. Install the dll:
    - ASI plugin: put the `.asi` file in the `plugins` folder and set `LoadAsiPlugins=true` in `OptiScaler.ini`.
-   - Custom upscaler or FG: put the dll in `custom/<name>/<kind>` and select `<name>` as the upscaler or FG in the menu.
+   - Custom upscaler, FG or ray reconstruction: put the dll in `custom/<name>/<kind>` and select `<name>` as the upscaler, FG or ray reconstruction upscaler in the menu.
 3. Your tabs appear under **PLUGINS** in the menu sidebar.
 
 ## Drawing
