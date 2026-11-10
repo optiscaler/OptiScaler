@@ -6,6 +6,7 @@
 #include <detours/detours.h>
 
 #include <cstring>
+#include <vector>
 
 namespace OptiInput
 {
@@ -581,6 +582,9 @@ void HandleLegacyDirectInputCreatedLocked(void** out, bool wide)
     HookDirectInputInterfaceLocked(*out, wide);
 }
 
+// Export hooks that failed to install, they aren't retried every frame
+std::vector<void*> FailedDirectInputExportHooks;
+
 bool InstallDirectInputExportHook(HMODULE module, const char* exportName, void** original, void* hook, bool* installed)
 {
     if (module == nullptr || exportName == nullptr || original == nullptr || hook == nullptr || installed == nullptr)
@@ -591,6 +595,9 @@ bool InstallDirectInputExportHook(HMODULE module, const char* exportName, void**
 
         if (*installed)
             return true;
+
+        if (std::ranges::find(FailedDirectInputExportHooks, hook) != FailedDirectInputExportHooks.end())
+            return false;
     }
 
     void* resolved = reinterpret_cast<void*>(KernelBaseProxy::GetProcAddress_()(module, exportName));
@@ -623,12 +630,60 @@ bool InstallDirectInputExportHook(HMODULE module, const char* exportName, void**
     {
         LOG_ERROR("{} hook installation failed result:{}", exportName, result);
         *original = nullptr;
+        FailedDirectInputExportHooks.push_back(hook);
         return false;
     }
 
     *installed = true;
     LOG_INFO("{} hook installed module:{}", exportName, static_cast<void*>(module));
     return true;
+}
+
+// A device the game created before the hooks went in is tracked on its first read, its kind from its capabilities
+void TrackUntrackedDirectInputDevice(void* device)
+{
+    {
+        std::unique_lock lock(_state.Mutex);
+
+        if (device == nullptr || FindDirectInputDeviceSlotLocked(device) < MaxTrackedDirectInputDevices ||
+            _state.DirectInputTrackedDeviceCount >= MaxTrackedDirectInputDevices)
+        {
+            return;
+        }
+    }
+
+    using GetCapabilities_t = HRESULT(WINAPI*)(void* device, LPDIDEVCAPS caps);
+    auto getCapabilities = reinterpret_cast<GetCapabilities_t>((*reinterpret_cast<PVOID**>(device))[3]);
+
+    DIDEVCAPS caps {};
+    caps.dwSize = sizeof(caps);
+    HRESULT result = DIERR_GENERIC;
+
+    {
+        ScopedHookBypass bypass;
+        result = getCapabilities(device, &caps);
+    }
+
+    DirectInputDeviceKind kind = DirectInputDeviceKind::Other;
+
+    if (SUCCEEDED(result))
+    {
+        switch (GET_DIDEVICE_TYPE(caps.dwDevType))
+        {
+        case DI8DEVTYPE_KEYBOARD:
+        case 3: // DIDEVTYPE_KEYBOARD of DirectInput 7 devices
+            kind = DirectInputDeviceKind::Keyboard;
+            break;
+
+        case DI8DEVTYPE_MOUSE:
+        case 2: // DIDEVTYPE_MOUSE
+            kind = DirectInputDeviceKind::Mouse;
+            break;
+        }
+    }
+
+    std::unique_lock lock(_state.Mutex);
+    TrackDirectInputDeviceLocked(device, kind);
 }
 
 // Keyboard keys are their DIK codes, mouse buttons have their own offsets
@@ -696,6 +751,56 @@ HRESULT CallDirectInputCreateDeviceOriginal(DirectInputCreateDevice_t original, 
 }
 } // namespace
 
+// The game's DirectInput objects created before the hooks went in share their methods with new ones. Creating
+// a device of our own hooks CreateDevice and the device methods for them too.
+void HookDirectInput8MethodsThroughOwnDevice()
+{
+    static bool hooked = false;
+
+    {
+        std::unique_lock lock(_state.Mutex);
+
+        if (hooked || !_state.DirectInput8CreateHookInstalled || o_DirectInput8Create == nullptr)
+            return;
+
+        hooked = true;
+    }
+
+    for (const bool wide : { false, true })
+    {
+        void* directInput = nullptr;
+
+        {
+            ScopedHookBypass bypass;
+
+            if (FAILED(o_DirectInput8Create(GetModuleHandleW(nullptr), DIRECTINPUT_VERSION,
+                                            wide ? IID_IDirectInput8W : IID_IDirectInput8A, &directInput, nullptr)) ||
+                directInput == nullptr)
+            {
+                continue;
+            }
+        }
+
+        {
+            std::unique_lock lock(_state.Mutex);
+            HookDirectInputInterfaceLocked(directInput, wide);
+        }
+
+        // Through the hooked CreateDevice, which hooks the device's methods
+        PVOID* vtable = *reinterpret_cast<PVOID**>(directInput);
+        void* device = nullptr;
+
+        if (SUCCEEDED(reinterpret_cast<DirectInputCreateDevice_t>(vtable[3])(directInput, DirectInputSysKeyboardGuid,
+                                                                             &device, nullptr)) &&
+            device != nullptr)
+        {
+            reinterpret_cast<ULONG(WINAPI*)(void*)>((*reinterpret_cast<PVOID**>(device))[2])(device);
+        }
+
+        reinterpret_cast<ULONG(WINAPI*)(void*)>(vtable[2])(directInput);
+    }
+}
+
 void UpdateDirectInputIntegration()
 {
     // Module discovery can enter the loader. Do it before publishing state or installing hooks.
@@ -724,6 +829,8 @@ void UpdateDirectInputIntegration()
             }
         }
     }
+
+    HookDirectInput8MethodsThroughOwnDevice();
 
     if (legacyModule != nullptr)
     {
@@ -966,6 +1073,8 @@ HRESULT WINAPI hkDirectInputCreateDevice(void* directInput, REFGUID guid, void**
 
 template <std::size_t Slot> HRESULT WINAPI hkDirectInputGetDeviceState(void* device, DWORD dataSize, LPVOID data)
 {
+    TrackUntrackedDirectInputDevice(device);
+
     DirectInputGetDeviceState_t original = nullptr;
     DirectInputDeviceKind kind = DirectInputDeviceKind::Other;
     bool shouldBlock = false;
@@ -1013,6 +1122,8 @@ template <std::size_t Slot>
 HRESULT WINAPI hkDirectInputGetDeviceData(void* device, DWORD objectDataSize, LPDIDEVICEOBJECTDATA data, LPDWORD inOut,
                                           DWORD flags)
 {
+    TrackUntrackedDirectInputDevice(device);
+
     DirectInputGetDeviceData_t original = nullptr;
     DirectInputDeviceKind kind = DirectInputDeviceKind::Other;
     bool shouldBlock = false;
