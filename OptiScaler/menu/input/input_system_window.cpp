@@ -398,6 +398,7 @@ bool InstallWindowSubclass(HWND hwnd)
     }
 
     _state.OriginalWndProc = reinterpret_cast<WNDPROC>(previous);
+    _state.OriginalWndProcs[hwnd] = _state.OriginalWndProc;
     _state.WndProcSubclassed = true;
 
     LOG_INFO("subclass installed hwnd:{} previousWndProc:{} optiWndProc:{}", static_cast<void*>(hwnd),
@@ -513,6 +514,9 @@ bool RemoveWindowSubclass(bool preserveLostChain)
                      GetLastError());
             return false;
         }
+
+        // Restored, nothing chains through us for it anymore
+        _state.OriginalWndProcs.erase(_state.InputHwnd);
     }
     else
     {

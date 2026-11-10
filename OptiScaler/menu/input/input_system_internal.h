@@ -11,6 +11,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <winerror.h>
 #include <Xinput.h>
 
@@ -128,6 +129,9 @@ struct InputState
     HWND InputRootHwnd = nullptr;
 
     WNDPROC OriginalWndProc = nullptr;
+    // Each subclassed window's own original, another WndProc on top of ours can keep calling us for a window we
+    // no longer track
+    std::unordered_map<HWND, WNDPROC> OriginalWndProcs;
 
     bool Initialized = false;
     bool HooksInstalled = false;
