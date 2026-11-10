@@ -450,6 +450,7 @@ void IdentifyGpu::updateD3d12Capabilities(D3d12Proxy::PFN_D3D12CreateDevice o_D3
             // D3D12 device is needed to be able to query amdxc and check for vkd3d-proton
             ScopedCreatingD3DDevice scopedCreating {};
             ScopedSkipVulkanHooks skipVulkanHooks {};
+            std::scoped_lock probeLock(probeDeviceMutex); // Declared before localDevice, held until its last release
             ComPtr<ID3D12Device> localDevice;
             auto createResult = pD3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&localDevice));
 

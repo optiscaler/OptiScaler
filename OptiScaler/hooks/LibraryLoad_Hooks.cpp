@@ -325,7 +325,7 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
                 IDXGIFactory1* factory1 = nullptr;
                 IDXGIFactory2* factory2 = nullptr;
 
-                auto ocResult = DxgiProxy::CreateDxgiFactory_()(__uuidof(factory), &factory);
+                auto ocResult = DxgiProxy::CreateDxgiFactory_Hooked()(__uuidof(factory), &factory);
                 LOG_DEBUG("CreateDxgiFactory result: {:X}", ocResult);
 
                 if (ocResult == S_OK && factory != nullptr)
@@ -335,7 +335,7 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
                     factory->Release();
                 }
 
-                ocResult = DxgiProxy::CreateDxgiFactory1_()(__uuidof(factory1), &factory1);
+                ocResult = DxgiProxy::CreateDxgiFactory1_Hooked()(__uuidof(factory1), &factory1);
                 LOG_DEBUG("CreateDxgiFactory1 result: {:X}", ocResult);
 
                 if (ocResult == S_OK && factory1 != nullptr)
@@ -344,7 +344,7 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
                     factory1->Release();
                 }
 
-                ocResult = DxgiProxy::CreateDxgiFactory2_()(0, __uuidof(factory2), &factory2);
+                ocResult = DxgiProxy::CreateDxgiFactory2_Hooked()(0, __uuidof(factory2), &factory2);
                 LOG_DEBUG("CreateDxgiFactory2 result: {:X}", ocResult);
 
                 if (ocResult == S_OK && factory2 != nullptr)
