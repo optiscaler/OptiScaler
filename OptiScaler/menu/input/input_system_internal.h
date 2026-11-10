@@ -454,10 +454,6 @@ extern SetWindowsHookExA_t o_SetWindowsHookExA;
 extern SetWindowsHookExW_t o_SetWindowsHookExW;
 extern UnhookWindowsHookEx_t o_UnhookWindowsHookEx;
 extern GameInputCreate_t o_GameInputCreate;
-extern XInputGetState_t o_XInputGetState;
-extern XInputGetState_t o_XInputGetStateEx;
-extern XInputGetKeystroke_t o_XInputGetKeystroke;
-extern XInputSetState_t o_XInputSetState;
 extern DirectInput8Create_t o_DirectInput8Create;
 extern DirectInputCreateA_t o_DirectInputCreateA;
 extern DirectInputCreateW_t o_DirectInputCreateW;
@@ -499,10 +495,6 @@ HRESULT WINAPI hkGameInputCreate(void** gameInput);
 void UpdateXInputIntegration();
 bool RemoveXInputHooksLocked();
 void DrainXInputKeystrokesLocked();
-DWORD WINAPI hkXInputGetState(DWORD userIndex, XINPUT_STATE* state);
-DWORD WINAPI hkXInputGetStateEx(DWORD userIndex, XINPUT_STATE* state);
-DWORD WINAPI hkXInputGetKeystroke(DWORD userIndex, DWORD reserved, PXINPUT_KEYSTROKE keystroke);
-DWORD WINAPI hkXInputSetState(DWORD userIndex, XINPUT_VIBRATION* vibration);
 
 // DirectInput
 void UpdateDirectInputIntegration();
