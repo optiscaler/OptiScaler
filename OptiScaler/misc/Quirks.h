@@ -452,7 +452,8 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("goweday.exe", GameQuirk::AlwaysCaptureFSRFGSwapchain),
 
     // BeamNG.drive
-    QUIRK_ENTRY("beamng.drive.x64.exe", GameQuirk::DisableDxgiSpoofing),
+    // Auto Exposure required for XeSS
+    QUIRK_ENTRY("beamng.drive.x64.exe", GameQuirk::DisableDxgiSpoofing, GameQuirk::ForceAutoExposure),
 
     // METRO 2033 Redux, METRO Last Light Redux
     // Manual Input polling for fixing invisible Opti Overlay
