@@ -640,6 +640,26 @@ bool InstallDirectInputExportHook(HMODULE module, const char* exportName, void**
     return true;
 }
 
+// A joystick read with c_dfDIJoystick(2) at rest: 0 is full left/up for axes and north for POV hats
+void FillNeutralJoystickState(void* device, DIJOYSTATE* state)
+{
+    std::memset(state->rgdwPOV, 0xFF, sizeof(state->rgdwPOV));
+
+    using GetProperty_t = HRESULT(WINAPI*)(void* device, REFGUID property, LPDIPROPHEADER header);
+    auto getProperty = reinterpret_cast<GetProperty_t>((*reinterpret_cast<PVOID**>(device))[5]);
+
+    // lX to lRz and the two sliders are consecutive LONGs, each centered in its range
+    for (DWORD offset = 0; offset <= offsetof(DIJOYSTATE, rglSlider[1]); offset += sizeof(LONG))
+    {
+        DIPROPRANGE range {};
+        range.diph = { sizeof(DIPROPRANGE), sizeof(DIPROPHEADER), offset, DIPH_BYOFFSET };
+
+        if (SUCCEEDED(getProperty(device, DIPROP_RANGE, &range.diph)))
+            *reinterpret_cast<LONG*>(reinterpret_cast<BYTE*>(state) + offset) =
+                range.lMin + (range.lMax - range.lMin) / 2;
+    }
+}
+
 HRESULT CallDirectInputCreateDeviceOriginal(DirectInputCreateDevice_t original, void* directInput, REFGUID guid,
                                             void** device, LPUNKNOWN outer)
 {
@@ -931,25 +951,39 @@ HRESULT WINAPI hkDirectInputCreateDevice(void* directInput, REFGUID guid, void**
 template <std::size_t Slot> HRESULT WINAPI hkDirectInputGetDeviceState(void* device, DWORD dataSize, LPVOID data)
 {
     DirectInputGetDeviceState_t original = nullptr;
+    DirectInputDeviceKind kind = DirectInputDeviceKind::Other;
+    bool shouldBlock = false;
 
     {
         std::unique_lock lock(_state.Mutex);
-        const DirectInputDeviceKind kind = GetDirectInputDeviceKindLocked(device);
+        kind = GetDirectInputDeviceKindLocked(device);
         _state.DirectInputGetDeviceStateCallCount++;
+        shouldBlock = ShouldBlockDirectInputDeviceLocked(kind);
 
-        if (ShouldBlockDirectInputDeviceLocked(kind))
-        {
-            if (data != nullptr && dataSize > 0)
-                std::memset(data, 0, dataSize);
-
+        if (shouldBlock)
             _state.DirectInputGetDeviceStateBlockedCount++;
-            OPTIINPUT_LOG_VERBOSE("blocking DirectInput GetDeviceState device:{} kind:{} size:{}", device,
-                                  DirectInputDeviceKindName(kind), dataSize);
-            return DI_OK;
+        else
+            _state.DirectInputGetDeviceStatePassedCount++;
+
+        original = DirectInputGetDeviceStateHooks[Slot].Trampoline;
+    }
+
+    if (shouldBlock)
+    {
+        if (data != nullptr && dataSize > 0)
+            std::memset(data, 0, dataSize);
+
+        // Outside the lock, it asks the device for its axis ranges
+        if (data != nullptr && kind == DirectInputDeviceKind::Other &&
+            (dataSize == sizeof(DIJOYSTATE) || dataSize == sizeof(DIJOYSTATE2)))
+        {
+            ScopedHookBypass bypass;
+            FillNeutralJoystickState(device, static_cast<DIJOYSTATE*>(data));
         }
 
-        _state.DirectInputGetDeviceStatePassedCount++;
-        original = DirectInputGetDeviceStateHooks[Slot].Trampoline;
+        OPTIINPUT_LOG_VERBOSE("blocking DirectInput GetDeviceState device:{} kind:{} size:{}", device,
+                              DirectInputDeviceKindName(kind), dataSize);
+        return DI_OK;
     }
 
     if (original == nullptr)
