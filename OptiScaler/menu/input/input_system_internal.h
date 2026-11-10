@@ -562,6 +562,7 @@ bool ProcessRemovedMessage(MSG* msg);
 void ConsumeMessage(MSG* msg);
 SHORT RealGetAsyncKeyStateSafe(int vk);
 SHORT WithTakenAsyncKeyPress(int vk, SHORT state, bool blocked);
+void ForgetTakenAsyncKeyPresses();
 SHORT RealGetKeyStateSafe(int vk);
 BOOL RealGetCursorPosSafe(LPPOINT point);
 void SetMouseDownFromRawState(int button, DWORD messageTime, bool blocked);

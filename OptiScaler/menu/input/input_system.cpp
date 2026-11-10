@@ -94,6 +94,7 @@ void HandleBlockingFocusLossLocked()
     // Focus loss temporarily releases game-input blocking while the menu may remain open.
     EndCursorClipBlockLocked();
     EndDirectInputBlockLocked();
+    ForgetTakenAsyncKeyPresses();
     DrainXInputKeystrokesLocked();
     ResetButtonBlockedStateLocked();
     ResetRawInputBlockStateLocked();
@@ -780,6 +781,7 @@ void ApplyMenuVisibilityChangeLocked(bool visible)
         // releasing the menu block so menu-time events cannot replay into the
         // game on the first frame after closing.
         EndDirectInputBlockLocked();
+        ForgetTakenAsyncKeyPresses();
         DrainXInputKeystrokesLocked();
 
         _state.HasBlockedCursorScreenPos = false;

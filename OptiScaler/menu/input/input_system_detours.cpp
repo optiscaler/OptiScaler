@@ -41,6 +41,12 @@ SHORT RealGetAsyncKeyStateSafe(int vk)
     return state;
 }
 
+void ForgetTakenAsyncKeyPresses()
+{
+    for (auto& taken : asyncKeyPressTaken)
+        taken = false;
+}
+
 SHORT WithTakenAsyncKeyPress(int vk, SHORT state, bool blocked)
 {
     if (vk < 0 || vk >= static_cast<int>(asyncKeyPressTaken.size()))
