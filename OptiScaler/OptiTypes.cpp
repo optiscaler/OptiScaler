@@ -12,6 +12,9 @@ std::string ApiUpscalerInputName(ApiUpscalerInput upscaler)
     case ApiUpscalerInput::DLSS_DX12:
     case ApiUpscalerInput::DLSS_VK:
         return "DLSS";
+    case ApiUpscalerInput::DLSSD_DX12:
+    case ApiUpscalerInput::DLSSD_VK:
+        return "DLSSD";
     case ApiUpscalerInput::XeSS_DX11:
     case ApiUpscalerInput::XeSS_DX12:
     case ApiUpscalerInput::XeSS_VK:
@@ -161,6 +164,7 @@ std::string UpscalerToCode(Upscaler upscaler)
 }
 
 // Converts string codes into enum for config
+// dlssd is DLSS, ray reconstruction is picked by RRUpscaler
 Upscaler CodeToUpscaler(const std::string& code)
 {
     static const std::unordered_map<std::string, Upscaler> mapping = {
@@ -169,7 +173,7 @@ Upscaler CodeToUpscaler(const std::string& code)
         { "fsr22", Upscaler::FSR22 },       { "fsr22_12", Upscaler::FSR22_on12 },
         { "ffx", Upscaler::FFX },           { "ffx_12", Upscaler::FFX_on12 },
         { "dlss", Upscaler::DLSS },         { "dlss_12", Upscaler::DLSS_on12 },
-        { "dlssd", Upscaler::DLSSD },       { "fsr31", Upscaler::FSR31 },
+        { "dlssd", Upscaler::DLSS },        { "fsr31", Upscaler::FSR31 },
         { "fsr31_12", Upscaler::FFX_on12 }, // for compat reasons
     };
 

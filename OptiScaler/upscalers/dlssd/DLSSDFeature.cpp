@@ -257,6 +257,15 @@ void DLSSDFeature::ReadVersion()
 {
     LOG_FUNC();
 
+    if (_custom != nullptr)
+    {
+        if (auto version = Util::GetFileVersionString(_custom->ngx.filePath); !version.empty())
+            _version.parse_version(version.c_str());
+
+        LOG_INFO("Custom DLSSD v{0}.{1}.{2} loaded.", _version.major, _version.minor, _version.patch);
+        return;
+    }
+
     std::vector<std::string> possibleDlls;
 
     if (!State::Instance().NGX_OTA_Dlssd.empty())

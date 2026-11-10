@@ -11,12 +11,14 @@
 #include <proxies/XeFG_Proxy.h>
 #include <proxies/FfxApi_Proxy.h>
 #include <upscalers/ffx/FFXFeature.h>
+#include <upscalers/dlssd/DLSSDFeature.h>
 #include <fsr4/FSR4Models.h>
 #include <fsr4/FSR4Presets.h>
 #include <fsr4/FSR4DriverProviderVk.h>
 #include <proxies/Streamline_Proxy.h>
 
 #include <framegen/nvngx/Nvngx_FG.h>
+#include <upscalers/nvngx/Nvngx_RR.h>
 #include <framegen/reprojection/Reprojection_Dx12.h>
 
 #include <nvapi/fakenvapi.h>
@@ -851,8 +853,10 @@ inline void MenuCommon::ReInitUpscaler()
     if (!State::Instance().currentFeature)
         return;
 
-    // currentBackend is only updated while the menu is drawn
-    State::Instance().newBackend = State::Instance().currentFeature->GetUpscalerType();
+    // currentBackend is only updated while the menu is drawn, ray reconstruction keeps its DLSSD
+    auto feature = State::Instance().currentFeature;
+    State::Instance().newBackend =
+        State::Instance().rrHandles.contains(feature->Handle()->Id) ? Upscaler::Reset : feature->GetUpscalerType();
 
     MARK_ALL_BACKENDS_CHANGED();
 }
@@ -1020,6 +1024,17 @@ static std::string SelectedCustom(Upscaler upscaler, API api)
     }
 
     return "";
+}
+
+// Backend that recreates the current feature, ray reconstruction keeps its DLSSD and the upscalers their own
+static Upscaler SameBackend(Upscaler currentBackend)
+{
+    auto feature = State::Instance().currentFeature;
+
+    if (feature != nullptr && State::Instance().rrHandles.contains(feature->Handle()->Id))
+        return Upscaler::Reset;
+
+    return currentBackend;
 }
 
 // Loaded custom FFX upscaler picked for the API, nullptr for the regular ones
@@ -1304,6 +1319,59 @@ void MenuCommon::AddVulkanBackends(Upscaler upscaler)
     RenderUpscalerCombo(API::Vulkan, upscaler,
                         { Upscaler::XeSS, Upscaler::FSR21, Upscaler::FSR22, Upscaler::FFX, Upscaler::FSR21_on12,
                           Upscaler::FFX_on12, Upscaler::DLSS, Upscaler::DLSS_on12 });
+}
+
+// DLSSD running the game's ray reconstruction, NVIDIA's or a custom one
+static void RenderRRUpscalerCombo(API api, IFeature* feature)
+{
+    auto& state = State::Instance();
+    auto config = Config::Instance();
+
+    // Empty for NVIDIA's, custom ones until they turn out not to run on the api
+    std::vector<std::string> entries;
+
+    if (Nvngx_RR::NativeAvailable())
+        entries.push_back({});
+
+    for (auto& name : CustomProviders::Scan().dlssd)
+    {
+        if (Nvngx_RR::Listable(name, api))
+            entries.push_back(name);
+    }
+
+    auto entryName = [](const std::string& entry) { return entry.empty() ? std::string("DLSSD") : entry; };
+
+    // The FSR fallback isn't one of them
+    auto* dlssd = dynamic_cast<DLSSDFeature*>(feature);
+    const bool runsDlssd = dlssd != nullptr;
+    const auto current = runsDlssd ? dlssd->CustomName() : std::string();
+    const auto preview = runsDlssd ? entryName(current) : NameWithVersion(feature);
+
+    if (!ImGui::BeginCombo("##RRUpscalerCombo", preview.c_str(), ImGuiComboFlags_HeightLargest))
+        return;
+
+    for (const auto& entry : entries)
+    {
+        // Folder names in RRUpscaler aren't case sensitive
+        const bool selected = runsDlssd && _stricmp(current.c_str(), entry.c_str()) == 0;
+        auto label = StrFmt("%s##rr%s", entryName(entry).c_str(), entry.c_str());
+
+        if (ImGui::Selectable(label.c_str(), selected) && !selected)
+        {
+            // NVIDIA's is auto, it's picked when the gpu can run it
+            if (entry.empty())
+                config->CustomRRUpscaler.reset();
+            else
+                config->CustomRRUpscaler = entry;
+
+            Nvngx_RR::ResetFailures();
+
+            for (auto handle : state.rrHandles)
+                state.changeBackend[handle] = true;
+        }
+    }
+
+    ImGui::EndCombo();
 }
 
 template <HasDefaultValue B> void MenuCommon::AddResourceBarrier(std::string name, CustomOptional<int32_t, B>* value)
@@ -3630,9 +3698,14 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
     ImGui::PushItemWidth(150.0f * menuResScale);
 
     const bool usesDlssd = currentFeature->GetUpscalerType() == Upscaler::DLSSD;
+    const bool rayReconstruction = state.rrHandles.contains(currentFeature->Handle()->Id);
 
-    // DLSSD can't be switched to another upscaler
-    if (usesDlssd)
+    // Ray reconstruction picks its DLSSD, DX11's runs only on NVIDIA's
+    if (rayReconstruction && (state.api == DX12 || state.api == Vulkan))
+    {
+        RenderRRUpscalerCombo(state.api, currentFeature);
+    }
+    else if (usesDlssd)
     {
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(NameWithVersion(currentFeature).c_str());
@@ -3667,7 +3740,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
         ImGui::TextDisabled("(DRS)");
     }
 
-    if (!usesDlssd)
+    if (!usesDlssd && !rayReconstruction)
     {
         if (state.newBackend != Upscaler::Reset && state.newBackend != currentBackend)
         {
@@ -3753,7 +3826,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                     if (ImGui::Selectable(models[n], (config->NetworkModel.value_or_default() == n)))
                     {
                         config->NetworkModel = n;
-                        state.newBackend = currentBackend;
+                        state.newBackend = SameBackend(currentBackend);
                         MARK_ALL_BACKENDS_CHANGED();
                     }
                 }
@@ -3823,7 +3896,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                         ffxIndex != n)
                     {
                         upscalerIndex = n;
-                        state.newBackend = currentBackend;
+                        state.newBackend = SameBackend(currentBackend);
                         MARK_ALL_BACKENDS_CHANGED();
                     }
                 }
@@ -3874,7 +3947,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                     config->FsrNonLinearColorSpace = false;
                 }
 
-                state.newBackend = currentBackend;
+                state.newBackend = SameBackend(currentBackend);
                 MARK_ALL_BACKENDS_CHANGED();
             }
             ShowTooltip("Select the input color space that the game uses.\n"
@@ -3898,7 +3971,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                 else
                     config->Fsr4Preset = currentPresetIdx - 1;
 
-                state.newBackend = currentBackend;
+                state.newBackend = SameBackend(currentBackend);
                 MARK_ALL_BACKENDS_CHANGED();
             }
             ShowTooltip("Each internal FSR4 preset is tuned for a specific resolution.\n"
@@ -3968,7 +4041,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
 
                 if (modelChanged)
                 {
-                    state.newBackend = currentBackend;
+                    state.newBackend = SameBackend(currentBackend);
                     MARK_ALL_BACKENDS_CHANGED();
                 }
 
@@ -3995,7 +4068,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                 // FSR 4's debug view requires backend reinit
                 if (majorFsrVersion > 3)
                 {
-                    state.newBackend = currentBackend;
+                    state.newBackend = SameBackend(currentBackend);
                     MARK_ALL_BACKENDS_CHANGED();
                 }
             }
@@ -4021,7 +4094,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                     Util::SetFlagEnvVar(L"MLSR-WATERMARK", fsr4wm);
 
                     // The driver reads the variable on context creation
-                    state.newBackend = currentBackend;
+                    state.newBackend = SameBackend(currentBackend);
                     MARK_ALL_BACKENDS_CHANGED();
                 }
             }
@@ -4255,12 +4328,14 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
             if (usesDlssd)
             {
                 config->DLSSDRenderPresetForAll = comboPreset.value_or_default();
-                state.newBackend = Upscaler::DLSSD;
+
+                // Ray reconstruction keeps its DLSSD, the upscalers their configured one
+                state.newBackend = rayReconstruction ? Upscaler::Reset : Upscaler::DLSSD;
             }
             else
             {
                 config->RenderPresetForAll = comboPreset.value_or_default();
-                state.newBackend = currentBackend;
+                state.newBackend = SameBackend(currentBackend);
             }
 
             MARK_ALL_BACKENDS_CHANGED();
@@ -7091,7 +7166,7 @@ void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)
         if ((currentBackend == Upscaler::DLSS || currentBackend == Upscaler::DLSS_on12) &&
             currentFeature->Version().major < 3)
         {
-            state.newBackend = currentBackend;
+            state.newBackend = SameBackend(currentBackend);
             MARK_ALL_BACKENDS_CHANGED();
         }
     }
@@ -7509,11 +7584,13 @@ void MenuCommon::RenderOutputScalingSettings(RenderMenuContext& ctx)
 
             config->OutputScalingDownscaler = _ssDownsampler;
 
-            const bool usesDlssd = currentFeature->GetUpscalerType() == Upscaler::DLSSD;
-            if (usesDlssd)
+            // Ray reconstruction keeps its DLSSD, the upscalers their configured one
+            if (state.rrHandles.contains(currentFeature->Handle()->Id))
+                state.newBackend = Upscaler::Reset;
+            else if (currentFeature->GetUpscalerType() == Upscaler::DLSSD)
                 state.newBackend = Upscaler::DLSSD;
             else
-                state.newBackend = currentBackend;
+                state.newBackend = SameBackend(currentBackend);
 
             MARK_ALL_BACKENDS_CHANGED();
         }
@@ -7645,7 +7722,7 @@ void MenuCommon::RenderInitFlagsSettings(RenderMenuContext& ctx)
 
             if (currentBackend == Upscaler::XeSS)
             {
-                state.newBackend = currentBackend;
+                state.newBackend = SameBackend(currentBackend);
                 MARK_ALL_BACKENDS_CHANGED();
             }
         }
@@ -7923,7 +8000,7 @@ void MenuCommon::RenderAdvancedSettings(RenderMenuContext& ctx)
             ImGui::TableNextColumn();
             if (ConfigCheckbox("Use Precompiled Shaders", config->UsePrecompiledShaders))
             {
-                state.newBackend = currentBackend;
+                state.newBackend = SameBackend(currentBackend);
                 MARK_ALL_BACKENDS_CHANGED();
             }
 

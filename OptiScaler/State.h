@@ -295,6 +295,9 @@ class State
     ankerl::unordered_dense::map<unsigned int, bool> changeBackend;
     Upscaler newBackend = Upscaler::Reset;
 
+    // Handles of the game's ray reconstruction, they run on a DLSSD picked by Nvngx_RR
+    ankerl::unordered_dense::set<unsigned int> rrHandles;
+
     // XeSS debug stuff
     bool xessDebug = false;
     int xessDebugFrames = 5;

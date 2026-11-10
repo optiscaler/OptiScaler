@@ -1,5 +1,5 @@
 #pragma once
-#include "Nvngx_DllProxy.h"
+#include <proxies/Nvngx_DllProxy.h>
 
 class Nvngx_Arturs : public Nvngx_DllProxy
 {

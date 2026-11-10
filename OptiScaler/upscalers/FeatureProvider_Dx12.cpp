@@ -15,9 +15,10 @@
 #include "FeatureProvider_Dx11.h"
 #include <misc/IdentifyGpu.h>
 #include <misc/CustomProviders.h>
+#include <upscalers/nvngx/Nvngx_RR.h>
 
 bool FeatureProvider_Dx12::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NGX_Parameter* parameters,
-                                      std::unique_ptr<IFeature_Dx12>* feature)
+                                      std::unique_ptr<IFeature_Dx12>* feature, bool rayReconstruction)
 {
     State& state = State::Instance();
     Config& cfg = *Config::Instance();
@@ -63,7 +64,12 @@ bool FeatureProvider_Dx12::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NG
         }
 
     case Upscaler::DLSSD:
-        if (primaryGpu.dlssCapable && state.NVNGX_DLSSD_Path.has_value())
+        if (auto customRR = rayReconstruction ? Nvngx_RR::SelectedName(API::DX12) : std::string(); !customRR.empty())
+        {
+            *feature = std::make_unique<DLSSDFeatureDx12>(handleId, parameters, customRR);
+            break;
+        }
+        else if (primaryGpu.dlssCapable && state.NVNGX_DLSSD_Path.has_value())
         {
             *feature = std::make_unique<DLSSDFeatureDx12>(handleId, parameters);
             break;
@@ -92,9 +98,14 @@ bool FeatureProvider_Dx12::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NG
         loaded = true; // Assuming the fallback always loads successfully
     }
 
-    // DLSSD is stored in the config as DLSS
-    if (upscaler == Upscaler::DLSSD)
-        upscaler = Upscaler::DLSS;
+    // Ray reconstruction's DLSSD isn't one of the upscalers
+    if (rayReconstruction)
+    {
+        if (upscaler != Upscaler::DLSSD)
+            Nvngx_RR::Fallback();
+
+        return loaded;
+    }
 
     cfg.Dx12Upscaler = upscaler;
 
@@ -111,10 +122,15 @@ bool FeatureProvider_Dx12::ChangeFeature(Upscaler upscaler, ID3D12Device* device
     if (!state.changeBackend[handleId])
         return false;
 
-    const bool dlssOnNonCapable = !IdentifyGpu::getPrimaryGpu().dlssCapable && state.newBackend == Upscaler::DLSS &&
+    // Ray reconstruction runs on DLSSD, newBackend is left to the upscalers
+    const bool rayReconstruction = state.rrHandles.contains(handleId);
+    Upscaler rrBackend = Nvngx_RR::Backend(API::DX12);
+    Upscaler& backend = rayReconstruction ? rrBackend : state.newBackend;
+
+    const bool dlssOnNonCapable = !IdentifyGpu::getPrimaryGpu().dlssCapable && backend == Upscaler::DLSS &&
                                   !CustomProviders::IsDlss(cfg.CustomUpscaler.value_or(""));
-    if (state.newBackend == Upscaler::Reset || dlssOnNonCapable)
-        state.newBackend = cfg.Dx12Upscaler.value_or_default();
+    if (backend == Upscaler::Reset || dlssOnNonCapable)
+        backend = cfg.Dx12Upscaler.value_or_default();
 
     contextData->changeBackendCounter++;
 
@@ -131,11 +147,11 @@ bool FeatureProvider_Dx12::ChangeFeature(Upscaler upscaler, ID3D12Device* device
 
         if (contextData->feature != nullptr)
         {
-            LOG_INFO("changing backend to {}", UpscalerDisplayName(state.newBackend));
+            LOG_INFO("changing backend to {}", UpscalerDisplayName(backend));
 
             auto* dc = contextData->feature.get();
             // Use given params if using DLSS passthrough
-            const bool isPassthrough = state.newBackend == Upscaler::DLSSD || state.newBackend == Upscaler::DLSS;
+            const bool isPassthrough = backend == Upscaler::DLSSD || backend == Upscaler::DLSS;
 
             // A retry after a failed init still has the previous ones
             if (!contextData->createParamsFromGame)
@@ -166,7 +182,7 @@ bool FeatureProvider_Dx12::ChangeFeature(Upscaler upscaler, ID3D12Device* device
         {
             LOG_ERROR("can't find handle {0} in Dx12Contexts!", handleId);
 
-            state.newBackend = Upscaler::Reset;
+            backend = Upscaler::Reset;
             state.changeBackend[handleId] = false;
 
             if (!contextData->createParamsFromGame)
@@ -185,16 +201,16 @@ bool FeatureProvider_Dx12::ChangeFeature(Upscaler upscaler, ID3D12Device* device
     // create new feature
     if (contextData->changeBackendCounter == 2)
     {
-        LOG_INFO("Creating new {} upscaler", UpscalerDisplayName(state.newBackend));
+        LOG_INFO("Creating new {} upscaler", UpscalerDisplayName(backend));
         contextData->feature.reset();
 
-        if (!GetFeature(state.newBackend, handleId, contextData->createParams, &contextData->feature))
+        if (!GetFeature(backend, handleId, contextData->createParams, &contextData->feature, rayReconstruction))
         {
             LOG_ERROR("Upscaler can't created");
 
             // End the change, phase 3 would Init a null feature
             contextData->feature.reset();
-            state.newBackend = Upscaler::Reset;
+            backend = Upscaler::Reset;
             state.changeBackend[handleId] = false;
 
             if (!contextData->createParamsFromGame)
@@ -218,25 +234,26 @@ bool FeatureProvider_Dx12::ChangeFeature(Upscaler upscaler, ID3D12Device* device
 
         if (!initResult)
         {
-            LOG_ERROR("init failed with {0} feature", UpscalerDisplayName(state.newBackend));
+            LOG_ERROR("init failed with {0} feature", UpscalerDisplayName(backend));
 
-            if (state.newBackend != Upscaler::DLSSD)
+            if (rayReconstruction)
             {
-                if (cfg.Dx12Upscaler == Upscaler::DLSS)
+                // The FSR fallback isn't retried
+                if (!Nvngx_RR::InitFailed(contextData->feature.get()))
                 {
-                    state.newBackend = Upscaler::XeSS;
-                    ImGui::InsertNotification({ ImGuiToastType::Warning, 10000, "Falling back to XeSS" });
+                    state.changeBackend[handleId] = false;
+                    return false;
                 }
-                else
-                {
-                    state.newBackend = Upscaler::FSR21;
-                    ImGui::InsertNotification({ ImGuiToastType::Warning, 10000, "Falling back to FSR 2.1.2" });
-                }
+            }
+            else if (cfg.Dx12Upscaler == Upscaler::DLSS)
+            {
+                backend = Upscaler::XeSS;
+                ImGui::InsertNotification({ ImGuiToastType::Warning, 10000, "Falling back to XeSS" });
             }
             else
             {
-                // Retry DLSSD
-                state.newBackend = Upscaler::DLSSD;
+                backend = Upscaler::FSR21;
+                ImGui::InsertNotification({ ImGuiToastType::Warning, 10000, "Falling back to FSR 2.1.2" });
             }
 
             state.changeBackend[handleId] = true;
@@ -245,9 +262,9 @@ bool FeatureProvider_Dx12::ChangeFeature(Upscaler upscaler, ID3D12Device* device
         }
         else
         {
-            LOG_INFO("init successful for {0}, upscaler changed", UpscalerDisplayName(state.newBackend));
+            LOG_INFO("init successful for {0}, upscaler changed", UpscalerDisplayName(backend));
 
-            state.newBackend = Upscaler::Reset;
+            backend = Upscaler::Reset;
             state.changeBackend[handleId] = false;
         }
 

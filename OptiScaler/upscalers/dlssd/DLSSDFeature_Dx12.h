@@ -7,6 +7,11 @@
 class DLSSDFeatureDx12 : public DLSSDFeature, public IFeature_Dx12
 {
   private:
+    // Functions of the DLSSD this runs on
+    PFN_D3D12_CreateFeature CreateFeature() const;
+    PFN_D3D12_EvaluateFeature EvaluateFeature() const;
+    PFN_D3D12_ReleaseFeature ReleaseFeature() const;
+
   protected:
     bool InitDLSSD(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters);
 
@@ -29,6 +34,6 @@ class DLSSDFeatureDx12 : public DLSSDFeature, public IFeature_Dx12
 
     bool IsWithDx12() override { return false; }
 
-    DLSSDFeatureDx12(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters);
+    DLSSDFeatureDx12(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters, const std::string& customRR = "");
     ~DLSSDFeatureDx12();
 };

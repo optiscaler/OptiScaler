@@ -8,6 +8,7 @@
 #include <nvapi/fakenvapi.h>
 #include <misc/IdentifyGpu.h>
 #include <framegen/nvngx/Nvngx_FG.h>
+#include <upscalers/nvngx/Nvngx_RR.h>
 #include <framegen/xefg/XeFG_Dx12.h>
 #include <proxies/KernelBase_Proxy.h>
 #include <imgui/ImGuiNotify.hpp>
@@ -939,10 +940,14 @@ void StreamlineHooks::spoofArch(uint32_t currentArch, sl::Feature feature, Syste
             return setArch(maxArch, altSystemCaps);
     }
 
-    // Don't spoof DLSSD at all
+    // Only spoof DLSSD for a custom one, NVIDIA's needs turing and above
     else if (feature == sl::kFeatureDLSS_RR)
     {
-        return;
+        if (Nvngx_RR::Selected(API::DX12) == nullptr && Nvngx_RR::Selected(API::Vulkan) == nullptr)
+            return;
+
+        if (currentArch < NV_GPU_ARCHITECTURE_TU100)
+            return setArch(maxArch, altSystemCaps);
     }
 
     // Don't change arch for DLSSG with ada and above
@@ -1013,6 +1018,61 @@ bool StreamlineHooks::hkdlss_slOnPluginLoad(sl::param::IParameters* params, cons
     }
 
     PatchSL1PluginJson(configJson);
+
+    config = configJson.dump();
+
+    *pluginJSON = config.c_str();
+
+    return result;
+}
+
+// Only hooked when ray reconstruction runs on a custom DLSSD
+bool StreamlineHooks::hkdlssd_slOnPluginLoad(sl::param::IParameters* params, const char* loaderJSON,
+                                             const char** pluginJSON)
+{
+    LOG_FUNC();
+
+    // TODO: do it better than "static" and hoping for the best
+    static std::string config;
+
+    uint32_t currentArch = 0;
+    if (Config::Instance()->StreamlineSpoofing.value_or_default())
+    {
+        hookSystemCaps(params);
+        currentArch = getSystemCapsArch();
+        spoofArch(currentArch, sl::kFeatureDLSS_RR);
+    }
+
+    auto result = o_dlssd_slOnPluginLoad != nullptr && o_dlssd_slOnPluginLoad(params, loaderJSON, pluginJSON);
+
+    if (Config::Instance()->StreamlineSpoofing.value_or_default())
+        setArch(currentArch);
+
+    if (!HasPluginJson(result, pluginJSON))
+        return result;
+
+    nlohmann::json configJson = nlohmann::json::parse(*pluginJSON, nullptr, false);
+    if (configJson.is_discarded())
+    {
+        LOG_ERROR("Failed to parse plugin JSON");
+        return result;
+    }
+
+    auto primaryGpu = IdentifyGpu::getPrimaryGpu();
+    if (primaryGpu.vendorId != VendorId::Nvidia || !primaryGpu.dlssCapable)
+    {
+        if (configJson.contains("/external/vk/instance/extensions"_json_pointer))
+            configJson["external"]["vk"]["instance"]["extensions"].clear();
+
+        if (configJson.contains("/external/vk/device/extensions"_json_pointer))
+            configJson["external"]["vk"]["device"]["extensions"].clear();
+
+        if (configJson.contains("/external/vk/device/1.2_features"_json_pointer))
+            configJson["external"]["vk"]["device"]["1.2_features"].clear();
+
+        if (configJson.contains("/external/vk/device/1.3_features"_json_pointer))
+            configJson["external"]["vk"]["device"]["1.3_features"].clear();
+    }
 
     config = configJson.dump();
 
@@ -1603,6 +1663,21 @@ void* StreamlineHooks::hkdlss_slGetPluginFunction(PFN_slGetPluginFunction origin
     {
         o_slDLSSGetOptimalSettings = (decltype(&slDLSSGetOptimalSettings)) original(functionName);
         return &hkslDLSSGetOptimalSettings;
+    }
+
+    return original(functionName);
+}
+
+void* StreamlineHooks::hkdlssd_slGetPluginFunction(PFN_slGetPluginFunction original, const char* functionName,
+                                                   void* caller)
+{
+    LOG_DEBUG("{}", functionName);
+
+    if (strcmp(functionName, "slOnPluginLoad") == 0 &&
+        (Nvngx_RR::Selected(API::DX12) != nullptr || Nvngx_RR::Selected(API::Vulkan) != nullptr))
+    {
+        o_dlssd_slOnPluginLoad = (PFN_slOnPluginLoad) original(functionName);
+        return &hkdlssd_slOnPluginLoad;
     }
 
     return original(functionName);
@@ -2330,6 +2405,8 @@ const char* StreamlineHooks::pluginName(SlPlugin plugin)
         return "sl.pcl";
     case SlPlugin::Common:
         return "sl.common";
+    case SlPlugin::Dlssd:
+        return "sl.dlss_d";
     default:
         return "unknown";
     }
@@ -2349,6 +2426,8 @@ std::mutex& StreamlineHooks::pluginMutex(SlPlugin plugin)
         return mutexHookReflex;
     case SlPlugin::Pcl:
         return mutexHookPcl;
+    case SlPlugin::Dlssd:
+        return mutexHookDlssd;
     case SlPlugin::Common:
     default:
         return mutexHookCommon;
@@ -2369,6 +2448,8 @@ HMODULE& StreamlineHooks::activePluginModule(SlPlugin plugin)
         return hookedReflexModule;
     case SlPlugin::Pcl:
         return hookedPclModule;
+    case SlPlugin::Dlssd:
+        return hookedDlssdModule;
     case SlPlugin::Common:
     default:
         return hookedCommonModule;
@@ -2406,6 +2487,8 @@ void* StreamlineHooks::dispatchGetPluginFunction(SlPlugin plugin, PFN_slGetPlugi
         return hkpcl_slGetPluginFunction(original, functionName, caller);
     case SlPlugin::Common:
         return hkcommon_slGetPluginFunction(original, functionName, caller);
+    case SlPlugin::Dlssd:
+        return hkdlssd_slGetPluginFunction(original, functionName, caller);
     default:
         return original(functionName);
     }
@@ -2414,7 +2497,7 @@ void* StreamlineHooks::dispatchGetPluginFunction(SlPlugin plugin, PFN_slGetPlugi
 StreamlineHooks::PFN_slGetPluginFunction StreamlineHooks::slotDetour(SlPlugin plugin, size_t index)
 {
     static_assert(kMaxPluginInstances == 4, "Update the detour table below");
-    static_assert((size_t) SlPlugin::Count == 6, "Update the detour table below");
+    static_assert((size_t) SlPlugin::Count == 7, "Update the detour table below");
 
     using PFN = PFN_slGetPluginFunction;
     static const PFN table[(size_t) SlPlugin::Count][kMaxPluginInstances] = {
@@ -2430,6 +2513,8 @@ StreamlineHooks::PFN_slGetPluginFunction StreamlineHooks::slotDetour(SlPlugin pl
           &slotGetPluginFunction<SlPlugin::Pcl, 2>, &slotGetPluginFunction<SlPlugin::Pcl, 3> },
         { &slotGetPluginFunction<SlPlugin::Common, 0>, &slotGetPluginFunction<SlPlugin::Common, 1>,
           &slotGetPluginFunction<SlPlugin::Common, 2>, &slotGetPluginFunction<SlPlugin::Common, 3> },
+        { &slotGetPluginFunction<SlPlugin::Dlssd, 0>, &slotGetPluginFunction<SlPlugin::Dlssd, 1>,
+          &slotGetPluginFunction<SlPlugin::Dlssd, 2>, &slotGetPluginFunction<SlPlugin::Dlssd, 3> },
     };
 
     return table[(size_t) plugin][index];
@@ -2468,6 +2553,8 @@ void StreamlineHooks::clearPluginPointersInRange(uintptr_t base, size_t size)
 
     clear(o_dlss_slOnPluginLoad, "o_dlss_slOnPluginLoad");
     clear(o_slDLSSGetOptimalSettings, "o_slDLSSGetOptimalSettings");
+
+    clear(o_dlssd_slOnPluginLoad, "o_dlssd_slOnPluginLoad");
 
     clear(o_dlssg_slOnPluginLoad, "o_dlssg_slOnPluginLoad");
     clear(o_dlssg_slGetPluginJSONConfig_sl1, "o_dlssg_slGetPluginJSONConfig_sl1");
@@ -2723,6 +2810,20 @@ void StreamlineHooks::hookDlss(HMODULE slDlss)
     hookPlugin(SlPlugin::Dlss, slDlss);
 }
 
+// SL DLSSD
+
+void StreamlineHooks::unhookDlssd()
+{
+    LOG_FUNC();
+    unhookPlugin(SlPlugin::Dlssd);
+}
+
+void StreamlineHooks::hookDlssd(HMODULE slDlssd)
+{
+    LOG_FUNC();
+    hookPlugin(SlPlugin::Dlssd, slDlssd);
+}
+
 // SL DLSSG
 
 void StreamlineHooks::unhookDlssg()
@@ -2799,6 +2900,8 @@ void StreamlineHooks::hookCommon(HMODULE slCommon)
 bool StreamlineHooks::isInterposerHooked() { return o_slInit != nullptr || o_slInit_sl1 != nullptr; }
 
 bool StreamlineHooks::isDlssHooked() { return isPluginHooked(SlPlugin::Dlss); }
+
+bool StreamlineHooks::isDlssdHooked() { return isPluginHooked(SlPlugin::Dlssd); }
 
 bool StreamlineHooks::isDlssgHooked() { return isPluginHooked(SlPlugin::Dlssg); }
 

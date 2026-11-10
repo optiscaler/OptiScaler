@@ -1,6 +1,6 @@
 #pragma once
-#include "IFGNvngx.h"
-#include <proxies/NVNGX_Proxy.h>
+#include <framegen/nvngx/IFGNvngx.h>
+#include <proxies/Nvngx_Proxy.h>
 
 class Nvngx_DllProxy : public IFGNvngx
 {
@@ -8,39 +8,13 @@ class Nvngx_DllProxy : public IFGNvngx
     ID3D12Resource* depthCopy[2] {};
 
   protected:
-    HMODULE dll = nullptr;
-
-    PFN_D3D12_Init _DLSSG_D3D12_Init = nullptr;
-    PFN_D3D12_Init_Ext _DLSSG_D3D12_Init_Ext = nullptr;
-    PFN_D3D12_Shutdown _DLSSG_D3D12_Shutdown = nullptr;
-    PFN_D3D12_Shutdown1 _DLSSG_D3D12_Shutdown1 = nullptr;
-    PFN_D3D12_GetScratchBufferSize _DLSSG_D3D12_GetScratchBufferSize = nullptr;
-    PFN_D3D12_CreateFeature _DLSSG_D3D12_CreateFeature = nullptr;
-    PFN_D3D12_ReleaseFeature _DLSSG_D3D12_ReleaseFeature = nullptr;
-    PFN_D3D12_GetFeatureRequirements _DLSSG_D3D12_GetFeatureRequirements = nullptr; // unused
-    PFN_D3D12_EvaluateFeature _DLSSG_D3D12_EvaluateFeature = nullptr;
-    PFN_D3D12_PopulateParameters_Impl _DLSSG_D3D12_PopulateParameters_Impl = nullptr;
-
-    PFN_VULKAN_Init _DLSSG_VULKAN_Init = nullptr;
-    PFN_VULKAN_Init_Ext _DLSSG_VULKAN_Init_Ext = nullptr;
-    PFN_VULKAN_Init_Ext2 _DLSSG_VULKAN_Init_Ext2 = nullptr;
-    PFN_VULKAN_Shutdown _DLSSG_VULKAN_Shutdown = nullptr;
-    PFN_VULKAN_Shutdown1 _DLSSG_VULKAN_Shutdown1 = nullptr;
-    PFN_VULKAN_GetScratchBufferSize _DLSSG_VULKAN_GetScratchBufferSize = nullptr;
-    PFN_VULKAN_CreateFeature _DLSSG_VULKAN_CreateFeature = nullptr;
-    PFN_VULKAN_CreateFeature1 _DLSSG_VULKAN_CreateFeature1 = nullptr;
-    PFN_VULKAN_ReleaseFeature _DLSSG_VULKAN_ReleaseFeature = nullptr;
-    PFN_VULKAN_GetFeatureRequirements _DLSSG_VULKAN_GetFeatureRequirements = nullptr; // unused
-    PFN_VULKAN_EvaluateFeature _DLSSG_VULKAN_EvaluateFeature = nullptr;
-    PFN_VULKAN_PopulateParameters_Impl _DLSSG_VULKAN_PopulateParameters_Impl = nullptr;
+    NgxFeatureModule ngx;
 
     // What PopulateParameters reports before init
     int reportedMaxFakeFrames = 0;
     feature_version antighostingVersion {};
 
     virtual void LoadLibraries() = 0;
-
-    void LoadNgxExports();
 
     // Fills reportedMaxFakeFrames and antighostingVersion from PopulateParameters, D3D12's or else Vulkan's
     void QueryReportedParameters();
@@ -52,15 +26,15 @@ class Nvngx_DllProxy : public IFGNvngx
     Nvngx_DllProxy() = default;
     ~Nvngx_DllProxy()
     {
-        if (dll)
-            FreeLibrary(dll);
+        if (ngx.dll)
+            FreeLibrary(ngx.dll);
 
         SAFE_RELEASE(depthCopy[0]);
         SAFE_RELEASE(depthCopy[1]);
     };
 
-    bool isDx12Available() override final { return _DLSSG_D3D12_Init != nullptr; };
-    bool isVulkanAvailable() override final { return _DLSSG_VULKAN_Init != nullptr; };
+    bool isDx12Available() override final { return ngx.D3D12_Init != nullptr; };
+    bool isVulkanAvailable() override final { return ngx.VULKAN_Init != nullptr; };
 
     // A provider reporting the antighosting (GhostBuster) version is DLSS Enabler's frame generation or passes its
     // parameters through, so it takes DLSS Enabler's DLSSG.DispatchFlags

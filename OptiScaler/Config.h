@@ -549,6 +549,8 @@ class Config
     CustomOptional<std::string, NoDefault> CustomUpscaler;
     // Folder name in custom used by Vulkan FFX, stored in VulkanUpscaler, empty for the regular upscalers
     CustomOptional<std::string, NoDefault> CustomUpscalerVk;
+    // Folder in custom with a dlssd for the game's ray reconstruction, RRUpscaler in the ini, empty for auto
+    CustomOptional<std::string, NoDefault> CustomRRUpscaler;
 
     // UpscalerIndex of [FSR] for the regular FFX upscaler, of [<name>] for a custom one
     CustomOptional<int>& FfxUpscalerIndexFor(const std::string& custom)

@@ -5,9 +5,10 @@
 
 #include "NVNGX_DLSS.h"
 #include <framegen/nvngx/Nvngx_FG.h>
+#include <upscalers/nvngx/Nvngx_RR.h>
 #include <inputs/FG/Upscaler_Inputs_Vk.h>
 #include "NVNGX_Parameter.h"
-#include "proxies/NVNGX_Proxy.h"
+#include "proxies/Nvngx_Proxy.h"
 
 #include "upscalers/FeatureProvider_Vk.h"
 
@@ -109,6 +110,10 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_Init_Ext2(
         LOG_WARN("NVNGX already inited");
         return NVSDK_NGX_Result_Success;
     }
+
+    // Before the parameter maps, they report what the custom DLSSD gives
+    if (auto customRR = Nvngx_RR::Selected(API::Vulkan); customRR != nullptr)
+        customRR->InitVulkan(InInstance, InPD, InDevice, InGIPA, InGDPA);
 
     LOG_INFO("AppId: {0}", InApplicationId);
     LOG_INFO("SDK: {0:x}", (unsigned int) InSDKVersion);
@@ -579,6 +584,18 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_GetFeatureRequirements(
 
     LOG_DEBUG("for FeatureID: {0}", (int) FeatureDiscoveryInfo->FeatureID);
 
+    if (auto customRR = FeatureDiscoveryInfo->FeatureID == NVSDK_NGX_Feature_RayReconstruction
+                            ? Nvngx_RR::Selected(API::Vulkan)
+                            : nullptr;
+        customRR != nullptr)
+    {
+        if (customRR->ngx.VULKAN_GetFeatureRequirements != nullptr)
+            return customRR->ngx.VULKAN_GetFeatureRequirements(VulkanInstance, PhysicalDevice, FeatureDiscoveryInfo,
+                                                               OutSupported);
+
+        return Nvngx_RR::ReportSupported(OutSupported);
+    }
+
     if (FeatureDiscoveryInfo->FeatureID == NVSDK_NGX_Feature_SuperSampling ||
         (State::Instance().activeFgInput == FGInput::NvngxFG && Nvngx_FG::isVulkanAvailable() &&
          FeatureDiscoveryInfo->FeatureID == NVSDK_NGX_Feature_FrameGeneration))
@@ -753,13 +770,16 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_CreateFeature1(VkDevice InDevice
     }
     else if (InFeatureID == NVSDK_NGX_Feature_RayReconstruction)
     {
-        LOG_INFO("creating new DLSSD feature");
+        auto rrBackend = Nvngx_RR::Backend(API::Vulkan);
+        LOG_INFO("Creating new {} feature for Ray Reconstruction", UpscalerDisplayName(rrBackend));
 
         VkContexts[handleId] = {};
+        State::Instance().rrHandles.insert(handleId);
 
-        if (!FeatureProvider_Vk::GetFeature(Upscaler::DLSSD, handleId, InParameters, &VkContexts[handleId].feature))
+        if (!FeatureProvider_Vk::GetFeature(rrBackend, handleId, InParameters, &VkContexts[handleId].feature, true))
         {
-            LOG_ERROR("DLSSD can't created");
+            LOG_ERROR("Ray Reconstruction feature can't created");
+            State::Instance().rrHandles.erase(handleId);
             return NVSDK_NGX_Result_Fail;
         }
     }
@@ -784,6 +804,13 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_CreateFeature1(VkDevice InDevice
 
             return NVSDK_NGX_Result_Success;
         }
+    }
+
+    // Like Dx12, the next evaluate changes to another DLSSD or FSR
+    if (State::Instance().rrHandles.contains(handleId) && Nvngx_RR::InitFailed(deviceContext))
+    {
+        State::Instance().changeBackend[handleId] = true;
+        return NVSDK_NGX_Result_Success;
     }
 
     LOG_ERROR("CreateFeature failed");
@@ -824,6 +851,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_ReleaseFeature(NVSDK_NGX_Handle*
         return NVSDK_NGX_Result_Success;
 
     auto handleId = InHandle->Id;
+
     if (handleId < DLSS_MOD_ID_OFFSET)
     {
         if (Config::Instance()->DLSSEnabled.value_or_default() && NVNGXProxy::VULKAN_ReleaseFeature() != nullptr)
@@ -864,6 +892,8 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_ReleaseFeature(NVSDK_NGX_Handle*
                                [&handleId](const auto& p) { return p.first == handleId; });
         VkContexts.erase(it);
     }
+
+    State::Instance().rrHandles.erase(handleId);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
@@ -922,7 +952,9 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_EvaluateFeature(VkCommandBuffer 
         state.setInputApiName = state.currentInputApiName;
 
     const auto targetApiName =
-        !state.setInputApiName.has_value() ? ApiUpscalerInput::DLSS_VK : state.setInputApiName.value();
+        !state.setInputApiName.has_value()
+            ? (state.rrHandles.contains(handleId) ? ApiUpscalerInput::DLSSD_VK : ApiUpscalerInput::DLSS_VK)
+            : state.setInputApiName.value();
 
     if (state.currentInputApiName != targetApiName)
         state.currentInputApiName = targetApiName;
@@ -993,10 +1025,17 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_EvaluateFeature(VkCommandBuffer 
     else
         ImGui::InsertNotification({ ImGuiToastType::Error, 10000, "Upscaler failed to run!" });
 
-    if ((!upscaleResult || !deviceContext->IsInited()) &&
-        Config::Instance()->VulkanUpscaler.value_or_default() != Upscaler::FSR22)
+    const bool rayReconstruction = state.rrHandles.contains(handleId);
+    const auto configuredBackend =
+        rayReconstruction ? Nvngx_RR::Backend(API::Vulkan) : Config::Instance()->VulkanUpscaler.value_or_default();
+
+    if ((!upscaleResult || !deviceContext->IsInited()) && configuredBackend != Upscaler::FSR22)
     {
-        state.newBackend = Upscaler::FSR22;
+        if (rayReconstruction)
+            Nvngx_RR::InitFailed(deviceContext);
+        else
+            state.newBackend = Upscaler::FSR22;
+
         state.changeBackend[handleId] = true;
         return NVSDK_NGX_Result_Success;
     }
@@ -1036,6 +1075,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_Shutdown(void)
     // MenuOverlayVk::UnHookVk();
 
     Nvngx_FG::VULKAN_Shutdown();
+    Nvngx_RR::ShutdownVulkan(VK_NULL_HANDLE);
 
     shutdown = false;
     State::Instance().nvngxVkInited = false;
@@ -1059,6 +1099,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_Shutdown1(VkDevice InDevice)
     }
 
     Nvngx_FG::VULKAN_Shutdown1(InDevice);
+    Nvngx_RR::ShutdownVulkan(InDevice);
 
     shutdown = false;
 
