@@ -317,8 +317,7 @@ void ClearAllDirectInputDeviceSlotsLocked()
     _state.DirectInputTrackedDeviceCount = 0;
 }
 
-void TrackDirectInputDeviceLocked(void* device, DirectInputDeviceKind kind,
-                                  std::optional<std::size_t> getDeviceDataHook)
+void TrackDirectInputDeviceLocked(void* device, DirectInputDeviceKind kind)
 {
     if (device == nullptr)
         return;
@@ -331,9 +330,6 @@ void TrackDirectInputDeviceLocked(void* device, DirectInputDeviceKind kind,
 
         if (slot.InUse && slot.Device == device)
         {
-            if (getDeviceDataHook.has_value())
-                slot.GetDeviceDataHook = getDeviceDataHook;
-
             // A later CreateDevice call may use an instance GUID that we cannot classify and
             // therefore reports Other. Never downgrade a known keyboard/mouse classification.
             if (slot.Kind == DirectInputDeviceKind::Other && kind != DirectInputDeviceKind::Other)
@@ -367,7 +363,6 @@ void TrackDirectInputDeviceLocked(void* device, DirectInputDeviceKind kind,
     slot.InUse = true;
     slot.Device = device;
     slot.Kind = kind;
-    slot.GetDeviceDataHook = getDeviceDataHook;
 
     _state.DirectInputTrackedDeviceCount++;
 
@@ -420,13 +415,9 @@ bool HookDirectInputDeviceLocked(void* device, DirectInputDeviceKind kind)
         completeCoverage = false;
     }
 
-    std::optional<std::size_t> getDeviceDataIndex;
-    if (getDeviceDataHook != nullptr)
-        getDeviceDataIndex = SlotIndex(DirectInputGetDeviceDataHooks, getDeviceDataHook);
-
     if (!attachRelease && !attachGetDeviceState && !attachGetDeviceData)
     {
-        TrackDirectInputDeviceLocked(device, kind, getDeviceDataIndex);
+        TrackDirectInputDeviceLocked(device, kind);
         return completeCoverage;
     }
 
@@ -448,7 +439,7 @@ bool HookDirectInputDeviceLocked(void* device, DirectInputDeviceKind kind)
 
         if (attachGetDeviceData)
             DetourAttach(reinterpret_cast<PVOID*>(&getDeviceDataHook->Trampoline),
-                         DirectInputGetDeviceDataDetours[*getDeviceDataIndex]);
+                         DirectInputGetDeviceDataDetours[SlotIndex(DirectInputGetDeviceDataHooks, getDeviceDataHook)]);
 
         result = DetourTransactionCommit();
     }
@@ -484,7 +475,7 @@ bool HookDirectInputDeviceLocked(void* device, DirectInputDeviceKind kind)
         LOG_INFO("DirectInput GetDeviceData target detoured target:{} device:{}",
                  reinterpret_cast<void*>(getDeviceData), device);
 
-    TrackDirectInputDeviceLocked(device, kind, getDeviceDataIndex);
+    TrackDirectInputDeviceLocked(device, kind);
     return completeCoverage;
 }
 
@@ -640,6 +631,40 @@ bool InstallDirectInputExportHook(HMODULE module, const char* exportName, void**
     return true;
 }
 
+// Keyboard keys are their DIK codes, mouse buttons have their own offsets
+bool IsDirectInputButton(DirectInputDeviceKind kind, DWORD offset)
+{
+    if (kind == DirectInputDeviceKind::Keyboard)
+        return offset < 256;
+
+    return kind == DirectInputDeviceKind::Mouse && offset >= DIMOFS_BUTTON0 && offset <= DIMOFS_BUTTON7;
+}
+
+// What the game was told about its keys and buttons, so their releases can be passed while blocked
+void TrackDirectInputButtons(void* device, DirectInputDeviceKind kind, const void* data, DWORD objectDataSize,
+                             DWORD count)
+{
+    if (kind == DirectInputDeviceKind::Other || count == 0)
+        return;
+
+    std::unique_lock lock(_state.Mutex);
+    const std::size_t slot = FindDirectInputDeviceSlotLocked(device);
+
+    if (slot >= MaxTrackedDirectInputDevices)
+        return;
+
+    auto& down = _state.DirectInputDeviceSlots[slot].DownSeenByGame;
+
+    for (DWORD i = 0; i < count; ++i)
+    {
+        auto* event =
+            reinterpret_cast<const DIDEVICEOBJECTDATA_DX3*>(static_cast<const BYTE*>(data) + i * objectDataSize);
+
+        if (IsDirectInputButton(kind, event->dwOfs))
+            down[event->dwOfs] = (event->dwData & 0x80) != 0;
+    }
+}
+
 // A joystick read with c_dfDIJoystick(2) at rest: 0 is full left/up for axes and north for POV hats
 void FillNeutralJoystickState(void* device, DIJOYSTATE* state)
 {
@@ -785,24 +810,15 @@ bool RemoveDirectInputHooksLocked()
     return true;
 }
 
-void DrainDirectInputBufferedDataLocked()
+void EndDirectInputBlockLocked()
 {
+    // Events still queued came while the menu had input, GetDeviceData keeps only owed releases from them
+    const DWORD now = GetTickCount();
+
     for (DirectInputDeviceSlot& deviceSlot : _state.DirectInputDeviceSlots)
     {
-        if (!deviceSlot.InUse || deviceSlot.Device == nullptr || !deviceSlot.GetDeviceDataHook.has_value())
-            continue;
-
-        DirectInputGetDeviceData_t original = DirectInputGetDeviceDataHooks[*deviceSlot.GetDeviceDataHook].Trampoline;
-
-        if (original == nullptr)
-            continue;
-
-        const DWORD objectDataSize =
-            deviceSlot.LastObjectDataSize != 0 ? deviceSlot.LastObjectDataSize : sizeof(DIDEVICEOBJECTDATA);
-        DWORD flushCount = INFINITE;
-
-        ScopedHookBypass bypass;
-        original(deviceSlot.Device, objectDataSize, nullptr, &flushCount, 0);
+        if (deviceSlot.InUse)
+            deviceSlot.BlockedUntilTick = now;
     }
 }
 
@@ -1000,6 +1016,8 @@ HRESULT WINAPI hkDirectInputGetDeviceData(void* device, DWORD objectDataSize, LP
     DirectInputGetDeviceData_t original = nullptr;
     DirectInputDeviceKind kind = DirectInputDeviceKind::Other;
     bool shouldBlock = false;
+    std::optional<DWORD> blockedUntil;
+    std::bitset<256> downSeenByGame;
 
     {
         std::unique_lock lock(_state.Mutex);
@@ -1012,38 +1030,94 @@ HRESULT WINAPI hkDirectInputGetDeviceData(void* device, DWORD objectDataSize, LP
         else
             _state.DirectInputGetDeviceDataPassedCount++;
 
-        const std::size_t deviceSlotIndex = FindDirectInputDeviceSlotLocked(device);
-        if (deviceSlotIndex < MaxTrackedDirectInputDevices && objectDataSize != 0)
-            _state.DirectInputDeviceSlots[deviceSlotIndex].LastObjectDataSize = objectDataSize;
+        if (const std::size_t slot = FindDirectInputDeviceSlotLocked(device); slot < MaxTrackedDirectInputDevices)
+        {
+            blockedUntil = _state.DirectInputDeviceSlots[slot].BlockedUntilTick;
+            downSeenByGame = _state.DirectInputDeviceSlots[slot].DownSeenByGame;
+        }
 
         original = DirectInputGetDeviceDataHooks[Slot].Trampoline;
     }
 
-    if (!shouldBlock)
-    {
-        if (original == nullptr)
-            return DIERR_GENERIC;
+    if (original == nullptr)
+        return DIERR_GENERIC;
 
+    // A flush or discard without data has nothing to filter
+    const bool readable = data != nullptr && inOut != nullptr && objectDataSize >= sizeof(DIDEVICEOBJECTDATA_DX3);
+    const DWORD requested = inOut != nullptr ? *inOut : 0;
+    HRESULT result = DI_OK;
+
+    {
         ScopedHookBypass bypass;
-        return original(device, objectDataSize, data, inOut, flags);
+
+        // An object size we can't read is flushed while blocked, like before
+        if (!readable && shouldBlock && data != nullptr && inOut != nullptr)
+        {
+            DWORD flushCount = INFINITE;
+            original(device, objectDataSize, nullptr, &flushCount, 0);
+            *inOut = 0;
+            return DI_OK;
+        }
+
+        result = original(device, objectDataSize, data, inOut, flags);
     }
 
-    // GetDeviceData is backed by a buffered event queue. Returning zero without
-    // touching the real queue lets menu-time events replay after closing the
-    // overlay. Flush the device buffer, then present an empty successful read.
-    if (original != nullptr)
+    if (!readable || FAILED(result) || (!shouldBlock && !blockedUntil.has_value()))
     {
-        DWORD flushCount = INFINITE;
-        ScopedHookBypass bypass;
-        original(device, objectDataSize, nullptr, &flushCount, 0);
+        if (readable && SUCCEEDED(result) && (flags & DIGDD_PEEK) == 0)
+            TrackDirectInputButtons(device, kind, data, objectDataSize, *inOut);
+
+        return result;
     }
 
-    if (inOut != nullptr)
-        *inOut = 0;
+    // Events the menu had are dropped, releases of keys and buttons the game saw pressed are kept so nothing
+    // stays held after it closes
+    const bool peek = (flags & DIGDD_PEEK) != 0;
+    const DWORD count = *inOut;
+    DWORD kept = 0;
 
-    OPTIINPUT_LOG_VERBOSE("blocking DirectInput GetDeviceData device:{} kind:{} flags:{}", device,
-                          DirectInputDeviceKindName(kind), flags);
-    return DI_OK;
+    for (DWORD i = 0; i < count; ++i)
+    {
+        auto* event = reinterpret_cast<DIDEVICEOBJECTDATA_DX3*>(reinterpret_cast<BYTE*>(data) + i * objectDataSize);
+        const bool isButton = IsDirectInputButton(kind, event->dwOfs);
+        const bool isDown = (event->dwData & 0x80) != 0;
+        const bool blocked =
+            shouldBlock || (blockedUntil.has_value() && static_cast<LONG>(event->dwTimeStamp - *blockedUntil) < 0);
+
+        if (blocked && !(isButton && !isDown && downSeenByGame[event->dwOfs]))
+            continue;
+
+        if (isButton && !peek)
+            downSeenByGame[event->dwOfs] = isDown;
+
+        if (kept != i)
+            std::memmove(reinterpret_cast<BYTE*>(data) + kept * objectDataSize, event, objectDataSize);
+
+        kept++;
+    }
+
+    *inOut = kept;
+
+    if (!peek)
+    {
+        std::unique_lock lock(_state.Mutex);
+
+        if (const std::size_t slot = FindDirectInputDeviceSlotLocked(device); slot < MaxTrackedDirectInputDevices)
+        {
+            auto& tracked = _state.DirectInputDeviceSlots[slot];
+            tracked.DownSeenByGame = downSeenByGame;
+
+            // Read empty, everything queued after this is newer
+            if (!shouldBlock && count < requested)
+                tracked.BlockedUntilTick.reset();
+        }
+    }
+
+    if (shouldBlock)
+        OPTIINPUT_LOG_VERBOSE("blocking DirectInput GetDeviceData device:{} kind:{} read:{} kept:{}", device,
+                              DirectInputDeviceKindName(kind), count, kept);
+
+    return result;
 }
 
 template <std::size_t Slot> ULONG WINAPI hkDirectInputDeviceRelease(void* device)

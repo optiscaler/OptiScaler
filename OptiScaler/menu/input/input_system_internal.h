@@ -5,9 +5,11 @@
 #include <Windows.h>
 
 #include <array>
+#include <bitset>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <winerror.h>
 #include <Xinput.h>
@@ -77,8 +79,10 @@ struct DirectInputDeviceSlot
     bool InUse = false;
     void* Device = nullptr;
     DirectInputDeviceKind Kind = DirectInputDeviceKind::Other;
-    DWORD LastObjectDataSize = 0;
-    std::optional<std::size_t> GetDeviceDataHook; // Its slot in the GetDeviceData hooks, drains through its trampoline
+    // Keys and buttons the game was told are down, their releases stay owed to it while input is blocked
+    std::bitset<256> DownSeenByGame;
+    // Buffered events from before it came while input was blocked, cleared once the game read the queue empty
+    std::optional<DWORD> BlockedUntilTick;
 };
 
 enum class HidDeviceKind
@@ -503,7 +507,7 @@ DWORD WINAPI hkXInputSetState(DWORD userIndex, XINPUT_VIBRATION* vibration);
 // DirectInput
 void UpdateDirectInputIntegration();
 bool RemoveDirectInputHooksLocked();
-void DrainDirectInputBufferedDataLocked();
+void EndDirectInputBlockLocked();
 HRESULT WINAPI hkDirectInput8Create(HINSTANCE instance, DWORD version, REFIID riid, LPVOID* out, LPUNKNOWN outer);
 HRESULT WINAPI hkDirectInputCreateA(HINSTANCE instance, DWORD version, void** out, LPUNKNOWN outer);
 HRESULT WINAPI hkDirectInputCreateW(HINSTANCE instance, DWORD version, void** out, LPUNKNOWN outer);
