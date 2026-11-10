@@ -4,7 +4,7 @@
 
 #include "NVNGX_DLSS.h"
 #include "NVNGX_Parameter.h"
-#include "proxies/NVNGX_Proxy.h"
+#include "proxies/Nvngx_Proxy.h"
 
 #include <upscalers/FeatureProvider_Dx12.h>
 #include "upscalers/dlss/DLSSFeature_Dx12.h"

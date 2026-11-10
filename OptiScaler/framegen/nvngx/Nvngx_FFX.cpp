@@ -4,7 +4,7 @@
 #include <NVNGX_Parameter.h>
 #include <nvsdk_ngx_vk.h>
 
-#include "proxies/NVNGX_Proxy.h"
+#include "proxies/Nvngx_Proxy.h"
 #include "proxies/Ntdll_Proxy.h"
 #include <proxies/FfxApi_Proxy.h>
 #include <numbers>

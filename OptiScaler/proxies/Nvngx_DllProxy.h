@@ -1,6 +1,6 @@
 #pragma once
-#include "IFGNvngx.h"
-#include <proxies/NVNGX_Proxy.h>
+#include <framegen/nvngx/IFGNvngx.h>
+#include <proxies/Nvngx_Proxy.h>
 
 class Nvngx_DllProxy : public IFGNvngx
 {

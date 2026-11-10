@@ -3,7 +3,7 @@
 #include "XeSS_Base.h"
 
 #include <proxies/XeSS_Proxy.h>
-#include <proxies/NVNGX_Proxy.h>
+#include <proxies/Nvngx_Proxy.h>
 #include <NVNGX_Parameter.h>
 #include <nvsdk_ngx_vk.h>
 

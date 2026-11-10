@@ -2,7 +2,7 @@
 
 #include <NVNGX_Parameter.h>
 
-#include "proxies/NVNGX_Proxy.h"
+#include "proxies/Nvngx_Proxy.h"
 #include "proxies/Ntdll_Proxy.h"
 #include <shaders/hud_copy/HudCopy_Dx12.h>
 #include <shaders/hud_copy/HudCopy_Vk.h>

@@ -1,9 +1,9 @@
 #pragma once
 
 #include "SysUtils.h"
-#include <proxies/NVNGX_Proxy.h>
+#include <proxies/Nvngx_Proxy.h>
 #include <upscalers/IFeature.h>
-#include <upscalers/nvngx/Nvngx_RRDllProxy.h>
+#include <proxies/Nvngx_RRDllProxy.h>
 
 class DLSSDFeature : public virtual IFeature
 {

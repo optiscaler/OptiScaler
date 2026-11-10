@@ -8,7 +8,7 @@
 #include <upscalers/nvngx/Nvngx_RR.h>
 #include <inputs/FG/Upscaler_Inputs_Vk.h>
 #include "NVNGX_Parameter.h"
-#include "proxies/NVNGX_Proxy.h"
+#include "proxies/Nvngx_Proxy.h"
 
 #include "upscalers/FeatureProvider_Vk.h"
 

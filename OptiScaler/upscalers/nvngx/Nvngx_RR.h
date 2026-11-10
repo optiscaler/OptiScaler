@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Nvngx_RRDllProxy.h"
+#include <proxies/Nvngx_RRDllProxy.h>
 #include <NVNGX_Parameter.h>
 
 #include <map>

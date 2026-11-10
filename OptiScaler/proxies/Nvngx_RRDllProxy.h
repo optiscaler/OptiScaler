@@ -1,5 +1,5 @@
 #pragma once
-#include <proxies/NVNGX_Proxy.h>
+#include <proxies/Nvngx_Proxy.h>
 
 // nvngx_dlssd replacement from custom/<name>/dlssd, runs Opti's DLSSD feature
 class Nvngx_RRDllProxy

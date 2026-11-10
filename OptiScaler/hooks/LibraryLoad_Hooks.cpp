@@ -13,7 +13,7 @@
 #include <proxies/XeFG_Proxy.h>
 #include <proxies/XeLL_Proxy.h>
 #include <inputs/FG/XeFG_Inputs_Dx12.h>
-#include <proxies/NVNGX_Proxy.h>
+#include <proxies/Nvngx_Proxy.h>
 #include <proxies/FfxApi_Proxy.h>
 
 #include <inputs/FSR2_Dx12.h>
