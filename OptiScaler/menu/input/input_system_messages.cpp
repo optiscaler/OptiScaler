@@ -1060,10 +1060,10 @@ SHORT WINAPI hkGetAsyncKeyState(int vk)
         }
 
         OPTIINPUT_LOG_VERBOSE("blocking GetAsyncKeyState vk:{}", vk);
-        return 0;
+        return WithTakenAsyncKeyPress(vk, 0, true);
     }
 
-    return o_GetAsyncKeyState(vk);
+    return WithTakenAsyncKeyPress(vk, o_GetAsyncKeyState(vk), false);
 }
 
 SHORT WINAPI hkGetKeyState(int vk)

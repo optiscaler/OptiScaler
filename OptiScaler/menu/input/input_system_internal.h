@@ -557,6 +557,7 @@ void UpdateMousePositionFromClient(HWND hwnd, LPARAM lParam);
 bool ProcessRemovedMessage(MSG* msg);
 void ConsumeMessage(MSG* msg);
 SHORT RealGetAsyncKeyStateSafe(int vk);
+SHORT WithTakenAsyncKeyPress(int vk, SHORT state, bool blocked);
 SHORT RealGetKeyStateSafe(int vk);
 BOOL RealGetCursorPosSafe(LPPOINT point);
 void SetMouseDownFromRawState(int button, DWORD messageTime, bool blocked);
