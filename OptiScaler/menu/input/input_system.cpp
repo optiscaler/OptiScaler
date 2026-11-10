@@ -1664,6 +1664,9 @@ InputAcquisitionMode GetInputAcquisitionMode()
 
 void ResetMenuInputTransientState()
 {
+    // The window thread adds text and key events under the lock
+    std::unique_lock lock(_state.Mutex);
+
     _state.ExternalPendingMouseDeltaX = 0;
     _state.ExternalPendingMouseDeltaY = 0;
     _state.MouseWheel = 0.0f;
