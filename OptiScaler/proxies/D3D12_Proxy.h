@@ -141,7 +141,10 @@ class D3d12Proxy
             return nullptr;
         }
 
-        //_D3D12CreateDevice = addr;
+        // As the proxy dll we hooked our own export, its trampoline would call back into the proxy
+        if (HookModule() == _dll)
+            _D3D12CreateDevice = addr;
+
         return addr;
     }
 
@@ -159,7 +162,10 @@ class D3d12Proxy
             return nullptr;
         }
 
-        //_D3D12SerializeRootSignature = addr;
+        // As the proxy dll we hooked our own export, its trampoline would call back into the proxy
+        if (HookModule() == _dll)
+            _D3D12SerializeRootSignature = addr;
+
         return addr;
     }
 
@@ -177,7 +183,10 @@ class D3d12Proxy
             return nullptr;
         }
 
-        //_D3D12CreateRootSignatureDeserializer = addr;
+        // As the proxy dll we hooked our own export, its trampoline would call back into the proxy
+        if (HookModule() == _dll)
+            _D3D12CreateRootSignatureDeserializer = addr;
+
         return addr;
     }
 
@@ -195,7 +204,10 @@ class D3d12Proxy
             return nullptr;
         }
 
-        //_D3D12SerializeVersionedRootSignature = addr;
+        // As the proxy dll we hooked our own export, its trampoline would call back into the proxy
+        if (HookModule() == _dll)
+            _D3D12SerializeVersionedRootSignature = addr;
+
         return addr;
     }
 
@@ -214,7 +226,10 @@ class D3d12Proxy
             return nullptr;
         }
 
-        //_D3D12CreateVersionedRootSignatureDeserializer = addr;
+        // As the proxy dll we hooked our own export, its trampoline would call back into the proxy
+        if (HookModule() == _dll)
+            _D3D12CreateVersionedRootSignatureDeserializer = addr;
+
         return addr;
     }
 
@@ -232,7 +247,10 @@ class D3d12Proxy
             return nullptr;
         }
 
-        //_D3D12GetDebugInterface = addr;
+        // As the proxy dll we hooked our own export, its trampoline would call back into the proxy
+        if (HookModule() == _dll)
+            _D3D12GetDebugInterface = addr;
+
         return addr;
     }
 
@@ -250,7 +268,10 @@ class D3d12Proxy
             return nullptr;
         }
 
-        //_D3D12EnableExperimentalFeatures = addr;
+        // As the proxy dll we hooked our own export, its trampoline would call back into the proxy
+        if (HookModule() == _dll)
+            _D3D12EnableExperimentalFeatures = addr;
+
         return addr;
     }
 
@@ -268,7 +289,10 @@ class D3d12Proxy
             return nullptr;
         }
 
-        //_D3D12GetInterface = addr;
+        // As the proxy dll we hooked our own export, its trampoline would call back into the proxy
+        if (HookModule() == _dll)
+            _D3D12GetInterface = addr;
+
         return addr;
     }
 

@@ -101,7 +101,10 @@ class DxgiProxy
             return nullptr;
         }
 
-        //_CreateDxgiFactory = addr;
+        // As the proxy dll we hooked our own export, its trampoline would call back into the proxy
+        if (HookModule() == _dll)
+            _CreateDxgiFactory = addr;
+
         return addr;
     }
 
@@ -119,7 +122,10 @@ class DxgiProxy
             return nullptr;
         }
 
-        //_CreateDxgiFactory1 = addr;
+        // As the proxy dll we hooked our own export, its trampoline would call back into the proxy
+        if (HookModule() == _dll)
+            _CreateDxgiFactory1 = addr;
+
         return addr;
     }
 
@@ -137,7 +143,10 @@ class DxgiProxy
             return nullptr;
         }
 
-        //_CreateDxgiFactory2 = addr;
+        // As the proxy dll we hooked our own export, its trampoline would call back into the proxy
+        if (HookModule() == _dll)
+            _CreateDxgiFactory2 = addr;
+
         return addr;
     }
 
@@ -155,7 +164,10 @@ class DxgiProxy
             return nullptr;
         }
 
-        //_DeclareAdepterRemovalSupport = addr;
+        // As the proxy dll we hooked our own export, its trampoline would call back into the proxy
+        if (HookModule() == _dll)
+            _DeclareAdepterRemovalSupport = addr;
+
         return addr;
     }
 
@@ -173,7 +185,9 @@ class DxgiProxy
             return nullptr;
         }
 
-        //_GetDebugInterface = addr;
+        // As the proxy dll we hooked our own export, its trampoline would call back into the proxy
+        if (HookModule() == _dll)
+            _GetDebugInterface = addr;
         return addr;
     }
 
