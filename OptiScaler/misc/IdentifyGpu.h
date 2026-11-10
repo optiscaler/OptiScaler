@@ -94,6 +94,10 @@ class IdentifyGpu
     static void queryNvapi(GpuInformation& gpuInfo);
 
   public:
+    // D3D12 returns the same device for an adapter, probing counts its references to undo amdxc64's leak.
+    // Device creations wait on it so the probe never releases references taken by the game or other mods
+    inline static std::recursive_mutex probeDeviceMutex {};
+
     static void getHardwareAdapter(IDXGIFactory* InFactory, IDXGIAdapter** InAdapter,
                                    D3D_FEATURE_LEVEL requiredFeatureLevel);
 
