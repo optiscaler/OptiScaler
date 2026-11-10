@@ -9,6 +9,15 @@
 
 namespace OptiInput
 {
+// One instance per hook slot so each calls its own slot's trampoline, another mod can replace the vtable entry
+template <std::size_t Slot>
+HRESULT WINAPI hkDirectInputCreateDevice(void* directInput, REFGUID guid, void** device, LPUNKNOWN outer);
+template <std::size_t Slot> HRESULT WINAPI hkDirectInputGetDeviceState(void* device, DWORD dataSize, LPVOID data);
+template <std::size_t Slot>
+HRESULT WINAPI hkDirectInputGetDeviceData(void* device, DWORD objectDataSize, LPDIDEVICEOBJECTDATA data, LPDWORD inOut,
+                                          DWORD flags);
+template <std::size_t Slot> ULONG WINAPI hkDirectInputDeviceRelease(void* device);
+
 namespace
 {
 constexpr wchar_t DirectInput8ModuleName[] = L"dinput8.dll";
@@ -42,6 +51,39 @@ std::array<DirectInputMethodHookSlot<DirectInputGetDeviceState_t>, MaxDirectInpu
     DirectInputGetDeviceStateHooks {};
 std::array<DirectInputMethodHookSlot<DirectInputGetDeviceData_t>, MaxDirectInputMethodHooks>
     DirectInputGetDeviceDataHooks {};
+
+template <std::size_t... I> constexpr auto CreateDeviceDetours(std::index_sequence<I...>)
+{
+    return std::array { &hkDirectInputCreateDevice<I>... };
+}
+template <std::size_t... I> constexpr auto GetDeviceStateDetours(std::index_sequence<I...>)
+{
+    return std::array { &hkDirectInputGetDeviceState<I>... };
+}
+template <std::size_t... I> constexpr auto GetDeviceDataDetours(std::index_sequence<I...>)
+{
+    return std::array { &hkDirectInputGetDeviceData<I>... };
+}
+template <std::size_t... I> constexpr auto ReleaseDetours(std::index_sequence<I...>)
+{
+    return std::array { &hkDirectInputDeviceRelease<I>... };
+}
+
+constexpr auto DirectInputCreateDeviceDetours =
+    CreateDeviceDetours(std::make_index_sequence<MaxDirectInputMethodHooks> {});
+constexpr auto DirectInputGetDeviceStateDetours =
+    GetDeviceStateDetours(std::make_index_sequence<MaxDirectInputMethodHooks> {});
+constexpr auto DirectInputGetDeviceDataDetours =
+    GetDeviceDataDetours(std::make_index_sequence<MaxDirectInputMethodHooks> {});
+constexpr auto DirectInputReleaseDetours = ReleaseDetours(std::make_index_sequence<MaxDirectInputMethodHooks> {});
+
+// The slot's position in its table, which picks its hook instance
+template <typename T, std::size_t N>
+std::size_t SlotIndex(const std::array<DirectInputMethodHookSlot<T>, N>& hooks,
+                      const DirectInputMethodHookSlot<T>* slot)
+{
+    return static_cast<std::size_t>(slot - hooks.data());
+}
 
 bool IsDirectInputKeyboardGuid(REFGUID guid) { return IsEqualGUID(guid, DirectInputSysKeyboardGuid) != FALSE; }
 
@@ -176,21 +218,6 @@ T FirstDirectInputMethodTrampolineLocked(const std::array<DirectInputMethodHookS
     return nullptr;
 }
 
-template <typename T, std::size_t N>
-T ResolveDirectInputMethodTrampolineLocked(const std::array<DirectInputMethodHookSlot<T>, N>& hooks, T target)
-{
-    if (target == nullptr)
-        return nullptr;
-
-    for (const auto& slot : hooks)
-    {
-        if (slot.InUse && slot.Target == target)
-            return slot.Trampoline;
-    }
-
-    return nullptr;
-}
-
 void RefreshDirectInputDeviceHookStateLocked()
 {
     _state.DirectInputDeviceReleaseHookInstalled = HasDirectInputMethodHooksLocked(DirectInputReleaseHooks);
@@ -290,7 +317,8 @@ void ClearAllDirectInputDeviceSlotsLocked()
     _state.DirectInputTrackedDeviceCount = 0;
 }
 
-void TrackDirectInputDeviceLocked(void* device, DirectInputDeviceKind kind)
+void TrackDirectInputDeviceLocked(void* device, DirectInputDeviceKind kind,
+                                  std::optional<std::size_t> getDeviceDataHook)
 {
     if (device == nullptr)
         return;
@@ -303,6 +331,9 @@ void TrackDirectInputDeviceLocked(void* device, DirectInputDeviceKind kind)
 
         if (slot.InUse && slot.Device == device)
         {
+            if (getDeviceDataHook.has_value())
+                slot.GetDeviceDataHook = getDeviceDataHook;
+
             // A later CreateDevice call may use an instance GUID that we cannot classify and
             // therefore reports Other. Never downgrade a known keyboard/mouse classification.
             if (slot.Kind == DirectInputDeviceKind::Other && kind != DirectInputDeviceKind::Other)
@@ -336,6 +367,7 @@ void TrackDirectInputDeviceLocked(void* device, DirectInputDeviceKind kind)
     slot.InUse = true;
     slot.Device = device;
     slot.Kind = kind;
+    slot.GetDeviceDataHook = getDeviceDataHook;
 
     _state.DirectInputTrackedDeviceCount++;
 
@@ -388,9 +420,13 @@ bool HookDirectInputDeviceLocked(void* device, DirectInputDeviceKind kind)
         completeCoverage = false;
     }
 
+    std::optional<std::size_t> getDeviceDataIndex;
+    if (getDeviceDataHook != nullptr)
+        getDeviceDataIndex = SlotIndex(DirectInputGetDeviceDataHooks, getDeviceDataHook);
+
     if (!attachRelease && !attachGetDeviceState && !attachGetDeviceData)
     {
-        TrackDirectInputDeviceLocked(device, kind);
+        TrackDirectInputDeviceLocked(device, kind, getDeviceDataIndex);
         return completeCoverage;
     }
 
@@ -402,13 +438,17 @@ bool HookDirectInputDeviceLocked(void* device, DirectInputDeviceKind kind)
         DetourUpdateThread(GetCurrentThread());
 
         if (attachRelease)
-            DetourAttach(reinterpret_cast<PVOID*>(&releaseHook->Trampoline), hkDirectInputDeviceRelease);
+            DetourAttach(reinterpret_cast<PVOID*>(&releaseHook->Trampoline),
+                         DirectInputReleaseDetours[SlotIndex(DirectInputReleaseHooks, releaseHook)]);
 
         if (attachGetDeviceState)
-            DetourAttach(reinterpret_cast<PVOID*>(&getDeviceStateHook->Trampoline), hkDirectInputGetDeviceState);
+            DetourAttach(
+                reinterpret_cast<PVOID*>(&getDeviceStateHook->Trampoline),
+                DirectInputGetDeviceStateDetours[SlotIndex(DirectInputGetDeviceStateHooks, getDeviceStateHook)]);
 
         if (attachGetDeviceData)
-            DetourAttach(reinterpret_cast<PVOID*>(&getDeviceDataHook->Trampoline), hkDirectInputGetDeviceData);
+            DetourAttach(reinterpret_cast<PVOID*>(&getDeviceDataHook->Trampoline),
+                         DirectInputGetDeviceDataDetours[*getDeviceDataIndex]);
 
         result = DetourTransactionCommit();
     }
@@ -444,7 +484,7 @@ bool HookDirectInputDeviceLocked(void* device, DirectInputDeviceKind kind)
         LOG_INFO("DirectInput GetDeviceData target detoured target:{} device:{}",
                  reinterpret_cast<void*>(getDeviceData), device);
 
-    TrackDirectInputDeviceLocked(device, kind);
+    TrackDirectInputDeviceLocked(device, kind, getDeviceDataIndex);
     return completeCoverage;
 }
 
@@ -471,17 +511,15 @@ bool HookDirectInputInterfaceLocked(void* directInput, bool wide)
 
     if (needsAttach)
     {
-        // ANSI and Unicode CreateDevice have the same ABI. Route every unique
-        // implementation through one detour so a shared A/W implementation is
-        // never attached twice. The interface's vtable identifies the correct
-        // per-target trampoline at call time.
+        // ANSI and Unicode CreateDevice have the same ABI, a shared A/W implementation is one slot
         LONG result = NO_ERROR;
 
         {
             std::scoped_lock detourLock(GetDetourTransactionMutex());
             DetourTransactionBegin();
             DetourUpdateThread(GetCurrentThread());
-            DetourAttach(reinterpret_cast<PVOID*>(&slot->Trampoline), hkDirectInputCreateDeviceA);
+            DetourAttach(reinterpret_cast<PVOID*>(&slot->Trampoline),
+                         DirectInputCreateDeviceDetours[SlotIndex(DirectInputCreateDeviceHooks, slot)]);
             result = DetourTransactionCommit();
         }
 
@@ -686,28 +724,32 @@ bool RemoveDirectInputHooksLocked()
     if (_state.DirectInputCreateExHookInstalled && o_DirectInputCreateEx != nullptr)
         DetourDetach(reinterpret_cast<PVOID*>(&o_DirectInputCreateEx), hkDirectInputCreateEx);
 
-    for (auto& slot : DirectInputCreateDeviceHooks)
+    for (std::size_t i = 0; i < DirectInputCreateDeviceHooks.size(); ++i)
     {
+        auto& slot = DirectInputCreateDeviceHooks[i];
         if (slot.InUse && slot.Trampoline != nullptr)
-            DetourDetach(reinterpret_cast<PVOID*>(&slot.Trampoline), hkDirectInputCreateDeviceA);
+            DetourDetach(reinterpret_cast<PVOID*>(&slot.Trampoline), DirectInputCreateDeviceDetours[i]);
     }
 
-    for (auto& slot : DirectInputGetDeviceStateHooks)
+    for (std::size_t i = 0; i < DirectInputGetDeviceStateHooks.size(); ++i)
     {
+        auto& slot = DirectInputGetDeviceStateHooks[i];
         if (slot.InUse && slot.Trampoline != nullptr)
-            DetourDetach(reinterpret_cast<PVOID*>(&slot.Trampoline), hkDirectInputGetDeviceState);
+            DetourDetach(reinterpret_cast<PVOID*>(&slot.Trampoline), DirectInputGetDeviceStateDetours[i]);
     }
 
-    for (auto& slot : DirectInputGetDeviceDataHooks)
+    for (std::size_t i = 0; i < DirectInputGetDeviceDataHooks.size(); ++i)
     {
+        auto& slot = DirectInputGetDeviceDataHooks[i];
         if (slot.InUse && slot.Trampoline != nullptr)
-            DetourDetach(reinterpret_cast<PVOID*>(&slot.Trampoline), hkDirectInputGetDeviceData);
+            DetourDetach(reinterpret_cast<PVOID*>(&slot.Trampoline), DirectInputGetDeviceDataDetours[i]);
     }
 
-    for (auto& slot : DirectInputReleaseHooks)
+    for (std::size_t i = 0; i < DirectInputReleaseHooks.size(); ++i)
     {
+        auto& slot = DirectInputReleaseHooks[i];
         if (slot.InUse && slot.Trampoline != nullptr)
-            DetourDetach(reinterpret_cast<PVOID*>(&slot.Trampoline), hkDirectInputDeviceRelease);
+            DetourDetach(reinterpret_cast<PVOID*>(&slot.Trampoline), DirectInputReleaseDetours[i]);
     }
 
     const LONG result = DetourTransactionCommit();
@@ -727,13 +769,10 @@ void DrainDirectInputBufferedDataLocked()
 {
     for (DirectInputDeviceSlot& deviceSlot : _state.DirectInputDeviceSlots)
     {
-        if (!deviceSlot.InUse || deviceSlot.Device == nullptr)
+        if (!deviceSlot.InUse || deviceSlot.Device == nullptr || !deviceSlot.GetDeviceDataHook.has_value())
             continue;
 
-        PVOID* vtable = *reinterpret_cast<PVOID**>(deviceSlot.Device);
-        auto target = reinterpret_cast<DirectInputGetDeviceData_t>(vtable[10]);
-        DirectInputGetDeviceData_t original =
-            ResolveDirectInputMethodTrampolineLocked(DirectInputGetDeviceDataHooks, target);
+        DirectInputGetDeviceData_t original = DirectInputGetDeviceDataHooks[*deviceSlot.GetDeviceDataHook].Trampoline;
 
         if (original == nullptr)
             continue;
@@ -859,19 +898,14 @@ HRESULT WINAPI hkDirectInputCreateEx(HINSTANCE instance, DWORD version, REFIID r
     return result;
 }
 
-HRESULT WINAPI hkDirectInputCreateDeviceA(void* directInput, REFGUID guid, void** device, LPUNKNOWN outer)
+template <std::size_t Slot>
+HRESULT WINAPI hkDirectInputCreateDevice(void* directInput, REFGUID guid, void** device, LPUNKNOWN outer)
 {
     DirectInputCreateDevice_t original = nullptr;
 
     {
         std::unique_lock lock(_state.Mutex);
-
-        if (directInput != nullptr)
-        {
-            PVOID* vtable = *reinterpret_cast<PVOID**>(directInput);
-            auto target = reinterpret_cast<DirectInputCreateDevice_t>(vtable[3]);
-            original = ResolveDirectInputMethodTrampolineLocked(DirectInputCreateDeviceHooks, target);
-        }
+        original = DirectInputCreateDeviceHooks[Slot].Trampoline;
     }
 
     HRESULT result = CallDirectInputCreateDeviceOriginal(original, directInput, guid, device, outer);
@@ -894,42 +928,7 @@ HRESULT WINAPI hkDirectInputCreateDeviceA(void* directInput, REFGUID guid, void*
     return result;
 }
 
-HRESULT WINAPI hkDirectInputCreateDeviceW(void* directInput, REFGUID guid, void** device, LPUNKNOWN outer)
-{
-    DirectInputCreateDevice_t original = nullptr;
-
-    {
-        std::unique_lock lock(_state.Mutex);
-
-        if (directInput != nullptr)
-        {
-            PVOID* vtable = *reinterpret_cast<PVOID**>(directInput);
-            auto target = reinterpret_cast<DirectInputCreateDevice_t>(vtable[3]);
-            original = ResolveDirectInputMethodTrampolineLocked(DirectInputCreateDeviceHooks, target);
-        }
-    }
-
-    HRESULT result = CallDirectInputCreateDeviceOriginal(original, directInput, guid, device, outer);
-
-    {
-        std::unique_lock lock(_state.Mutex);
-        _state.DirectInputCreateDeviceCallCount++;
-
-        if (SUCCEEDED(result) && device != nullptr && *device != nullptr)
-        {
-            _state.DirectInputCreateDeviceSucceededCount++;
-            HookDirectInputDeviceLocked(*device, GetDirectInputDeviceKind(guid));
-        }
-        else if (FAILED(result))
-        {
-            _state.DirectInputCreateDeviceFailedCount++;
-        }
-    }
-
-    return result;
-}
-
-HRESULT WINAPI hkDirectInputGetDeviceState(void* device, DWORD dataSize, LPVOID data)
+template <std::size_t Slot> HRESULT WINAPI hkDirectInputGetDeviceState(void* device, DWORD dataSize, LPVOID data)
 {
     DirectInputGetDeviceState_t original = nullptr;
 
@@ -950,13 +949,7 @@ HRESULT WINAPI hkDirectInputGetDeviceState(void* device, DWORD dataSize, LPVOID 
         }
 
         _state.DirectInputGetDeviceStatePassedCount++;
-
-        if (device != nullptr)
-        {
-            PVOID* vtable = *reinterpret_cast<PVOID**>(device);
-            auto target = reinterpret_cast<DirectInputGetDeviceState_t>(vtable[9]);
-            original = ResolveDirectInputMethodTrampolineLocked(DirectInputGetDeviceStateHooks, target);
-        }
+        original = DirectInputGetDeviceStateHooks[Slot].Trampoline;
     }
 
     if (original == nullptr)
@@ -966,6 +959,7 @@ HRESULT WINAPI hkDirectInputGetDeviceState(void* device, DWORD dataSize, LPVOID 
     return original(device, dataSize, data);
 }
 
+template <std::size_t Slot>
 HRESULT WINAPI hkDirectInputGetDeviceData(void* device, DWORD objectDataSize, LPDIDEVICEOBJECTDATA data, LPDWORD inOut,
                                           DWORD flags)
 {
@@ -984,16 +978,11 @@ HRESULT WINAPI hkDirectInputGetDeviceData(void* device, DWORD objectDataSize, LP
         else
             _state.DirectInputGetDeviceDataPassedCount++;
 
-        if (device != nullptr)
-        {
-            const std::size_t deviceSlotIndex = FindDirectInputDeviceSlotLocked(device);
-            if (deviceSlotIndex < MaxTrackedDirectInputDevices && objectDataSize != 0)
-                _state.DirectInputDeviceSlots[deviceSlotIndex].LastObjectDataSize = objectDataSize;
+        const std::size_t deviceSlotIndex = FindDirectInputDeviceSlotLocked(device);
+        if (deviceSlotIndex < MaxTrackedDirectInputDevices && objectDataSize != 0)
+            _state.DirectInputDeviceSlots[deviceSlotIndex].LastObjectDataSize = objectDataSize;
 
-            PVOID* vtable = *reinterpret_cast<PVOID**>(device);
-            auto target = reinterpret_cast<DirectInputGetDeviceData_t>(vtable[10]);
-            original = ResolveDirectInputMethodTrampolineLocked(DirectInputGetDeviceDataHooks, target);
-        }
+        original = DirectInputGetDeviceDataHooks[Slot].Trampoline;
     }
 
     if (!shouldBlock)
@@ -1023,19 +1012,13 @@ HRESULT WINAPI hkDirectInputGetDeviceData(void* device, DWORD objectDataSize, LP
     return DI_OK;
 }
 
-ULONG WINAPI hkDirectInputDeviceRelease(void* device)
+template <std::size_t Slot> ULONG WINAPI hkDirectInputDeviceRelease(void* device)
 {
     DirectInputDeviceRelease_t original = nullptr;
 
     {
         std::unique_lock lock(_state.Mutex);
-
-        if (device != nullptr)
-        {
-            PVOID* vtable = *reinterpret_cast<PVOID**>(device);
-            auto target = reinterpret_cast<DirectInputDeviceRelease_t>(vtable[2]);
-            original = ResolveDirectInputMethodTrampolineLocked(DirectInputReleaseHooks, target);
-        }
+        original = DirectInputReleaseHooks[Slot].Trampoline;
     }
 
     ULONG result = 0;

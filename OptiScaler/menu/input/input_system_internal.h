@@ -78,6 +78,7 @@ struct DirectInputDeviceSlot
     void* Device = nullptr;
     DirectInputDeviceKind Kind = DirectInputDeviceKind::Other;
     DWORD LastObjectDataSize = 0;
+    std::optional<std::size_t> GetDeviceDataHook; // Its slot in the GetDeviceData hooks, drains through its trampoline
 };
 
 enum class HidDeviceKind
@@ -507,12 +508,6 @@ HRESULT WINAPI hkDirectInput8Create(HINSTANCE instance, DWORD version, REFIID ri
 HRESULT WINAPI hkDirectInputCreateA(HINSTANCE instance, DWORD version, void** out, LPUNKNOWN outer);
 HRESULT WINAPI hkDirectInputCreateW(HINSTANCE instance, DWORD version, void** out, LPUNKNOWN outer);
 HRESULT WINAPI hkDirectInputCreateEx(HINSTANCE instance, DWORD version, REFIID riid, LPVOID* out, LPUNKNOWN outer);
-HRESULT WINAPI hkDirectInputCreateDeviceA(void* directInput, REFGUID guid, void** device, LPUNKNOWN outer);
-HRESULT WINAPI hkDirectInputCreateDeviceW(void* directInput, REFGUID guid, void** device, LPUNKNOWN outer);
-HRESULT WINAPI hkDirectInputGetDeviceState(void* device, DWORD dataSize, LPVOID data);
-HRESULT WINAPI hkDirectInputGetDeviceData(void* device, DWORD objectDataSize, LPDIDEVICEOBJECTDATA data, LPDWORD inOut,
-                                          DWORD flags);
-ULONG WINAPI hkDirectInputDeviceRelease(void* device);
 
 // Target/input window
 void SetTargetWindow(HWND hwnd, bool isUwp, bool useWndProcSubclass);
