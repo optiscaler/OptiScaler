@@ -8,7 +8,7 @@
 PFN_D3D12_CreateFeature DLSSDFeatureDx12::CreateFeature() const
 {
     if (_custom != nullptr)
-        return _custom->IsDx12Inited() ? _custom->D3D12_CreateFeature : nullptr;
+        return _custom->IsDx12Inited() ? _custom->ngx.D3D12_CreateFeature : nullptr;
 
     return NVNGXProxy::D3D12_CreateFeature();
 }
@@ -16,7 +16,7 @@ PFN_D3D12_CreateFeature DLSSDFeatureDx12::CreateFeature() const
 PFN_D3D12_EvaluateFeature DLSSDFeatureDx12::EvaluateFeature() const
 {
     if (_custom != nullptr)
-        return _custom->IsDx12Inited() ? _custom->D3D12_EvaluateFeature : nullptr;
+        return _custom->IsDx12Inited() ? _custom->ngx.D3D12_EvaluateFeature : nullptr;
 
     return NVNGXProxy::D3D12_EvaluateFeature();
 }
@@ -24,7 +24,7 @@ PFN_D3D12_EvaluateFeature DLSSDFeatureDx12::EvaluateFeature() const
 PFN_D3D12_ReleaseFeature DLSSDFeatureDx12::ReleaseFeature() const
 {
     if (_custom != nullptr)
-        return _custom->IsDx12Inited() ? _custom->D3D12_ReleaseFeature : nullptr;
+        return _custom->IsDx12Inited() ? _custom->ngx.D3D12_ReleaseFeature : nullptr;
 
     return NVNGXProxy::D3D12_ReleaseFeature();
 }

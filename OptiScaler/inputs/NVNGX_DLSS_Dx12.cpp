@@ -907,8 +907,8 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_GetFeatureRequirements(
                             : nullptr;
         customRR != nullptr)
     {
-        if (customRR->D3D12_GetFeatureRequirements != nullptr)
-            return customRR->D3D12_GetFeatureRequirements(Adapter, FeatureDiscoveryInfo, OutSupported);
+        if (customRR->ngx.D3D12_GetFeatureRequirements != nullptr)
+            return customRR->ngx.D3D12_GetFeatureRequirements(Adapter, FeatureDiscoveryInfo, OutSupported);
 
         return Nvngx_RR::ReportSupported(OutSupported);
     }

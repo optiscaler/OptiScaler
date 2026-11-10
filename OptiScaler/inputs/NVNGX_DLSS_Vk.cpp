@@ -589,9 +589,9 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_GetFeatureRequirements(
                             : nullptr;
         customRR != nullptr)
     {
-        if (customRR->VULKAN_GetFeatureRequirements != nullptr)
-            return customRR->VULKAN_GetFeatureRequirements(VulkanInstance, PhysicalDevice, FeatureDiscoveryInfo,
-                                                           OutSupported);
+        if (customRR->ngx.VULKAN_GetFeatureRequirements != nullptr)
+            return customRR->ngx.VULKAN_GetFeatureRequirements(VulkanInstance, PhysicalDevice, FeatureDiscoveryInfo,
+                                                               OutSupported);
 
         return Nvngx_RR::ReportSupported(OutSupported);
     }

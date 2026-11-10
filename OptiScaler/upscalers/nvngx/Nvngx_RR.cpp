@@ -136,10 +136,10 @@ void Nvngx_RR::PopulateParameters(NVSDK_NGX_Parameter* InParameters, API api)
     InParameters->Set("SuperSamplingDenoising.FeatureInitResult", 1);
     InParameters->Set("SuperSamplingDenoising.NeedsUpdatedDriver", 0);
 
-    if (api == API::DX12 && custom->IsDx12Inited() && custom->D3D12_PopulateParameters_Impl != nullptr)
-        custom->D3D12_PopulateParameters_Impl(InParameters);
-    else if (api == API::Vulkan && custom->IsVulkanInited() && custom->VULKAN_PopulateParameters_Impl != nullptr)
-        custom->VULKAN_PopulateParameters_Impl(InParameters);
+    if (api == API::DX12 && custom->IsDx12Inited() && custom->ngx.D3D12_PopulateParameters_Impl != nullptr)
+        custom->ngx.D3D12_PopulateParameters_Impl(InParameters);
+    else if (api == API::Vulkan && custom->IsVulkanInited() && custom->ngx.VULKAN_PopulateParameters_Impl != nullptr)
+        custom->ngx.VULKAN_PopulateParameters_Impl(InParameters);
 
     populating = false;
 }

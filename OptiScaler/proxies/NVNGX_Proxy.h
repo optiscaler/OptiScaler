@@ -275,29 +275,6 @@ static feature_version GetVersionUsingNGXSnippet(const std::vector<std::string>&
     return version;
 }
 
-typedef NVSDK_NGX_Result (*PFN_CUDA_Init)(unsigned long long InApplicationId, const wchar_t* InApplicationDataPath,
-                                          const NVSDK_NGX_FeatureCommonInfo* InFeatureInfo,
-                                          NVSDK_NGX_Version InSDKVersion);
-typedef NVSDK_NGX_Result (*PFN_CUDA_Init_ProjectID)(const char* InProjectId, NVSDK_NGX_EngineType InEngineType,
-                                                    const char* InEngineVersion, const wchar_t* InApplicationDataPath,
-                                                    NVSDK_NGX_Version InSDKVersion,
-                                                    const NVSDK_NGX_FeatureCommonInfo* InFeatureInfo);
-typedef NVSDK_NGX_Result (*PFN_CUDA_Shutdown)(void);
-typedef NVSDK_NGX_Result (*PFN_CUDA_GetParameters)(NVSDK_NGX_Parameter** OutParameters);
-typedef NVSDK_NGX_Result (*PFN_CUDA_AllocateParameters)(NVSDK_NGX_Parameter** OutParameters);
-typedef NVSDK_NGX_Result (*PFN_CUDA_GetCapabilityParameters)(NVSDK_NGX_Parameter** OutParameters);
-typedef NVSDK_NGX_Result (*PFN_CUDA_DestroyParameters)(NVSDK_NGX_Parameter* InParameters);
-typedef NVSDK_NGX_Result (*PFN_CUDA_GetScratchBufferSize)(NVSDK_NGX_Feature InFeatureId,
-                                                          const NVSDK_NGX_Parameter* InParameters,
-                                                          size_t* OutSizeInBytes);
-typedef NVSDK_NGX_Result (*PFN_CUDA_CreateFeature)(NVSDK_NGX_Feature InFeatureID,
-                                                   const NVSDK_NGX_Parameter* InParameters,
-                                                   NVSDK_NGX_Handle** OutHandle);
-typedef NVSDK_NGX_Result (*PFN_CUDA_EvaluateFeature)(const NVSDK_NGX_Handle* InFeatureHandle,
-                                                     const NVSDK_NGX_Parameter* InParameters,
-                                                     PFN_NVSDK_NGX_ProgressCallback InCallback);
-typedef NVSDK_NGX_Result (*PFN_CUDA_ReleaseFeature)(NVSDK_NGX_Handle* InHandle);
-
 typedef NVSDK_NGX_Result (*PFN_D3D11_Init)(unsigned long long InApplicationId, const wchar_t* InApplicationDataPath,
                                            ID3D11Device* InDevice, const NVSDK_NGX_FeatureCommonInfo* InFeatureInfo,
                                            NVSDK_NGX_Version InSDKVersion);
@@ -427,23 +404,93 @@ typedef NVSDK_NGX_Result (*PFN_Nvngx_D3D11_Shutdown1)(ID3D11Device* InDevice, un
 typedef NVSDK_NGX_Result (*PFN_Nvngx_D3D12_Shutdown1)(ID3D12Device* InDevice, unsigned int* OutRemaining);
 typedef NVSDK_NGX_Result (*PFN_Nvngx_VULKAN_Shutdown1)(VkDevice InDevice, unsigned int* OutRemaining);
 
-struct NvngxModule
+// Exports the NGX runtime (nvngx.dll) and the feature dlls (nvngx_dlssg, nvngx_dlssd) share with the same signatures.
+// Shutdown1 isn't one of them, the runtime's takes an extra OutRemaining.
+struct NgxExports
 {
     HMODULE dll = nullptr;
     std::wstring filePath;
 
-    PFN_CUDA_Init CUDA_Init = nullptr;
-    PFN_CUDA_Init_ProjectID CUDA_Init_ProjectID = nullptr;
-    PFN_CUDA_Shutdown CUDA_Shutdown = nullptr;
-    PFN_CUDA_GetParameters CUDA_GetParameters = nullptr;
-    PFN_CUDA_AllocateParameters CUDA_AllocateParameters = nullptr;
-    PFN_CUDA_GetCapabilityParameters CUDA_GetCapabilityParameters = nullptr;
-    PFN_CUDA_DestroyParameters CUDA_DestroyParameters = nullptr;
-    PFN_CUDA_GetScratchBufferSize CUDA_GetScratchBufferSize = nullptr;
-    PFN_CUDA_CreateFeature CUDA_CreateFeature = nullptr;
-    PFN_CUDA_EvaluateFeature CUDA_EvaluateFeature = nullptr;
-    PFN_CUDA_ReleaseFeature CUDA_ReleaseFeature = nullptr;
+    PFN_D3D12_Init D3D12_Init = nullptr;
+    PFN_D3D12_Init_Ext D3D12_Init_Ext = nullptr;
+    PFN_D3D12_Shutdown D3D12_Shutdown = nullptr;
+    PFN_D3D12_GetScratchBufferSize D3D12_GetScratchBufferSize = nullptr;
+    PFN_D3D12_CreateFeature D3D12_CreateFeature = nullptr;
+    PFN_D3D12_ReleaseFeature D3D12_ReleaseFeature = nullptr;
+    PFN_D3D12_GetFeatureRequirements D3D12_GetFeatureRequirements = nullptr;
+    PFN_D3D12_EvaluateFeature D3D12_EvaluateFeature = nullptr;
 
+    PFN_VULKAN_Init VULKAN_Init = nullptr;
+    PFN_VULKAN_Init_Ext VULKAN_Init_Ext = nullptr;
+    PFN_VULKAN_Init_Ext2 VULKAN_Init_Ext2 = nullptr;
+    PFN_VULKAN_Shutdown VULKAN_Shutdown = nullptr;
+    PFN_VULKAN_GetScratchBufferSize VULKAN_GetScratchBufferSize = nullptr;
+    PFN_VULKAN_CreateFeature VULKAN_CreateFeature = nullptr;
+    PFN_VULKAN_CreateFeature1 VULKAN_CreateFeature1 = nullptr;
+    PFN_VULKAN_ReleaseFeature VULKAN_ReleaseFeature = nullptr;
+    PFN_VULKAN_GetFeatureRequirements VULKAN_GetFeatureRequirements = nullptr;
+    PFN_VULKAN_EvaluateFeature VULKAN_EvaluateFeature = nullptr;
+
+  protected:
+    // KernelBase's original GetProcAddress, so no hook can hand out something else
+    FARPROC Export(const char* prefix, const char* name) const
+    {
+        return KernelBaseProxy::GetProcAddress_()(dll, (std::string(prefix) + name).c_str());
+    }
+
+    void LoadSharedExports(const char* prefix)
+    {
+        D3D12_Init = (PFN_D3D12_Init) Export(prefix, "D3D12_Init");
+        D3D12_Init_Ext = (PFN_D3D12_Init_Ext) Export(prefix, "D3D12_Init_Ext");
+        D3D12_Shutdown = (PFN_D3D12_Shutdown) Export(prefix, "D3D12_Shutdown");
+        D3D12_GetScratchBufferSize = (PFN_D3D12_GetScratchBufferSize) Export(prefix, "D3D12_GetScratchBufferSize");
+        D3D12_CreateFeature = (PFN_D3D12_CreateFeature) Export(prefix, "D3D12_CreateFeature");
+        D3D12_ReleaseFeature = (PFN_D3D12_ReleaseFeature) Export(prefix, "D3D12_ReleaseFeature");
+        D3D12_GetFeatureRequirements =
+            (PFN_D3D12_GetFeatureRequirements) Export(prefix, "D3D12_GetFeatureRequirements");
+        D3D12_EvaluateFeature = (PFN_D3D12_EvaluateFeature) Export(prefix, "D3D12_EvaluateFeature");
+
+        VULKAN_Init = (PFN_VULKAN_Init) Export(prefix, "VULKAN_Init");
+        VULKAN_Init_Ext = (PFN_VULKAN_Init_Ext) Export(prefix, "VULKAN_Init_Ext");
+        VULKAN_Init_Ext2 = (PFN_VULKAN_Init_Ext2) Export(prefix, "VULKAN_Init_Ext2");
+        VULKAN_Shutdown = (PFN_VULKAN_Shutdown) Export(prefix, "VULKAN_Shutdown");
+        VULKAN_GetScratchBufferSize = (PFN_VULKAN_GetScratchBufferSize) Export(prefix, "VULKAN_GetScratchBufferSize");
+        VULKAN_CreateFeature = (PFN_VULKAN_CreateFeature) Export(prefix, "VULKAN_CreateFeature");
+        VULKAN_CreateFeature1 = (PFN_VULKAN_CreateFeature1) Export(prefix, "VULKAN_CreateFeature1");
+        VULKAN_ReleaseFeature = (PFN_VULKAN_ReleaseFeature) Export(prefix, "VULKAN_ReleaseFeature");
+        VULKAN_GetFeatureRequirements =
+            (PFN_VULKAN_GetFeatureRequirements) Export(prefix, "VULKAN_GetFeatureRequirements");
+        VULKAN_EvaluateFeature = (PFN_VULKAN_EvaluateFeature) Export(prefix, "VULKAN_EvaluateFeature");
+    }
+};
+
+// nvngx_dlssg and nvngx_dlssd replacements
+struct NgxFeatureModule : NgxExports
+{
+    PFN_D3D12_Shutdown1 D3D12_Shutdown1 = nullptr;
+    PFN_D3D12_PopulateParameters_Impl D3D12_PopulateParameters_Impl = nullptr;
+
+    PFN_VULKAN_Shutdown1 VULKAN_Shutdown1 = nullptr;
+    PFN_VULKAN_PopulateParameters_Impl VULKAN_PopulateParameters_Impl = nullptr;
+
+    // DLSS Enabler's headless dll has them with a DLSSG_ prefix
+    void LoadExports(const char* prefix = "NVSDK_NGX_")
+    {
+        LoadSharedExports(prefix);
+
+        D3D12_Shutdown1 = (PFN_D3D12_Shutdown1) Export(prefix, "D3D12_Shutdown1");
+        D3D12_PopulateParameters_Impl =
+            (PFN_D3D12_PopulateParameters_Impl) Export(prefix, "D3D12_PopulateParameters_Impl");
+
+        VULKAN_Shutdown1 = (PFN_VULKAN_Shutdown1) Export(prefix, "VULKAN_Shutdown1");
+        VULKAN_PopulateParameters_Impl =
+            (PFN_VULKAN_PopulateParameters_Impl) Export(prefix, "VULKAN_PopulateParameters_Impl");
+    }
+};
+
+// NGX runtime that runs DLSS
+struct NvngxModule : NgxExports
+{
     PFN_D3D11_Init D3D11_Init = nullptr;
     PFN_D3D11_Init_ProjectID D3D11_Init_ProjectID = nullptr;
     PFN_D3D11_Init_Ext D3D11_Init_Ext = nullptr;
@@ -459,43 +506,72 @@ struct NvngxModule
     PFN_D3D11_GetFeatureRequirements D3D11_GetFeatureRequirements = nullptr;
     PFN_D3D11_EvaluateFeature D3D11_EvaluateFeature = nullptr;
 
-    PFN_D3D12_Init D3D12_Init = nullptr;
     PFN_D3D12_Init_ProjectID D3D12_Init_ProjectID = nullptr;
-    PFN_D3D12_Init_Ext D3D12_Init_Ext = nullptr;
-    PFN_D3D12_Shutdown D3D12_Shutdown = nullptr;
     PFN_Nvngx_D3D12_Shutdown1 D3D12_Shutdown1 = nullptr;
     PFN_D3D12_GetParameters D3D12_GetParameters = nullptr;
     PFN_D3D12_AllocateParameters D3D12_AllocateParameters = nullptr;
     PFN_D3D12_GetCapabilityParameters D3D12_GetCapabilityParameters = nullptr;
     PFN_D3D12_DestroyParameters D3D12_DestroyParameters = nullptr;
-    PFN_D3D12_GetScratchBufferSize D3D12_GetScratchBufferSize = nullptr;
-    PFN_D3D12_CreateFeature D3D12_CreateFeature = nullptr;
-    PFN_D3D12_ReleaseFeature D3D12_ReleaseFeature = nullptr;
-    PFN_D3D12_GetFeatureRequirements D3D12_GetFeatureRequirements = nullptr;
-    PFN_D3D12_EvaluateFeature D3D12_EvaluateFeature = nullptr;
 
     PFN_VULKAN_RequiredExtensions VULKAN_RequiredExtensions = nullptr;
-    PFN_VULKAN_Init VULKAN_Init = nullptr;
     PFN_VULKAN_Init_ProjectID VULKAN_Init_ProjectID = nullptr;
-    PFN_VULKAN_Init_Ext VULKAN_Init_Ext = nullptr;
-    PFN_VULKAN_Init_Ext2 VULKAN_Init_Ext2 = nullptr;
     PFN_VULKAN_Init_ProjectID_Ext VULKAN_Init_ProjectID_Ext = nullptr;
-    PFN_VULKAN_Shutdown VULKAN_Shutdown = nullptr;
     PFN_Nvngx_VULKAN_Shutdown1 VULKAN_Shutdown1 = nullptr;
     PFN_VULKAN_GetParameters VULKAN_GetParameters = nullptr;
     PFN_VULKAN_AllocateParameters VULKAN_AllocateParameters = nullptr;
     PFN_VULKAN_GetCapabilityParameters VULKAN_GetCapabilityParameters = nullptr;
     PFN_VULKAN_DestroyParameters VULKAN_DestroyParameters = nullptr;
-    PFN_VULKAN_GetScratchBufferSize VULKAN_GetScratchBufferSize = nullptr;
-    PFN_VULKAN_CreateFeature VULKAN_CreateFeature = nullptr;
-    PFN_VULKAN_CreateFeature1 VULKAN_CreateFeature1 = nullptr;
-    PFN_VULKAN_ReleaseFeature VULKAN_ReleaseFeature = nullptr;
-    PFN_VULKAN_GetFeatureRequirements VULKAN_GetFeatureRequirements = nullptr;
     PFN_VULKAN_GetFeatureInstanceExtensionRequirements VULKAN_GetFeatureInstanceExtensionRequirements = nullptr;
     PFN_VULKAN_GetFeatureDeviceExtensionRequirements VULKAN_GetFeatureDeviceExtensionRequirements = nullptr;
-    PFN_VULKAN_EvaluateFeature VULKAN_EvaluateFeature = nullptr;
 
     PFN_UpdateFeature UpdateFeature = nullptr;
+
+    void LoadExports()
+    {
+        constexpr auto prefix = "NVSDK_NGX_";
+        LoadSharedExports(prefix);
+
+        D3D11_Init = (PFN_D3D11_Init) Export(prefix, "D3D11_Init");
+        D3D11_Init_ProjectID = (PFN_D3D11_Init_ProjectID) Export(prefix, "D3D11_Init_ProjectID");
+        D3D11_Init_Ext = (PFN_D3D11_Init_Ext) Export(prefix, "D3D11_Init_Ext");
+        D3D11_Shutdown = (PFN_D3D11_Shutdown) Export(prefix, "D3D11_Shutdown");
+        D3D11_Shutdown1 = (PFN_Nvngx_D3D11_Shutdown1) Export(prefix, "D3D11_Shutdown1");
+        D3D11_GetParameters = (PFN_D3D11_GetParameters) Export(prefix, "D3D11_GetParameters");
+        D3D11_AllocateParameters = (PFN_D3D11_AllocateParameters) Export(prefix, "D3D11_AllocateParameters");
+        D3D11_GetCapabilityParameters =
+            (PFN_D3D11_GetCapabilityParameters) Export(prefix, "D3D11_GetCapabilityParameters");
+        D3D11_DestroyParameters = (PFN_D3D11_DestroyParameters) Export(prefix, "D3D11_DestroyParameters");
+        D3D11_GetScratchBufferSize = (PFN_D3D11_GetScratchBufferSize) Export(prefix, "D3D11_GetScratchBufferSize");
+        D3D11_CreateFeature = (PFN_D3D11_CreateFeature) Export(prefix, "D3D11_CreateFeature");
+        D3D11_ReleaseFeature = (PFN_D3D11_ReleaseFeature) Export(prefix, "D3D11_ReleaseFeature");
+        D3D11_GetFeatureRequirements =
+            (PFN_D3D11_GetFeatureRequirements) Export(prefix, "D3D11_GetFeatureRequirements");
+        D3D11_EvaluateFeature = (PFN_D3D11_EvaluateFeature) Export(prefix, "D3D11_EvaluateFeature");
+
+        D3D12_Init_ProjectID = (PFN_D3D12_Init_ProjectID) Export(prefix, "D3D12_Init_ProjectID");
+        D3D12_Shutdown1 = (PFN_Nvngx_D3D12_Shutdown1) Export(prefix, "D3D12_Shutdown1");
+        D3D12_GetParameters = (PFN_D3D12_GetParameters) Export(prefix, "D3D12_GetParameters");
+        D3D12_AllocateParameters = (PFN_D3D12_AllocateParameters) Export(prefix, "D3D12_AllocateParameters");
+        D3D12_GetCapabilityParameters =
+            (PFN_D3D12_GetCapabilityParameters) Export(prefix, "D3D12_GetCapabilityParameters");
+        D3D12_DestroyParameters = (PFN_D3D12_DestroyParameters) Export(prefix, "D3D12_DestroyParameters");
+
+        VULKAN_RequiredExtensions = (PFN_VULKAN_RequiredExtensions) Export(prefix, "VULKAN_RequiredExtensions");
+        VULKAN_Init_ProjectID = (PFN_VULKAN_Init_ProjectID) Export(prefix, "VULKAN_Init_ProjectID");
+        VULKAN_Init_ProjectID_Ext = (PFN_VULKAN_Init_ProjectID_Ext) Export(prefix, "VULKAN_Init_ProjectID_Ext");
+        VULKAN_Shutdown1 = (PFN_Nvngx_VULKAN_Shutdown1) Export(prefix, "VULKAN_Shutdown1");
+        VULKAN_GetParameters = (PFN_VULKAN_GetParameters) Export(prefix, "VULKAN_GetParameters");
+        VULKAN_AllocateParameters = (PFN_VULKAN_AllocateParameters) Export(prefix, "VULKAN_AllocateParameters");
+        VULKAN_GetCapabilityParameters =
+            (PFN_VULKAN_GetCapabilityParameters) Export(prefix, "VULKAN_GetCapabilityParameters");
+        VULKAN_DestroyParameters = (PFN_VULKAN_DestroyParameters) Export(prefix, "VULKAN_DestroyParameters");
+        VULKAN_GetFeatureInstanceExtensionRequirements = (PFN_VULKAN_GetFeatureInstanceExtensionRequirements) Export(
+            prefix, "VULKAN_GetFeatureInstanceExtensionRequirements");
+        VULKAN_GetFeatureDeviceExtensionRequirements = (PFN_VULKAN_GetFeatureDeviceExtensionRequirements) Export(
+            prefix, "VULKAN_GetFeatureDeviceExtensionRequirements");
+
+        UpdateFeature = (PFN_UpdateFeature) Export(prefix, "UpdateFeature");
+    }
 };
 
 // NGX runtime from custom/<name>/dlss, only used by Opti's DLSS upscaler and never hooked
@@ -547,37 +623,6 @@ class NVNGXProxy
         }
 
         paths.push_back(path.wstring());
-    }
-
-    static void GetDx12Functions(NvngxModule& module)
-    {
-        module.D3D12_Init = (PFN_D3D12_Init) KernelBaseProxy::GetProcAddress_()(module.dll, "NVSDK_NGX_D3D12_Init");
-        module.D3D12_Init_ProjectID =
-            (PFN_D3D12_Init_ProjectID) KernelBaseProxy::GetProcAddress_()(module.dll, "NVSDK_NGX_D3D12_Init_ProjectID");
-        module.D3D12_Init_Ext =
-            (PFN_D3D12_Init_Ext) KernelBaseProxy::GetProcAddress_()(module.dll, "NVSDK_NGX_D3D12_Init_Ext");
-        module.D3D12_Shutdown =
-            (PFN_D3D12_Shutdown) KernelBaseProxy::GetProcAddress_()(module.dll, "NVSDK_NGX_D3D12_Shutdown");
-        module.D3D12_Shutdown1 =
-            (PFN_Nvngx_D3D12_Shutdown1) KernelBaseProxy::GetProcAddress_()(module.dll, "NVSDK_NGX_D3D12_Shutdown1");
-        module.D3D12_GetParameters =
-            (PFN_D3D12_GetParameters) KernelBaseProxy::GetProcAddress_()(module.dll, "NVSDK_NGX_D3D12_GetParameters");
-        module.D3D12_AllocateParameters = (PFN_D3D12_AllocateParameters) KernelBaseProxy::GetProcAddress_()(
-            module.dll, "NVSDK_NGX_D3D12_AllocateParameters");
-        module.D3D12_GetCapabilityParameters = (PFN_D3D12_GetCapabilityParameters) KernelBaseProxy::GetProcAddress_()(
-            module.dll, "NVSDK_NGX_D3D12_GetCapabilityParameters");
-        module.D3D12_DestroyParameters = (PFN_D3D12_DestroyParameters) KernelBaseProxy::GetProcAddress_()(
-            module.dll, "NVSDK_NGX_D3D12_DestroyParameters");
-        module.D3D12_GetScratchBufferSize = (PFN_D3D12_GetScratchBufferSize) KernelBaseProxy::GetProcAddress_()(
-            module.dll, "NVSDK_NGX_D3D12_GetScratchBufferSize");
-        module.D3D12_CreateFeature =
-            (PFN_D3D12_CreateFeature) KernelBaseProxy::GetProcAddress_()(module.dll, "NVSDK_NGX_D3D12_CreateFeature");
-        module.D3D12_ReleaseFeature =
-            (PFN_D3D12_ReleaseFeature) KernelBaseProxy::GetProcAddress_()(module.dll, "NVSDK_NGX_D3D12_ReleaseFeature");
-        module.D3D12_GetFeatureRequirements = (PFN_D3D12_GetFeatureRequirements) KernelBaseProxy::GetProcAddress_()(
-            module.dll, "NVSDK_NGX_D3D12_GetFeatureRequirements");
-        module.D3D12_EvaluateFeature = (PFN_D3D12_EvaluateFeature) KernelBaseProxy::GetProcAddress_()(
-            module.dll, "NVSDK_NGX_D3D12_EvaluateFeature");
     }
 
     // UseGenericAppIdWithDlss also applies to the runtime started here
@@ -707,86 +752,7 @@ class NVNGXProxy
 
             HookNgxApi(_module.dll);
 
-            _module.D3D11_Init =
-                (PFN_D3D11_Init) KernelBaseProxy::GetProcAddress_()(_module.dll, "NVSDK_NGX_D3D11_Init");
-            _module.D3D11_Init_ProjectID = (PFN_D3D11_Init_ProjectID) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_D3D11_Init_ProjectID");
-            _module.D3D11_Init_Ext =
-                (PFN_D3D11_Init_Ext) KernelBaseProxy::GetProcAddress_()(_module.dll, "NVSDK_NGX_D3D11_Init_Ext");
-            _module.D3D11_Shutdown =
-                (PFN_D3D11_Shutdown) KernelBaseProxy::GetProcAddress_()(_module.dll, "NVSDK_NGX_D3D11_Shutdown");
-            _module.D3D11_Shutdown1 = (PFN_Nvngx_D3D11_Shutdown1) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_D3D11_Shutdown1");
-            _module.D3D11_GetParameters = (PFN_D3D11_GetParameters) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_D3D11_GetParameters");
-            _module.D3D11_AllocateParameters = (PFN_D3D11_AllocateParameters) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_D3D11_AllocateParameters");
-            _module.D3D11_GetCapabilityParameters =
-                (PFN_D3D11_GetCapabilityParameters) KernelBaseProxy::GetProcAddress_()(
-                    _module.dll, "NVSDK_NGX_D3D11_GetCapabilityParameters");
-            _module.D3D11_DestroyParameters = (PFN_D3D11_DestroyParameters) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_D3D11_DestroyParameters");
-            _module.D3D11_GetScratchBufferSize = (PFN_D3D11_GetScratchBufferSize) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_D3D11_GetScratchBufferSize");
-            _module.D3D11_CreateFeature = (PFN_D3D11_CreateFeature) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_D3D11_CreateFeature");
-            _module.D3D11_ReleaseFeature = (PFN_D3D11_ReleaseFeature) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_D3D11_ReleaseFeature");
-            _module.D3D11_GetFeatureRequirements =
-                (PFN_D3D11_GetFeatureRequirements) KernelBaseProxy::GetProcAddress_()(
-                    _module.dll, "NVSDK_NGX_D3D11_GetFeatureRequirements");
-            _module.D3D11_EvaluateFeature = (PFN_D3D11_EvaluateFeature) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_D3D11_EvaluateFeature");
-
-            GetDx12Functions(_module);
-
-            _module.VULKAN_RequiredExtensions = (PFN_VULKAN_RequiredExtensions) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_VULKAN_RequiredExtensions");
-            _module.VULKAN_Init =
-                (PFN_VULKAN_Init) KernelBaseProxy::GetProcAddress_()(_module.dll, "NVSDK_NGX_VULKAN_Init");
-            _module.VULKAN_Init_Ext =
-                (PFN_VULKAN_Init_Ext) KernelBaseProxy::GetProcAddress_()(_module.dll, "NVSDK_NGX_VULKAN_Init_Ext");
-            _module.VULKAN_Init_Ext2 =
-                (PFN_VULKAN_Init_Ext2) KernelBaseProxy::GetProcAddress_()(_module.dll, "NVSDK_NGX_VULKAN_Init_Ext2");
-            _module.VULKAN_Init_ProjectID_Ext = (PFN_VULKAN_Init_ProjectID_Ext) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_VULKAN_Init_ProjectID_Ext");
-            _module.VULKAN_Init_ProjectID = (PFN_VULKAN_Init_ProjectID) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_VULKAN_Init_ProjectID");
-            _module.VULKAN_Shutdown =
-                (PFN_VULKAN_Shutdown) KernelBaseProxy::GetProcAddress_()(_module.dll, "NVSDK_NGX_VULKAN_Shutdown");
-            _module.VULKAN_Shutdown1 = (PFN_Nvngx_VULKAN_Shutdown1) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_VULKAN_Shutdown1");
-            _module.VULKAN_GetParameters = (PFN_VULKAN_GetParameters) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_VULKAN_GetParameters");
-            _module.VULKAN_AllocateParameters = (PFN_VULKAN_AllocateParameters) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_VULKAN_AllocateParameters");
-            _module.VULKAN_GetCapabilityParameters =
-                (PFN_VULKAN_GetCapabilityParameters) KernelBaseProxy::GetProcAddress_()(
-                    _module.dll, "NVSDK_NGX_VULKAN_GetCapabilityParameters");
-            _module.VULKAN_DestroyParameters = (PFN_VULKAN_DestroyParameters) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_VULKAN_DestroyParameters");
-            _module.VULKAN_GetScratchBufferSize = (PFN_VULKAN_GetScratchBufferSize) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_VULKAN_GetScratchBufferSize");
-            _module.VULKAN_CreateFeature = (PFN_VULKAN_CreateFeature) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_VULKAN_CreateFeature");
-            _module.VULKAN_CreateFeature1 = (PFN_VULKAN_CreateFeature1) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_VULKAN_CreateFeature1");
-            _module.VULKAN_ReleaseFeature = (PFN_VULKAN_ReleaseFeature) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_VULKAN_ReleaseFeature");
-            _module.VULKAN_GetFeatureRequirements =
-                (PFN_VULKAN_GetFeatureRequirements) KernelBaseProxy::GetProcAddress_()(
-                    _module.dll, "NVSDK_NGX_VULKAN_GetFeatureRequirements");
-            _module.VULKAN_GetFeatureInstanceExtensionRequirements =
-                (PFN_VULKAN_GetFeatureInstanceExtensionRequirements) KernelBaseProxy::GetProcAddress_()(
-                    _module.dll, "NVSDK_NGX_VULKAN_GetFeatureInstanceExtensionRequirements");
-            _module.VULKAN_GetFeatureDeviceExtensionRequirements =
-                (PFN_VULKAN_GetFeatureDeviceExtensionRequirements) KernelBaseProxy::GetProcAddress_()(
-                    _module.dll, "NVSDK_NGX_VULKAN_GetFeatureDeviceExtensionRequirements");
-            _module.VULKAN_EvaluateFeature = (PFN_VULKAN_EvaluateFeature) KernelBaseProxy::GetProcAddress_()(
-                _module.dll, "NVSDK_NGX_VULKAN_EvaluateFeature");
-
-            _module.UpdateFeature =
-                (PFN_UpdateFeature) KernelBaseProxy::GetProcAddress_()(_module.dll, "NVSDK_NGX_UpdateFeature");
+            _module.LoadExports();
         }
     }
 
@@ -1014,7 +980,7 @@ class NVNGXProxy
                 return nullptr;
 
             module.filePath = path.wstring();
-            GetDx12Functions(module);
+            module.LoadExports();
         }
 
         auto usable = (module.D3D12_Init_ProjectID != nullptr || module.D3D12_Init_Ext != nullptr) &&

@@ -52,12 +52,12 @@ bool DLSSDFeatureVk::InitInternal(VkCommandBuffer InCmdList, NVSDK_NGX_Parameter
 
         _p_dlssdHandle = &_dlssdHandle;
 
-        if (_custom != nullptr && _custom->VULKAN_CreateFeature1 != nullptr)
-            nvResult = _custom->VULKAN_CreateFeature1(Device, InCmdList, NVSDK_NGX_Feature_RayReconstruction,
-                                                      InParameters, &_p_dlssdHandle);
+        if (_custom != nullptr && _custom->ngx.VULKAN_CreateFeature1 != nullptr)
+            nvResult = _custom->ngx.VULKAN_CreateFeature1(Device, InCmdList, NVSDK_NGX_Feature_RayReconstruction,
+                                                          InParameters, &_p_dlssdHandle);
         else if (_custom != nullptr)
-            nvResult = _custom->VULKAN_CreateFeature(InCmdList, NVSDK_NGX_Feature_RayReconstruction, InParameters,
-                                                     &_p_dlssdHandle);
+            nvResult = _custom->ngx.VULKAN_CreateFeature(InCmdList, NVSDK_NGX_Feature_RayReconstruction, InParameters,
+                                                         &_p_dlssdHandle);
         else if (NVNGXProxy::VULKAN_CreateFeature() != nullptr)
             nvResult = NVNGXProxy::VULKAN_CreateFeature()(InCmdList, NVSDK_NGX_Feature_RayReconstruction, InParameters,
                                                           &_p_dlssdHandle);
@@ -96,8 +96,9 @@ bool DLSSDFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Par
         return false;
     }
 
-    auto evaluateFeature = _custom != nullptr ? (_custom->IsVulkanInited() ? _custom->VULKAN_EvaluateFeature : nullptr)
-                                              : NVNGXProxy::VULKAN_EvaluateFeature();
+    auto evaluateFeature = _custom != nullptr
+                               ? (_custom->IsVulkanInited() ? _custom->ngx.VULKAN_EvaluateFeature : nullptr)
+                               : NVNGXProxy::VULKAN_EvaluateFeature();
 
     if (evaluateFeature != nullptr)
     {
@@ -149,8 +150,9 @@ DLSSDFeatureVk::~DLSSDFeatureVk()
     if (State::Instance().isShuttingDown)
         return;
 
-    auto releaseFeature = _custom != nullptr ? (_custom->IsVulkanInited() ? _custom->VULKAN_ReleaseFeature : nullptr)
-                                             : NVNGXProxy::VULKAN_ReleaseFeature();
+    auto releaseFeature = _custom != nullptr
+                              ? (_custom->IsVulkanInited() ? _custom->ngx.VULKAN_ReleaseFeature : nullptr)
+                              : NVNGXProxy::VULKAN_ReleaseFeature();
 
     if (releaseFeature != nullptr && _p_dlssdHandle != nullptr)
         releaseFeature(_p_dlssdHandle);
