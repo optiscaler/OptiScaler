@@ -1,6 +1,10 @@
 #include "pch.h"
 #include "input_system_internal.h"
 
+#include <algorithm>
+#include <bitset>
+#include <vector>
+
 #include <hooks/Kernel_Hooks.h>
 
 #include <detours/detours.h>
@@ -28,6 +32,38 @@ HMODULE FindLoadedXInputModule()
     }
 
     return nullptr;
+}
+
+// Gamepad keys the game was told are down, per user, their releases stay owed to it while input is blocked
+std::array<std::bitset<64>, XUSER_MAX_COUNT> XInputKeysDownSeenByGame {};
+
+// Owed releases read by the drain, handed to the game before anything newer
+std::vector<XINPUT_KEYSTROKE> XInputOwedReleases;
+
+bool IsTrackedXInputKey(const XINPUT_KEYSTROKE& keystroke)
+{
+    return keystroke.UserIndex < XUSER_MAX_COUNT && keystroke.VirtualKey >= VK_PAD_A &&
+           keystroke.VirtualKey < VK_PAD_A + XInputKeysDownSeenByGame[0].size();
+}
+
+void NoteXInputKeystrokeDeliveredLocked(const XINPUT_KEYSTROKE& keystroke)
+{
+    if (!IsTrackedXInputKey(keystroke))
+        return;
+
+    auto down = XInputKeysDownSeenByGame[keystroke.UserIndex][keystroke.VirtualKey - VK_PAD_A];
+
+    if ((keystroke.Flags & XINPUT_KEYSTROKE_KEYDOWN) != 0)
+        down = true;
+    else if ((keystroke.Flags & XINPUT_KEYSTROKE_KEYUP) != 0)
+        down = false;
+}
+
+// A release of a key the game saw pressed, it gets it even while blocked
+bool IsOwedXInputReleaseLocked(const XINPUT_KEYSTROKE& keystroke)
+{
+    return (keystroke.Flags & XINPUT_KEYSTROKE_KEYUP) != 0 && IsTrackedXInputKey(keystroke) &&
+           XInputKeysDownSeenByGame[keystroke.UserIndex][keystroke.VirtualKey - VK_PAD_A];
 }
 
 bool ShouldBlockXInputLocked()
@@ -195,6 +231,7 @@ void DrainXInputKeystrokesLocked()
     if (!_state.XInputGetKeystrokeHookInstalled || o_XInputGetKeystroke == nullptr)
         return;
 
+    // Menu-time keystrokes are dropped, owed releases wait for the game's next read
     constexpr DWORD MaxDrainPerUser = 256;
 
     for (DWORD userIndex = 0; userIndex < XUSER_MAX_COUNT; ++userIndex)
@@ -213,6 +250,9 @@ void DrainXInputKeystrokesLocked()
 
             if (result != ERROR_SUCCESS)
                 break;
+
+            if (IsOwedXInputReleaseLocked(keystroke))
+                XInputOwedReleases.push_back(keystroke);
         }
 
         if (drained == MaxDrainPerUser)
@@ -349,6 +389,22 @@ DWORD WINAPI hkXInputGetKeystroke(DWORD userIndex, DWORD reserved, PXINPUT_KEYST
             _state.XInputGetKeystrokeBlockedCount++;
         else
             _state.XInputGetKeystrokePassedCount++;
+
+        // Releases the drain kept come first
+        if (!shouldBlock && keystroke != nullptr)
+        {
+            auto owed = std::find_if(XInputOwedReleases.begin(), XInputOwedReleases.end(),
+                                     [userIndex](const XINPUT_KEYSTROKE& k)
+                                     { return userIndex == XUSER_INDEX_ANY || k.UserIndex == userIndex; });
+
+            if (owed != XInputOwedReleases.end())
+            {
+                *keystroke = *owed;
+                XInputOwedReleases.erase(owed);
+                NoteXInputKeystrokeDeliveredLocked(*keystroke);
+                return ERROR_SUCCESS;
+            }
+        }
     }
 
     if (o_XInputGetKeystroke == nullptr)
@@ -358,37 +414,56 @@ DWORD WINAPI hkXInputGetKeystroke(DWORD userIndex, DWORD reserved, PXINPUT_KEYST
         return ERROR_EMPTY;
     }
 
-    if (!shouldBlock)
+    if (!shouldBlock || keystroke == nullptr)
     {
-        ScopedHookBypass bypass;
-        return o_XInputGetKeystroke(userIndex, reserved, keystroke);
+        DWORD result = ERROR_EMPTY;
+
+        {
+            ScopedHookBypass bypass;
+            result = o_XInputGetKeystroke(userIndex, reserved, keystroke);
+        }
+
+        if (result == ERROR_SUCCESS && keystroke != nullptr)
+        {
+            std::unique_lock lock(_state.Mutex);
+            NoteXInputKeystrokeDeliveredLocked(*keystroke);
+        }
+
+        return result;
     }
 
-    // XInputGetKeystroke is a destructive queue read. Consume all pending
-    // events for the requested index while the overlay owns input so they
-    // cannot replay after the menu closes.
+    // XInputGetKeystroke is a destructive queue read. Menu-time keystrokes are consumed so they can't
+    // replay after the menu closes, but releases of keys the game saw pressed are passed on.
     constexpr DWORD MaxDrain = 256;
     DWORD drained = 0;
 
     for (; drained < MaxDrain; ++drained)
     {
-        XINPUT_KEYSTROKE discarded {};
+        XINPUT_KEYSTROKE read {};
         DWORD result = ERROR_EMPTY;
 
         {
             ScopedHookBypass bypass;
-            result = o_XInputGetKeystroke(userIndex, reserved, &discarded);
+            result = o_XInputGetKeystroke(userIndex, reserved, &read);
         }
 
         if (result != ERROR_SUCCESS)
             break;
+
+        std::unique_lock lock(_state.Mutex);
+
+        if (IsOwedXInputReleaseLocked(read))
+        {
+            NoteXInputKeystrokeDeliveredLocked(read);
+            *keystroke = read;
+            return ERROR_SUCCESS;
+        }
     }
 
     if (drained == MaxDrain)
         LOG_WARN("XInputGetKeystroke drain reached safety limit userIndex:{}", userIndex);
 
-    if (keystroke != nullptr)
-        *keystroke = {};
+    *keystroke = {};
 
     OPTIINPUT_LOG_VERBOSE("blocking XInputGetKeystroke userIndex:{} drained:{}", userIndex, drained);
     return ERROR_EMPTY;
