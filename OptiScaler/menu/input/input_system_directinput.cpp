@@ -1184,27 +1184,53 @@ HRESULT WINAPI hkDirectInputGetDeviceData(void* device, DWORD objectDataSize, LP
     // Events the menu had are dropped, releases of keys and buttons the game saw pressed are kept so nothing
     // stays held after it closes
     const bool peek = (flags & DIGDD_PEEK) != 0;
-    const DWORD count = *inOut;
+    DWORD count = *inOut;
     DWORD kept = 0;
 
-    for (DWORD i = 0; i < count; ++i)
+    // Games read until a read comes back empty, a read the filter emptied while more is queued reads again
+    constexpr int MaxReads = 64;
+
+    for (int reads = 1;; ++reads)
     {
-        auto* event = reinterpret_cast<DIDEVICEOBJECTDATA_DX3*>(reinterpret_cast<BYTE*>(data) + i * objectDataSize);
-        const bool isButton = IsDirectInputButton(kind, event->dwOfs);
-        const bool isDown = (event->dwData & 0x80) != 0;
-        const bool blocked =
-            shouldBlock || (blockedUntil.has_value() && static_cast<LONG>(event->dwTimeStamp - *blockedUntil) < 0);
+        for (DWORD i = 0; i < count; ++i)
+        {
+            auto* event = reinterpret_cast<DIDEVICEOBJECTDATA_DX3*>(reinterpret_cast<BYTE*>(data) + i * objectDataSize);
+            const bool isButton = IsDirectInputButton(kind, event->dwOfs);
+            const bool isDown = (event->dwData & 0x80) != 0;
 
-        if (blocked && !(isButton && !isDown && downSeenByGame[event->dwOfs]))
-            continue;
+            // The menu's own tick counts as menu time, it has the key that closed it
+            const bool blocked =
+                shouldBlock || (blockedUntil.has_value() && static_cast<LONG>(event->dwTimeStamp - *blockedUntil) <= 0);
 
-        if (isButton && !peek)
-            downSeenByGame[event->dwOfs] = isDown;
+            if (blocked && !(isButton && !isDown && downSeenByGame[event->dwOfs]))
+                continue;
 
-        if (kept != i)
-            std::memmove(reinterpret_cast<BYTE*>(data) + kept * objectDataSize, event, objectDataSize);
+            if (isButton && !peek)
+                downSeenByGame[event->dwOfs] = isDown;
 
-        kept++;
+            if (kept != i)
+                std::memmove(reinterpret_cast<BYTE*>(data) + kept * objectDataSize, event, objectDataSize);
+
+            kept++;
+        }
+
+        if (kept != 0 || count == 0 || count < requested || peek || reads == MaxReads)
+            break;
+
+        *inOut = requested;
+
+        {
+            ScopedHookBypass bypass;
+            result = original(device, objectDataSize, data, inOut, flags);
+        }
+
+        if (FAILED(result))
+        {
+            *inOut = 0;
+            return result;
+        }
+
+        count = *inOut;
     }
 
     *inOut = kept;
@@ -1218,8 +1244,8 @@ HRESULT WINAPI hkDirectInputGetDeviceData(void* device, DWORD objectDataSize, LP
             auto& tracked = _state.DirectInputDeviceSlots[slot];
             tracked.DownSeenByGame = downSeenByGame;
 
-            // Read empty, everything queued after this is newer
-            if (!shouldBlock && count < requested)
+            // Read empty, everything queued after this is newer. Unless the menu closed again since.
+            if (!shouldBlock && count < requested && tracked.BlockedUntilTick == blockedUntil)
                 tracked.BlockedUntilTick.reset();
         }
     }
