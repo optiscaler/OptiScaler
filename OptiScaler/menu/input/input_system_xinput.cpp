@@ -2,6 +2,7 @@
 #include "input_system_internal.h"
 
 #include <algorithm>
+#include <intrin.h>
 #include <bitset>
 #include <vector>
 
@@ -195,7 +196,7 @@ void InstallXInputModuleHooks(std::size_t index, HMODULE module)
              installed.GetKeystroke != nullptr ? 1 : 0, installed.SetState != nullptr ? 1 : 0);
 }
 
-DWORD CallXInputGetState(XInputGetState_t original, DWORD userIndex, XINPUT_STATE* state)
+DWORD CallXInputGetState(XInputGetState_t original, DWORD userIndex, XINPUT_STATE* state, void* caller)
 {
     if (original == nullptr)
         return state == nullptr ? ERROR_BAD_ARGUMENTS : ERROR_DEVICE_NOT_CONNECTED;
@@ -216,6 +217,10 @@ DWORD CallXInputGetState(XInputGetState_t original, DWORD userIndex, XINPUT_STAT
         if (!shouldBlock)
             _state.XInputGetStatePassedCount++;
     }
+
+    // The menu's own gamepad navigation (ImGui) reads it through the hook too
+    if (shouldBlock && Util::GetCallerModule(caller) == dllModule)
+        shouldBlock = false;
 
     if (!shouldBlock)
     {
@@ -254,16 +259,26 @@ void UpdateXInputIntegration()
 {
     for (std::size_t i = 0; i < XInputModuleCount; ++i)
     {
+        // A mapped XInput DLL can still be inside loader initialization
+        HMODULE module = GetModuleHandleW(XInputModuleNames[i]);
+
         {
             std::unique_lock lock(_state.Mutex);
+            auto& hooks = XInputModules[i];
 
-            if (XInputModules[i].Attempted)
+            // Unloaded, its hooks went with it and a reload is hooked again
+            if (hooks.Module != nullptr && hooks.Module != module)
+            {
+                LOG_INFO("XInput module unloaded module:{}", static_cast<void*>(hooks.Module));
+                hooks = {};
+                RefreshXInputHookStateLocked();
+            }
+
+            if (hooks.Attempted || module == nullptr)
                 continue;
         }
 
-        // A mapped XInput DLL can still be inside loader initialization
-        if (HMODULE module = GetModuleHandleW(XInputModuleNames[i]); module != nullptr)
-            InstallXInputModuleHooks(i, module);
+        InstallXInputModuleHooks(i, module);
     }
 }
 
@@ -315,9 +330,12 @@ void DrainXInputKeystrokesLocked()
     // Menu-time keystrokes are dropped, owed releases wait for the game's next read
     constexpr DWORD MaxDrainPerUser = 256;
 
-    for (const auto& hooks : XInputModules)
+    for (std::size_t i = 0; i < XInputModuleCount; ++i)
     {
-        if (hooks.GetKeystroke == nullptr)
+        const auto& hooks = XInputModules[i];
+
+        // Its trampoline jumps into the DLL, which may be gone since the last frame
+        if (hooks.GetKeystroke == nullptr || GetModuleHandleW(XInputModuleNames[i]) != hooks.Module)
             continue;
 
         for (DWORD userIndex = 0; userIndex < XUSER_MAX_COUNT; ++userIndex)
@@ -349,12 +367,12 @@ void DrainXInputKeystrokesLocked()
 
 template <std::size_t Module> DWORD WINAPI hkXInputGetState(DWORD userIndex, XINPUT_STATE* state)
 {
-    return CallXInputGetState(XInputModules[Module].GetState, userIndex, state);
+    return CallXInputGetState(XInputModules[Module].GetState, userIndex, state, _ReturnAddress());
 }
 
 template <std::size_t Module> DWORD WINAPI hkXInputGetStateEx(DWORD userIndex, XINPUT_STATE* state)
 {
-    return CallXInputGetState(XInputModules[Module].GetStateEx, userIndex, state);
+    return CallXInputGetState(XInputModules[Module].GetStateEx, userIndex, state, _ReturnAddress());
 }
 
 template <std::size_t Module>
