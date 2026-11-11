@@ -1809,8 +1809,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
             State::Instance().activeFgInput = FGInput::NoFG;
         }
 
-        if (State::Instance().activeFgInput != FGInput::NvngxFG && State::Instance().activeFgOutput != FGOutput::DLSSG)
+        if (State::Instance().activeFgInput != FGInput::NvngxFG &&
+            State::Instance().activeFgOutput != FGOutput::DLSSG &&
+            State::Instance().activeFgOutput != FGOutput::FlipMeter)
+        {
             State::Instance().activeFgNvngx = FGNvngxReplacement::None;
+        }
 
         if (State::Instance().activeFgInput == FGInput::NvngxFG)
             State::Instance().activeFgOutput = FGOutput::NoFG;

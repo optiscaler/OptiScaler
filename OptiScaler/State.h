@@ -61,7 +61,8 @@ enum class FGOutput : uint32_t
     FSRFG,
     DLSSG,
     XeFG,
-    Reprojection
+    Reprojection,
+    FlipMeter, // AMD flip meter + NvngxFX
 };
 
 template <> struct EnumConfig<FGOutput>
@@ -74,6 +75,7 @@ template <> struct EnumConfig<FGOutput>
         { FGOutput::DLSSG, "DLSSG" },
         { FGOutput::XeFG, "XeFG" },
         { FGOutput::Reprojection, "Reprojection" },
+        { FGOutput::FlipMeter, "FlipMeter" },
     };
 };
 
@@ -290,6 +292,7 @@ class State
     // AMD driver flip metering
     bool amdFlipMeterCreated = false;
     uint32_t amdFlipMeterMode = 0;
+    std::optional<bool> amdFlipMeterSupported {}; // Set once the flip meter output has asked the driver
 
     // for realtime changes
     ankerl::unordered_dense::map<unsigned int, bool> changeBackend;

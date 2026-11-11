@@ -176,6 +176,8 @@ class InputCommon
     // The game's DLSSG presents through the wrapped swapchain, AntiLag 2 gets the frame type of each present there
     static bool dlssg_types_presents();
     static void dlssg_present();
+    // The flip meter output presents its frames itself and knows the type of each one, for AntiLag 2
+    static void fg_frame_type(bool interpolated);
 
     // The Reflex output reports that frame multiplier to the driver (Reflex Sync), which then applies the FPS limit
     // to the output frames itself

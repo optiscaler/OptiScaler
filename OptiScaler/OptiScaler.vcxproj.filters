@@ -923,6 +923,9 @@
     <ClInclude Include="shaders\hudless_compare_compute\HCC_Dx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="hooks\AmdExtFlipMeter.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="hooks\Amdxc64_Hooks.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1098,6 +1101,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="shaders\magnifier\precompile\Magnifier_Shader_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="framegen\flipmeter\FlipMeterFG_Dx12.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="framegen\flipmeter\FlipMeterSwapChain.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="framegen\reprojection\Reprojection_Dx12.h">
@@ -1872,6 +1881,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="shaders\magnifier\Magnifier_Vk.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="framegen\flipmeter\FlipMeterFG_Dx12.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="framegen\flipmeter\FlipMeterSwapChain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="framegen\reprojection\Reprojection_Dx12.cpp">

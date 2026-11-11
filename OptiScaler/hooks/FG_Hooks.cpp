@@ -6,6 +6,8 @@
 #include <framegen/xefg/XeFG_Dx12.h>
 #include <framegen/dlssg/DLSSG_Dx12.h>
 #include <framegen/reprojection/Reprojection_Dx12.h>
+#include <framegen/flipmeter/FlipMeterFG_Dx12.h>
+#include <framegen/nvngx/Nvngx_FG.h>
 
 #include <inputs/FG/FSR3_Dx12_FG.h>
 #include <inputs/FG/FfxApi_Dx12_FG.h>
@@ -158,6 +160,17 @@ static bool CheckForFGStatus()
 
         Config::Instance()->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::None);
         State::Instance().activeFgNvngx = Config::Instance()->FGNvngxReplacement.value_or_default();
+    }
+
+    // The flip meter output only presents, its frames come from a Nvngx replacement
+    else if (State::Instance().activeFgOutput == FGOutput::FlipMeter && !Nvngx_FG::isDx12Available())
+    {
+        ImGui::InsertNotification(
+            { ImGuiToastType::Error, 20000, "Can't init Flip Meter Output\nNo usable FG Nvngx Replacement selected" });
+
+        LOG_DEBUG("No Nvngx replacement for the flip meter output, disabling FGOutput");
+        Config::Instance()->FGOutput.set_volatile_value(FGOutput::NoFG);
+        State::Instance().activeFgOutput = Config::Instance()->FGOutput.value_or_default();
     }
 
     if (State::Instance().activeFgOutput == FGOutput::NoFG)
@@ -339,6 +352,10 @@ HRESULT FGHooks::CreateSwapChain(IDXGIFactory* pFactory, IUnknown* pDevice, DXGI
         {
             State::Instance().currentFG = new Reprojection_Dx12();
         }
+        else if (State::Instance().activeFgOutput == FGOutput::FlipMeter)
+        {
+            State::Instance().currentFG = new FlipMeterFG_Dx12();
+        }
     }
 
     // Create FG swapchain
@@ -464,6 +481,10 @@ HRESULT FGHooks::CreateSwapChainForHwnd(IDXGIFactory* pFactory, IUnknown* pDevic
         else if (State::Instance().activeFgOutput == FGOutput::Reprojection)
         {
             State::Instance().currentFG = new Reprojection_Dx12();
+        }
+        else if (State::Instance().activeFgOutput == FGOutput::FlipMeter)
+        {
+            State::Instance().currentFG = new FlipMeterFG_Dx12();
         }
     }
 

@@ -20,6 +20,8 @@
 #include <framegen/nvngx/Nvngx_FG.h>
 #include <upscalers/nvngx/Nvngx_RR.h>
 #include <framegen/reprojection/Reprojection_Dx12.h>
+#include <framegen/flipmeter/FlipMeterFG_Dx12.h>
+#include <framegen/flipmeter/FlipMeterSwapChain.h>
 
 #include <nvapi/fakenvapi.h>
 #include <hooks/Reflex_Hooks.h>
@@ -3005,7 +3007,16 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             };
 
             const FGNvngxReplacement activeNvngxFg = state.activeFgNvngx;
-            if (activeNvngxFg == FGNvngxReplacement::Arturs)
+
+            // Its frames come from the replacement, but the count is its own, not the game's DLSSG one
+            if (state.activeFgOutput == FGOutput::FlipMeter)
+            {
+                if (fg != nullptr && fg->IsActive() && !fg->IsPaused())
+                    fgText = std::format("{} x{}", fg->Name(), fg->GetInterpolatedFrameCount() + 1);
+                else
+                    fgText = "Flip Meter off";
+            }
+            else if (activeNvngxFg == FGNvngxReplacement::Arturs)
             {
                 fgText = formatFg("Enabler", Nvngx_FG::getMaxFakeFramesCount());
             }
@@ -4670,6 +4681,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
         { FGOutput::DLSSG, "DLSSG", "DLSSG output\nCan be used in conjuction with Nukem's for example" },
         { FGOutput::XeFG, "XeFG", "XeFG - heaviest, but best universal FG\n\nXeFG 3 overall deals best with HUD\n\nEnable UI Composition if HUD ghosting" },
         { FGOutput::Reprojection, "Reprojection (WIP)", "Reprojects the game image using new mouse data\nKinda like Reflex 2, perceived latency improvement\n\n- REQUIRES DLSSG VIA STREAMLINE AS INPUT\n- Only works with first person perspective games\n- Only mouse, no controller\n- If possible, disable any mouse/camera smoothing in the game\n" },
+        { FGOutput::FlipMeter, "Flip Meter (WIP)", "Frames of a FG Nvngx Replacement, paced by AMD's driver flip metering\n\n- AMD only, needs driver support\n- Only generates in exclusive or borderless fullscreen\n- Works with Anti-Lag 2" },
     };
 
     // clang-format on
@@ -4699,6 +4711,13 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     // XeFG output requirements
     auto constexpr xefgOutputIndex = (uint32_t) FGOutput::XeFG;
     outputOptions[xefgOutputIndex].set_disabled(state.swapchainApi == API::Vulkan, "Unsupported API");
+
+    // Flip meter output requirements, the driver is only asked once its swapchain gets created
+    auto constexpr flipMeterOutputIndex = (uint32_t) FGOutput::FlipMeter;
+    outputOptions[flipMeterOutputIndex].set_disabled(state.swapchainApi != API::DX12, "Unsupported API");
+    outputOptions[flipMeterOutputIndex].set_disabled(primaryGpu.vendorId != VendorId::AMD, "Unsupported hardware");
+    outputOptions[flipMeterOutputIndex].set_disabled(!state.amdFlipMeterSupported.value_or(true),
+                                                     "Flip metering isn't supported by the driver");
     // Unsupported FG input selected
     const auto currentInputIndex = (uint32_t) state.activeFgInput;
     if (config->FGInput != FGInput::NoFG && inputOptions.size() > currentInputIndex &&
@@ -4763,7 +4782,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
         config->FGOutput = FGOutput::NoFG;
         replaceFgOutputWithNvngx = true;
     }
-    else if (config->FGOutput == FGOutput::DLSSG)
+    else if (config->FGOutput == FGOutput::DLSSG || config->FGOutput == FGOutput::FlipMeter)
     {
         showNvngxFgDowndown = true;
     }
@@ -4774,6 +4793,11 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     if (replaceFgOutputWithNvngx)
     {
         nvngxOptions[fgNvngxNoneIndex].label = "None";
+        nvngxOptions[fgNvngxNoneIndex].set_hidden(true);
+    }
+    else if (config->FGOutput == FGOutput::FlipMeter)
+    {
+        // The flip meter output has no frames of its own
         nvngxOptions[fgNvngxNoneIndex].set_hidden(true);
     }
 
@@ -4868,7 +4892,8 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
                 ImGui::TableNextColumn();
 
                 nvngxCombo("FG Nvngx Replacement");
-                ShowTooltip("What backend to use instead of the real DLSSG");
+                ShowTooltip(config->FGOutput == FGOutput::FlipMeter ? "What backend generates the frames"
+                                                                    : "What backend to use instead of the real DLSSG");
             }
 
             ImGui::EndTable();
@@ -5879,6 +5904,91 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         ImGui::EndDisabled();
     }
 
+    // Flip meter controls, the generated frames come from the Nvngx replacement
+    if (ScopedCard::Shows("fg_flipmeter") && state.activeFgOutput == FGOutput::FlipMeter &&
+        state.activeFgInput != FGInput::NoFG && state.FGSwapchainExists() && state.CurrentFG() != nullptr)
+    {
+        ScopedCard card { "Flip Meter Settings" };
+
+        auto flipMeter = dynamic_cast<FlipMeterFG_Dx12*>(state.CurrentFG());
+        auto swapChain = flipMeter != nullptr ? flipMeter->SwapChain() : nullptr;
+
+        RenderFGModeSlider(ctx, "Frame Gen##flipmeter", flipMeter != nullptr ? flipMeter->MaxInterpolationCount() : 1,
+                           &config->FGFlipMeterInterpolationCount);
+
+        if (swapChain != nullptr)
+        {
+            const auto status = swapChain->GetStatus();
+
+            if (status.metering)
+            {
+                ImGui::TextColored(StatusOk(), "Driver pacing: %s, %uX",
+                                   status.mode == AmdExtFlipMeterMode_FrameIndex ? "frame index mode" : "adaptive mode",
+                                   status.generatedFrames + 1);
+                ShowTooltip("AMD driver flip metering holds the flips of the generated frames\n"
+                            "Adaptive mode is FSR's and paces one generated frame,\n"
+                            "frame index mode paces more");
+            }
+            else if (status.generatedFrames == 0)
+            {
+                ImGui::TextDisabled("Driver pacing: off while no frames are generated");
+                ShowTooltip("Frame generation is off, or the game doesn't send\n"
+                            "its inputs, like in menus and loading screens");
+            }
+            else
+            {
+                ImGui::TextColored(StatusError(), "Driver pacing: off, only the game's frames are shown");
+            }
+
+            if (!status.coversOutput)
+                ImGui::TextColored(StatusError(), "Needs exclusive fullscreen or a window covering the whole display");
+
+            if (FAILED(status.configResult))
+            {
+                ImGui::TextColored(StatusError(), "The driver rejected the config: %08X, status %u",
+                                   (UINT) status.configResult, status.configStatus);
+            }
+
+            const int providerMax = FlipMeterFG_Dx12::ProviderMaxInterpolationCount();
+            const int driverMax = (int) swapChain->MaxGeneratedFrames();
+
+            if (driverMax < providerMax)
+            {
+                // The file's path or why it couldn't be written, kept while the menu is open
+                static std::optional<std::expected<std::filesystem::path, std::string>> regFile;
+
+                // At least 6X, like DLSSG, so other FG replacements don't need a new one. The driver allows 15.
+                const UINT regFrames = (UINT) std::clamp(std::max(providerMax, 5), 1, 15);
+
+                ImGui::TextColored(StatusWarn(), "The driver allows up to %dX, the FG replacement %dX", driverMax + 1,
+                                   providerMax + 1);
+                ImGui::TextWrapped("AMD's driver only paces 2X by default. More needs a registry setting.\n"
+                                   "Button below creates a .reg file next to the game's exe.\n"
+                                   "Run it and restart your computer.");
+
+                if (ImGui::Button("Create .reg file##flipmeter"))
+                    regFile = swapChain->WriteMaxGenFramesRegFile(regFrames);
+
+                ShowTooltip(std::format("Sets the DWORD Gmx_DriverFramePacingMaxGenFrames to {} ({}X) in the GPU's\n"
+                                        "driver key under HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\\n"
+                                        "{{4d36e968-e325-11ce-bfc1-08002be10318}}",
+                                        regFrames, regFrames + 1)
+                                .c_str());
+
+                if (regFile.has_value() && regFile->has_value())
+                {
+                    ImGui::TextColored(StatusOk(), "Saved %s", wstring_to_string(regFile->value().wstring()).c_str());
+                    ImGui::TextWrapped("Double-click it and allow the change (needs admin), then restart Windows. "
+                                       "The file says how to undo it.");
+                }
+                else if (regFile.has_value())
+                {
+                    ImGui::TextColored(StatusError(), "Couldn't create it: %s", regFile->error().c_str());
+                }
+            }
+        }
+    }
+
     if (auto reprojectionOutput = state.CurrentFG();
         ScopedCard::Shows("fg_reprojection") && reprojectionOutput && reprojectionOutput->HasReprojection())
     {
@@ -6066,7 +6176,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             ((state.activeFgOutput == FGOutput::FSRFG && FfxApiProxy::IsFGReady()) ||
              (state.activeFgOutput == FGOutput::XeFG && XeFGProxy::Module() != nullptr) ||
              (state.activeFgOutput == FGOutput::DLSSG && StreamlineProxy::Module() != nullptr) ||
-             state.activeFgOutput == FGOutput::Reprojection))
+             state.activeFgOutput == FGOutput::Reprojection || state.activeFgOutput == FGOutput::FlipMeter))
         {
             const bool dx11HudfixTracking = state.swapchainInteropApi == SwapchainInteropApi::Dx11wDx12;
             const bool hudfixTrackingSupported =
@@ -9763,6 +9873,7 @@ const MenuCommon::MenuBox* MenuCommon::GetMenuBoxes(size_t& count)
         { "fg_fsrfg", "Frame Gen", "FSR FG Settings", nullptr, RenderFrameGenerationRuntimeSettings },
         { "fg_xefg", "Frame Gen", "XeFG Settings", nullptr, RenderFrameGenerationRuntimeSettings },
         { "fg_dlssg", "Frame Gen", "DLSSG Settings", nullptr, RenderFrameGenerationRuntimeSettings },
+        { "fg_flipmeter", "Frame Gen", "Flip Meter Settings", nullptr, RenderFrameGenerationRuntimeSettings },
         { "fg_reprojection", "Frame Gen", "Reprojection Settings", nullptr, RenderFrameGenerationRuntimeSettings },
         { "fg_optifg", "Frame Gen", "OptiFG Settings", nullptr, RenderFrameGenerationRuntimeSettings },
         { "fg_nvngx", "Frame Gen", "Nvngx FG replacement", nullptr, RenderFrameGenerationRuntimeSettings },
