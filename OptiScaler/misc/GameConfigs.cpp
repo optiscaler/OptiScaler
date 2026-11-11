@@ -677,6 +677,14 @@ const std::vector<GameConfig> gameConfigs = {
         .defaults = { DxgiSpoofing = false },
     },
 
+    // Assassin's Creed Origins, Assassin's Creed Odyssey, Tom Clancy's Ghost Recon Wildlands
+    // Disabled spoofing for DLSS mods
+    {
+        .exes = { "acorigins.exe", "acorigins_plus.exe", "acodyssey.exe", "acodyssey_plus.exe", "grw.exe",
+                  "grw_plus.exe" },
+        .defaults = { DxgiSpoofing = false },
+    },
+
     // CONTROL Resonant
     // SL spoof enough to unlock everything DLSS, SimulateWaitableObject required to avoid freeze with DLSSG inputs
     {
