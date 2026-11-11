@@ -68,7 +68,7 @@ enum class GameQuirk : uint64_t
     ForceFGRenderSizeMVs,
     HideFsr4,       // FFX inputs: game's options menu breaks when every upscaler it knows is available (BeamNG)
     ExtendedSearch, // Extend the search when normal lookup fails (Phantom Blade Zero)
-    // Don't forget to add the new entry to printQuirks
+                    // Don't forget to add the new entry to printQuirks
     _
 };
 
