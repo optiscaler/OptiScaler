@@ -1284,6 +1284,7 @@ void InputCommon::xefg_marker(void* xellContext, uint32_t frame_id, uint32_t mar
     }
 
     auto index = marker - 80860000;
+    xefg_marker_present = present_count + 1;
 
     if (!seen[index].exchange(true))
         LOG_INFO("XeFG sends XeLL marker {} ({}), frame id {}", marker, magic_enum::enum_name(type), frame_id);
@@ -1395,8 +1396,12 @@ void InputCommon::update()
         bool multiFrame = state.dlssgLastSetMode == sl::DLSSGMode::eDynamic ||
                           (state.dlssgDetectedInterpolationCount > 1 && activeOutput != LowLatencyMode::AntiLag2);
 
+        // Another XeFG behind DLSSG (DLSS Enabler's) knows its frames too, turning XeLL off under it hangs the GPU
+        auto lastMarker = xefg_marker_present.load();
+        bool otherXefg = lastMarker != 0 && present_count + 1 - lastMarker < 20;
+
         if (!std::exchange(lastMultiFrame, multiFrame) && multiFrame && activeOutput != LowLatencyMode::Reflex &&
-            activeOutput != LowLatencyMode::FpsLimiter && !xefgPaced &&
+            activeOutput != LowLatencyMode::FpsLimiter && !xefgPaced && !otherXefg &&
             Config::Instance()->FN_ForceReflex.value_or_default() != ForceReflex::ForceEnable)
         {
             LOG_INFO("Multi frame generation, disabling {}", magic_enum::enum_name(activeOutput));
