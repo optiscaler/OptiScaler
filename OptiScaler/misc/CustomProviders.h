@@ -184,7 +184,17 @@ inline Exports Load(const std::string& name, Kind kind)
 
     if (dll == nullptr)
     {
-        LOG_ERROR("Can't load custom {} from {}", name, wstring_to_string(Folder(name).wstring()));
+        if (path.empty())
+        {
+            LOG_ERROR("Can't load custom {}: no dll in {}", name, wstring_to_string(Folder(name).wstring()));
+            return {};
+        }
+
+        // ERROR_DLL_INIT_FAILED: the dll refused to load, e.g. a provider that needs another module loaded first
+        const DWORD error = GetLastError();
+        LOG_ERROR("Can't load custom {} from {}, error {}{}", name, wstring_to_string(path.wstring()), error,
+                  error == ERROR_DLL_INIT_FAILED ? " (the dll refused to load; it needs something this process lacks)"
+                                                 : "");
         return {};
     }
 
