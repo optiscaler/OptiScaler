@@ -126,10 +126,14 @@ int IFGFeature::GetDispatchIndex(UINT64& willDispatchFrame)
 // Shared by GetDispatchIndex and GetIndexWillBeDispatched so they pick the same slot
 UINT64 IFGFeature::NextDispatchFrame()
 {
+    // Nothing dispatched since (re)activation: +1 would be frame 1, XeFG needs it to match the tagged frame id
+    if (_lastDispatchedFrame == 0)
+        return _frameCount;
+
     auto frame = _lastDispatchedFrame + 1; // By default render next one
 
     auto diff = _frameCount - _lastDispatchedFrame;
-    if (diff > Config::Instance()->FGAllowedFrameAhead.value_or_default() || _lastDispatchedFrame == 0)
+    if (diff > Config::Instance()->FGAllowedFrameAhead.value_or_default())
     {
         auto index = GetIndex();
 
