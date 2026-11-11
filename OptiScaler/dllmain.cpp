@@ -476,7 +476,6 @@ typedef int(WINAPI* PFN_ExeEntry)(PVOID);
 static PFN_ExeEntry o_ExeEntry = nullptr;
 static std::atomic<bool> _entryLoadsStarted = false;
 static std::atomic<bool> _entryLoadsDone = false;
-static bool _asiAtEntry = false;
 
 // Not call_once, an asi creating a factory while loading would call this again
 static void RunEntryLoads()
@@ -506,12 +505,6 @@ static void RunEntryLoads()
 
     DxgiHooks::LoadForLuma();
     LoadInjectedDlls();
-
-    if (_asiAtEntry)
-    {
-        spdlog::info("");
-        LoadAsiPlugins();
-    }
 
     // Started here to not create a factory together with the one above
     CreateThread(nullptr, 0, getGpuInfo, GetDllNameWModule(&dx12NamesW), 0, nullptr);
@@ -2031,18 +2024,11 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                 Config::Instance()->FpsOverlayPosition.set_volatile_value(FpsOverlayPos_TopRight);
         }
 
-        // Asi plugins, after the injected dlls like before
+        // Asi plugins stay in DllMain, some expect to run before other dlls and the exe's TLS callbacks
         if (Config::Instance()->LoadAsiPlugins.value_or_default())
         {
-            if (_staticLoad && HookExeEntry())
-            {
-                _asiAtEntry = true;
-            }
-            else
-            {
-                spdlog::info("");
-                LoadAsiPlugins();
-            }
+            spdlog::info("");
+            LoadAsiPlugins();
         }
 
         if (!Config::Instance()->DxgiSpoofing.has_value() && !State::Instance().nvngxReplacement.has_value())
