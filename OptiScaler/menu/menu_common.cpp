@@ -5680,14 +5680,22 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
                 ImGui::BeginDisabled(!config->FGDLSSGForceDMFG.value_or_default() || softwareChosen);
                 static float fpsTarget = config->FGDLSSGFramerateTargetDMFG.value_or_default();
+                static bool fpsTargetEdited = false;
                 float fpsSliderMax = (float) std::max(200, refreshRate);
-                ImGui::SliderFloat("DMFG FPS Target", &fpsTarget, 0, fpsSliderMax, "%.0f");
+
+                // Follows the config until it is edited: OptiScaler's own Dynamic MFG shares the target
+                if (!fpsTargetEdited)
+                    fpsTarget = config->FGDLSSGFramerateTargetDMFG.value_or_default();
+
+                if (ImGui::SliderFloat("DMFG FPS Target", &fpsTarget, 0, fpsSliderMax, "%.0f"))
+                    fpsTargetEdited = true;
 
                 ShowTooltip("An active limit of 0 means auto-detect the display refresh rate");
 
                 if (ImGui::Button("Apply Target"))
                 {
                     config->FGDLSSGFramerateTargetDMFG = fpsTarget;
+                    fpsTargetEdited = false;
                 }
 
                 ImGui::SameLine(0.0f, 16.0f);
@@ -5696,6 +5704,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 {
                     fpsTarget = 0.0f;
                     config->FGDLSSGFramerateTargetDMFG.reset();
+                    fpsTargetEdited = false;
                 }
 
                 ImGui::EndDisabled();
@@ -5730,34 +5739,45 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
                 if (softwareDynamic)
                 {
-                    // Applied on release, dragging doesn't restart Dynamic MFG every frame.
+                    // Applied with the button, dragging doesn't restart Dynamic MFG every frame.
                     // The slider's lowest step (9) is Auto, the lowest target is 10.
                     constexpr float autoStep = 9.0f;
                     static float dlssgFpsTarget = autoStep;
-                    static bool dlssgFpsTargetDragged = false;
+                    static bool dlssgFpsTargetEdited = false;
                     const float fpsSliderMax = (float) std::max(200, refreshRate);
 
-                    // Follows the config unless it is being dragged: Streamline's own Dynamic mode shares the target
-                    if (!dlssgFpsTargetDragged)
+                    // Follows the config until it is edited: Streamline's own Dynamic mode shares the target
+                    if (!dlssgFpsTargetEdited)
                         dlssgFpsTarget = std::max(config->FGDLSSGFramerateTargetDMFG.value_or_default(), autoStep);
 
                     ImGui::SetNextItemWidth(150.0f * menuResScale);
-                    ImGui::SliderFloat("Target FPS##dlssg", &dlssgFpsTarget, autoStep, fpsSliderMax,
-                                       dlssgFpsTarget < autoStep + 0.5f ? "Auto" : "%.0f",
-                                       ImGuiSliderFlags_AlwaysClamp);
+                    if (ImGui::SliderFloat("Target FPS##dlssg", &dlssgFpsTarget, autoStep, fpsSliderMax,
+                                           dlssgFpsTarget < autoStep + 0.5f ? "Auto" : "%.0f",
+                                           ImGuiSliderFlags_AlwaysClamp))
+                    {
+                        dlssgFpsTargetEdited = true;
+                    }
 
-                    dlssgFpsTargetDragged = ImGui::IsItemActive();
+                    ShowTooltip("Presented FPS to aim for, never above the FPS limit.\n"
+                                "Auto: the FPS limit, or just under the refresh rate.");
 
-                    if (ImGui::IsItemDeactivatedAfterEdit())
+                    if (ImGui::Button("Apply Target##dlssgDynamic"))
                     {
                         if (dlssgFpsTarget < autoStep + 0.5f)
                             config->FGDLSSGFramerateTargetDMFG.reset();
                         else
                             config->FGDLSSGFramerateTargetDMFG = dlssgFpsTarget;
+
+                        dlssgFpsTargetEdited = false;
                     }
 
-                    ShowTooltip("Presented FPS to aim for, never above the FPS limit.\n"
-                                "Auto: the FPS limit, or just under the refresh rate.");
+                    ImGui::SameLine(0.0f, 16.0f);
+
+                    if (ImGui::Button("Reset Target##dlssgDynamic"))
+                    {
+                        config->FGDLSSGFramerateTargetDMFG.reset();
+                        dlssgFpsTargetEdited = false;
+                    }
 
                     // The cap holds the target with its own count logic
                     const bool targetAsCap = config->FGDLSSGTargetAsCapDMFG.value_or_default();
@@ -6481,27 +6501,44 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
                 if (config->FGDLSSGDynamicMFG.value_or_default() && !atTwoX)
                 {
-                    // Applied on release. The slider's lowest step (9) is Auto, the lowest target is 10.
+                    // Applied with the button. The slider's lowest step (9) is Auto, the lowest target is 10.
                     constexpr float autoStep = 9.0f;
-                    static float nvngxFpsTarget =
-                        std::max(config->FGDLSSGFramerateTargetDMFG.value_or_default(), autoStep);
+                    static float nvngxFpsTarget = autoStep;
+                    static bool nvngxFpsTargetEdited = false;
                     const float fpsSliderMax = (float) std::max(200, refreshRate);
 
-                    ImGui::SetNextItemWidth(150.0f * menuResScale);
-                    ImGui::SliderFloat("Target FPS##nvngx", &nvngxFpsTarget, autoStep, fpsSliderMax,
-                                       nvngxFpsTarget < autoStep + 0.5f ? "Auto" : "%.0f",
-                                       ImGuiSliderFlags_AlwaysClamp);
+                    // Follows the config until it is edited
+                    if (!nvngxFpsTargetEdited)
+                        nvngxFpsTarget = std::max(config->FGDLSSGFramerateTargetDMFG.value_or_default(), autoStep);
 
-                    if (ImGui::IsItemDeactivatedAfterEdit())
+                    ImGui::SetNextItemWidth(150.0f * menuResScale);
+                    if (ImGui::SliderFloat("Target FPS##nvngx", &nvngxFpsTarget, autoStep, fpsSliderMax,
+                                           nvngxFpsTarget < autoStep + 0.5f ? "Auto" : "%.0f",
+                                           ImGuiSliderFlags_AlwaysClamp))
+                    {
+                        nvngxFpsTargetEdited = true;
+                    }
+
+                    ShowTooltip("Presented FPS to aim for, never above the FPS limit.\n"
+                                "Auto: the FPS limit, or just under the refresh rate.");
+
+                    if (ImGui::Button("Apply Target##nvngxDynamic"))
                     {
                         if (nvngxFpsTarget < autoStep + 0.5f)
                             config->FGDLSSGFramerateTargetDMFG.reset();
                         else
                             config->FGDLSSGFramerateTargetDMFG = nvngxFpsTarget;
+
+                        nvngxFpsTargetEdited = false;
                     }
 
-                    ShowTooltip("Presented FPS to aim for, never above the FPS limit.\n"
-                                "Auto: the FPS limit, or just under the refresh rate.");
+                    ImGui::SameLine(0.0f, 16.0f);
+
+                    if (ImGui::Button("Reset Target##nvngxDynamic"))
+                    {
+                        config->FGDLSSGFramerateTargetDMFG.reset();
+                        nvngxFpsTargetEdited = false;
+                    }
 
                     // The cap holds the target with its own count logic
                     const bool targetAsCap = config->FGDLSSGTargetAsCapDMFG.value_or_default();
