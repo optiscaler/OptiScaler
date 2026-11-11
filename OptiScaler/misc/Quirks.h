@@ -433,6 +433,18 @@ static const QuirkEntry quirkTable[] = {
     QUIRK_ENTRY("acblackflag.exe", GameQuirk::DisableDxgiSpoofing),
     QUIRK_ENTRY("acblackflag_plus.exe", GameQuirk::DisableDxgiSpoofing),
 
+    // Assassin's Creed Origins
+    QUIRK_ENTRY("acorigins.exe", GameQuirk::DisableDxgiSpoofing),
+    QUIRK_ENTRY("acorigins_plus.exe", GameQuirk::DisableDxgiSpoofing),
+
+    // Assassin's Creed Odyssey
+    QUIRK_ENTRY("acodyssey.exe", GameQuirk::DisableDxgiSpoofing),
+    QUIRK_ENTRY("acodyssey_plus.exe", GameQuirk::DisableDxgiSpoofing),
+
+    // Tom Clancy's Ghost Recon Wildlands
+    QUIRK_ENTRY("grw.exe", GameQuirk::DisableDxgiSpoofing),
+    QUIRK_ENTRY("grw_plus.exe", GameQuirk::DisableDxgiSpoofing),
+
     // FBC: Firebreak
     // SL spoof enough to unlock everything DLSS
     QUIRK_ENTRY("fbcfirebreak.exe", GameQuirk::DisableDxgiSpoofing),
