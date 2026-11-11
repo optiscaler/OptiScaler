@@ -8,6 +8,7 @@
 
 #include <shlobj.h>
 #include <cwctype>
+#include <queue>
 
 typedef LONG(WINAPI* RtlGetVersionPtr)(PRTL_OSVERSIONINFOW);
 typedef decltype(&GetFileVersionInfoSizeW) PFN_GetFileVersionInfoSizeW;
@@ -540,7 +541,7 @@ bool Util::GetDLLVersion(std::wstring dllPath, xess_version_t* xessVersionOut)
 }
 
 std::optional<std::filesystem::path> Util::FindFilePath(const std::filesystem::path& startDir,
-                                                        const std::filesystem::path fileName)
+                                                        const std::filesystem::path& fileName)
 {
     // 1) Direct check in startDir
     std::filesystem::path candidate = startDir / fileName;
@@ -550,15 +551,40 @@ std::optional<std::filesystem::path> Util::FindFilePath(const std::filesystem::p
         return candidate;
     }
 
-    // 2) Recursive search under startDir
-    for (auto& entry : std::filesystem::recursive_directory_iterator(
-             startDir, std::filesystem::directory_options::skip_permission_denied))
+    // Helper lambda to perform a Breadth-First Search (shallowest files first)
+    auto SearchDirectoryBFS = [&](const std::filesystem::path& root) -> std::optional<std::filesystem::path>
     {
-        if (!entry.is_directory() && entry.path().filename() == fileName)
+        std::queue<std::filesystem::path> directoriesToSearch;
+        directoriesToSearch.push(root);
+
+        while (!directoriesToSearch.empty())
         {
-            LOG_INFO(L"{} found at {}", fileName.wstring(), entry.path().parent_path().wstring());
-            return entry.path();
+            std::filesystem::path currentDir = directoriesToSearch.front();
+            directoriesToSearch.pop();
+
+            std::error_code ec;
+            auto dirIterator = std::filesystem::directory_iterator(
+                currentDir, std::filesystem::directory_options::skip_permission_denied, ec);
+
+            if (ec)
+                continue;
+
+            for (const auto& entry : dirIterator)
+            {
+                if (entry.is_directory())
+                    directoriesToSearch.push(entry.path());
+                else if (entry.path().filename() == fileName)
+                    return entry.path();
+            }
         }
+        return std::nullopt;
+    };
+
+    // 2) Breadth-First search under startDir
+    if (auto foundPath = SearchDirectoryBFS(startDir))
+    {
+        LOG_INFO(L"{} found at {}", fileName.wstring(), foundPath.value().wstring());
+        return foundPath;
     }
 
     // 3) Unreal-Engine/WinGDK fallback: check for Win64 or WinGDK in parent
@@ -598,14 +624,11 @@ std::optional<std::filesystem::path> Util::FindFilePath(const std::filesystem::p
             else
                 gameRoot = parent.parent_path();
 
-            for (auto& entry : std::filesystem::recursive_directory_iterator(
-                     gameRoot, std::filesystem::directory_options::skip_permission_denied))
+            // Run Breadth-First Search on the gameRoot fallback
+            if (auto foundPath = SearchDirectoryBFS(gameRoot))
             {
-                if (!entry.is_directory() && entry.path().filename() == fileName)
-                {
-                    LOG_INFO(L"{} found at {}", fileName.wstring(), entry.path().parent_path().wstring());
-                    return entry.path();
-                }
+                LOG_INFO(L"{} found at {}", fileName.wstring(), foundPath.value().wstring());
+                return foundPath;
             }
 
             // If not found under this folder, break to avoid double-search
@@ -645,17 +668,10 @@ std::optional<std::filesystem::path> Util::FindFilePath(const std::filesystem::p
             for (const auto& pluginRoot : pluginRoots)
             {
                 LOG_INFO(L"Extended search: searching at {}", pluginRoot.wstring());
-                // master uses SearchDirectoryBFS here (from 64efe037, not in 0.9); same plain search as step 2
-                std::error_code searchEc;
-                for (auto& entry : std::filesystem::recursive_directory_iterator(
-                         pluginRoot, std::filesystem::directory_options::skip_permission_denied, searchEc))
+                if (auto foundPath = SearchDirectoryBFS(pluginRoot))
                 {
-                    if (!entry.is_directory() && entry.path().filename() == fileName)
-                    {
-                        LOG_INFO(L"{} found by extended search at {}", fileName.wstring(),
-                                 entry.path().wstring());
-                        return entry.path();
-                    }
+                    LOG_INFO(L"{} found by extended search at {}", fileName.wstring(), foundPath.value().wstring());
+                    return foundPath;
                 }
             }
 
