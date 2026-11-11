@@ -18,6 +18,8 @@ void Nvngx_DllProxy::QueryReportedParameters()
     if (params.Get("DLSSG.MultiFrameCountMax", &countMax) == NVSDK_NGX_Result_Success && countMax > 0)
         reportedMaxFakeFrames = countMax;
 
+    params.Get("FrameGeneration.Available", &reportedAvailable);
+
     if (params.Get("FrameInterpolation.GhostbusterVersionMajor", &antighostingVersion.major) ==
         NVSDK_NGX_Result_Success)
     {
