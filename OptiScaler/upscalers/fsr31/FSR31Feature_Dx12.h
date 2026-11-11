@@ -4,11 +4,13 @@
 
 #include "dx12/ffx_api_dx12.h"
 #include "proxies/FfxApi_Proxy.h"
+#include <shaders/auto_exposure/AE_Dx12.h>
 
 class FSR31FeatureDx12 : public FSR31Feature, public IFeature_Dx12
 {
   private:
-    ID3D12Resource* smallerColor[2] = {};
+    std::unique_ptr<AE_Dx12> _autoExposure;
+    bool _customAutoExposure = false;
 
     NVSDK_NGX_Parameter* SetParameters(NVSDK_NGX_Parameter* InParameters);
 
@@ -34,16 +36,5 @@ class FSR31FeatureDx12 : public FSR31Feature, public IFeature_Dx12
 
         if (_context != nullptr)
             FfxApiProxy::D3D12_DestroyContext(&_context, NULL);
-
-        if (smallerColor[0])
-        {
-            smallerColor[0]->Release();
-            smallerColor[0] = nullptr;
-        }
-        if (smallerColor[1])
-        {
-            smallerColor[1]->Release();
-            smallerColor[1] = nullptr;
-        }
     }
 };
