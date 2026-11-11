@@ -85,6 +85,7 @@ GAME_SETTING(MVResourceBarrier);
 GAME_SETTING(OverlayMenu);
 GAME_SETTING(OverrideVsync);
 GAME_SETTING(RestoreComputeSignature);
+GAME_SETTING(RRAllowRegularUpscalers);
 GAME_SETTING(SkipFirstFrames);
 GAME_SETTING(SpoofRegistry);
 GAME_SETTING(UseFakenvapi);
@@ -272,12 +273,17 @@ const std::vector<GameConfig> gameConfigs = {
         .exes = { "kunitsugami.exe", "kunitsugamidemo.exe", "drdr.exe" },
         .defaults = { OnNonNvidia(RestoreComputeSignature = true), DxgiSpoofing = false },
     },
-    // Monster Hunter Wilds, Resident Evil Requiem (+ demo), Monster Hunter Stories 3: Twisted Reflection,
-    // Onimusha: Way of the Sword (+ demo)
+    // Monster Hunter Wilds, Monster Hunter Stories 3: Twisted Reflection, Onimusha: Way of the Sword (+ demo)
     {
-        .exes = { "monsterhunterwilds.exe", "re9.exe", "re9demo.exe", "monster_hunter_stories_3_twisted_reflection.exe",
-                  "onimushawots_demo.exe", "onimushawots.exe" },
+        .exes = { "monsterhunterwilds.exe", "monster_hunter_stories_3_twisted_reflection.exe", "onimushawots_demo.exe",
+                  "onimushawots.exe" },
         .defaults = { RestoreComputeSignature = true, DxgiSpoofing = false },
+    },
+    // Resident Evil Requiem (+ demo)
+    // PT is locked behind DLSSD so allow regular upscalers
+    {
+        .exes = { "re9.exe", "re9demo.exe" },
+        .defaults = { RestoreComputeSignature = true, DxgiSpoofing = false, RRAllowRegularUpscalers = true },
     },
     // MONSTER HUNTER RISE
     // AMD/Intel need spoofing, Restoresig seems to fix real DLSS
@@ -305,10 +311,17 @@ const std::vector<GameConfig> gameConfigs = {
         .quirks = { PregmataFixDLSSModes },
     },
     // PRAGMATA
+    // PT is locked behind DLSSD so allow regular upscalers
     {
         .exes = { "pragmata.exe" },
-        .defaults = { RestoreComputeSignature = true, DxgiSpoofing = false },
+        .defaults = { RestoreComputeSignature = true, DxgiSpoofing = false, RRAllowRegularUpscalers = true },
         .quirks = { PregmataFixDLSSModes },
+    },
+    // Hogwarts Legacy
+    // Reflections look better when DLSSD is selected in the game, allow DLSSD -> Upscaler, doesn't cause noise
+    {
+        .exes = { "hogwartslegacy.exe" },
+        .defaults = { RRAllowRegularUpscalers = true },
     },
 
     // REF PDUpscaler branch

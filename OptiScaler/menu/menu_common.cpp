@@ -1321,8 +1321,9 @@ void MenuCommon::AddVulkanBackends(Upscaler upscaler)
                           Upscaler::FFX_on12, Upscaler::DLSS, Upscaler::DLSS_on12 });
 }
 
-// DLSSD running the game's ray reconstruction, NVIDIA's or a custom one
-static void RenderRRUpscalerCombo(API api, IFeature* feature)
+// Upscaler for the game's ray reconstruction: DLSSDs first, NVIDIA's then custom ones, regular upscalers after.
+// Feature is the running one, nullptr before the game starts ray reconstruction
+static void RenderRRUpscalerCombo(API api, IFeature* feature, const char* label = "##RRUpscalerCombo")
 {
     auto& state = State::Instance();
     auto config = Config::Instance();
@@ -1341,14 +1342,47 @@ static void RenderRRUpscalerCombo(API api, IFeature* feature)
 
     auto entryName = [](const std::string& entry) { return entry.empty() ? std::string("DLSSD") : entry; };
 
-    // The FSR fallback isn't one of them
-    auto* dlssd = dynamic_cast<DLSSDFeature*>(feature);
-    const bool runsDlssd = dlssd != nullptr;
-    const auto current = runsDlssd ? dlssd->CustomName() : std::string();
-    const auto preview = runsDlssd ? entryName(current) : NameWithVersion(feature);
+    // Regular upscalers take ray reconstruction without denoising it, when allowed
+    const bool allowRegulars = config->RRAllowRegularUpscalers.value_or_default();
+    std::vector<Upscaler> regulars;
 
-    if (!ImGui::BeginCombo("##RRUpscalerCombo", preview.c_str(), ImGuiComboFlags_HeightLargest))
+    if (allowRegulars)
+    {
+        regulars = { Upscaler::XeSS, Upscaler::FSR21, Upscaler::FSR22, Upscaler::FFX };
+
+        if (IdentifyGpu::getPrimaryGpu().dlssCapable)
+            regulars.push_back(Upscaler::DLSS);
+    }
+
+    const auto picked = Nvngx_RR::Regular();
+
+    // Running: the FSR fallback isn't one of them. Not running yet: the configured one, a DLSSD unless a regular
+    // upscaler is picked, Off when no DLSSD can run
+    auto* dlssd = dynamic_cast<DLSSDFeature*>(feature);
+    const bool runsDlssd = feature != nullptr ? dlssd != nullptr : !picked.has_value() && !entries.empty();
+    const auto current = dlssd != nullptr ? dlssd->CustomName() : config->CustomRRUpscaler.value_or("");
+
+    std::string preview;
+
+    if (runsDlssd)
+        preview = entryName(current);
+    else if (feature != nullptr)
+        preview = NameWithVersion(feature);
+    else if (picked.has_value())
+        preview = UpscalerDisplayName(picked.value(), api);
+    else
+        preview = "Off";
+
+    if (!ImGui::BeginCombo(label, preview.c_str(), ImGuiComboFlags_HeightLargest))
         return;
+
+    auto changeAll = [&state]()
+    {
+        Nvngx_RR::ResetFailures();
+
+        for (auto handle : state.rrHandles)
+            state.changeBackend[handle] = true;
+    };
 
     for (const auto& entry : entries)
     {
@@ -1364,14 +1398,76 @@ static void RenderRRUpscalerCombo(API api, IFeature* feature)
             else
                 config->CustomRRUpscaler = entry;
 
-            Nvngx_RR::ResetFailures();
-
-            for (auto handle : state.rrHandles)
-                state.changeBackend[handle] = true;
+            config->RRRegularUpscaler.reset();
+            changeAll();
         }
     }
 
+    // Without a DLSSD ray reconstruction is only offered to the game for a regular upscaler
+    if (allowRegulars && entries.empty())
+    {
+        if (ImGui::Selectable("Off##rrOff", !picked.has_value()))
+            config->RRRegularUpscaler.reset();
+    }
+
+    if (allowRegulars)
+        ImGui::Separator();
+
+    for (auto upscaler : regulars)
+    {
+        const bool selected = !runsDlssd && picked == upscaler;
+        auto label = StrFmt("%s##rrRegular%d", UpscalerDisplayName(upscaler, api).c_str(), (int) upscaler);
+
+        if (ImGui::Selectable(label.c_str(), selected) && !selected)
+        {
+            config->RRRegularUpscaler = upscaler;
+            changeAll();
+        }
+
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowWidth() -
+                                                                  ImGui::GetStyle().WindowPadding.x -
+                                                                  ImGui::CalcTextSize("No denoise").x));
+        ImGui::TextDisabled("No denoise");
+    }
+
     ImGui::EndCombo();
+}
+
+static ImVec4 StatusWarn();
+
+// Ray reconstruction's upscaler before the game starts it. Without a DLSSD the game checks at start whether it's
+// offered, so changing that needs a restart
+static void RenderRROfferCombo(API api)
+{
+    const auto picked = Nvngx_RR::Regular();
+    static const bool pickedAtStart = picked.has_value();
+    const bool dlssdAvailable = Nvngx_RR::DlssdAvailable();
+
+    RenderRRUpscalerCombo(api, nullptr, "Ray Reconstruction##RROfferCombo");
+
+    if (ImGui::IsItemHovered())
+    {
+        if (dlssdAvailable)
+            ImGui::SetTooltip("Upscaler used when Ray Reconstruction is turned on in the game.");
+        else
+            ImGui::SetTooltip("No DLSSD can run on this GPU, so the game doesn't offer Ray Reconstruction.\n"
+                              "Picking an upscaler here lets you turn it on in the game.");
+    }
+
+    if (picked.has_value())
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, StatusWarn());
+        ImGui::TextWrapped("This upscaler can't denoise.\nWith DLSSD on in the game, image may look grainy or noisy.");
+        ImGui::PopStyleColor();
+    }
+
+    if (!dlssdAvailable && picked.has_value() != pickedAtStart)
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, StatusWarn());
+        ImGui::TextWrapped("Save Settings and restart the game to apply");
+        ImGui::PopStyleColor();
+    }
 }
 
 template <HasDefaultValue B> void MenuCommon::AddResourceBarrier(std::string name, CustomOptional<int32_t, B>* value)
@@ -3733,6 +3829,24 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
     ImGui::TextDisabled("%dx%d -> %dx%d (%.2fx)", currentFeature->RenderWidth(), currentFeature->RenderHeight(),
                         currentFeature->TargetWidth(), currentFeature->TargetHeight(),
                         (float) currentFeature->TargetWidth() / (float) currentFeature->RenderWidth());
+
+    // The game leaves ray traced effects noisy for ray reconstruction to clean up
+    if (rayReconstruction && !usesDlssd && config->RRAllowRegularUpscalers.value_or_default())
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, StatusWarn());
+        ImGui::TextWrapped(
+            "DLSSD is on in the game, but this upscaler can't denoise.\nImage may look grainy or noisy.");
+        ImGui::PopStyleColor();
+    }
+
+    // Ray reconstruction's upscaler can be picked before the game starts it, shown for games that look for it
+    if (!rayReconstruction && state.rrRequested && config->RRAllowRegularUpscalers.value_or_default() &&
+        (state.api == DX12 || state.api == Vulkan))
+    {
+        ImGui::PushItemWidth(150.0f * menuResScale);
+        RenderRROfferCombo(state.api);
+        ImGui::PopItemWidth();
+    }
 
     if (currentFeature->DynamicResolution())
     {

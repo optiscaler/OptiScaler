@@ -551,6 +551,10 @@ class Config
     CustomOptional<std::string, NoDefault> CustomUpscalerVk;
     // Folder in custom with a dlssd for the game's ray reconstruction, RRUpscaler in the ini, empty for auto
     CustomOptional<std::string, NoDefault> CustomRRUpscaler;
+    // Regular upscaler running the game's ray reconstruction without denoising, RRUpscaler in the ini, empty for DLSSD
+    CustomOptional<Upscaler, NoDefault> RRRegularUpscaler;
+    // Regular upscalers can be picked for ray reconstruction, which is then offered to the game without a DLSSD
+    CustomOptional<bool> RRAllowRegularUpscalers { false };
 
     // UpscalerIndex of [FSR] for the regular FFX upscaler, of [<name>] for a custom one
     CustomOptional<int>& FfxUpscalerIndexFor(const std::string& custom)

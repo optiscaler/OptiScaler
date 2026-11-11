@@ -6,8 +6,21 @@
 #include <upscalers/dlssd/DLSSDFeature.h>
 #include <imgui/ImGuiNotify.hpp>
 
+std::optional<Upscaler> Nvngx_RR::Regular()
+{
+    auto config = Config::Instance();
+
+    if (!config->RRAllowRegularUpscalers.value_or_default())
+        return std::nullopt;
+
+    return config->RRRegularUpscaler;
+}
+
 Upscaler Nvngx_RR::Backend(API api)
 {
+    if (auto regular = Regular(); regular.has_value())
+        return regular.value();
+
     if (!_fallback)
         return Upscaler::DLSSD;
 
@@ -17,6 +30,14 @@ Upscaler Nvngx_RR::Backend(API api)
 bool Nvngx_RR::NativeAvailable()
 {
     return IdentifyGpu::getPrimaryGpu().dlssCapable && State::Instance().NVNGX_DLSSD_Path.has_value();
+}
+
+bool Nvngx_RR::Offered(API api, bool load)
+{
+    if (Selected(api, load) != nullptr)
+        return true;
+
+    return !NativeAvailable() && Regular().has_value();
 }
 
 Nvngx_RRDllProxy* Nvngx_RR::Find(const std::string& name, API api, bool load)
@@ -91,7 +112,19 @@ bool Nvngx_RR::InitFailed(IFeature* feature)
     auto* dlssd = dynamic_cast<DLSSDFeature*>(feature);
 
     if (dlssd == nullptr)
-        return false;
+    {
+        // A picked regular upscaler hands ray reconstruction back to DLSSD
+        auto regular = Regular();
+
+        if (!regular.has_value())
+            return false;
+
+        LOG_WARN("{} failed for ray reconstruction, going back to DLSSD", UpscalerDisplayName(regular.value()));
+        ImGui::InsertNotification({ ImGuiToastType::Warning, 10000, "%s failed, ray reconstruction goes back to DLSSD",
+                                    UpscalerDisplayName(regular.value()).c_str() });
+        Config::Instance()->RRRegularUpscaler.reset();
+        return true;
+    }
 
     if (const auto& name = dlssd->CustomName(); !name.empty())
     {
@@ -124,9 +157,7 @@ void Nvngx_RR::PopulateParameters(NVSDK_NGX_Parameter* InParameters, API api)
     if (populating)
         return;
 
-    auto* custom = Selected(api, false);
-
-    if (custom == nullptr)
+    if (!Offered(api, false))
         return;
 
     populating = true;
@@ -136,10 +167,15 @@ void Nvngx_RR::PopulateParameters(NVSDK_NGX_Parameter* InParameters, API api)
     InParameters->Set("SuperSamplingDenoising.FeatureInitResult", 1);
     InParameters->Set("SuperSamplingDenoising.NeedsUpdatedDriver", 0);
 
-    if (api == API::DX12 && custom->IsDx12Inited() && custom->ngx.D3D12_PopulateParameters_Impl != nullptr)
-        custom->ngx.D3D12_PopulateParameters_Impl(InParameters);
-    else if (api == API::Vulkan && custom->IsVulkanInited() && custom->ngx.VULKAN_PopulateParameters_Impl != nullptr)
-        custom->ngx.VULKAN_PopulateParameters_Impl(InParameters);
+    // None for a regular upscaler
+    if (auto* custom = Selected(api, false); custom != nullptr)
+    {
+        if (api == API::DX12 && custom->IsDx12Inited() && custom->ngx.D3D12_PopulateParameters_Impl != nullptr)
+            custom->ngx.D3D12_PopulateParameters_Impl(InParameters);
+        else if (api == API::Vulkan && custom->IsVulkanInited() &&
+                 custom->ngx.VULKAN_PopulateParameters_Impl != nullptr)
+            custom->ngx.VULKAN_PopulateParameters_Impl(InParameters);
+    }
 
     populating = false;
 }
