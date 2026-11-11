@@ -239,12 +239,28 @@ bool FSR2FeatureVk212::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter
     {
         LOG_DEBUG("MotionVectors exist..");
 
+        auto& mvInfo = ((NVSDK_NGX_Resource_VK*) paramVelocity)->Resource.ImageViewInfo;
+        VkImage mvImage = mvInfo.Image;
+        VkImageView mvView = mvInfo.ImageView;
+        VkFormat mvFormat = mvInfo.Format;
+
+        // Normalized 16-bit MV formats get copied into an R16G16_SFLOAT image
+        if (mvFormat == VK_FORMAT_R16G16_SNORM || mvFormat == VK_FORMAT_R16G16_UNORM)
+        {
+            if (!_velocityConvert)
+                _velocityConvert = std::make_unique<VelocityConvert_Vk>("VelocityConvert", Device, PhysicalDevice);
+
+            if (_velocityConvert->CanRender() &&
+                _velocityConvert->Dispatch(InCmdBuffer, mvView, { mvInfo.Width, mvInfo.Height }))
+            {
+                mvImage = _velocityConvert->GetImage();
+                mvView = _velocityConvert->GetImageView();
+                mvFormat = VK_FORMAT_R16G16_SFLOAT;
+            }
+        }
+
         params.motionVectors = Fsr212::ffxGetTextureResourceVK212(
-            &_context, ((NVSDK_NGX_Resource_VK*) paramVelocity)->Resource.ImageViewInfo.Image,
-            ((NVSDK_NGX_Resource_VK*) paramVelocity)->Resource.ImageViewInfo.ImageView,
-            ((NVSDK_NGX_Resource_VK*) paramVelocity)->Resource.ImageViewInfo.Width,
-            ((NVSDK_NGX_Resource_VK*) paramVelocity)->Resource.ImageViewInfo.Height,
-            ((NVSDK_NGX_Resource_VK*) paramVelocity)->Resource.ImageViewInfo.Format, (wchar_t*) L"FSR2_MotionVectors",
+            &_context, mvImage, mvView, mvInfo.Width, mvInfo.Height, mvFormat, (wchar_t*) L"FSR2_MotionVectors",
             Fsr212::FFX_RESOURCE_STATE_COMPUTE_READ);
     }
     else

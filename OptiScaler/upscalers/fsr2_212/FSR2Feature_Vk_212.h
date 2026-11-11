@@ -5,10 +5,13 @@
 
 #include "FSR2Feature_212.h"
 #include <upscalers/IFeature_Vk.h>
+#include <shaders/velocity_convert/VC_Vk.h>
 
 class FSR2FeatureVk212 : public FSR2Feature212, public IFeature_Vk
 {
   private:
+    std::unique_ptr<VelocityConvert_Vk> _velocityConvert = nullptr;
+
   protected:
     bool InitFSR2(const NVSDK_NGX_Parameter* InParameters);
 
