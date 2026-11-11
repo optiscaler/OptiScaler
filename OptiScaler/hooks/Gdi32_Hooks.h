@@ -74,6 +74,14 @@ static NTSTATUS hkD3DKMTQueryAdapterInfo(const D3DKMT_QUERYADAPTERINFO* data)
 
                 return 1;
             }
+            if (State::Instance().isRunningOnRDNA2.value_or(false))
+            {
+                // Based on Navi 21, the whole Navi 2x range gets the INT8 RDNA2 model
+                amd_gpu_info[12] = 143; // Navi 1x/2x
+                amd_gpu_info[13] = 0x28;
+
+                return 1;
+            }
         }
 
         return result;

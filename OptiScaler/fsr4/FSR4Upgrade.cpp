@@ -151,6 +151,24 @@ static std::optional<std::filesystem::path> GetDriverStoreOf(const LUID& adapter
 
 #pragma endregion
 
+// RX 6xxx and PRO W6xxx, the 3 digits keep the Polaris RX 640 out. NAVI2x is RADV's name on Linux
+static bool IsRdna2Name(const std::wstring& name)
+{
+    for (std::wstring prefix : { L"RX 6", L"PRO W6" })
+    {
+        auto pos = name.find(prefix);
+
+        if (pos == std::wstring::npos)
+            continue;
+
+        auto digits = name.substr(pos + prefix.size(), 3);
+        if (digits.size() == 3 && std::ranges::all_of(digits, [](wchar_t c) { return c >= L'0' && c <= L'9'; }))
+            return true;
+    }
+
+    return name.contains(L"NAVI2");
+}
+
 void CheckForGPU()
 {
     // CheckForGPU already ran before, no need to run it again
@@ -190,6 +208,9 @@ void CheckForGPU()
 
             if (!State::Instance().isRunningOnRDNA3.has_value() || !State::Instance().isRunningOnRDNA3.value())
                 State::Instance().isRunningOnRDNA3 = false;
+
+            if (!State::Instance().isRunningOnRDNA2.value_or(false))
+                State::Instance().isRunningOnRDNA2 = false;
 
             std::wstring szName(adapterDesc.Description);
             std::string descStr = std::format("Adapter: {}, VRAM: {} MB", wstring_to_string(szName),
@@ -255,6 +276,13 @@ void CheckForGPU()
                         }
                     }
                 }
+
+                // Runs the INT8 RDNA2 model, Dx12Upscaler stays as is since it's heavy on these cards
+                if (IsRdna2Name(szName))
+                {
+                    LOG_DEBUG("RDNA2 GPU detected");
+                    State::Instance().isRunningOnRDNA2 = true;
+                }
             }
         }
         else
@@ -273,10 +301,12 @@ void CheckForGPU()
     // If not set at Config, enable/disable Fsr4Update according to GPU detection
     if (!Config::Instance()->Fsr4Update.has_value())
         Config::Instance()->Fsr4Update.set_volatile_value(State::Instance().isRunningOnRDNA4.value() ||
-                                                          State::Instance().isRunningOnRDNA3.value());
+                                                          State::Instance().isRunningOnRDNA3.value() ||
+                                                          State::Instance().isRunningOnRDNA2.value());
 
-    LOG_INFO("RDNA4: {}, RDNA3: {}, Fsr4Update: {}", State::Instance().isRunningOnRDNA4.value(),
-             State::Instance().isRunningOnRDNA3.value(), Config::Instance()->Fsr4Update.value_or_default());
+    LOG_INFO("RDNA4: {}, RDNA3: {}, RDNA2: {}, Fsr4Update: {}", State::Instance().isRunningOnRDNA4.value(),
+             State::Instance().isRunningOnRDNA3.value(), State::Instance().isRunningOnRDNA2.value(),
+             Config::Instance()->Fsr4Update.value_or_default());
 }
 
 // Adapter of the device that asked for IAmdExtFfxApi, the driver dll is loaded from its driver package
@@ -475,6 +505,10 @@ struct AmdExtFfxApi : public IAmdExtFfxApi
             }
         }
 
+        // MLFG only has an FP8 model
+        if (effectType == FFXStructType::FG && State::Instance().isRunningOnRDNA2.value_or(false))
+            return E_NOINTERFACE;
+
         // Prevent RDNA3 from running MLFG when not on Linux
         if (effectType == FFXStructType::FG && State::Instance().isRunningOnRDNA3 &&
             State::Instance().isRunningOnRDNA3.value())
@@ -603,6 +637,10 @@ struct AmdExtD3DDevice8 : public IAmdExtD3DDevice8
                     waveMatrixProperties->aType = float16; // Anything to fail the check
             }
         }
+
+        // No WMMA on RDNA2, FP8 would win the model selection and fail to run
+        if (State::Instance().isRunningOnRDNA2.value_or(false))
+            waveMatrixProperties->aType = float16;
 
         return S_OK;
     }
