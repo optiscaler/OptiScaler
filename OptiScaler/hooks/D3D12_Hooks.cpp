@@ -1267,10 +1267,10 @@ static void RestoreBindings(ID3D12GraphicsCommandList* cmdList, const RootBindin
 
 void D3D12Hooks::SetRootSignatureTracking(bool enable) { t_upscalerActive = !enable; }
 
-// A known list with nothing bound since Reset is restorable, there is just nothing to restore
 bool D3D12Hooks::CanRestoreRootSignature(ID3D12GraphicsCommandList* cmdList)
 {
-    return GetCmdListState(cmdList, false) != nullptr;
+    auto* state = GetCmdListState(cmdList, false);
+    return state != nullptr && (state->compute.signature != nullptr || state->graphics.signature != nullptr);
 }
 
 void D3D12Hooks::RestoreRoot(ID3D12GraphicsCommandList* cmdList)
