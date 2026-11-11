@@ -298,6 +298,10 @@ class State
     // Handles of the game's ray reconstruction, they run on a DLSSD picked by Nvngx_RR
     ankerl::unordered_dense::set<unsigned int> rrHandles;
 
+    // The game looked for ray reconstruction: loaded Streamline's DLSSD plugin, asked NGX for its requirements
+    // or read its parameters
+    bool rrRequested = false;
+
     // XeSS debug stuff
     bool xessDebug = false;
     int xessDebugFrames = 5;

@@ -265,6 +265,13 @@ std::string UpscalerDisplayName(Upscaler upscaler, API api = API::NotSelected);
 std::string UpscalerShortName(Upscaler upscaler);
 bool IsFsr(Upscaler upscaler);
 
+// Native DX12 and Vulkan upscalers that can take the game's ray reconstruction in place of DLSSD
+inline bool IsRRRegularUpscaler(Upscaler upscaler)
+{
+    return upscaler == Upscaler::XeSS || upscaler == Upscaler::FSR21 || upscaler == Upscaler::FSR22 ||
+           upscaler == Upscaler::FFX || upscaler == Upscaler::DLSS;
+}
+
 // Converts enum to the string codes for config
 std::string UpscalerToCode(Upscaler upscaler);
 

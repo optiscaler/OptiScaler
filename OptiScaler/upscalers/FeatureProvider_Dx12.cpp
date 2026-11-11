@@ -98,10 +98,10 @@ bool FeatureProvider_Dx12::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NG
         loaded = true; // Assuming the fallback always loads successfully
     }
 
-    // Ray reconstruction's DLSSD isn't one of the upscalers
+    // Ray reconstruction's DLSSD isn't one of the upscalers, nor is a regular one picked for it
     if (rayReconstruction)
     {
-        if (upscaler != Upscaler::DLSSD)
+        if (upscaler != Upscaler::DLSSD && !Nvngx_RR::Regular().has_value())
             Nvngx_RR::Fallback();
 
         return loaded;

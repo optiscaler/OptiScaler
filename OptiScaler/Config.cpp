@@ -81,10 +81,17 @@ bool Config::Reload(std::filesystem::path iniPath)
             else
                 VulkanUpscaler.set_from_config(vulkanUpscaler);
 
-            // A folder name for ray reconstruction, dlssd is the same as auto, checked by
-            // CustomProviders::ResolveRRUpscaler
+            // A regular upscaler or a folder name for ray reconstruction, dlssd is the same as auto, folders are
+            // checked by CustomProviders::ResolveRRUpscaler
             if (auto rrUpscaler = readString("Upscalers", "RRUpscaler", true); rrUpscaler.value_or("dlssd") != "dlssd")
-                CustomRRUpscaler.set_from_config(std::string(ini.GetValue("Upscalers", "RRUpscaler")));
+            {
+                if (auto upscaler = CodeToUpscalerFfx(rrUpscaler.value()); IsRRRegularUpscaler(upscaler))
+                    RRRegularUpscaler.set_from_config(upscaler);
+                else
+                    CustomRRUpscaler.set_from_config(std::string(ini.GetValue("Upscalers", "RRUpscaler")));
+            }
+
+            RRAllowRegularUpscalers.set_from_config(readBool("Upscalers", "RRAllowRegularUpscalers"));
         }
 
         // Frame Generation
@@ -1353,7 +1360,13 @@ bool Config::SaveIni()
         else
             SaveUpscaler("VulkanUpscaler", Instance()->VulkanUpscaler);
 
-        ini.SetValue("Upscalers", "RRUpscaler", Instance()->CustomRRUpscaler.value_for_config_or("auto").c_str());
+        if (auto regular = Instance()->RRRegularUpscaler.value_for_config(); regular.has_value())
+            ini.SetValue("Upscalers", "RRUpscaler", UpscalerToCode(regular.value()).c_str());
+        else
+            ini.SetValue("Upscalers", "RRUpscaler", Instance()->CustomRRUpscaler.value_for_config_or("auto").c_str());
+
+        ini.SetValue("Upscalers", "RRAllowRegularUpscalers",
+                     GetBoolValue(Instance()->RRAllowRegularUpscalers.value_for_config()).c_str());
     }
 
     // Frame Generation
