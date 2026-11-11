@@ -460,7 +460,7 @@ static const QuirkEntry quirkTable[] = {
 
     // Phantom Blade Zero
     // Extended Search for locating plugin binaries
-    QUIRK_ENTRY("pbz.exe", GameQuirk::ExtendedSearch),
+    QUIRK_ENTRY("pbz.exe", GameQuirk::ExtendedSearch, GameQuirk::UseManualInputs),
 
     // METRO 2033 Redux, METRO Last Light Redux
     // Manual Input polling for fixing invisible Opti Overlay
