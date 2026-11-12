@@ -39,7 +39,10 @@ class Nvngx_RR
     static bool NativeAvailable();
 
     // NVIDIA's or a custom one could run, without loading any
-    static bool DlssdAvailable() { return NativeAvailable() || !CustomProviders::Scan().dlssd.empty(); }
+    static bool DlssdAvailable()
+    {
+        return NativeAvailable() || !CustomProviders::List(CustomProviders::Kind::Dlssd).empty();
+    }
 
     // Opti reports ray reconstruction to the game: a custom DLSSD runs, or no DLSSD can and a regular upscaler
     // is picked for it. NVIDIA's reports itself. Without load only an already loaded custom one counts

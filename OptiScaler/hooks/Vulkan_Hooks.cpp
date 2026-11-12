@@ -379,7 +379,7 @@ static IFGFeature_Vk* CreateFGFeature()
         bool sdkLoaded = FfxApiProxy::IsFGReadyVk();
         bool driverLoaded = FSR4DriverProviderVk::InitFg();
 
-        if (sdkLoaded || driverLoaded)
+        if (sdkLoaded || driverLoaded || FfxApiProxy::ActiveCustomFgVk() != nullptr)
             state.currentVkFG = new FSRFG_Vk();
         else
             LOG_ERROR("Can't load FFX Vulkan frame generation, FSR FG won't be available");

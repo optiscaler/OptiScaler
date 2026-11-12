@@ -97,8 +97,8 @@ void FlipMeterFG_Dx12::CreateObjects(ID3D12Device* InDevice)
     }
 }
 
-bool FlipMeterFG_Dx12::CreateProxy(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue, HWND hwnd,
-                                   UINT gameBufferCount, IDXGISwapChain** swapChain, const CreateRealFn& createReal)
+bool FlipMeterFG_Dx12::CreateProxy(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue, HWND hwnd, UINT gameBufferCount,
+                                   IDXGISwapChain** swapChain, const CreateRealFn& createReal)
 {
     if (swapChain == nullptr)
         return false;
@@ -159,13 +159,14 @@ bool FlipMeterFG_Dx12::CreateProxy(IDXGIFactory* factory, ID3D12CommandQueue* cm
 bool FlipMeterFG_Dx12::CreateSwapchainInternal(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue,
                                                DXGI_SWAP_CHAIN_DESC* desc, IDXGISwapChain** swapChain)
 {
-    return CreateProxy(factory, cmdQueue, desc->OutputWindow, desc->BufferCount, swapChain,
-                       [&](IDXGIFactory* realFactory, ID3D12CommandQueue* queue, UINT bufferCount, IDXGISwapChain** real)
-                       {
-                           auto realDesc = *desc;
-                           realDesc.BufferCount = bufferCount;
-                           return realFactory->CreateSwapChain(queue, &realDesc, real);
-                       });
+    return CreateProxy(
+        factory, cmdQueue, desc->OutputWindow, desc->BufferCount, swapChain,
+        [&](IDXGIFactory* realFactory, ID3D12CommandQueue* queue, UINT bufferCount, IDXGISwapChain** real)
+        {
+            auto realDesc = *desc;
+            realDesc.BufferCount = bufferCount;
+            return realFactory->CreateSwapChain(queue, &realDesc, real);
+        });
 }
 
 bool FlipMeterFG_Dx12::CreateSwapchain1Internal(IDXGIFactory* factory, ID3D12CommandQueue* cmdQueue, HWND hwnd,
@@ -173,19 +174,20 @@ bool FlipMeterFG_Dx12::CreateSwapchain1Internal(IDXGIFactory* factory, ID3D12Com
                                                 DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pFullscreenDesc,
                                                 IDXGISwapChain1** swapChain)
 {
-    return CreateProxy(factory, cmdQueue, hwnd, desc->BufferCount, (IDXGISwapChain**) swapChain,
-                       [&](IDXGIFactory* realFactory, ID3D12CommandQueue* queue, UINT bufferCount, IDXGISwapChain** real)
-                       {
-                           Microsoft::WRL::ComPtr<IDXGIFactory2> factory2;
-                           auto result = realFactory->QueryInterface(IID_PPV_ARGS(&factory2));
-                           if (FAILED(result))
-                               return result;
+    return CreateProxy(
+        factory, cmdQueue, hwnd, desc->BufferCount, (IDXGISwapChain**) swapChain,
+        [&](IDXGIFactory* realFactory, ID3D12CommandQueue* queue, UINT bufferCount, IDXGISwapChain** real)
+        {
+            Microsoft::WRL::ComPtr<IDXGIFactory2> factory2;
+            auto result = realFactory->QueryInterface(IID_PPV_ARGS(&factory2));
+            if (FAILED(result))
+                return result;
 
-                           auto realDesc = *desc;
-                           realDesc.BufferCount = bufferCount;
-                           return factory2->CreateSwapChainForHwnd(queue, hwnd, &realDesc, pFullscreenDesc, nullptr,
-                                                                   (IDXGISwapChain1**) real);
-                       });
+            auto realDesc = *desc;
+            realDesc.BufferCount = bufferCount;
+            return factory2->CreateSwapChainForHwnd(queue, hwnd, &realDesc, pFullscreenDesc, nullptr,
+                                                    (IDXGISwapChain1**) real);
+        });
 }
 
 bool FlipMeterFG_Dx12::ReleaseSwapchain(HWND hwnd)

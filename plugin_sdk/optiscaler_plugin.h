@@ -14,6 +14,7 @@
  *   Export OptiPluginInit from the plugin. OptiScaler calls it once, right after InitializeASI (if present).
  *   Custom upscaler and FG dlls (custom/<name>/<kind>) can export it too, it's called when OptiScaler loads them,
  *   which can be long after the game started.
+ *   An ASI plugin can be an upscaler or FG itself, see RegisterProvider.
  *   Keep the api pointer, it stays valid for the lifetime of the process.
  *
  * Compatibility rules:
@@ -47,7 +48,7 @@ extern "C"
 {
 #endif
 
-#define OPTI_PLUGIN_API_VERSION 2
+#define OPTI_PLUGIN_API_VERSION 3
 
     // Handle of the calling plugin, given to OptiPluginInit
     typedef struct OptiPlugin OptiPlugin;
@@ -62,6 +63,23 @@ extern "C"
         OptiLog_Warn = 2,
         OptiLog_Error = 3,
     } OptiLogLevel;
+
+    // Kinds of custom providers, the same as the folders in custom/<name>/<kind>
+    typedef enum OptiProviderKind
+    {
+        OptiProvider_Ffx = 0,     // DX12 FFX API upscaler, also on DX11 and Vulkan through DX12 interop
+        OptiProvider_FfxVk = 1,   // Vulkan FFX API upscaler, takes FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK_V2
+        OptiProvider_FfxFg = 2,   // DX12 FFX API frame generation and its frame generation swapchain
+        OptiProvider_FfxFgVk = 3, // Vulkan FFX API frame generation and its swapchain, the V2 backend type
+        OptiProvider_Dlss = 4,    // NGX runtime that runs DLSS (NVSDK_NGX_D3D12_* and NVSDK_NGX_VULKAN_*)
+        OptiProvider_Dlssg = 5,   // nvngx_dlssg replacement (NVSDK_NGX_D3D12_* and NVSDK_NGX_VULKAN_*)
+        OptiProvider_Dlssd =
+            6, // nvngx_dlssd replacement, ray reconstruction (NVSDK_NGX_D3D12_* and NVSDK_NGX_VULKAN_*)
+    } OptiProviderKind;
+
+    // Returns the function a dll of that kind exports under exportName (ffxCreateContext,
+    // NVSDK_NGX_D3D12_Init_Ext, ...) or NULL when the provider doesn't have it
+    typedef void* (*OptiGetProcFn)(void* userData, const char* exportName);
 
     typedef struct OptiPluginApi
     {
@@ -151,6 +169,16 @@ extern "C"
         // Returns false while the OptiScaler menu isn't initialized, it applies the request.
         // Can be called from any thread. Check with OPTI_API_HAS(api, ReInitUpscalers).
         bool (*ReInitUpscalers)(OptiPlugin* plugin);
+
+        // Providers (version 3) ----------------------------------------------------------------------------------
+
+        // Adds name to the upscaler or FG lists like a custom/<name>/<kind> folder, OptiScaler gets its functions
+        // from getProc instead of a dll. A name can be registered once per kind and replaces a folder with the
+        // same name. getProc and userData have to stay valid for the lifetime of the process.
+        // Register from OptiPluginInit, so an upscaler or FG selected in OptiScaler.ini is found when the game
+        // starts. Check with OPTI_API_HAS(api, RegisterProvider).
+        bool (*RegisterProvider)(OptiPlugin* plugin, const char* name, OptiProviderKind kind, OptiGetProcFn getProc,
+                                 void* userData);
 
     } OptiPluginApi;
 
