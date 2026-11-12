@@ -2507,7 +2507,7 @@ static void HookToDevice(ID3D12Device* InDevice)
     }
 
     if (State::Instance().activeFgOutput == FGOutput::DLSSG && !State::Instance().creatingD3DDevice &&
-        StreamlineProxy::LoadStreamline())
+        !(State::Instance().gameQuirks & GameQuirk::LazySLForD3D12) && StreamlineProxy::LoadStreamline())
     {
         StreamlineProxy::InitWithD3D12(InDevice);
     }
