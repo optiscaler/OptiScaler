@@ -261,9 +261,34 @@ bool IFeature_Dx11wDx12::Init(ID3D11Device* InDevice, ID3D11DeviceContext* InCon
 
     SetInitParameters(InParameters);
 
-    // Non-DLSS upscalers don't use the cmdList during Init
-    // We have more than one cmdList so unsure how that would even work
+    // NGX CreateFeature records init work into the cmdList, so it must be open and submitted afterwards
+    auto result = Dx12CommandAllocator[0]->Reset();
+    if (result == S_OK)
+        result = Dx12CommandList[0]->Reset(Dx12CommandAllocator[0], nullptr);
+
+    if (result != S_OK)
+    {
+        LOG_ERROR("Init CommandList Reset error: {:X}", (UINT) result);
+        return false;
+    }
+
     SetInit(dx12Feature->Init(_dx11on12Device, Dx12CommandList[0], InParameters));
+
+    result = Dx12CommandList[0]->Close();
+    if (result != S_OK)
+    {
+        LOG_ERROR("Init CommandList Close error: {:X}", (UINT) result);
+        SetInit(false);
+        return false;
+    }
+
+    ID3D12CommandList* ppCommandLists[] = { Dx12CommandList[0] };
+    Dx12CommandQueue->ExecuteCommandLists(1, ppCommandLists);
+
+    // Frame 0 reuses allocator 0, it must wait for the init work
+    const auto fenceValue = ++Dx12FenceValue;
+    if (Dx12CommandQueue->Signal(Dx12Fence, fenceValue) == S_OK)
+        Dx12CommandAllocatorFenceValue[0] = fenceValue;
 
     return IsInited();
 }
