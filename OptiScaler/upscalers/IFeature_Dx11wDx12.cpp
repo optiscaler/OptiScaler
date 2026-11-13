@@ -612,9 +612,8 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
     else
         Dx11WithDx12::ClearLastPreparedUpscalerFrameState(ResourceCache);
 
-    // restore compute shader resources, the shader only changes when we cropped the inputs
-    if (zeroedSubrects & ~(1u << (uint32_t) SubrectSlot::Output))
-        InDeviceContext->CSSetShader(restoreCS.Get(), nullptr, 0);
+    // restore compute shader resources, the input crops and the depth transfer change the shader
+    InDeviceContext->CSSetShader(restoreCS.Get(), nullptr, 0);
 
     for (UINT i = 0; i < D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT; i++)
     {
