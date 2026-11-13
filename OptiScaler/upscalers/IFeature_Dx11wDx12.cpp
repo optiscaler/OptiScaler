@@ -504,7 +504,10 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
             SubrectFits(SubrectSlot::Output, outputRect, outputDesc.Width, outputDesc.Height))
         {
             outputView = D3D11_BOX { 0, 0, 0, outputRect.Width, outputRect.Height, 1 };
-            zeroSubrect(SubrectSlot::Output);
+
+            // Restored from _subrects, which has (0, 0) when output subrects are off
+            if (outputRect.HasOffset())
+                zeroSubrect(SubrectSlot::Output);
         }
 
         InParameters->Set(NVSDK_NGX_Parameter_Color, (void*) dx11Color.Dx12Resource);
