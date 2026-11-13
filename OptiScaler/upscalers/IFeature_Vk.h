@@ -46,10 +46,9 @@ class IFeature_Vk : public virtual IFeature
     // Masks with integer formats can't be read as float, they are treated as not given
     NVSDK_NGX_Resource_VK* MaskInput(NVSDK_NGX_Resource_VK* InResource);
 
-    // Resource for backends without subrect support, a copy of the view when it doesn't start at (0, 0).
-    // InFullView also copies a (0, 0) view smaller than the texture, for passes that scale by texture size
+    // Resource for backends without subrect support, a copy of the view when it doesn't start at (0, 0)
     NVSDK_NGX_Resource_VK* SubrectInput(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Resource_VK* InResource,
-                                        SubrectSlot InSlot, bool InFullView = false);
+                                        SubrectSlot InSlot);
 
     virtual bool InitInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters) = 0;
     virtual bool EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters) = 0;

@@ -467,8 +467,7 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
         const auto& outputDesc = dx11Out.SourceDesc;
 
         if (cache.ParamOutput[resourceFrame] != static_cast<ID3D11Resource*>(dx11Out.SharedTexture) &&
-            outputRect.IsPartOf(outputDesc.Width, outputDesc.Height) &&
-            SubrectFits(SubrectSlot::Output, outputRect, outputDesc.Width, outputDesc.Height))
+            outputRect.HasOffset() && SubrectFits(SubrectSlot::Output, outputRect, outputDesc.Width, outputDesc.Height))
         {
             outputView = D3D11_BOX { 0, 0, 0, outputRect.Width, outputRect.Height, 1 };
             zeroSubrect(SubrectSlot::Output);

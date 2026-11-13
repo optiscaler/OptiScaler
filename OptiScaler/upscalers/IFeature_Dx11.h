@@ -43,10 +43,8 @@ class IFeature_Dx11 : public virtual IFeature
     std::array<std::unique_ptr<RC_Dx11>, (size_t) SubrectSlot::Count> SubrectCopy;
     std::array<ID3D11Resource*, (size_t) SubrectSlot::Count> _subrectCopied {}; // This frame's copies
 
-    // Resource for backends without subrect support, a copy of the view when it doesn't start at (0, 0).
-    // InFullView also copies a (0, 0) view smaller than the texture, for passes that scale by texture size
-    ID3D11Resource* SubrectInput(ID3D11DeviceContext* InContext, ID3D11Resource* InResource, SubrectSlot InSlot,
-                                 bool InFullView = false);
+    // Resource for backends without subrect support, a copy of the view when it doesn't start at (0, 0)
+    ID3D11Resource* SubrectInput(ID3D11DeviceContext* InContext, ID3D11Resource* InResource, SubrectSlot InSlot);
 
     virtual bool InitInternal(ID3D11DeviceContext* InContext, NVSDK_NGX_Parameter* InParameters) = 0;
     virtual bool EvaluateInternal(ID3D11DeviceContext* DeviceContext, NVSDK_NGX_Parameter* InParameters) = 0;

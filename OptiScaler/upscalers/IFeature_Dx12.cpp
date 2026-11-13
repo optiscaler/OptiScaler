@@ -54,19 +54,11 @@ bool IFeature_Dx12::CheckSubrect(SubrectSlot InSlot, const Subrect& InRect, ID3D
 }
 
 ID3D12Resource* IFeature_Dx12::SubrectInput(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
-                                            SubrectSlot InSlot, bool InFullView)
+                                            SubrectSlot InSlot)
 {
     const auto& rect = GetSubrect(InSlot);
 
-    if (InResource == nullptr)
-        return InResource;
-
-    const auto desc = InResource->GetDesc();
-
-    if (!rect.HasOffset() && !(InFullView && rect.IsPartOf(desc.Width, desc.Height)))
-        return InResource;
-
-    if (!CheckSubrect(InSlot, rect, InResource))
+    if (InResource == nullptr || !rect.HasOffset() || !CheckSubrect(InSlot, rect, InResource))
         return InResource;
 
     auto& copy = SubrectCopy[(size_t) InSlot];
@@ -180,7 +172,6 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     // Kept as a copy, the backend reads the zeroed base when we place the output.
     ReadSubrects(InParameters);
     const Subrect outputRect = GetSubrect(SubrectSlot::Output);
-    bool placeOutput = false;
 
     // Order is important as that's the order of shader dispatch
     std::vector<ShaderPass> pipeline;
@@ -282,7 +273,7 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
                   auto viewInput = [&](SubrectSlot slot, ID3D12Resource* resource)
                   {
                       auto copied = _subrectCopied[(size_t) slot];
-                      return copied != nullptr ? copied : SubrectInput(InCommandList, resource, slot, placeOutput);
+                      return copied != nullptr ? copied : SubrectInput(InCommandList, resource, slot);
                   };
 
                   if (!RCAS->Dispatch(InCommandList, input, viewInput(SubrectSlot::MV, paramMotion), rcasConstants,
@@ -326,12 +317,11 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     }
 
     // The upscaler and the passes work on the view at (0, 0) of our buffers, this last pass writes it to the output
-    // base. Upscalers write only their view by themselves, at (0, 0) or at the base for native subrect ones, but the
-    // passes write the whole texture over the other views.
+    // base. Native subrect upscalers without passes write there by themselves.
     const bool nativeSubrects = upscaler == Upscaler::XeSS || upscaler == Upscaler::DLSS || upscaler == Upscaler::DLSSD;
+    bool placeOutput = false;
 
-    if (paramOutput && outputRect.IsPartOf(paramOutput->GetDesc().Width, paramOutput->GetDesc().Height) &&
-        (!pipeline.empty() || (outputRect.HasOffset() && !nativeSubrects)) &&
+    if (paramOutput && outputRect.HasOffset() && (!nativeSubrects || !pipeline.empty()) &&
         CheckSubrect(SubrectSlot::Output, outputRect, paramOutput))
     {
         // By value, the lambdas run after this scope

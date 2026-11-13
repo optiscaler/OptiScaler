@@ -24,11 +24,11 @@ ID3D11Resource* IFeature_Dx11::MaskInput(ID3D11Resource* InResource)
 }
 
 ID3D11Resource* IFeature_Dx11::SubrectInput(ID3D11DeviceContext* InContext, ID3D11Resource* InResource,
-                                            SubrectSlot InSlot, bool InFullView)
+                                            SubrectSlot InSlot)
 {
     const auto& rect = GetSubrect(InSlot);
 
-    if (InResource == nullptr || (!rect.HasOffset() && !InFullView))
+    if (InResource == nullptr || !rect.HasOffset())
         return InResource;
 
     ComPtr<ID3D11Texture2D> texture;
@@ -38,9 +38,6 @@ ID3D11Resource* IFeature_Dx11::SubrectInput(ID3D11DeviceContext* InContext, ID3D
 
     D3D11_TEXTURE2D_DESC desc {};
     texture->GetDesc(&desc);
-
-    if (!rect.HasOffset() && !rect.IsPartOf(desc.Width, desc.Height))
-        return InResource;
 
     if (!SubrectFits(InSlot, rect, desc.Width, desc.Height))
         return InResource;
@@ -236,7 +233,7 @@ bool IFeature_Dx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_Par
     auto viewInput = [&](SubrectSlot slot, ID3D11Resource* resource)
     {
         auto copied = _subrectCopied[(size_t) slot];
-        return copied != nullptr ? copied : SubrectInput(InDeviceContext, resource, slot, placeOutput);
+        return copied != nullptr ? copied : SubrectInput(InDeviceContext, resource, slot);
     };
 
     _actualSharpness.reset();
@@ -334,8 +331,7 @@ bool IFeature_Dx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_Par
     }
 
     // The upscaler and the passes work on the view at (0, 0) of our buffers, this last pass writes it to the output
-    // base. Upscalers write only their view by themselves, at (0, 0) or at the base for native subrect ones, but the
-    // passes write the whole texture over the other views.
+    // base. Native subrect upscalers without passes write there by themselves.
     const bool nativeSubrects = upscaler == Upscaler::XeSS || upscaler == Upscaler::DLSS || upscaler == Upscaler::DLSSD;
 
     D3D11_TEXTURE2D_DESC outputDesc {};
@@ -344,8 +340,7 @@ bool IFeature_Dx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_Par
     if (paramOutput != nullptr && paramOutput->QueryInterface(IID_PPV_ARGS(&outputTexture)) == S_OK)
         outputTexture->GetDesc(&outputDesc);
 
-    if (outputTexture && outputRect.IsPartOf(outputDesc.Width, outputDesc.Height) &&
-        (!pipeline.empty() || (outputRect.HasOffset() && !nativeSubrects)) &&
+    if (outputTexture && outputRect.HasOffset() && (!nativeSubrects || !pipeline.empty()) &&
         SubrectFits(SubrectSlot::Output, outputRect, outputDesc.Width, outputDesc.Height))
     {
         auto& slotCopy = SubrectCopy[(size_t) SubrectSlot::Output];

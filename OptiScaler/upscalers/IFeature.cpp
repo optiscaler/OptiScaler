@@ -275,8 +275,8 @@ void IFeature::ReadSubrects(const NVSDK_NGX_Parameter* InParameters)
     {
         auto& rect = _subrects[i];
         rect = { 0, 0, _renderWidth, _renderHeight };
-        rect.Given = InParameters->Get(SubrectBaseKeys[i].first, &rect.X) == NVSDK_NGX_Result_Success;
-        rect.Given |= InParameters->Get(SubrectBaseKeys[i].second, &rect.Y) == NVSDK_NGX_Result_Success;
+        InParameters->Get(SubrectBaseKeys[i].first, &rect.X);
+        InParameters->Get(SubrectBaseKeys[i].second, &rect.Y);
     }
 
     // Display resolution motion vectors and the output keep the creation size, even with dynamic resolution
@@ -291,7 +291,7 @@ void IFeature::ReadSubrects(const NVSDK_NGX_Parameter* InParameters)
     output.Height = DisplayHeight();
 
     if (!_outputSubrects)
-        output = { 0, 0, output.Width, output.Height };
+        output.X = output.Y = 0;
 }
 
 bool IFeature::SubrectFits(SubrectSlot InSlot, const Subrect& InRect, uint64_t InWidth, uint32_t InHeight)

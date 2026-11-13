@@ -50,15 +50,9 @@ struct Subrect
     uint32_t Y = 0;
     uint32_t Width = 0;
     uint32_t Height = 0;
-    bool Given = false; // The game passed the base, even (0, 0)
 
+    // A view at (0, 0) is used as is
     bool HasOffset() const { return X != 0 || Y != 0; }
-
-    // Only part of the texture belongs to this view, the rest can be other views
-    bool IsPartOf(uint64_t InWidth, uint32_t InHeight) const
-    {
-        return HasOffset() || (Given && (Width < InWidth || Height < InHeight));
-    }
 };
 
 // Base X/Y parameter names, in SubrectSlot order

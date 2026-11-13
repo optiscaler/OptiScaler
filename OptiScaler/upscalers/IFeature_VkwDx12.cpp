@@ -2328,8 +2328,8 @@ bool IFeature_VkwDx12::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter
     // Copying the whole image back would overwrite the other views.
     ReadSubrects(InParameters);
     const auto& outputRect = GetSubrect(SubrectSlot::Output);
-    const bool copyView = outputRect.IsPartOf(vkOut.Width, vkOut.Height) &&
-                          SubrectFits(SubrectSlot::Output, outputRect, vkOut.Width, vkOut.Height);
+    const bool copyView =
+        outputRect.HasOffset() && SubrectFits(SubrectSlot::Output, outputRect, vkOut.Width, vkOut.Height);
 
     if (!CopyBackOutput(InCmdBuffer, copyView ? &outputRect : nullptr))
     {
