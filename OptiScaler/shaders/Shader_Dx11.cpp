@@ -136,8 +136,7 @@ bool Shader_Dx11::InitializeSRV(ID3D11Texture2D* resource, ID3D11Texture2D*& cur
 
     if (resource != currentResource || targetSrv == nullptr)
     {
-        if (targetSrv != nullptr)
-            targetSrv->Release();
+        SAFE_RELEASE(targetSrv);
 
         D3D11_TEXTURE2D_DESC desc;
         resource->GetDesc(&desc);
@@ -168,8 +167,7 @@ bool Shader_Dx11::InitializeUAV(ID3D11Texture2D* resource, ID3D11Texture2D*& cur
 
     if (resource != currentResource || targetUav == nullptr)
     {
-        if (targetUav != nullptr)
-            targetUav->Release();
+        SAFE_RELEASE(targetUav);
 
         D3D11_TEXTURE2D_DESC desc;
         resource->GetDesc(&desc);
