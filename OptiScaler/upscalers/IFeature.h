@@ -53,6 +53,12 @@ struct Subrect
 
     // A view at (0, 0) is used as is
     bool HasOffset() const { return X != 0 || Y != 0; }
+
+    // The rest of the texture can hold other views
+    bool IsPartOf(uint64_t InWidth, uint32_t InHeight) const
+    {
+        return HasOffset() || Width < InWidth || Height < InHeight;
+    }
 };
 
 // Base X/Y parameter names, in SubrectSlot order
