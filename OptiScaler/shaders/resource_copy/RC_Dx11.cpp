@@ -60,6 +60,8 @@ bool RC_Dx11::Dispatch(ID3D11DeviceContext* InContext, ID3D11Texture2D* InResour
     constants.DstOffset[1] = InDstY;
     constants.Size[0] = InWidth;
     constants.Size[1] = InHeight;
+    constants.Extent[0] = InWidth;
+    constants.Extent[1] = InHeight;
 
     D3D11_MAPPED_SUBRESOURCE mappedResource;
     auto hr = InContext->Map(_constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);

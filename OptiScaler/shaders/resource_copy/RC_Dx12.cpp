@@ -45,7 +45,7 @@ void RC_Dx12::SetBufferState(ID3D12GraphicsCommandList* InCommandList, D3D12_RES
 
 bool RC_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InResource, ID3D12Resource* OutResource,
                        uint32_t InSrcX, uint32_t InSrcY, uint32_t InDstX, uint32_t InDstY, uint32_t InWidth,
-                       uint32_t InHeight)
+                       uint32_t InHeight, uint32_t InFillWidth, uint32_t InFillHeight)
 {
     if (!_init || _device == nullptr || InCmdList == nullptr || InResource == nullptr || OutResource == nullptr)
         return false;
@@ -67,6 +67,8 @@ bool RC_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InR
     constants.DstOffset[1] = InDstY;
     constants.Size[0] = InWidth;
     constants.Size[1] = InHeight;
+    constants.Extent[0] = std::max(InFillWidth, InWidth);
+    constants.Extent[1] = std::max(InFillHeight, InHeight);
 
     if (!CreateConstantsBuffer(_device, currentHeap, constants, currentHeap.GetCbvCPU(0)))
     {
@@ -82,8 +84,8 @@ bool RC_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InR
 
     InCmdList->SetComputeRootDescriptorTable(0, currentHeap.GetTableGPUStart());
 
-    UINT dispatchWidth = (InWidth + InNumThreadsX - 1) / InNumThreadsX;
-    UINT dispatchHeight = (InHeight + InNumThreadsY - 1) / InNumThreadsY;
+    UINT dispatchWidth = (constants.Extent[0] + InNumThreadsX - 1) / InNumThreadsX;
+    UINT dispatchHeight = (constants.Extent[1] + InNumThreadsY - 1) / InNumThreadsY;
 
     InCmdList->Dispatch(dispatchWidth, dispatchHeight, 1);
 

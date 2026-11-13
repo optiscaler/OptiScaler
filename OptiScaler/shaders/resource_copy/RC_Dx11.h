@@ -13,6 +13,7 @@ class RC_Dx11 : public Shader_Dx11
         uint32_t SrcOffset[2];
         uint32_t DstOffset[2];
         uint32_t Size[2];
+        uint32_t Extent[2];
     };
 
     uint32_t InNumThreadsX = 16;

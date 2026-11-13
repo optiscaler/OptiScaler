@@ -8,6 +8,7 @@ struct RCParams_Vk
     uint32_t SrcOffset[2];
     uint32_t DstOffset[2];
     uint32_t Size[2];
+    uint32_t Extent[2];
 };
 
 ResourceCopy_Vk::ResourceCopy_Vk(std::string InName, VkDevice InDevice, VkPhysicalDevice InPhysicalDevice)
@@ -165,6 +166,8 @@ bool ResourceCopy_Vk::Dispatch(VkDevice InDevice, VkCommandBuffer InCmdList, VkI
     params.DstOffset[1] = (uint32_t) InDst.y;
     params.Size[0] = OutExtent.width;
     params.Size[1] = OutExtent.height;
+    params.Extent[0] = OutExtent.width;
+    params.Extent[1] = OutExtent.height;
 
     vkCmdBindPipeline(InCmdList, VK_PIPELINE_BIND_POINT_COMPUTE, _pipeline);
     vkCmdBindDescriptorSets(InCmdList, VK_PIPELINE_BIND_POINT_COMPUTE, _pipelineLayout, 0, 1, &descriptorSet, 0,

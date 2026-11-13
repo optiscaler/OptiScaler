@@ -15,6 +15,7 @@ class RC_Dx12 : public Shader_Dx12
         uint32_t SrcOffset[2];
         uint32_t DstOffset[2];
         uint32_t Size[2];
+        uint32_t Extent[2];
     };
 
     FrameDescriptorHeap _frameHeaps[RC_NUM_OF_HEAPS];
@@ -32,9 +33,10 @@ class RC_Dx12 : public Shader_Dx12
     bool CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InSource, uint32_t InWidth, uint32_t InHeight,
                               D3D12_RESOURCE_STATES InState, bool InGrow = true);
     void SetBufferState(ID3D12GraphicsCommandList* InCommandList, D3D12_RESOURCE_STATES InState);
+    // A fill size bigger than InWidth x InHeight repeats the copied rectangle's right and bottom edges
     bool Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InResource, ID3D12Resource* OutResource,
                   uint32_t InSrcX, uint32_t InSrcY, uint32_t InDstX, uint32_t InDstY, uint32_t InWidth,
-                  uint32_t InHeight);
+                  uint32_t InHeight, uint32_t InFillWidth = 0, uint32_t InFillHeight = 0);
 
     ID3D12Resource* Buffer() { return _buffer; }
     bool CanRender() const { return _init && _buffer != nullptr; }
