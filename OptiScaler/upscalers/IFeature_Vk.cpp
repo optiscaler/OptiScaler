@@ -6,14 +6,17 @@
 #include <misc/DeferredRelease.h>
 
 NVSDK_NGX_Resource_VK* IFeature_Vk::SubrectInput(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Resource_VK* InResource,
-                                                 SubrectSlot InSlot)
+                                                 SubrectSlot InSlot, bool InFullView)
 {
     const auto& rect = GetSubrect(InSlot);
 
-    if (InResource == nullptr || !rect.HasOffset())
+    if (InResource == nullptr)
         return InResource;
 
     const auto& info = InResource->Resource.ImageViewInfo;
+
+    if (!rect.HasOffset() && !(InFullView && rect.IsPartOf(info.Width, info.Height)))
+        return InResource;
 
     if (!SubrectFits(InSlot, rect, info.Width, info.Height))
         return InResource;
@@ -149,6 +152,7 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
     // Kept as a copy, the backend reads the zeroed base when we place the output.
     ReadSubrects(InParameters);
     const Subrect outputRect = GetSubrect(SubrectSlot::Output);
+    bool placeOutput = false;
 
     const VkImageUsageFlags intermediateUsage =
         VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
@@ -263,8 +267,9 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
                   // RCAS works on the view at (0, 0), reuse the backend's copies or crop for native subrect backends
                   auto viewInput = [&](SubrectSlot slot, NVSDK_NGX_Resource_VK* resource)
                   {
-                      return (_subrectCopied & (1u << (uint32_t) slot)) ? &_subrectViews[(size_t) slot]
-                                                                        : SubrectInput(InCmdBuffer, resource, slot);
+                      return (_subrectCopied & (1u << (uint32_t) slot))
+                                 ? &_subrectViews[(size_t) slot]
+                                 : SubrectInput(InCmdBuffer, resource, slot, placeOutput);
                   };
 
                   auto motion = viewInput(SubrectSlot::MV, paramMotion);
@@ -322,7 +327,6 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
     // base. Upscalers write only their view by themselves, at (0, 0) or at the base for native subrect ones, but the
     // passes write the whole image over the other views.
     const bool nativeSubrects = upscaler == Upscaler::XeSS || upscaler == Upscaler::DLSS || upscaler == Upscaler::DLSSD;
-    bool placeOutput = false;
 
     if (paramOutput && outputRect.IsPartOf(originalOutput.Width, originalOutput.Height) &&
         (!pipeline.empty() || (outputRect.HasOffset() && !nativeSubrects)) &&

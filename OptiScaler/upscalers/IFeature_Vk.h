@@ -43,9 +43,10 @@ class IFeature_Vk : public virtual IFeature
     std::array<NVSDK_NGX_Resource_VK, (size_t) SubrectSlot::Count> _subrectViews {};
     uint32_t _subrectCopied = 0; // Bit per slot copied this frame
 
-    // Resource for backends without subrect support, a copy of the view when it doesn't start at (0, 0)
+    // Resource for backends without subrect support, a copy of the view when it doesn't start at (0, 0).
+    // InFullView also copies a (0, 0) view smaller than the texture, for passes that scale by texture size
     NVSDK_NGX_Resource_VK* SubrectInput(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Resource_VK* InResource,
-                                        SubrectSlot InSlot);
+                                        SubrectSlot InSlot, bool InFullView = false);
 
     virtual bool InitInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters) = 0;
     virtual bool EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters) = 0;

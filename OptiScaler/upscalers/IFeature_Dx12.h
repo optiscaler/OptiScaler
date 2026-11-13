@@ -57,9 +57,10 @@ class IFeature_Dx12 : public virtual IFeature
     bool CheckSubrect(SubrectSlot InSlot, const Subrect& InRect, ID3D12Resource* InResource);
 
     // Resource for backends without subrect support, a copy of the view when it doesn't start at (0, 0).
+    // InFullView also copies a (0, 0) view smaller than the texture, for passes that scale by texture size.
     // Call after the barrier forwarding, the copy is ours and must not get ForwardBarrier.
     ID3D12Resource* SubrectInput(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
-                                 SubrectSlot InSlot);
+                                 SubrectSlot InSlot, bool InFullView = false);
 
     virtual bool InitInternal(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters) = 0;
     virtual bool EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters) = 0;
