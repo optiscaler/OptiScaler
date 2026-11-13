@@ -743,7 +743,7 @@
     <ClInclude Include="shaders\resource_copy\RC_Vk.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="shaders\resource_copy\precompile\rc_Shader_Vk.h">
+    <ClInclude Include="shaders\resource_copy\precompile\rc_offset_Shader_Vk.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="shaders\velocity_convert\VC_Vk.h">
