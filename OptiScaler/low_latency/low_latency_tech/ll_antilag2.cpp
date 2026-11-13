@@ -40,9 +40,16 @@ inline HRESULT AntiLag2::al2_sleep()
     return result;
 }
 
+// HACK: To make AL2 somewhat work with MFG
 void AntiLag2::set_fg_type(bool interpolated, uint64_t frame_id)
 {
-    AMD::AntiLag2DX12::SetFrameGenFrameType(&dx12_ctx, interpolated);
+    const bool afterGenerated = std::exchange(previous_interpolated, interpolated);
+
+    if (afterGenerated || interpolated)
+        AMD::AntiLag2DX12::SetFrameGenFrameType(&dx12_ctx, true);
+
+    if (afterGenerated || !interpolated)
+        AMD::AntiLag2DX12::SetFrameGenFrameType(&dx12_ctx, false);
 }
 
 bool AntiLag2::init(IUnknown* pDevice)

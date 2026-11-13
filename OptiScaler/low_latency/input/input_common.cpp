@@ -1242,7 +1242,17 @@ bool InputCommon::dlssg_types_presents()
     auto fgOutput = State::Instance().activeFgOutput;
 
     return activeOutput == LowLatencyMode::AntiLag2 && fgOutput != FGOutput::FSRFG && fgOutput != FGOutput::XeFG &&
-           State::Instance().dlssgDetectedInterpolationCount > 0;
+           fgOutput != FGOutput::FlipMeter && State::Instance().dlssgDetectedInterpolationCount > 0;
+}
+
+// As FSR-FG's swapchain: the frame type right before each present of a game frame with generated frames
+void InputCommon::fg_frame_type(bool interpolated)
+{
+    if (activeOutput != LowLatencyMode::AntiLag2)
+        return;
+
+    if (auto tech = currently_active_tech.load())
+        tech->set_async_marker(nullptr, { 0, MarkerType::OUT_OF_BAND_PRESENT_START, interpolated });
 }
 
 void InputCommon::dlssg_present()
@@ -1466,7 +1476,13 @@ void InputCommon::update()
         bool driverCountsFg = fgActive && activeOutput == LowLatencyMode::Reflex && output_api == API::Vulkan &&
                               vkFg != nullptr && vkFg->OwnsSwapchain(VulkanHooks::LowLatencySwapchain());
 
-        if (xefg_paced() || driverCountsFg)
+        // The game's own DLSSG (NvngxFG input) presents its generated frames to the same swapchain, so the driver
+        // counts those too. Counted again here, a 72 FPS limit at 4x became 18 presents per second (Endfield).
+        bool driverCountsGameDlssg = !fgActive && state.dlssgDetectedInterpolationCount > 0 &&
+                                     activeOutput == LowLatencyMode::Reflex && output_api == API::Vulkan &&
+                                     VulkanHooks::LowLatencySwapchain() != VK_NULL_HANDLE;
+
+        if (xefg_paced() || driverCountsFg || driverCountsGameDlssg)
         {
             // XeLL already counts XeFG's generated frames, the driver DLSSG's
         }
@@ -1499,8 +1515,10 @@ void InputCommon::update()
 InputResult InputCommon::mark_present_start(IUnknown* pDevice)
 {
     auto fg = State::Instance().CurrentFG();
-    bool fsrfgTypesFrames =
-        State::Instance().activeFgOutput == FGOutput::FSRFG && fg != nullptr && fg->IsActive() && !fg->IsPaused();
+    // Outputs that give AntiLag 2 the frame types, it then also needs the end of the game's frame
+    auto fgOutput = State::Instance().activeFgOutput;
+    bool fsrfgTypesFrames = (fgOutput == FGOutput::FSRFG || fgOutput == FGOutput::FlipMeter) && fg != nullptr &&
+                            fg->IsActive() && !fg->IsPaused();
 
     // UE only sends simulation markers
     bool marksEnds =

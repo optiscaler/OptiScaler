@@ -431,11 +431,28 @@ struct NgxExports
     PFN_VULKAN_GetFeatureRequirements VULKAN_GetFeatureRequirements = nullptr;
     PFN_VULKAN_EvaluateFeature VULKAN_EvaluateFeature = nullptr;
 
+    // Custom provider's dll, or a plugin's resolver that LoadExports takes the exports from
+    void SetSource(const CustomProviders::Exports& exports)
+    {
+        dll = exports.dll;
+        filePath = exports.path.wstring();
+        getProc = exports.getProc;
+        getProcUserData = exports.userData;
+    }
+
   protected:
+    OptiGetProcFn getProc = nullptr;
+    void* getProcUserData = nullptr;
+
     // KernelBase's original GetProcAddress, so no hook can hand out something else
     FARPROC Export(const char* prefix, const char* name) const
     {
-        return KernelBaseProxy::GetProcAddress_()(dll, (std::string(prefix) + name).c_str());
+        auto fullName = std::string(prefix) + name;
+
+        if (getProc != nullptr)
+            return (FARPROC) getProc(getProcUserData, fullName.c_str());
+
+        return KernelBaseProxy::GetProcAddress_()(dll, fullName.c_str());
     }
 
     void LoadSharedExports(const char* prefix)
@@ -574,11 +591,12 @@ struct NvngxModule : NgxExports
     }
 };
 
-// NGX runtime from custom/<name>/dlss, only used by Opti's DLSS upscaler and never hooked
+// NGX runtime from custom/<name>/dlss or a plugin, only used by Opti's DLSS upscaler and never hooked
 struct CustomNgxModule
 {
     NvngxModule module;
     bool dx12Inited = false;
+    bool vulkanInited = false;
 };
 
 class NVNGXProxy
@@ -662,6 +680,34 @@ class NVNGXProxy
         }
 
         LOG_INFO("result: {0:X}", (UINT) nvResult);
+
+        return nvResult;
+    }
+
+    static NVSDK_NGX_Result InitVulkanModule(const NvngxModule& module, VkInstance InInstance, VkPhysicalDevice InPD,
+                                             VkDevice InDevice, PFN_vkGetInstanceProcAddr InGIPA,
+                                             PFN_vkGetDeviceProcAddr InGDPA)
+    {
+        NVSDK_NGX_FeatureCommonInfo fcInfo {};
+        GetFeatureCommonInfo(&fcInfo);
+        NVSDK_NGX_Result nvResult = NVSDK_NGX_Result_Fail;
+
+        if (State::Instance().NVNGX_ProjectId != "" && module.VULKAN_Init_ProjectID != nullptr)
+        {
+            LOG_DEBUG("module.VULKAN_Init_ProjectID!");
+            nvResult = module.VULKAN_Init_ProjectID(
+                ProjectIdForDlss(), State::Instance().NVNGX_Engine, State::Instance().NVNGX_EngineVersion.c_str(),
+                State::Instance().NVNGX_ApplicationDataPath.c_str(), InInstance, InPD, InDevice, InGIPA, InGDPA,
+                State::Instance().NVNGX_Version, &fcInfo);
+        }
+        else if (module.VULKAN_Init_Ext != nullptr)
+        {
+            LOG_DEBUG("module.VULKAN_Init_Ext!");
+            nvResult = module.VULKAN_Init_Ext(AppIdForDlss(), State::Instance().NVNGX_ApplicationDataPath.c_str(),
+                                              InInstance, InPD, InDevice, State::Instance().NVNGX_Version, &fcInfo);
+        }
+
+        LOG_DEBUG("result: {0:X}", (UINT) nvResult);
 
         return nvResult;
     }
@@ -962,8 +1008,8 @@ class NVNGXProxy
         return _dx12Inited;
     }
 
-    // Loading is only tried once per name, nullptr if it failed
-    static CustomNgxModule* LoadCustomDx12(const std::string& name)
+    // Loading is only tried once per name, nullptr if it failed or it can't run DLSS on the API
+    static CustomNgxModule* LoadCustom(const std::string& name, API api)
     {
         std::scoped_lock lock(_customMutex);
 
@@ -973,19 +1019,25 @@ class NVNGXProxy
 
         if (inserted)
         {
-            auto path = CustomProviders::NgxDllPath(name);
-            module.dll = CustomProviders::LoadDll(name, path);
+            auto exports = CustomProviders::Load(name, CustomProviders::Kind::Dlss);
 
-            if (module.dll == nullptr)
+            if (!exports)
                 return nullptr;
 
-            module.filePath = path.wstring();
+            module.SetSource(exports);
             module.LoadExports();
         }
 
-        auto usable = (module.D3D12_Init_ProjectID != nullptr || module.D3D12_Init_Ext != nullptr) &&
-                      module.D3D12_CreateFeature != nullptr && module.D3D12_EvaluateFeature != nullptr &&
-                      module.D3D12_ReleaseFeature != nullptr;
+        bool usable = false;
+
+        if (api == API::Vulkan)
+            usable = (module.VULKAN_Init_ProjectID != nullptr || module.VULKAN_Init_Ext != nullptr) &&
+                     module.VULKAN_CreateFeature != nullptr && module.VULKAN_EvaluateFeature != nullptr &&
+                     module.VULKAN_ReleaseFeature != nullptr;
+        else
+            usable = (module.D3D12_Init_ProjectID != nullptr || module.D3D12_Init_Ext != nullptr) &&
+                     module.D3D12_CreateFeature != nullptr && module.D3D12_EvaluateFeature != nullptr &&
+                     module.D3D12_ReleaseFeature != nullptr;
 
         return usable ? &custom : nullptr;
     }
@@ -1013,6 +1065,17 @@ class NVNGXProxy
         }
 
         custom.dx12Inited = false;
+    }
+
+    // Inited once, like NVIDIA's runtime on Vulkan
+    static bool InitCustomVulkan(CustomNgxModule& custom, VkInstance InInstance, VkPhysicalDevice InPD,
+                                 VkDevice InDevice, PFN_vkGetInstanceProcAddr InGIPA, PFN_vkGetDeviceProcAddr InGDPA)
+    {
+        if (!custom.vulkanInited)
+            custom.vulkanInited =
+                InitVulkanModule(custom.module, InInstance, InPD, InDevice, InGIPA, InGDPA) == NVSDK_NGX_Result_Success;
+
+        return custom.vulkanInited;
     }
 
     static void SetDx12Inited(bool value) { _dx12Inited = value; }
@@ -1099,28 +1162,8 @@ class NVNGXProxy
         if (_module.dll == nullptr)
             return false;
 
-        NVSDK_NGX_FeatureCommonInfo fcInfo {};
-        GetFeatureCommonInfo(&fcInfo);
-        NVSDK_NGX_Result nvResult = NVSDK_NGX_Result_Fail;
-
-        if (State::Instance().NVNGX_ProjectId != "" && _module.VULKAN_Init_ProjectID != nullptr)
-        {
-            LOG_DEBUG("_module.VULKAN_Init_ProjectID!");
-            nvResult = _module.VULKAN_Init_ProjectID(
-                ProjectIdForDlss(), State::Instance().NVNGX_Engine, State::Instance().NVNGX_EngineVersion.c_str(),
-                State::Instance().NVNGX_ApplicationDataPath.c_str(), InInstance, InPD, InDevice, InGIPA, InGDPA,
-                State::Instance().NVNGX_Version, &fcInfo);
-        }
-        else if (_module.VULKAN_Init_Ext != nullptr)
-        {
-            LOG_DEBUG("_module.VULKAN_Init_Ext!");
-            nvResult = _module.VULKAN_Init_Ext(AppIdForDlss(), State::Instance().NVNGX_ApplicationDataPath.c_str(),
-                                               InInstance, InPD, InDevice, State::Instance().NVNGX_Version, &fcInfo);
-        }
-
-        LOG_DEBUG("result: {0:X}", (UINT) nvResult);
-
-        _vulkanInited = (nvResult == NVSDK_NGX_Result_Success);
+        _vulkanInited =
+            InitVulkanModule(_module, InInstance, InPD, InDevice, InGIPA, InGDPA) == NVSDK_NGX_Result_Success;
 
         return _vulkanInited;
     }

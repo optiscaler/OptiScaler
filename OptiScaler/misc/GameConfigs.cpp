@@ -138,10 +138,10 @@ using enum GameQuirk;
 const std::vector<GameConfig> gameConfigs = {
 
     // BeamNG
-    // Spoofing not required for DLSS inputs for both Dx12 and Vk
+    // Spoofing not required for DLSS inputs for both Dx12 and Vk, Auto Exposure required for XeSS
     {
         .exes = { "beamng.drive.x64.exe" },
-        .defaults = { DxgiSpoofing = false },
+        .defaults = { DxgiSpoofing = false, AutoExposure = true },
         .quirks = { HideFsr4 },
     },
 
@@ -674,6 +674,14 @@ const std::vector<GameConfig> gameConfigs = {
     {
         .exes = { "acshadows.exe", "acshadows_plus.exe", "acblackflag.exe", "acblackflag_plus.exe",
                   "fbcfirebreak.exe" },
+        .defaults = { DxgiSpoofing = false },
+    },
+
+    // Assassin's Creed Origins, Assassin's Creed Odyssey, Tom Clancy's Ghost Recon Wildlands
+    // Disabled spoofing for DLSS mods
+    {
+        .exes = { "acorigins.exe", "acorigins_plus.exe", "acodyssey.exe", "acodyssey_plus.exe", "grw.exe",
+                  "grw_plus.exe" },
         .defaults = { DxgiSpoofing = false },
     },
 

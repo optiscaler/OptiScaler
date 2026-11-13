@@ -49,6 +49,25 @@ static PFN_AmdExtD3DCreateInterface CreateInterfaceOf(IUnknown* pOuter)
     return createInterface;
 }
 
+HRESULT Amdxc64Hooks::CreateFlipMeter(ID3D12Device* device, IUnknown* swapChain, IAmdExtFlipMeter** flipMeter)
+{
+    *flipMeter = nullptr;
+
+    auto createInterface = CreateInterfaceOf(device);
+    if (createInterface == nullptr)
+        return E_NOINTERFACE;
+
+    IAmdExtD3DFactory* factory = nullptr;
+    auto result = createInterface(device, __uuidof(IAmdExtD3DFactory), (void**) &factory);
+    if (FAILED(result))
+        return result;
+
+    result = factory->CreateInterface(swapChain, __uuidof(IAmdExtFlipMeter), (void**) flipMeter);
+    factory->Release();
+
+    return result;
+}
+
 struct AmdExtD3DFactory : public IAmdExtD3DFactory
 {
     IAmdExtD3DFactory* real = nullptr;
@@ -334,7 +353,8 @@ void Amdxc64Hooks::HookFlipMeter(IAmdExtFlipMeter* flipMeter)
     }
 }
 
-HRESULT Amdxc64Hooks::SetFlipMeterConfig(IAmdExtFlipMeter* flipMeter, const AmdExtFlipMeterConfig& requested)
+HRESULT Amdxc64Hooks::SetFlipMeterConfig(IAmdExtFlipMeter* flipMeter, const AmdExtFlipMeterConfig& requested,
+                                         AmdExtFlipMeterConfig* applied)
 {
     // Modify a copy so FSR keeps its requested state and doesn't try to re-apply it
     auto config = requested;
@@ -343,8 +363,13 @@ HRESULT Amdxc64Hooks::SetFlipMeterConfig(IAmdExtFlipMeter* flipMeter, const AmdE
 
     auto result = o_FlipMeterSetConfig(flipMeter, &config);
 
-    LOG_INFO("Flip meter requested mode: {}, applied mode: {}, flags: {:X}, result: {:X}", requested.mode, config.mode,
-             config.flags, (UINT) result);
+    LOG_INFO("Flip meter requested mode: {}, applied mode: {}, generated frames: {}, flags: {:X}, pacer: {}, "
+             "status: {}, result: {:X}",
+             requested.mode, config.mode, config.generatedFrames, config.flags, config.pacerType, config.status,
+             (UINT) result);
+
+    if (applied != nullptr)
+        *applied = config;
 
     if (SUCCEEDED(result))
         State::Instance().amdFlipMeterMode = config.mode;
@@ -411,7 +436,13 @@ HRESULT STDMETHODCALLTYPE Amdxc64Hooks::hkFlipMeterSetConfig(IAmdExtFlipMeter* T
     if (This == flipMeter)
         flipMeterRequested = *config;
 
-    return SetFlipMeterConfig(This, *config);
+    // What the driver writes back
+    AmdExtFlipMeterConfig applied {};
+    auto result = SetFlipMeterConfig(This, *config, &applied);
+    config->pacerType = applied.pacerType;
+    config->status = applied.status;
+
+    return result;
 }
 
 // FSR reads the config back when SetConfig fails

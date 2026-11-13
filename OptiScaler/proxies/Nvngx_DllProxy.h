@@ -12,11 +12,13 @@ class Nvngx_DllProxy : public IFGNvngx
 
     // What PopulateParameters reports before init
     int reportedMaxFakeFrames = 0;
+    int reportedAvailable = 1;
     feature_version antighostingVersion {};
 
     virtual void LoadLibraries() = 0;
 
-    // Fills reportedMaxFakeFrames and antighostingVersion from PopulateParameters, D3D12's or else Vulkan's
+    // Fills reportedMaxFakeFrames, reportedAvailable and antighostingVersion from PopulateParameters, D3D12's or else
+    // Vulkan's
     void QueryReportedParameters();
 
     // DLSSG.ShowDebug and DLSSG.DispatchFlags from the config

@@ -1,7 +1,8 @@
 #pragma once
 #include <proxies/Nvngx_DllProxy.h>
 
-// nvngx_dlssg replacement from custom/<name>/dlssg, it's loaded by Opti so it can't check for nvngx.dll as the caller
+// nvngx_dlssg replacement from custom/<name>/dlssg or a plugin, it's loaded by Opti so it can't check for nvngx.dll as
+// the caller
 class Nvngx_Custom : public Nvngx_DllProxy
 {
     std::string _name;
