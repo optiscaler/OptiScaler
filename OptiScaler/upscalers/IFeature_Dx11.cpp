@@ -116,6 +116,10 @@ bool IFeature_Dx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_Par
     ID3D11RenderTargetView* rawRTVs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
     ComPtr<ID3D11DepthStencilView> restoreDSV = nullptr;
 
+    // Feature level 11.0 has 8 UAV slots, the others are invalid calls there
+    const UINT uavSlots =
+        Device->GetFeatureLevel() >= D3D_FEATURE_LEVEL_11_1 ? D3D11_1_UAV_SLOT_COUNT : D3D11_PS_CS_UAV_REGISTER_COUNT;
+
     // backup compute shader resources
     for (UINT i = 0; i < D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT; i++)
     {
@@ -132,7 +136,7 @@ bool IFeature_Dx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_Par
         InDeviceContext->CSGetConstantBuffers(i, 1, restoreCBVs[i].GetAddressOf());
     }
 
-    for (UINT i = 0; i < D3D11_1_UAV_SLOT_COUNT; i++)
+    for (UINT i = 0; i < uavSlots; i++)
     {
         InDeviceContext->CSGetUnorderedAccessViews(i, 1, restoreUAVs[i].GetAddressOf());
     }
@@ -147,6 +151,10 @@ bool IFeature_Dx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_Par
     // Unbind RenderTargets
     ID3D11RenderTargetView* nullRTVs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
     InDeviceContext->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, nullRTVs, nullptr);
+
+    // D3D11 drops an SRV whose resource is still bound as a UAV, our passes read the game's textures
+    ID3D11UnorderedAccessView* nullUAVs[D3D11_1_UAV_SLOT_COUNT] = {};
+    InDeviceContext->CSSetUnorderedAccessViews(0, uavSlots, nullUAVs, nullptr);
 
     if (Config::Instance()->OverrideSharpness.value_or_default())
         _sharpness = Config::Instance()->Sharpness.value_or_default();
@@ -474,7 +482,7 @@ bool IFeature_Dx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_Par
         InDeviceContext->CSSetConstantBuffers(i, 1, &raw);
     }
 
-    for (UINT i = 0; i < D3D11_1_UAV_SLOT_COUNT; i++)
+    for (UINT i = 0; i < uavSlots; i++)
     {
         auto raw = restoreUAVs[i].Get();
         InDeviceContext->CSSetUnorderedAccessViews(i, 1, &raw, 0);

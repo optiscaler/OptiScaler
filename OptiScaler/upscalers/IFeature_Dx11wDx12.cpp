@@ -391,6 +391,10 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
     ComPtr<ID3D11DepthStencilView> restoreDSV = nullptr;
     ComPtr<ID3D11ComputeShader> restoreCS = nullptr;
 
+    // Feature level 11.0 has 8 UAV slots, the others are invalid calls there
+    const UINT uavSlots =
+        Device->GetFeatureLevel() >= D3D_FEATURE_LEVEL_11_1 ? D3D11_1_UAV_SLOT_COUNT : D3D11_PS_CS_UAV_REGISTER_COUNT;
+
     // backup compute shader resources
     InDeviceContext->CSGetShader(restoreCS.GetAddressOf(), nullptr, nullptr);
 
@@ -409,7 +413,7 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
         InDeviceContext->CSGetConstantBuffers(i, 1, restoreCBVs[i].GetAddressOf());
     }
 
-    for (UINT i = 0; i < D3D11_1_UAV_SLOT_COUNT; i++)
+    for (UINT i = 0; i < uavSlots; i++)
     {
         InDeviceContext->CSGetUnorderedAccessViews(i, 1, restoreUAVs[i].GetAddressOf());
     }
@@ -424,6 +428,10 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
     // Unbind RenderTargets
     ID3D11RenderTargetView* nullRTVs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
     InDeviceContext->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, nullRTVs, nullptr);
+
+    // D3D11 drops an SRV whose resource is still bound as a UAV, our passes read the game's textures
+    ID3D11UnorderedAccessView* nullUAVs[D3D11_1_UAV_SLOT_COUNT] = {};
+    InDeviceContext->CSSetUnorderedAccessViews(0, uavSlots, nullUAVs, nullptr);
 
     bool dx12EvalResult = false;
     bool commandListRecording = false;
@@ -626,7 +634,7 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
         InDeviceContext->CSSetConstantBuffers(i, 1, &raw);
     }
 
-    for (UINT i = 0; i < D3D11_1_UAV_SLOT_COUNT; i++)
+    for (UINT i = 0; i < uavSlots; i++)
     {
         auto raw = restoreUAVs[i].Get();
         InDeviceContext->CSSetUnorderedAccessViews(i, 1, &raw, 0);

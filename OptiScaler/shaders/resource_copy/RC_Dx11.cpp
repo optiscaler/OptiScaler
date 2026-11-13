@@ -4,8 +4,6 @@
 #include "RC_Common.h"
 #include "precompile/rc_offset_Shader_Dx11.h"
 
-using Microsoft::WRL::ComPtr;
-
 bool RC_Dx11::CreateBufferResource(ID3D11Device* InDevice, ID3D11Resource* InSource, uint32_t InWidth,
                                    uint32_t InHeight, bool InGrow)
 {
@@ -102,15 +100,8 @@ bool RC_Dx11::Dispatch(ID3D11DeviceContext* InContext, ID3D11Texture2D* InResour
 
     InContext->CSSetShader(_computeShader, nullptr, 0);
     InContext->CSSetConstantBuffers(0, 1, &_constantBuffer);
-
-    // D3D11 drops an SRV whose resource is still bound as a UAV, the game's UAVs are cleared first
-    ComPtr<ID3D11Device> device;
-    InContext->GetDevice(device.GetAddressOf());
-    UINT uavCount =
-        device->GetFeatureLevel() >= D3D_FEATURE_LEVEL_11_1 ? D3D11_1_UAV_SLOT_COUNT : D3D11_PS_CS_UAV_REGISTER_COUNT;
-    ID3D11UnorderedAccessView* uavs[D3D11_1_UAV_SLOT_COUNT] = { _uavOutput };
-    InContext->CSSetUnorderedAccessViews(0, uavCount, uavs, nullptr);
     InContext->CSSetShaderResources(0, 1, &_srvInput);
+    InContext->CSSetUnorderedAccessViews(0, 1, &_uavOutput, nullptr);
 
     InContext->Dispatch((InWidth + InNumThreadsX - 1) / InNumThreadsX, (InHeight + InNumThreadsY - 1) / InNumThreadsY,
                         1);
