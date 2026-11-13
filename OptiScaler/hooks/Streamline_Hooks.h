@@ -152,6 +152,8 @@ class StreamlineHooks
     // so hooking a new copy must never remove the hook from a copy that is still loaded.
     // A slot is released only after the loader really unmapped its module (see onModuleFreed).
     // Callers of hook*/unhook* must hold the matching mutexHook* (same as before).
+    // A thread holding the loader lock can wait for a mutexHook*, so never take the loader lock while holding one:
+    // no GetModuleHandle/GetModuleFileName/GetProcAddress/LoadLibrary, look those up before locking.
 
     static void unhookDlss();
     static void hookDlss(HMODULE slDlss);
@@ -225,7 +227,7 @@ class StreamlineHooks
         void* target;                     // slGetPluginFunction inside the plugin
         HMODULE module;
         size_t imageSize;
-        std::wstring path;
+        std::wstring path;               // NT path of the mapped file (GetMappedFileNameW)
         uint8_t patchBytes[kPatchBytes]; // bytes at target right after attaching, to detect a fresh image
     };
 

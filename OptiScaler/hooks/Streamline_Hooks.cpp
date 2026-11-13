@@ -20,6 +20,7 @@
 #include <shaders/reproject/mouseInputs/InputCollection.h>
 
 #include <intrin.h>
+#include <psapi.h>
 #pragma intrinsic(_ReturnAddress)
 
 static std::wstring GetModulePath(HMODULE module)
@@ -30,6 +31,41 @@ static std::wstring GetModulePath(HMODULE module)
     wchar_t buffer[MAX_PATH * 2] {};
     const auto len = GetModuleFileNameW(module, buffer, static_cast<DWORD>(std::size(buffer)));
     return std::wstring(buffer, len);
+}
+
+// Threads holding the loader lock wait for the plugin mutexes (LoadLibraryCheckW of a nested load), so code holding
+// one must not take the loader lock. GetModuleFileNameW and GetProcAddress can (always under Wine), these two don't.
+
+// NT path of the file mapped at address, empty if nothing is mapped there
+static std::wstring GetMappedPath(const void* address)
+{
+    wchar_t buffer[MAX_PATH * 2] {};
+    const auto len = K32GetMappedFileNameW(GetCurrentProcess(), const_cast<void*>(address), buffer,
+                                           static_cast<DWORD>(std::size(buffer)));
+    return std::wstring(buffer, len);
+}
+
+// Reads the export table directly
+static void* FindExport(HMODULE module, const char* name)
+{
+    struct Context
+    {
+        const char* name;
+        void* code;
+    } context { name, nullptr };
+
+    DetourEnumerateExports(module, &context,
+                           [](PVOID ctx, ULONG, LPCSTR exportName, PVOID code) -> BOOL
+                           {
+                               auto c = static_cast<Context*>(ctx);
+                               if (exportName == nullptr || strcmp(exportName, c->name) != 0)
+                                   return TRUE;
+
+                               c->code = code;
+                               return FALSE;
+                           });
+
+    return context.code;
 }
 
 // Plugin may fail (denylist etc.) and leave pluginJSON empty
@@ -2528,7 +2564,7 @@ bool StreamlineHooks::isSlotAlive(const PluginHookSlot& slot)
     if (slot.module == nullptr || slot.target == nullptr || slot.path.empty())
         return false;
 
-    const auto current = GetModulePath(slot.module);
+    const auto current = GetMappedPath(slot.module);
     if (current.empty() || _wcsicmp(current.c_str(), slot.path.c_str()) != 0)
         return false;
 
@@ -2674,8 +2710,7 @@ void StreamlineHooks::hookPlugin(SlPlugin plugin, HMODULE module)
         }
     }
 
-    auto target =
-        reinterpret_cast<PFN_slGetPluginFunction>(KernelBaseProxy::GetProcAddress_()(module, "slGetPluginFunction"));
+    auto target = reinterpret_cast<PFN_slGetPluginFunction>(FindExport(module, "slGetPluginFunction"));
 
     if (target == nullptr)
     {
@@ -2731,7 +2766,7 @@ void StreamlineHooks::hookPlugin(SlPlugin plugin, HMODULE module)
     slot.target = reinterpret_cast<void*>(target);
     slot.module = module;
     slot.imageSize = imageSize;
-    slot.path = GetModulePath(module);
+    slot.path = GetMappedPath(module);
     memcpy(slot.patchBytes, slot.target, kPatchBytes);
 
     activePluginModule(plugin) = module;
