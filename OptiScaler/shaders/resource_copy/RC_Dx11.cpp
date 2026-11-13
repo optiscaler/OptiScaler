@@ -35,35 +35,6 @@ bool RC_Dx11::CreateBufferResource(ID3D11Device* InDevice, ID3D11Resource* InSou
                                       });
 }
 
-bool RC_Dx11::InitializeViews(ID3D11Texture2D* InResource, ID3D11Texture2D* OutResource)
-{
-    if (InResource != _currentInResource || _srvInput == nullptr)
-    {
-        SAFE_RELEASE(_srvInput);
-
-        D3D11_TEXTURE2D_DESC desc;
-        InResource->GetDesc(&desc);
-
-        auto format = RC_Formats::SrvFormat(desc.Format, _depth);
-
-        D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-        srvDesc.Format = format != DXGI_FORMAT_UNKNOWN ? format : TranslateTypelessFormats(desc.Format);
-        srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-        srvDesc.Texture2D.MipLevels = 1;
-
-        auto hr = _device->CreateShaderResourceView(InResource, &srvDesc, &_srvInput);
-        if (FAILED(hr))
-        {
-            LOG_ERROR("[{0}] CreateShaderResourceView error {1:x}", _name, hr);
-            return false;
-        }
-
-        _currentInResource = InResource;
-    }
-
-    return InitializeUAV(OutResource, _currentOutResource, _uavOutput);
-}
-
 bool RC_Dx11::Dispatch(ID3D11DeviceContext* InContext, ID3D11Texture2D* InResource, ID3D11Texture2D* OutResource,
                        uint32_t InSrcX, uint32_t InSrcY, uint32_t InDstX, uint32_t InDstY, uint32_t InWidth,
                        uint32_t InHeight)
@@ -73,8 +44,14 @@ bool RC_Dx11::Dispatch(ID3D11DeviceContext* InContext, ID3D11Texture2D* InResour
 
     LOG_DEBUG("[{0}] Start!", _name);
 
-    if (!InitializeViews(InResource, OutResource))
+    D3D11_TEXTURE2D_DESC inDesc;
+    InResource->GetDesc(&inDesc);
+
+    if (!InitializeSRV(InResource, _currentInResource, _srvInput, RC_Formats::SrvFormat(inDesc.Format, _depth)) ||
+        !InitializeUAV(OutResource, _currentOutResource, _uavOutput))
+    {
         return false;
+    }
 
     InternalConstants constants {};
     constants.SrcOffset[0] = InSrcX;

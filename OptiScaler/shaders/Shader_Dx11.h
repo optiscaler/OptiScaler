@@ -32,8 +32,9 @@ class Shader_Dx11
     HRESULT CreateComputeShader(ID3D11Device* device, ID3D11ComputeShader*& computeShader, const void* bytecode,
                                 size_t bytecodeSize, const char* shaderCode);
 
+    // An unknown format uses the resource's, typeless ones translated
     bool InitializeSRV(ID3D11Texture2D* resource, ID3D11Texture2D*& currentResource,
-                       ID3D11ShaderResourceView*& targetSrv);
+                       ID3D11ShaderResourceView*& targetSrv, DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN);
 
     bool InitializeUAV(ID3D11Texture2D* resource, ID3D11Texture2D*& currentResource,
                        ID3D11UnorderedAccessView*& targetUav);

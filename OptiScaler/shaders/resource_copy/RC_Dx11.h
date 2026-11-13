@@ -19,8 +19,6 @@ class RC_Dx11 : public Shader_Dx11
     uint32_t InNumThreadsY = 16;
     bool _depth = false;
 
-    bool InitializeViews(ID3D11Texture2D* InResource, ID3D11Texture2D* OutResource);
-
   public:
     // Grows only by default, so dynamic resolution doesn't recreate it every frame. Passes that size their work by
     // the buffer need it exact.
