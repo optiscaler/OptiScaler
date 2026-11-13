@@ -10289,11 +10289,20 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
         else
             ImGui::TextDisabled("Off");
 
-        const bool spoofing = config->DxgiSpoofing.value_or_default();
+        const bool dxgiSpoofing = config->DxgiSpoofing.value_or_default();
+        const bool vkSpoofing = config->VulkanSpoofing.value_or_default();
+        const bool vkExtSpoofing = config->VulkanExtensionSpoofing.value_or_default();
+
         ImGui::TextDisabled("Spoof");
         ImGui::SameLine(0.0f, 8.0f * menuResScale);
-        if (spoofing)
-            ImGui::TextColored(StatusOk(), "Yes");
+        if (vkSpoofing && vkExtSpoofing)
+            ImGui::TextColored(StatusOk(), "VLK + Ext");
+        else if (vkSpoofing)
+            ImGui::TextColored(StatusOk(), "VLK");
+        else if (vkExtSpoofing)
+            ImGui::TextColored(StatusOk(), "VLK Ext");
+        else if (dxgiSpoofing)
+            ImGui::TextColored(StatusOk(), "DXGI");
         else
             ImGui::TextDisabled("No");
 
