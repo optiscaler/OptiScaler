@@ -320,6 +320,15 @@ bool IFeature::SubrectFits(SubrectSlot InSlot, const Subrect& InRect, uint64_t I
     return true;
 }
 
+void IFeature::WarnIntegerMask(uint32_t InFormat)
+{
+    if (_integerMaskWarned)
+        return;
+
+    LOG_WARN("Ignoring the reactive mask, its integer format {} can't be read as float", InFormat);
+    _integerMaskWarned = true;
+}
+
 float IFeature::GetSharpness(const NVSDK_NGX_Parameter* InParameters)
 {
     if (Config::Instance()->OverrideSharpness.value_or_default())

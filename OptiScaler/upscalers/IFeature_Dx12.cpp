@@ -6,6 +6,7 @@
 #include "IFeature_Dx12.h"
 #include "State.h"
 #include <misc/DeferredRelease.h>
+#include <shaders/resource_copy/RC_Common.h>
 
 void IFeature_Dx12::ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
                                     D3D12_RESOURCE_STATES InBeforeState, D3D12_RESOURCE_STATES InAfterState) const
@@ -83,6 +84,15 @@ ID3D12Resource* IFeature_Dx12::SubrectInput(ID3D12GraphicsCommandList* InCommand
     copy->SetBufferState(InCommandList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     _subrectCopied[(size_t) InSlot] = copy->Buffer();
     return copy->Buffer();
+}
+
+ID3D12Resource* IFeature_Dx12::MaskInput(ID3D12Resource* InResource)
+{
+    if (InResource == nullptr || !RC_Formats::IsInteger(InResource->GetDesc().Format))
+        return InResource;
+
+    WarnIntegerMask(InResource->GetDesc().Format);
+    return nullptr;
 }
 
 bool IFeature_Dx12::Init(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCommandList,

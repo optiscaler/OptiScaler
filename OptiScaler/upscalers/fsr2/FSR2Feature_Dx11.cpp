@@ -362,7 +362,7 @@ bool FSR2FeatureDx11::EvaluateInternal(ID3D11DeviceContext* InContext, NVSDK_NGX
         NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void**) &paramReactiveMask);
 
-    paramReactiveMask = SubrectInput(InContext, paramReactiveMask, SubrectSlot::Mask);
+    paramReactiveMask = SubrectInput(InContext, MaskInput(paramReactiveMask), SubrectSlot::Mask);
 
     if (!Config::Instance()->DisableReactiveMask.value_or(paramReactiveMask == nullptr))
     {

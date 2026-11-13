@@ -5,6 +5,15 @@
 #include "nvsdk_ngx_vk.h"
 #include <misc/DeferredRelease.h>
 
+NVSDK_NGX_Resource_VK* IFeature_Vk::MaskInput(NVSDK_NGX_Resource_VK* InResource)
+{
+    if (InResource == nullptr || !ResourceCopy_Vk::IsInteger(InResource->Resource.ImageViewInfo.Format))
+        return InResource;
+
+    WarnIntegerMask(InResource->Resource.ImageViewInfo.Format);
+    return nullptr;
+}
+
 NVSDK_NGX_Resource_VK* IFeature_Vk::SubrectInput(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Resource_VK* InResource,
                                                  SubrectSlot InSlot, bool InFullView)
 {

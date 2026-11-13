@@ -189,6 +189,10 @@ bool FSR2FeatureDx12_212::EvaluateInternal(ID3D12GraphicsCommandList* InCommandL
         NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void**) &paramReactiveMask2);
 
+    // Integer masks can't be read as float, like the game didn't pass them
+    paramReactiveMask = MaskInput(paramReactiveMask);
+    paramReactiveMask2 = MaskInput(paramReactiveMask2);
+
     if (!Config::Instance()->DisableReactiveMask.value_or(paramReactiveMask == nullptr &&
                                                           paramReactiveMask2 == nullptr))
     {

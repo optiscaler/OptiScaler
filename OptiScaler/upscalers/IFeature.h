@@ -128,6 +128,7 @@ class IFeature
     bool _outputSubrects = false;
     uint32_t _subrectLogged = 0; // Bit per slot, log once per feature
     uint32_t _subrectWarned = 0;
+    bool _integerMaskWarned = false;
 
     unsigned int _renderWidth = 0;
     unsigned int _renderHeight = 0;
@@ -151,6 +152,8 @@ class IFeature
     const Subrect& GetSubrect(SubrectSlot InSlot) const { return _subrects[(size_t) InSlot]; }
     // Warns once when the subrect is outside the texture, otherwise logs it once
     bool SubrectFits(SubrectSlot InSlot, const Subrect& InRect, uint64_t InWidth, uint32_t InHeight);
+    // Warns once that a mask with this integer format is ignored
+    void WarnIntegerMask(uint32_t InFormat);
     void GetDynamicOutputResolution(NVSDK_NGX_Parameter* InParameters, unsigned int* width, unsigned int* height);
     float GetSharpness(const NVSDK_NGX_Parameter* InParameters);
 

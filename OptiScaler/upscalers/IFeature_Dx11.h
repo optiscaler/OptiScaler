@@ -36,6 +36,9 @@ class IFeature_Dx11 : public virtual IFeature
 
     std::unique_ptr<GpuTime_Dx11> UpscalerTime = nullptr;
 
+    // Masks with integer formats can't be read as float, they are treated as not given
+    ID3D11Resource* MaskInput(ID3D11Resource* InResource);
+
     // Created on the first view that doesn't start at (0, 0)
     std::array<std::unique_ptr<RC_Dx11>, (size_t) SubrectSlot::Count> SubrectCopy;
     std::array<ID3D11Resource*, (size_t) SubrectSlot::Count> _subrectCopied {}; // This frame's copies

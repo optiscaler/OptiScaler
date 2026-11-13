@@ -2,8 +2,26 @@
 #include "IFeature_Dx11.h"
 #include <State.h>
 #include <misc/DeferredRelease.h>
+#include <shaders/resource_copy/RC_Common.h>
 
 using Microsoft::WRL::ComPtr;
+
+ID3D11Resource* IFeature_Dx11::MaskInput(ID3D11Resource* InResource)
+{
+    ComPtr<ID3D11Texture2D> texture;
+
+    if (InResource == nullptr || InResource->QueryInterface(IID_PPV_ARGS(&texture)) != S_OK)
+        return InResource;
+
+    D3D11_TEXTURE2D_DESC desc {};
+    texture->GetDesc(&desc);
+
+    if (!RC_Formats::IsInteger(desc.Format))
+        return InResource;
+
+    WarnIntegerMask(desc.Format);
+    return nullptr;
+}
 
 ID3D11Resource* IFeature_Dx11::SubrectInput(ID3D11DeviceContext* InContext, ID3D11Resource* InResource,
                                             SubrectSlot InSlot, bool InFullView)

@@ -62,6 +62,9 @@ class IFeature_Dx12 : public virtual IFeature
     ID3D12Resource* SubrectInput(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
                                  SubrectSlot InSlot, bool InFullView = false);
 
+    // Masks with integer formats can't be read as float, they are treated as not given
+    ID3D12Resource* MaskInput(ID3D12Resource* InResource);
+
     virtual bool InitInternal(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters) = 0;
     virtual bool EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters) = 0;
 

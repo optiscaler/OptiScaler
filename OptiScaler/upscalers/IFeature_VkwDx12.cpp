@@ -1129,7 +1129,7 @@ bool IFeature_VkwDx12::ProcessVulkanTextures(VkCommandBuffer InCmdList, const NV
     {
         if (InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void**) &paramReactiveMask) !=
                 NVSDK_NGX_Result_Success ||
-            NvVkResourceNotValid(paramReactiveMask))
+            NvVkResourceNotValid(paramReactiveMask) || MaskInput(paramReactiveMask) == nullptr)
         {
             paramReactiveMask = nullptr;
         }

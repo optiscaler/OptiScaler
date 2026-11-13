@@ -19,6 +19,9 @@ class ResourceCopy_Vk : public Shader_Vk
     // Storage image format for a copy of InFormat, depth is copied to R32_SFLOAT
     VkFormat BufferFormat(VkFormat InFormat, bool InDepth) const;
 
+    // Integer formats can't be read as float
+    static bool IsInteger(VkFormat InFormat);
+
     // Only grows, so dynamic resolution doesn't recreate it every frame
     bool CreateGrowingImage(uint32_t width, uint32_t height, VkFormat format);
     VkExtent2D ImageExtent() const { return { _width, _height }; }

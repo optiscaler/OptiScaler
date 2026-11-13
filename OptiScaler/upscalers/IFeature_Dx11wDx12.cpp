@@ -433,8 +433,12 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
         {
             ID3D11Resource* resource = nullptr;
 
-            if (!getOriginalNgxResource(InParameters, name, &resource))
+            // An integer mask is dropped by the D3D12 feature, it can't be cropped as float either
+            if (!getOriginalNgxResource(InParameters, name, &resource) ||
+                (slot == SubrectSlot::Mask && MaskInput(resource) == nullptr))
+            {
                 continue;
+            }
 
             auto view = SubrectInput(InDeviceContext, resource, slot);
 
