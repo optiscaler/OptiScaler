@@ -72,11 +72,20 @@ static bool CreateDLSSContext(ffxContext handle, const ffxDispatchDescUpscale* p
     params->Set("FSR.upscaleSize.width", pExecParams->upscaleSize.width);
     params->Set("FSR.upscaleSize.height", pExecParams->upscaleSize.height);
 
-    auto width = pExecParams->upscaleSize.width > 0 ? pExecParams->upscaleSize.width : initParams->maxUpscaleSize.width;
+    // DLSS/XeSS stay at the max sizes, the inputs of smaller upscale sizes get padded to the max size's ratio
+    const bool padToMax = State::Instance().gameQuirks & GameQuirk::PadToMaxUpscaleSize &&
+                          initParams->maxRenderSize.width > 0 && initParams->maxRenderSize.height > 0;
+    params->Set("OptiScaler.PadToMaxUpscaleSize", padToMax ? 1 : 0);
+    params->Set("FSR.maxRenderSize.width", initParams->maxRenderSize.width);
+    params->Set("FSR.maxRenderSize.height", initParams->maxRenderSize.height);
 
-    auto ratio = (float) width / (float) pExecParams->renderSize.width;
+    auto renderWidth = padToMax ? initParams->maxRenderSize.width : pExecParams->renderSize.width;
+    auto width = pExecParams->upscaleSize.width > 0 && !padToMax ? pExecParams->upscaleSize.width
+                                                                 : initParams->maxUpscaleSize.width;
 
-    LOG_INFO("renderWidth: {}, maxWidth: {}, ratio: {}", pExecParams->renderSize.width, width, ratio);
+    auto ratio = (float) width / (float) renderWidth;
+
+    LOG_INFO("renderWidth: {}, maxWidth: {}, ratio: {}", renderWidth, width, ratio);
 
     if (ratio > 2.0)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_UltraPerformance);

@@ -26,6 +26,10 @@ void IFeature_Dx12::ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID
 void IFeature_Dx12::ForwardBarrier(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
                                    D3D12_RESOURCE_STATES InBeforeState, D3D12_RESOURCE_STATES InAfterState)
 {
+    // Backends get our padded copies in place of the game's inputs, they track their own state
+    if (IsPadBuffer(InResource))
+        return;
+
     ResourceBarrier(InCommandList, InResource, InBeforeState, InAfterState);
     _barrierTransitions.emplace_back(InResource, InBeforeState, InAfterState);
 }
@@ -87,6 +91,191 @@ ID3D12Resource* IFeature_Dx12::MaskInput(ID3D12Resource* InResource)
     return nullptr;
 }
 
+bool IFeature_Dx12::IsPadBuffer(ID3D12Resource* InResource) const
+{
+    return InResource != nullptr && std::ranges::any_of(PadCopy, [InResource](const auto& copy)
+                                                        { return copy != nullptr && copy->Buffer() == InResource; });
+}
+
+ID3D12Resource* IFeature_Dx12::PadInput(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
+                                        PadSlot InSlot, uint32_t InWidth, uint32_t InHeight, uint32_t InPadWidth,
+                                        uint32_t InPadHeight)
+{
+    auto& copy = PadCopy[InSlot];
+
+    if (copy == nullptr)
+        copy = std::make_unique<RC_Dx12>("Pad Copy", Device, InSlot == PadDepth);
+
+    // Grows with dynamic resolution, the upscaler reads only the padded size from (0, 0)
+    if (!copy->IsInit() ||
+        !copy->CreateBufferResource(Device, InResource, InPadWidth, InPadHeight, D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
+    {
+        return nullptr;
+    }
+
+    copy->SetBufferState(InCommandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+    // Repeating the edges keeps the padding out of the view's border pixels
+    if (!copy->Dispatch(InCommandList, InResource, copy->Buffer(), 0, 0, 0, 0, InWidth, InHeight, InPadWidth,
+                        InPadHeight))
+    {
+        return nullptr;
+    }
+
+    copy->SetBufferState(InCommandList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    return copy->Buffer();
+}
+
+bool IFeature_Dx12::PadInputs(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters,
+                              PadRestore& OutRestore, uint32_t& OutUpscaleWidth, uint32_t& OutUpscaleHeight)
+{
+    unsigned int upscaleWidth = 0;
+    unsigned int upscaleHeight = 0;
+    InParameters->Get("FSR.upscaleSize.width", &upscaleWidth);
+    InParameters->Get("FSR.upscaleSize.height", &upscaleHeight);
+
+    if (upscaleWidth == 0 || upscaleHeight == 0 || upscaleWidth > DisplayWidth() || upscaleHeight > DisplayHeight() ||
+        (upscaleWidth == DisplayWidth() && upscaleHeight == DisplayHeight()))
+    {
+        return false;
+    }
+
+    auto disablePadding = [&](const char* reason)
+    {
+        LOG_ERROR("Can't pad {}, recreating the upscaler for the upscale size", reason);
+        RestorePadding(InParameters, OutRestore);
+        OutRestore = {};
+
+        // Also for the next upscaler, the FFX inputs set it on the game's parameters
+        _padToMaxUpscaleSize = false;
+        InParameters->Set("OptiScaler.PadToMaxUpscaleSize", 0);
+        State::Instance().changeBackend[Handle()->Id] = true;
+        return false;
+    };
+
+    unsigned int renderWidth = 0;
+    unsigned int renderHeight = 0;
+
+    if (InParameters->Get(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Width, &renderWidth) !=
+            NVSDK_NGX_Result_Success ||
+        InParameters->Get(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Height, &renderHeight) !=
+            NVSDK_NGX_Result_Success ||
+        renderWidth == 0 || renderHeight == 0)
+    {
+        return disablePadding("without a render size");
+    }
+
+    // Same pixel size as the upscale size's render, the upscaler can't take more than it was created with
+    auto padWidth = (uint32_t) ((uint64_t) renderWidth * DisplayWidth() / upscaleWidth);
+    auto padHeight = (uint32_t) ((uint64_t) renderHeight * DisplayHeight() / upscaleHeight);
+
+    if (padWidth > _maxRenderWidth || padHeight > _maxRenderHeight)
+    {
+        if (!_padWarned)
+        {
+            LOG_WARN("Render {}x{} for upscale size {}x{} needs {}x{}, more than {}x{}, the view will be scaled",
+                     renderWidth, renderHeight, upscaleWidth, upscaleHeight, padWidth, padHeight, _maxRenderWidth,
+                     _maxRenderHeight);
+            _padWarned = true;
+        }
+
+        padWidth = std::min(padWidth, _maxRenderWidth);
+        padHeight = std::min(padHeight, _maxRenderHeight);
+    }
+
+    // Checked first, a missing crop would leave the max size output in the game's
+    auto& outputCopy = PadCopy[PadOutput];
+
+    if (outputCopy == nullptr)
+        outputCopy = std::make_unique<RC_Dx12>("Pad Copy", Device);
+
+    if (!outputCopy->IsInit())
+        return disablePadding("the output");
+
+    struct PadInputDesc
+    {
+        PadSlot Slot;
+        const char* Name;
+        std::optional<int32_t> Barrier;
+    };
+
+    // XeSS and the FSR 2 backends read the FFX masks
+    const PadInputDesc inputs[] = {
+        { PadColor, NVSDK_NGX_Parameter_Color, Config::Instance()->ColorResourceBarrier },
+        { PadDepth, NVSDK_NGX_Parameter_Depth, Config::Instance()->DepthResourceBarrier },
+        { PadMV, NVSDK_NGX_Parameter_MotionVectors, Config::Instance()->MVResourceBarrier },
+        { PadMask, NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, Config::Instance()->MaskResourceBarrier },
+        { PadReactive, "FSR.reactive", Config::Instance()->MaskResourceBarrier },
+        { PadTransparency, "FSR.transparencyAndComposition", Config::Instance()->MaskResourceBarrier },
+    };
+
+    for (const auto& input : inputs)
+    {
+        ID3D12Resource* resource = nullptr;
+        if (InParameters->Get(input.Name, &resource) != NVSDK_NGX_Result_Success)
+            InParameters->Get(input.Name, (void**) &resource);
+
+        if (resource == nullptr || (input.Slot >= PadMask && MaskInput(resource) == nullptr))
+            continue;
+
+        // The FFX inputs pass the reactive mask as the bias mask too
+        ID3D12Resource* padded = nullptr;
+        for (const auto& [name, game, copy] : OutRestore.Resources)
+        {
+            if (game == resource)
+                padded = copy;
+        }
+
+        if (padded == nullptr)
+        {
+            // The backends' barrier forwarding skips our copies, the game's resource gets it here
+            if (input.Barrier.has_value())
+            {
+                ForwardBarrier(InCommandList, resource, (D3D12_RESOURCE_STATES) input.Barrier.value(),
+                               D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            }
+
+            // Display resolution motion vectors pad the upscale size to the max one
+            padded = input.Slot == PadMV && !LowResMV() ? PadInput(InCommandList, resource, input.Slot, upscaleWidth,
+                                                                   upscaleHeight, DisplayWidth(), DisplayHeight())
+                                                        : PadInput(InCommandList, resource, input.Slot, renderWidth,
+                                                                   renderHeight, padWidth, padHeight);
+        }
+
+        // A missing input would mix padded and unpadded sizes
+        if (padded == nullptr)
+            return disablePadding(input.Name);
+
+        OutRestore.Resources.emplace_back(input.Name, resource, padded);
+        InParameters->Set(input.Name, (void*) padded);
+    }
+
+    OutRestore.RenderWidth = renderWidth;
+    OutRestore.RenderHeight = renderHeight;
+    InParameters->Set(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Width, padWidth);
+    InParameters->Set(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Height, padHeight);
+
+    OutUpscaleWidth = upscaleWidth;
+    OutUpscaleHeight = upscaleHeight;
+    return true;
+}
+
+void IFeature_Dx12::RestorePadding(NVSDK_NGX_Parameter* InParameters, const PadRestore& InRestore)
+{
+    for (const auto& [name, resource, padded] : InRestore.Resources)
+        InParameters->Set(name, (void*) resource);
+
+    if (InRestore.RenderWidth != 0)
+    {
+        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Width, InRestore.RenderWidth);
+        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Height, InRestore.RenderHeight);
+
+        // The backend read the padded size, frame generation describes the game's resources with it
+        _renderWidth = InRestore.RenderWidth;
+        _renderHeight = InRestore.RenderHeight;
+    }
+}
+
 bool IFeature_Dx12::Init(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCommandList,
                          NVSDK_NGX_Parameter* InParameters)
 {
@@ -118,6 +307,9 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     DeferredRelease::Collect();
 
     _subrectCopied = {};
+
+    // The padding forwards barriers before the backend
+    _barrierTransitions.clear();
 
     if (!IsInited())
     {
@@ -159,6 +351,21 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
 
     if (!OutputScaler->IsInit())
         useOutputScaling = false;
+
+    // Smaller upscale sizes run at the max one, padded inputs and the upscale size cropped from the output
+    PadRestore padRestore;
+    uint32_t padUpscaleWidth = 0;
+    uint32_t padUpscaleHeight = 0;
+    const bool padding = _padToMaxUpscaleSize;
+    const bool padded =
+        padding && PadInputs(InCommandList, InParameters, padRestore, padUpscaleWidth, padUpscaleHeight);
+
+    // Recreated for the upscale size, this frame would be stretched
+    if (padding && !_padToMaxUpscaleSize)
+    {
+        RestoreBarriers(InCommandList);
+        return true;
+    }
 
     ID3D12Resource* paramOutput = nullptr;
     ID3D12Resource* paramMotion = nullptr;
@@ -349,6 +556,34 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
                              } });
     }
 
+    if (padded && paramOutput)
+    {
+        // By value, the lambdas run after this scope. PadInputs checked it's ready.
+        RC_Dx12* copy = PadCopy[PadOutput].get();
+
+        pipeline.push_back({ // Setup
+                             [&, copy](ID3D12Resource* nextOutput) -> ID3D12Resource*
+                             {
+                                 // Exact, output scaling and RCAS size their work by it
+                                 if (!copy->CreateBufferResource(Device, nextOutput, DisplayWidth(), DisplayHeight(),
+                                                                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS, false))
+                                 {
+                                     return nullptr;
+                                 }
+
+                                 copy->SetBufferState(InCommandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+                                 return copy->Buffer();
+                             },
+
+                             // Dispatch
+                             [&, copy](ID3D12Resource* input, ID3D12Resource* output) -> bool
+                             {
+                                 copy->SetBufferState(InCommandList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                                 return copy->Dispatch(InCommandList, input, output, 0, 0, 0, 0, padUpscaleWidth,
+                                                       padUpscaleHeight);
+                             } });
+    }
+
     // RCAS setup and DLSS zero the game's sharpness, restored after EvaluateInternal
     float originalSharpness = 0.0f;
     bool hasSharpness =
@@ -375,8 +610,6 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
 
     UpscalerTime->Start(InCommandList);
 
-    _barrierTransitions.clear();
-
     // Game's real output, our pass buffers track their own state
     std::optional<int32_t> outputBarrier = Config::Instance()->OutputResourceBarrier;
     if (paramOutput && outputBarrier.has_value() && upscaler != Upscaler::DLSS && upscaler != Upscaler::DLSSD)
@@ -390,6 +623,9 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     UpscalerTime->End(InCommandList);
 
     InParameters->Set(NVSDK_NGX_Parameter_Output, paramOutput);
+
+    if (padded)
+        RestorePadding(InParameters, padRestore);
 
     if (placeOutput)
         SetSubrectBase(InParameters, SubrectSlot::Output, outputRect.X, outputRect.Y);

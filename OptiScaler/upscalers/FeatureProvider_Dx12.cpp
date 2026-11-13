@@ -166,6 +166,20 @@ bool FeatureProvider_Dx12::ChangeFeature(Upscaler upscaler, ID3D12Device* device
             contextData->createParams->Set(NVSDK_NGX_Parameter_OutHeight, dc->DisplayHeight());
             contextData->createParams->Set(NVSDK_NGX_Parameter_PerfQualityValue, dc->PerfQualityValue());
 
+            // The FFX inputs' padding, set on the game's parameters at creation
+            if (!isPassthrough)
+            {
+                int padToMax = 0;
+                unsigned int maxRenderWidth = 0;
+                unsigned int maxRenderHeight = 0;
+                parameters->Get("OptiScaler.PadToMaxUpscaleSize", &padToMax);
+                parameters->Get("FSR.maxRenderSize.width", &maxRenderWidth);
+                parameters->Get("FSR.maxRenderSize.height", &maxRenderHeight);
+                contextData->createParams->Set("OptiScaler.PadToMaxUpscaleSize", padToMax);
+                contextData->createParams->Set("FSR.maxRenderSize.width", maxRenderWidth);
+                contextData->createParams->Set("FSR.maxRenderSize.height", maxRenderHeight);
+            }
+
             dc = nullptr;
 
             State::Instance().currentFeature = nullptr;

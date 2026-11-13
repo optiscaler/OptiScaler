@@ -1024,7 +1024,7 @@ static NVSDK_NGX_Result TryEvaluateOptiFeature(ID3D12GraphicsCommandList* InCmdL
         const bool isFSR31OrLater = isFFX && feature->Version() >= feature_version { 3, 1, 0 };
 
         // FSR 3.1 supports upscaleSize that doesn't need reinit to change output resolution
-        if (!isFSR31OrLater && feature->UpdateOutputResolution(InParameters))
+        if (!isFSR31OrLater && !feature->PadsToMaxUpscaleSize() && feature->UpdateOutputResolution(InParameters))
             state.changeBackend[handleId] = true;
     }
 

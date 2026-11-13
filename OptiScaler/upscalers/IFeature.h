@@ -126,6 +126,11 @@ class IFeature
 
     std::array<Subrect, (size_t) SubrectSlot::Count> _subrects {};
     bool _outputSubrects = false;
+
+    // PadToMaxUpscaleSize quirk, the upscaler stays at the max upscale size and the render size created with it
+    bool _padToMaxUpscaleSize = false;
+    unsigned int _maxRenderWidth = 0;
+    unsigned int _maxRenderHeight = 0;
     uint32_t _subrectLogged = 0; // Bit per slot, log once per feature
     uint32_t _subrectWarned = 0;
     bool _integerMaskWarned = false;
@@ -182,6 +187,8 @@ class IFeature
     virtual void TickFrozenCheck(uint32_t presentPerEval = 1);
     virtual bool IsFrozen() { return _featureFrozen; };
     virtual bool UpdateOutputResolution(const NVSDK_NGX_Parameter* InParameters);
+    // Smaller FFX upscale sizes are padded to the max one, without recreating the upscaler
+    bool PadsToMaxUpscaleSize() const { return _padToMaxUpscaleSize; }
     virtual unsigned int DisplayWidth() { return _displayWidth; };
     virtual unsigned int DisplayHeight() { return _displayHeight; };
     virtual unsigned int TargetWidth() { return _targetWidth; };

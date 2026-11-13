@@ -1468,6 +1468,9 @@ static void printQuirks(flag_set<GameQuirk>& quirks)
     if (quirks & GameQuirk::ExtendedSearch)
         stringQuirks.push_back("Extended DLL search");
 
+    if (quirks & GameQuirk::PadToMaxUpscaleSize)
+        stringQuirks.push_back("Keep DLSS/XeSS at the max FFX upscale size");
+
     state->detectedQuirks.append_range(stringQuirks);
     for (auto& stringQuirk : stringQuirks)
         spdlog::info("Quirk: {}", stringQuirk);

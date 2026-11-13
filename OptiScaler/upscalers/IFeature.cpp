@@ -134,6 +134,16 @@ bool IFeature::SetInitParameters(NVSDK_NGX_Parameter* InParameters)
 
         GetDynamicOutputResolution(InParameters, &outWidth, &outHeight);
 
+        // Created for the max render size, the padded inputs never go above it. Games round each upscale size's
+        // render up, padded it can be a few pixels over the max one.
+        if (_padToMaxUpscaleSize)
+        {
+            InParameters->Get("FSR.maxRenderSize.width", &width);
+            InParameters->Get("FSR.maxRenderSize.height", &height);
+            width += 16;
+            height += 16;
+        }
+
         // Thanks to Crytek added these checks
         if (width > 16384 || width < 20)
             width = 0;
@@ -172,6 +182,14 @@ bool IFeature::SetInitParameters(NVSDK_NGX_Parameter* InParameters)
         }
 
         _perfQualityValue = (NVSDK_NGX_PerfQuality_Value) pqValue;
+
+        if (_padToMaxUpscaleSize)
+        {
+            _maxRenderWidth = _renderWidth;
+            _maxRenderHeight = _renderHeight;
+            LOG_INFO("Padding smaller upscale sizes to {}x{} -> {}x{}", _maxRenderWidth, _maxRenderHeight,
+                     _displayWidth, _displayHeight);
+        }
 
         LOG_INFO("Render Resolution: {0}x{1}, Display Resolution {2}x{3}, Quality: {4}", _renderWidth, _renderHeight,
                  _displayWidth, _displayHeight, pqValue);
@@ -441,6 +459,15 @@ void IFeature::GetDynamicOutputResolution(NVSDK_NGX_Parameter* InParameters, uns
     if (supportsUpscaleSize)
     {
         InParameters->Set("OptiScaler.SupportsUpscaleSize", 0);
+        return;
+    }
+
+    // Set by the FFX inputs, IFeature_Dx12 pads the inputs of smaller upscale sizes
+    int padToMax = 0;
+    InParameters->Get("OptiScaler.PadToMaxUpscaleSize", &padToMax);
+    if (padToMax)
+    {
+        _padToMaxUpscaleSize = true;
         return;
     }
 

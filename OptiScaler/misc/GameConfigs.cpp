@@ -891,6 +891,13 @@ const std::vector<GameConfig> gameConfigs = {
         .quirks = { ForceCreateD3D12Device },
     },
 
+    // Split Fiction
+    // Changes FFX upscaleSize with the split screen, recreating DLSS/XeSS for each change stutters
+    {
+        .exes = { "splitfiction.exe" },
+        .quirks = { PadToMaxUpscaleSize },
+    },
+
 };
 
 bool MatchesExe(const GameConfig& game, const std::string& exeName)
