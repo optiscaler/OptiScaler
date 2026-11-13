@@ -19,7 +19,7 @@ Shader_Dx11::~Shader_Dx11()
     SAFE_RELEASE(_srvInput);
     SAFE_RELEASE(_uavOutput);
 
-    SAFE_RELEASE(_currentOutResource);
+    // _currentInResource/_currentOutResource are only cache keys, InitializeSRV/UAV hold no reference on them
 }
 
 DXGI_FORMAT Shader_Dx11::TranslateTypelessFormats(DXGI_FORMAT format)

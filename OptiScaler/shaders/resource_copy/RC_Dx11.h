@@ -30,7 +30,4 @@ class RC_Dx11 : public Shader_Dx11
 
     // InDepth: the source is a depth buffer, read as depth and copied to R32_FLOAT
     RC_Dx11(std::string InName, ID3D11Device* InDevice, bool InDepth = false);
-
-    // Shader_Dx11 releases it but InitializeUAV never took a reference
-    ~RC_Dx11() { _currentOutResource = nullptr; }
 };
