@@ -526,11 +526,34 @@ static int WINAPI hkExeEntry(PVOID param)
     return o_ExeEntry(param);
 }
 
+// TLS callbacks run before the entry, protectors (Denuvo, VMProtect) use them to check the exe code
+static bool ExeHasTlsCallbacks()
+{
+    auto base = (BYTE*) exeModule;
+    auto dosHeader = (IMAGE_DOS_HEADER*) base;
+    auto ntHeaders = (IMAGE_NT_HEADERS*) (base + dosHeader->e_lfanew);
+    auto tlsData = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS];
+
+    if (tlsData.VirtualAddress == 0)
+        return false;
+
+    auto tlsDir = (IMAGE_TLS_DIRECTORY*) (base + tlsData.VirtualAddress);
+    auto callbacks = (PIMAGE_TLS_CALLBACK*) tlsDir->AddressOfCallBacks;
+
+    return callbacks != nullptr && *callbacks != nullptr;
+}
+
 // Runs after the loader lock is released and before any game code
 static bool HookExeEntry()
 {
     if (o_ExeEntry != nullptr)
         return true;
+
+    if (ExeHasTlsCallbacks())
+    {
+        LOG_INFO("Exe has TLS callbacks, not hooking the entry");
+        return false;
+    }
 
     o_ExeEntry = (PFN_ExeEntry) DetourGetEntryPoint(nullptr);
 
