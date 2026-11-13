@@ -357,7 +357,8 @@ bool IFeature_Dx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_Par
                 { // Setup
                   [&, copy](ID3D11Resource* nextOutput) -> ID3D11Resource*
                   {
-                      if (!copy->CreateBufferResource(Device, nextOutput, outputRect.Width, outputRect.Height))
+                      // Exact, output scaling and RCAS size their work by it
+                      if (!copy->CreateBufferResource(Device, nextOutput, outputRect.Width, outputRect.Height, false))
                           return nullptr;
 
                       placeOutput = true;

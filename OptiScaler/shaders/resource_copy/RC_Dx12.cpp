@@ -5,7 +5,7 @@
 #include "precompile/rc_offset_Shader.h"
 
 bool RC_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InSource, uint32_t InWidth,
-                                   uint32_t InHeight, D3D12_RESOURCE_STATES InState)
+                                   uint32_t InHeight, D3D12_RESOURCE_STATES InState, bool InGrow)
 {
     if (InSource == nullptr)
         return false;
@@ -14,7 +14,7 @@ bool RC_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InSou
     uint64_t width = InWidth;
     uint32_t height = InHeight;
 
-    if (_buffer != nullptr)
+    if (_buffer != nullptr && InGrow)
     {
         auto bufDesc = _buffer->GetDesc();
 

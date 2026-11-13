@@ -7,7 +7,7 @@
 using Microsoft::WRL::ComPtr;
 
 bool RC_Dx11::CreateBufferResource(ID3D11Device* InDevice, ID3D11Resource* InSource, uint32_t InWidth,
-                                   uint32_t InHeight)
+                                   uint32_t InHeight, bool InGrow)
 {
     D3D11_TEXTURE2D_DESC current {};
 
@@ -21,7 +21,7 @@ bool RC_Dx11::CreateBufferResource(ID3D11Device* InDevice, ID3D11Resource* InSou
                                           desc.Width = InWidth;
                                           desc.Height = InHeight;
 
-                                          if (_buffer != nullptr && current.Format == desc.Format)
+                                          if (InGrow && _buffer != nullptr && current.Format == desc.Format)
                                           {
                                               desc.Width = std::max(desc.Width, current.Width);
                                               desc.Height = std::max(desc.Height, current.Height);

@@ -330,9 +330,10 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
         pipeline.push_back({ // Setup
                              [&, copy](ID3D12Resource* nextOutput) -> ID3D12Resource*
                              {
+                                 // Exact, output scaling and RCAS size their work by it
                                  if (!copy->CreateBufferResource(Device, nextOutput, outputRect.Width,
                                                                  outputRect.Height,
-                                                                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
+                                                                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS, false))
                                  {
                                      return nullptr;
                                  }

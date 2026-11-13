@@ -27,9 +27,10 @@ class RC_Dx12 : public Shader_Dx12
     UINT InNumThreadsY = 16;
 
   public:
-    // Only grows, so dynamic resolution doesn't recreate it every frame
+    // Grows only by default, so dynamic resolution doesn't recreate it every frame. Passes that size their work by
+    // the buffer need it exact.
     bool CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InSource, uint32_t InWidth, uint32_t InHeight,
-                              D3D12_RESOURCE_STATES InState);
+                              D3D12_RESOURCE_STATES InState, bool InGrow = true);
     void SetBufferState(ID3D12GraphicsCommandList* InCommandList, D3D12_RESOURCE_STATES InState);
     bool Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InResource, ID3D12Resource* OutResource,
                   uint32_t InSrcX, uint32_t InSrcY, uint32_t InDstX, uint32_t InDstY, uint32_t InWidth,

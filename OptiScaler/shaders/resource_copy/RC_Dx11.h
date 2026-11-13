@@ -22,8 +22,10 @@ class RC_Dx11 : public Shader_Dx11
     bool InitializeViews(ID3D11Texture2D* InResource, ID3D11Texture2D* OutResource);
 
   public:
-    // Only grows, so dynamic resolution doesn't recreate it every frame
-    bool CreateBufferResource(ID3D11Device* InDevice, ID3D11Resource* InSource, uint32_t InWidth, uint32_t InHeight);
+    // Grows only by default, so dynamic resolution doesn't recreate it every frame. Passes that size their work by
+    // the buffer need it exact.
+    bool CreateBufferResource(ID3D11Device* InDevice, ID3D11Resource* InSource, uint32_t InWidth, uint32_t InHeight,
+                              bool InGrow = true);
     bool Dispatch(ID3D11DeviceContext* InContext, ID3D11Texture2D* InResource, ID3D11Texture2D* OutResource,
                   uint32_t InSrcX, uint32_t InSrcY, uint32_t InDstX, uint32_t InDstY, uint32_t InWidth,
                   uint32_t InHeight);

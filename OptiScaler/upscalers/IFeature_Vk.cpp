@@ -350,7 +350,9 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
                                  {
                                      const auto format = copy->BufferFormat(nextOutput.Format, false);
 
-                                     if (!copy->CreateGrowingImage(outputRect.Width, outputRect.Height, format))
+                                     // Exact, output scaling and RCAS size their work by it
+                                     if (!copy->CreateImageResource(Device, PhysicalDevice, outputRect.Width,
+                                                                    outputRect.Height, format, 0))
                                          return VkImageInfo {};
 
                                      VkImageInfo info = nextOutput;
