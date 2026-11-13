@@ -201,7 +201,6 @@ bool FSR2FeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
                 ForwardBarrier(InCommandList, paramReactiveMask, (D3D12_RESOURCE_STATES) barrier.value(),
                                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
-            paramReactiveMask = SubrectInput(InCommandList, paramReactiveMask, SubrectSlot::Mask);
             params.reactive = ffxGetResourceDX12(&_context, paramReactiveMask, (wchar_t*) L"FSR2_Reactive",
                                                  FFX_RESOURCE_STATE_COMPUTE_READ);
         }

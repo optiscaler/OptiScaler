@@ -309,12 +309,13 @@ bool FSR2FeatureVk212::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_P
 
     NVSDK_NGX_Resource_VK* paramReactiveMask = nullptr;
     InParameters->Get("FSR.reactive", (void**) &paramReactiveMask);
-    paramReactiveMask = SubrectInput(InCmdBuffer, MaskInput(paramReactiveMask), SubrectSlot::Mask);
+    // The DLSS subrect base is for the bias mask, not for the FSR mask
+    paramReactiveMask = MaskInput(paramReactiveMask);
 
     NVSDK_NGX_Resource_VK* paramReactiveMask2 = nullptr;
     InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void**) &paramReactiveMask2);
 
-    // Used only without the FSR mask, they share the copy
+    // Used only without the FSR mask
     if (paramReactiveMask == nullptr)
         paramReactiveMask2 = SubrectInput(InCmdBuffer, MaskInput(paramReactiveMask2), SubrectSlot::Mask);
 
