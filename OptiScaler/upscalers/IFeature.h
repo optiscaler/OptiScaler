@@ -4,6 +4,7 @@
 #include <nvsdk_ngx.h>
 #include <nvsdk_ngx_defs.h>
 
+#include <array>
 #include <unordered_set>
 #include <Util.h>
 
@@ -31,6 +32,27 @@ static auto sumOpts(const auto&... opts) -> std::optional<double>
 
     return std::nullopt;
 }
+
+// DLSS subrects, where each input and the output of this feature's view are in the game's textures
+enum class SubrectSlot : uint8_t
+{
+    Color,
+    Depth,
+    MV,
+    Mask, // Bias current color mask
+    Output,
+    Count
+};
+
+struct Subrect
+{
+    uint32_t X = 0;
+    uint32_t Y = 0;
+    uint32_t Width = 0;
+    uint32_t Height = 0;
+
+    bool HasOffset() const { return X != 0 || Y != 0; }
+};
 
 struct DetailedGpuTime
 {
@@ -85,6 +107,11 @@ class IFeature
     bool _hasOutput = false;
     bool _depthLinear = false;
 
+    std::array<Subrect, (size_t) SubrectSlot::Count> _subrects {};
+    bool _outputSubrects = false;
+    uint32_t _subrectLogged = 0; // Bit per slot, log once per feature
+    uint32_t _subrectWarned = 0;
+
     unsigned int _renderWidth = 0;
     unsigned int _renderHeight = 0;
     unsigned int _targetWidth = 0;
@@ -103,6 +130,8 @@ class IFeature
     void SetHandle(unsigned int InHandleId);
     bool SetInitParameters(NVSDK_NGX_Parameter* InParameters);
     void GetRenderResolution(const NVSDK_NGX_Parameter* InParameters, unsigned int* OutWidth, unsigned int* OutHeight);
+    void ReadSubrects(const NVSDK_NGX_Parameter* InParameters);
+    const Subrect& GetSubrect(SubrectSlot InSlot) const { return _subrects[(size_t) InSlot]; }
     void GetDynamicOutputResolution(NVSDK_NGX_Parameter* InParameters, unsigned int* width, unsigned int* height);
     float GetSharpness(const NVSDK_NGX_Parameter* InParameters);
 

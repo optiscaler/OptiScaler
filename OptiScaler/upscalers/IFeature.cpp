@@ -118,6 +118,11 @@ bool IFeature::SetInitParameters(NVSDK_NGX_Parameter* InParameters)
         }
     }
 
+    // Like DLSS, the output base is only used when enabled at creation
+    int outputSubrects = 0;
+    InParameters->Get(NVSDK_NGX_Parameter_DLSS_Enable_Output_Subrects, &outputSubrects);
+    _outputSubrects = outputSubrects != 0;
+
     if (InParameters->Get(NVSDK_NGX_Parameter_OutWidth, &outWidth) == NVSDK_NGX_Result_Success &&
         InParameters->Get(NVSDK_NGX_Parameter_OutHeight, &outHeight) == NVSDK_NGX_Result_Success)
     {
@@ -242,6 +247,8 @@ void IFeature::GetRenderResolution(const NVSDK_NGX_Parameter* InParameters, unsi
     _renderWidth = *OutWidth;
     _renderHeight = *OutHeight;
 
+    ReadSubrects(InParameters);
+
     // Should not be needed but who knows
     // if (_renderHeight == _displayHeight && _renderWidth == _displayWidth && _perfQualityValue !=
     // NVSDK_NGX_PerfQuality_Value_DLAA)
@@ -258,6 +265,40 @@ void IFeature::GetRenderResolution(const NVSDK_NGX_Parameter* InParameters, unsi
     {
         _jitterInfo.insert(std::make_pair(ji.x, ji.y));
     }
+}
+
+void IFeature::ReadSubrects(const NVSDK_NGX_Parameter* InParameters)
+{
+    static constexpr std::array<std::pair<const char*, const char*>, (size_t) SubrectSlot::Count> baseKeys = { {
+        { NVSDK_NGX_Parameter_DLSS_Input_Color_Subrect_Base_X, NVSDK_NGX_Parameter_DLSS_Input_Color_Subrect_Base_Y },
+        { NVSDK_NGX_Parameter_DLSS_Input_Depth_Subrect_Base_X, NVSDK_NGX_Parameter_DLSS_Input_Depth_Subrect_Base_Y },
+        { NVSDK_NGX_Parameter_DLSS_Input_MV_SubrectBase_X, NVSDK_NGX_Parameter_DLSS_Input_MV_SubrectBase_Y },
+        { NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_SubrectBase_X,
+          NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_SubrectBase_Y },
+        { NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_X, NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_Y },
+    } };
+
+    for (size_t i = 0; i < baseKeys.size(); i++)
+    {
+        auto& rect = _subrects[i];
+        rect = { 0, 0, _renderWidth, _renderHeight };
+        InParameters->Get(baseKeys[i].first, &rect.X);
+        InParameters->Get(baseKeys[i].second, &rect.Y);
+    }
+
+    // Display resolution motion vectors and the output keep the creation size, even with dynamic resolution
+    if (!LowResMV())
+    {
+        _subrects[(size_t) SubrectSlot::MV].Width = DisplayWidth();
+        _subrects[(size_t) SubrectSlot::MV].Height = DisplayHeight();
+    }
+
+    auto& output = _subrects[(size_t) SubrectSlot::Output];
+    output.Width = DisplayWidth();
+    output.Height = DisplayHeight();
+
+    if (!_outputSubrects)
+        output.X = output.Y = 0;
 }
 
 float IFeature::GetSharpness(const NVSDK_NGX_Parameter* InParameters)

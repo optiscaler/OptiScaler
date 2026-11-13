@@ -122,6 +122,7 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
 
+        paramColor = SubrectInput(InCommandList, paramColor, SubrectSlot::Color);
         params.color = ffxApiGetResourceDX12(paramColor, FFX_API_RESOURCE_STATE_COMPUTE_READ);
     }
     else
@@ -151,6 +152,7 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
 
+        paramVelocity = SubrectInput(InCommandList, paramVelocity, SubrectSlot::MV);
         params.motionVectors = ffxApiGetResourceDX12(paramVelocity, FFX_API_RESOURCE_STATE_COMPUTE_READ);
     }
     else
@@ -187,6 +189,7 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
             ForwardBarrier(InCommandList, paramDepth, (D3D12_RESOURCE_STATES) barrier.value(),
                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
+        paramDepth = SubrectInput(InCommandList, paramDepth, SubrectSlot::Depth);
         params.depth = ffxApiGetResourceDX12(paramDepth, FFX_API_RESOURCE_STATE_COMPUTE_READ);
     }
     else
@@ -259,6 +262,7 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
                 ForwardBarrier(InCommandList, paramReactiveMask, (D3D12_RESOURCE_STATES) barrier.value(),
                                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
+            paramReactiveMask = SubrectInput(InCommandList, paramReactiveMask, SubrectSlot::Mask);
             params.reactive = ffxApiGetResourceDX12(paramReactiveMask, FFX_API_RESOURCE_STATE_COMPUTE_READ);
         }
         else
@@ -271,6 +275,8 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
                 if (std::optional<int32_t> barrier = Config::Instance()->MaskResourceBarrier; barrier.has_value())
                     ForwardBarrier(InCommandList, paramReactiveMask2, (D3D12_RESOURCE_STATES) barrier.value(),
                                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+                paramReactiveMask2 = SubrectInput(InCommandList, paramReactiveMask2, SubrectSlot::Mask);
 
                 if (paramTransparency == nullptr && Config::Instance()->FsrUseMaskForTransparency.value_or_default())
                     params.transparencyAndComposition =
