@@ -2,6 +2,8 @@
 #include <Config.h>
 #include "IFeature.h"
 
+#include <magic_enum.hpp>
+
 void IFeature::SetHandle(unsigned int InHandleId)
 {
     _handle = new NVSDK_NGX_Handle { InHandleId };
@@ -117,6 +119,11 @@ bool IFeature::SetInitParameters(NVSDK_NGX_Parameter* InParameters)
             Config::Instance()->SaveXeFG();
         }
     }
+
+    // Like DLSS, the output base is only used when enabled at creation
+    int outputSubrects = 0;
+    InParameters->Get(NVSDK_NGX_Parameter_DLSS_Enable_Output_Subrects, &outputSubrects);
+    _outputSubrects = outputSubrects != 0;
 
     if (InParameters->Get(NVSDK_NGX_Parameter_OutWidth, &outWidth) == NVSDK_NGX_Result_Success &&
         InParameters->Get(NVSDK_NGX_Parameter_OutHeight, &outHeight) == NVSDK_NGX_Result_Success)
@@ -242,6 +249,8 @@ void IFeature::GetRenderResolution(const NVSDK_NGX_Parameter* InParameters, unsi
     _renderWidth = *OutWidth;
     _renderHeight = *OutHeight;
 
+    ReadSubrects(InParameters);
+
     // Should not be needed but who knows
     // if (_renderHeight == _displayHeight && _renderWidth == _displayWidth && _perfQualityValue !=
     // NVSDK_NGX_PerfQuality_Value_DLAA)
@@ -258,6 +267,66 @@ void IFeature::GetRenderResolution(const NVSDK_NGX_Parameter* InParameters, unsi
     {
         _jitterInfo.insert(std::make_pair(ji.x, ji.y));
     }
+}
+
+void IFeature::ReadSubrects(const NVSDK_NGX_Parameter* InParameters)
+{
+    for (size_t i = 0; i < SubrectBaseKeys.size(); i++)
+    {
+        auto& rect = _subrects[i];
+        rect = { 0, 0, _renderWidth, _renderHeight };
+        InParameters->Get(SubrectBaseKeys[i].first, &rect.X);
+        InParameters->Get(SubrectBaseKeys[i].second, &rect.Y);
+    }
+
+    // Display resolution motion vectors and the output keep the creation size, even with dynamic resolution
+    if (!LowResMV())
+    {
+        _subrects[(size_t) SubrectSlot::MV].Width = DisplayWidth();
+        _subrects[(size_t) SubrectSlot::MV].Height = DisplayHeight();
+    }
+
+    auto& output = _subrects[(size_t) SubrectSlot::Output];
+    output.Width = DisplayWidth();
+    output.Height = DisplayHeight();
+
+    if (!_outputSubrects)
+        output.X = output.Y = 0;
+}
+
+bool IFeature::SubrectFits(SubrectSlot InSlot, const Subrect& InRect, uint64_t InWidth, uint32_t InHeight)
+{
+    const uint32_t slotBit = 1u << (uint32_t) InSlot;
+
+    if ((uint64_t) InRect.X + InRect.Width > InWidth || (uint64_t) InRect.Y + InRect.Height > InHeight)
+    {
+        if (!(_subrectWarned & slotBit))
+        {
+            LOG_WARN("{} subrect {}x{} at ({}, {}) is outside the {}x{} texture, using it as is",
+                     magic_enum::enum_name(InSlot), InRect.Width, InRect.Height, InRect.X, InRect.Y, InWidth, InHeight);
+            _subrectWarned |= slotBit;
+        }
+
+        return false;
+    }
+
+    if (!(_subrectLogged & slotBit))
+    {
+        LOG_INFO("{} subrect {}x{} at ({}, {}) of the {}x{} texture, copying it for {}", magic_enum::enum_name(InSlot),
+                 InRect.Width, InRect.Height, InRect.X, InRect.Y, InWidth, InHeight, Name());
+        _subrectLogged |= slotBit;
+    }
+
+    return true;
+}
+
+void IFeature::WarnIntegerMask(uint32_t InFormat)
+{
+    if (_integerMaskWarned)
+        return;
+
+    LOG_WARN("Ignoring the reactive mask, its integer format {} can't be read as float", InFormat);
+    _integerMaskWarned = true;
 }
 
 float IFeature::GetSharpness(const NVSDK_NGX_Parameter* InParameters)

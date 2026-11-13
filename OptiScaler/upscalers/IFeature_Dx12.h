@@ -9,6 +9,7 @@
 #include <shaders/rcas/RCAS_Dx12.h>
 #include <shaders/bias/Bias_Dx12.h>
 #include <shaders/magnifier/Magnifier_Dx12.h>
+#include <shaders/resource_copy/RC_Dx12.h>
 #include <gpu_time/GpuTime_Dx12.h>
 
 class IFeature_Dx12 : public virtual IFeature
@@ -41,12 +42,27 @@ class IFeature_Dx12 : public virtual IFeature
 
     std::unique_ptr<GpuTime_Dx12> UpscalerTime = nullptr;
 
+    // Created on the first view that doesn't start at (0, 0)
+    std::array<std::unique_ptr<RC_Dx12>, (size_t) SubrectSlot::Count> SubrectCopy;
+    std::array<ID3D12Resource*, (size_t) SubrectSlot::Count> _subrectCopied {}; // This frame's copies
+
     void ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
                          D3D12_RESOURCE_STATES InBeforeState, D3D12_RESOURCE_STATES InAfterState) const;
 
     // Recorded transitions are undone by Evaluate after the shader passes
     void ForwardBarrier(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
                         D3D12_RESOURCE_STATES InBeforeState, D3D12_RESOURCE_STATES InAfterState);
+
+    // Warns once when the subrect doesn't fit the resource, logs it once and creates its copy shader
+    bool CheckSubrect(SubrectSlot InSlot, const Subrect& InRect, ID3D12Resource* InResource);
+
+    // Resource for backends without subrect support, a copy of the view when it doesn't start at (0, 0).
+    // Call after the barrier forwarding, the copy is ours and must not get ForwardBarrier.
+    ID3D12Resource* SubrectInput(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
+                                 SubrectSlot InSlot);
+
+    // Masks with integer formats can't be read as float, they are treated as not given
+    ID3D12Resource* MaskInput(ID3D12Resource* InResource);
 
     virtual bool InitInternal(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters) = 0;
     virtual bool EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters) = 0;

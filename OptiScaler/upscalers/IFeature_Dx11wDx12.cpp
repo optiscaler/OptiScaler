@@ -227,10 +227,10 @@ bool IFeature_Dx11wDx12::ProcessDx11Textures(const NVSDK_NGX_Parameter* InParame
     return true;
 }
 
-bool IFeature_Dx11wDx12::CopyBackOutput()
+bool IFeature_Dx11wDx12::CopyBackOutput(const D3D11_BOX* InView, UINT InDstX, UINT InDstY)
 {
     const auto resourceFrame = (UINT) (_frameCount % DX11_WITH_DX12_CACHED_FRAMES);
-    return Dx11WithDx12::CopyUpscalerOutputToDx11(ResourceCache, resourceFrame);
+    return Dx11WithDx12::CopyUpscalerOutputToDx11(ResourceCache, resourceFrame, InView, InDstX, InDstY);
 }
 
 bool IFeature_Dx11wDx12::Init(ID3D11Device* InDevice, ID3D11DeviceContext* InContext, NVSDK_NGX_Parameter* InParameters)
@@ -389,8 +389,11 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
     ComPtr<ID3D11RenderTargetView> restoreRTVs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
     ID3D11RenderTargetView* rawRTVs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
     ComPtr<ID3D11DepthStencilView> restoreDSV = nullptr;
+    ComPtr<ID3D11ComputeShader> restoreCS = nullptr;
 
     // backup compute shader resources
+    InDeviceContext->CSGetShader(restoreCS.GetAddressOf(), nullptr, nullptr);
+
     for (UINT i = 0; i < D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT; i++)
     {
         InDeviceContext->CSGetShaderResources(i, 1, restoreSRVs[i].GetAddressOf());
@@ -425,8 +428,52 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
     bool dx12EvalResult = false;
     bool commandListRecording = false;
     bool commandListExecuted = false;
+
+    // The D3D12 feature gets the views at (0, 0), so only they are shared and copied back
+    uint32_t zeroedSubrects = 0;
+    std::optional<D3D11_BOX> outputView;
+
+    auto zeroSubrect = [&](SubrectSlot slot)
+    {
+        InParameters->Set(SubrectBaseKeys[(size_t) slot].first, 0u);
+        InParameters->Set(SubrectBaseKeys[(size_t) slot].second, 0u);
+        zeroedSubrects |= 1u << (uint32_t) slot;
+    };
+
     do
     {
+        // The D3D12 feature calls GetRenderResolution, without dimensions it's the creation size like DLSS
+        InParameters->Get(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Width, &_renderWidth);
+        InParameters->Get(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Height, &_renderHeight);
+        ReadSubrects(InParameters);
+
+        static constexpr std::pair<SubrectSlot, const char*> subrectInputs[] = {
+            { SubrectSlot::Color, NVSDK_NGX_Parameter_Color },
+            { SubrectSlot::Depth, NVSDK_NGX_Parameter_Depth },
+            { SubrectSlot::MV, NVSDK_NGX_Parameter_MotionVectors },
+            { SubrectSlot::Mask, NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask },
+        };
+
+        for (const auto& [slot, name] : subrectInputs)
+        {
+            ID3D11Resource* resource = nullptr;
+
+            // An integer mask is dropped by the D3D12 feature, it can't be cropped as float either
+            if (!getOriginalNgxResource(InParameters, name, &resource) ||
+                (slot == SubrectSlot::Mask && MaskInput(resource) == nullptr))
+            {
+                continue;
+            }
+
+            auto view = SubrectInput(InDeviceContext, resource, slot);
+
+            if (view != resource)
+            {
+                InParameters->Set(name, (void*) view);
+                zeroSubrect(slot);
+            }
+        }
+
         if (!ProcessDx11Textures(InParameters))
         {
             LOG_ERROR("Can't process Dx11 textures!");
@@ -439,6 +486,17 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
         }
 
         commandListRecording = true;
+
+        // An already shared output is written in place, the D3D12 feature places the view there
+        const auto& outputRect = GetSubrect(SubrectSlot::Output);
+        const auto& outputDesc = dx11Out.SourceDesc;
+
+        if (cache.ParamOutput[resourceFrame] != static_cast<ID3D11Resource*>(dx11Out.SharedTexture) &&
+            outputRect.HasOffset() && SubrectFits(SubrectSlot::Output, outputRect, outputDesc.Width, outputDesc.Height))
+        {
+            outputView = D3D11_BOX { 0, 0, 0, outputRect.Width, outputRect.Height, 1 };
+            zeroSubrect(SubrectSlot::Output);
+        }
 
         InParameters->Set(NVSDK_NGX_Parameter_Color, (void*) dx11Color.Dx12Resource);
         InParameters->Set(NVSDK_NGX_Parameter_MotionVectors, (void*) dx11Mv.Dx12Resource);
@@ -483,6 +541,15 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
     InParameters->Set("FSR.reactive", restoreFsrReactive);
     InParameters->Set("FSR.transparencyAndComposition", restoreFsrTransparency);
 
+    for (uint32_t slot = 0; slot < (uint32_t) SubrectSlot::Count; slot++)
+    {
+        if (zeroedSubrects & (1u << slot))
+        {
+            InParameters->Set(SubrectBaseKeys[slot].first, _subrects[slot].X);
+            InParameters->Set(SubrectBaseKeys[slot].second, _subrects[slot].Y);
+        }
+    }
+
     if (commandListRecording)
     {
         const auto closeResult = cmdList->Close();
@@ -519,7 +586,9 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
         if (!dx12EvalResult || !commandListExecuted)
             break;
 
-        if (!CopyBackOutput())
+        const auto& outputRect = GetSubrect(SubrectSlot::Output);
+
+        if (!CopyBackOutput(outputView ? &outputView.value() : nullptr, outputRect.X, outputRect.Y))
         {
             LOG_ERROR("Can't copy output texture back!");
             break;
@@ -534,7 +603,10 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
     else
         Dx11WithDx12::ClearLastPreparedUpscalerFrameState(ResourceCache);
 
-    // restore compute shader resources
+    // restore compute shader resources, the shader only changes when we cropped the inputs
+    if (zeroedSubrects & ~(1u << (uint32_t) SubrectSlot::Output))
+        InDeviceContext->CSSetShader(restoreCS.Get(), nullptr, 0);
+
     for (UINT i = 0; i < D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT; i++)
     {
         auto raw = restoreSRVs[i].Get();

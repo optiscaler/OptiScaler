@@ -725,10 +725,25 @@
     <ClInclude Include="shaders\depth_transfer\DT_Vk.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="shaders\resource_copy\RC_Common.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\resource_copy\RC_Dx11.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\resource_copy\RC_Dx12.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\resource_copy\precompile\rc_offset_Shader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\resource_copy\precompile\rc_offset_Shader_Dx11.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="shaders\resource_copy\RC_Vk.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="shaders\resource_copy\precompile\rc_Shader_Vk.h">
+    <ClInclude Include="shaders\resource_copy\precompile\rc_offset_Shader_Vk.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="shaders\velocity_convert\VC_Vk.h">
@@ -1632,6 +1647,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="shaders\depth_transfer\DT_Vk.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="shaders\resource_copy\RC_Dx11.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="shaders\resource_copy\RC_Dx12.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="shaders\resource_copy\RC_Vk.cpp">

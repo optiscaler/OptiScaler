@@ -116,7 +116,8 @@ class IFeature_VkwDx12 : public virtual IFeature_Vk
                                  VK_TEXTURE2D_RESOURCE_C* OutResource, ResourceCopy_Vk* InCopyShader, bool InCopy,
                                  bool InDepth);
     bool ProcessVulkanTextures(VkCommandBuffer InCmdList, const NVSDK_NGX_Parameter* InParameters);
-    bool CopyBackOutput(VkCommandBuffer InCmdBuffer);
+    // InView: only this rectangle is copied back, at the same place, nullptr copies the whole image
+    bool CopyBackOutput(VkCommandBuffer InCmdBuffer, const Subrect* InView);
     void AbortPendingInterop(VkCommandBuffer InCmdBuffer, uint32_t InFrame);
 
     void ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,

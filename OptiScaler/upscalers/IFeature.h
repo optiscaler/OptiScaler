@@ -4,6 +4,7 @@
 #include <nvsdk_ngx.h>
 #include <nvsdk_ngx_defs.h>
 
+#include <array>
 #include <unordered_set>
 #include <Util.h>
 
@@ -31,6 +32,38 @@ static auto sumOpts(const auto&... opts) -> std::optional<double>
 
     return std::nullopt;
 }
+
+// DLSS subrects, where each input and the output of this feature's view are in the game's textures
+enum class SubrectSlot : uint8_t
+{
+    Color,
+    Depth,
+    MV,
+    Mask, // Bias current color mask
+    Output,
+    Count
+};
+
+struct Subrect
+{
+    uint32_t X = 0;
+    uint32_t Y = 0;
+    uint32_t Width = 0;
+    uint32_t Height = 0;
+
+    // A view at (0, 0) is used as is
+    bool HasOffset() const { return X != 0 || Y != 0; }
+};
+
+// Base X/Y parameter names, in SubrectSlot order
+inline constexpr std::array<std::pair<const char*, const char*>, (size_t) SubrectSlot::Count> SubrectBaseKeys = { {
+    { NVSDK_NGX_Parameter_DLSS_Input_Color_Subrect_Base_X, NVSDK_NGX_Parameter_DLSS_Input_Color_Subrect_Base_Y },
+    { NVSDK_NGX_Parameter_DLSS_Input_Depth_Subrect_Base_X, NVSDK_NGX_Parameter_DLSS_Input_Depth_Subrect_Base_Y },
+    { NVSDK_NGX_Parameter_DLSS_Input_MV_SubrectBase_X, NVSDK_NGX_Parameter_DLSS_Input_MV_SubrectBase_Y },
+    { NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_SubrectBase_X,
+      NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_SubrectBase_Y },
+    { NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_X, NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_Y },
+} };
 
 struct DetailedGpuTime
 {
@@ -85,6 +118,12 @@ class IFeature
     bool _hasOutput = false;
     bool _depthLinear = false;
 
+    std::array<Subrect, (size_t) SubrectSlot::Count> _subrects {};
+    bool _outputSubrects = false;
+    uint32_t _subrectLogged = 0; // Bit per slot, log once per feature
+    uint32_t _subrectWarned = 0;
+    bool _integerMaskWarned = false;
+
     unsigned int _renderWidth = 0;
     unsigned int _renderHeight = 0;
     unsigned int _targetWidth = 0;
@@ -103,6 +142,12 @@ class IFeature
     void SetHandle(unsigned int InHandleId);
     bool SetInitParameters(NVSDK_NGX_Parameter* InParameters);
     void GetRenderResolution(const NVSDK_NGX_Parameter* InParameters, unsigned int* OutWidth, unsigned int* OutHeight);
+    void ReadSubrects(const NVSDK_NGX_Parameter* InParameters);
+    const Subrect& GetSubrect(SubrectSlot InSlot) const { return _subrects[(size_t) InSlot]; }
+    // Warns once when the subrect is outside the texture, otherwise logs it once
+    bool SubrectFits(SubrectSlot InSlot, const Subrect& InRect, uint64_t InWidth, uint32_t InHeight);
+    // Warns once that a mask with this integer format is ignored
+    void WarnIntegerMask(uint32_t InFormat);
     void GetDynamicOutputResolution(NVSDK_NGX_Parameter* InParameters, unsigned int* width, unsigned int* height);
     float GetSharpness(const NVSDK_NGX_Parameter* InParameters);
 

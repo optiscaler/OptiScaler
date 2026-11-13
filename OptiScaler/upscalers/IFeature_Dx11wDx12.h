@@ -45,7 +45,7 @@ class IFeature_Dx11wDx12 : public virtual IFeature_Dx11
 
     bool CreateD3D12Objects();
     bool ProcessDx11Textures(const NVSDK_NGX_Parameter* InParameters);
-    bool CopyBackOutput();
+    bool CopyBackOutput(const D3D11_BOX* InView, UINT InDstX, UINT InDstY);
 
     void ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
                          D3D12_RESOURCE_STATES InBeforeState, D3D12_RESOURCE_STATES InAfterState);

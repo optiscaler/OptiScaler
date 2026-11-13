@@ -6,6 +6,7 @@
 #include "IFeature_Dx12.h"
 #include "State.h"
 #include <misc/DeferredRelease.h>
+#include <shaders/resource_copy/RC_Common.h>
 
 void IFeature_Dx12::ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
                                     D3D12_RESOURCE_STATES InBeforeState, D3D12_RESOURCE_STATES InAfterState) const
@@ -37,6 +38,55 @@ void IFeature_Dx12::RestoreBarriers(ID3D12GraphicsCommandList* InCommandList)
     _barrierTransitions.clear();
 }
 
+bool IFeature_Dx12::CheckSubrect(SubrectSlot InSlot, const Subrect& InRect, ID3D12Resource* InResource)
+{
+    const auto desc = InResource->GetDesc();
+
+    if (!SubrectFits(InSlot, InRect, desc.Width, desc.Height))
+        return false;
+
+    auto& copy = SubrectCopy[(size_t) InSlot];
+
+    if (copy == nullptr)
+        copy = std::make_unique<RC_Dx12>("Subrect Copy", Device, InSlot == SubrectSlot::Depth);
+
+    return copy->IsInit();
+}
+
+ID3D12Resource* IFeature_Dx12::SubrectInput(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
+                                            SubrectSlot InSlot)
+{
+    const auto& rect = GetSubrect(InSlot);
+
+    if (InResource == nullptr || !rect.HasOffset() || !CheckSubrect(InSlot, rect, InResource))
+        return InResource;
+
+    auto& copy = SubrectCopy[(size_t) InSlot];
+
+    if (!copy->CreateBufferResource(Device, InResource, rect.Width, rect.Height, D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
+    {
+        return InResource;
+    }
+
+    copy->SetBufferState(InCommandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+    if (!copy->Dispatch(InCommandList, InResource, copy->Buffer(), rect.X, rect.Y, 0, 0, rect.Width, rect.Height))
+        return InResource;
+
+    copy->SetBufferState(InCommandList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    _subrectCopied[(size_t) InSlot] = copy->Buffer();
+    return copy->Buffer();
+}
+
+ID3D12Resource* IFeature_Dx12::MaskInput(ID3D12Resource* InResource)
+{
+    if (InResource == nullptr || !RC_Formats::IsInteger(InResource->GetDesc().Format))
+        return InResource;
+
+    WarnIntegerMask(InResource->GetDesc().Format);
+    return nullptr;
+}
+
 bool IFeature_Dx12::Init(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCommandList,
                          NVSDK_NGX_Parameter* InParameters)
 {
@@ -66,6 +116,8 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
 {
     // Frees deferred objects even when presents aren't hooked
     DeferredRelease::Collect();
+
+    _subrectCopied = {};
 
     if (!IsInited())
     {
@@ -115,6 +167,11 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     InParameters->Get(NVSDK_NGX_Parameter_Output, &paramOutput);
     InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, &paramMotion);
     InParameters->Get(NVSDK_NGX_Parameter_Depth, &paramDepth);
+
+    // The output base is needed before EvaluateInternal, which reads them again with this frame's render size.
+    // Kept as a copy, the backend reads the zeroed base when we place the output.
+    ReadSubrects(InParameters);
+    const Subrect outputRect = GetSubrect(SubrectSlot::Output);
 
     // Order is important as that's the order of shader dispatch
     std::vector<ShaderPass> pipeline;
@@ -212,7 +269,15 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
                       rcasConstants.CameraFar = Config::Instance()->FsrCameraFar.value_or_default();
                   }
 
-                  if (!RCAS->Dispatch(InCommandList, input, paramMotion, rcasConstants, output, paramDepth))
+                  // RCAS works on the view at (0, 0), reuse the backend's copies or crop for native subrect backends
+                  auto viewInput = [&](SubrectSlot slot, ID3D12Resource* resource)
+                  {
+                      auto copied = _subrectCopied[(size_t) slot];
+                      return copied != nullptr ? copied : SubrectInput(InCommandList, resource, slot);
+                  };
+
+                  if (!RCAS->Dispatch(InCommandList, input, viewInput(SubrectSlot::MV, paramMotion), rcasConstants,
+                                      output, viewInput(SubrectSlot::Depth, paramDepth)))
                   {
                       Config::Instance()->RcasEnabled.set_volatile_value(false);
                       return false;
@@ -251,6 +316,41 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
               } });
     }
 
+    // The upscaler and the passes work on the view at (0, 0) of our buffers, this last pass writes it to the output
+    // base. Native subrect upscalers without passes write there by themselves.
+    const bool nativeSubrects = upscaler == Upscaler::XeSS || upscaler == Upscaler::DLSS || upscaler == Upscaler::DLSSD;
+    bool placeOutput = false;
+
+    if (paramOutput && outputRect.HasOffset() && (!nativeSubrects || !pipeline.empty()) &&
+        CheckSubrect(SubrectSlot::Output, outputRect, paramOutput))
+    {
+        // By value, the lambdas run after this scope
+        RC_Dx12* copy = SubrectCopy[(size_t) SubrectSlot::Output].get();
+
+        pipeline.push_back({ // Setup
+                             [&, copy](ID3D12Resource* nextOutput) -> ID3D12Resource*
+                             {
+                                 if (!copy->CreateBufferResource(Device, nextOutput, outputRect.Width,
+                                                                 outputRect.Height,
+                                                                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
+                                 {
+                                     return nullptr;
+                                 }
+
+                                 copy->SetBufferState(InCommandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+                                 placeOutput = true;
+                                 return copy->Buffer();
+                             },
+
+                             // Dispatch
+                             [&, copy](ID3D12Resource* input, ID3D12Resource* output) -> bool
+                             {
+                                 copy->SetBufferState(InCommandList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                                 return copy->Dispatch(InCommandList, input, output, 0, 0, outputRect.X, outputRect.Y,
+                                                       outputRect.Width, outputRect.Height);
+                             } });
+    }
+
     // RCAS setup and DLSS zero the game's sharpness, restored after EvaluateInternal
     float originalSharpness = 0.0f;
     bool hasSharpness =
@@ -272,6 +372,12 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     // Upscaler will write to the first active shader, or just output
     InParameters->Set(NVSDK_NGX_Parameter_Output, currentTarget);
 
+    if (placeOutput)
+    {
+        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_X, 0u);
+        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_Y, 0u);
+    }
+
     UpscalerTime->Start(InCommandList);
 
     _barrierTransitions.clear();
@@ -289,6 +395,12 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     UpscalerTime->End(InCommandList);
 
     InParameters->Set(NVSDK_NGX_Parameter_Output, paramOutput);
+
+    if (placeOutput)
+    {
+        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_X, outputRect.X);
+        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_Y, outputRect.Y);
+    }
 
     if (hasSharpness)
         InParameters->Set(NVSDK_NGX_Parameter_Sharpness, originalSharpness);

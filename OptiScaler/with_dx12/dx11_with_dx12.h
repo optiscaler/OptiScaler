@@ -159,7 +159,9 @@ class Dx11WithDx12
 
     static bool SyncDx11ToDx12();
     static bool SyncDx12ToDx11();
-    static bool CopyUpscalerOutputToDx11(D3D11_UPSCALER_RESOURCE_CACHE_C& cache, UINT frameIndex);
+    // InView: rectangle of the shared output copied to InDstX/InDstY, nullptr copies the whole texture
+    static bool CopyUpscalerOutputToDx11(D3D11_UPSCALER_RESOURCE_CACHE_C& cache, UINT frameIndex,
+                                         const D3D11_BOX* InView = nullptr, UINT InDstX = 0, UINT InDstY = 0);
 
     static bool CheckMask(ResourceMask mask, ResourceMask resource);
 
