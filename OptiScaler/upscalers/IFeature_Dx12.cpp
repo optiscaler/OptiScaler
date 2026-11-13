@@ -126,6 +126,60 @@ ID3D12Resource* IFeature_Dx12::PadInput(ID3D12GraphicsCommandList* InCommandList
     return copy->Buffer();
 }
 
+bool IFeature_Dx12::CheckPadRecreation(NVSDK_NGX_Parameter* InParameters)
+{
+    unsigned int upscaleWidth = 0;
+    unsigned int upscaleHeight = 0;
+    InParameters->Get("FSR.upscaleSize.width", &upscaleWidth);
+    InParameters->Get("FSR.upscaleSize.height", &upscaleHeight);
+
+    if (upscaleWidth == 0 || upscaleHeight == 0)
+        return false;
+
+    // Padding only shrinks, a bigger upscale size needs the max size upscaler back
+    unsigned int maxWidth = 0;
+    unsigned int maxHeight = 0;
+    InParameters->Get("FSR.maxUpscaleSize.width", &maxWidth);
+    InParameters->Get("FSR.maxUpscaleSize.height", &maxHeight);
+
+    if ((upscaleWidth > DisplayWidth() || upscaleHeight > DisplayHeight()) &&
+        (DisplayWidth() < maxWidth || DisplayHeight() < maxHeight))
+    {
+        LOG_INFO("Upscale size {}x{} is bigger than {}x{}, recreating the upscaler for the max size", upscaleWidth,
+                 upscaleHeight, DisplayWidth(), DisplayHeight());
+        InParameters->Set("OptiScaler.PadExactUpscaleSize", 0);
+        State::Instance().changeBackend[Handle()->Id] = true;
+        return true;
+    }
+
+    if (upscaleWidth == DisplayWidth() && upscaleHeight == DisplayHeight())
+    {
+        _padStableFrames = 0;
+        return false;
+    }
+
+    if (upscaleWidth != _padLastUpscaleWidth || upscaleHeight != _padLastUpscaleHeight)
+    {
+        _padLastUpscaleWidth = upscaleWidth;
+        _padLastUpscaleHeight = upscaleHeight;
+        _padStableFrames = 0;
+        return false;
+    }
+
+    // Padded this frame too, the new upscaler takes over on the next one
+    if (++_padStableFrames == PadStableFrames)
+    {
+        LOG_INFO("Upscale size {}x{} stayed the same for {} frames, recreating the upscaler for it", upscaleWidth,
+                 upscaleHeight, PadStableFrames);
+        InParameters->Set("OptiScaler.PadExactUpscaleSize", 1);
+        InParameters->Set("OptiScaler.PadExactWidth", upscaleWidth);
+        InParameters->Set("OptiScaler.PadExactHeight", upscaleHeight);
+        State::Instance().changeBackend[Handle()->Id] = true;
+    }
+
+    return false;
+}
+
 bool IFeature_Dx12::PadInputs(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters,
                               PadRestore& OutRestore, uint32_t& OutUpscaleWidth, uint32_t& OutUpscaleHeight)
 {
@@ -357,6 +411,10 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     uint32_t padUpscaleWidth = 0;
     uint32_t padUpscaleHeight = 0;
     const bool padding = _padToMaxUpscaleSize;
+
+    if (padding && CheckPadRecreation(InParameters))
+        return true;
+
     const bool padded =
         padding && PadInputs(InCommandList, InParameters, padRestore, padUpscaleWidth, padUpscaleHeight);
 

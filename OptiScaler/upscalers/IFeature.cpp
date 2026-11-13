@@ -134,14 +134,42 @@ bool IFeature::SetInitParameters(NVSDK_NGX_Parameter* InParameters)
 
         GetDynamicOutputResolution(InParameters, &outWidth, &outHeight);
 
-        // Created for the max render size, the padded inputs never go above it. Games round each upscale size's
-        // render up, padded it can be a few pixels over the max one.
+        // Created for the max sizes, or for an upscale size that stayed the same long enough. Games round each
+        // upscale size's render up, padded it can be a few pixels over the one scaled from the max.
         if (_padToMaxUpscaleSize)
         {
-            InParameters->Get("FSR.maxRenderSize.width", &width);
-            InParameters->Get("FSR.maxRenderSize.height", &height);
-            width += 16;
-            height += 16;
+            unsigned int maxWidth = 0;
+            unsigned int maxHeight = 0;
+            unsigned int maxRenderWidth = 0;
+            unsigned int maxRenderHeight = 0;
+            InParameters->Get("FSR.maxUpscaleSize.width", &maxWidth);
+            InParameters->Get("FSR.maxUpscaleSize.height", &maxHeight);
+            InParameters->Get("FSR.maxRenderSize.width", &maxRenderWidth);
+            InParameters->Get("FSR.maxRenderSize.height", &maxRenderHeight);
+
+            if (maxWidth > 0 && maxHeight > 0 && maxRenderWidth > 0 && maxRenderHeight > 0)
+            {
+                outWidth = maxWidth;
+                outHeight = maxHeight;
+
+                // The size that stayed the same, recorded when the recreation was requested
+                int exact = 0;
+                unsigned int exactWidth = 0;
+                unsigned int exactHeight = 0;
+                InParameters->Get("OptiScaler.PadExactUpscaleSize", &exact);
+                InParameters->Get("OptiScaler.PadExactWidth", &exactWidth);
+                InParameters->Get("OptiScaler.PadExactHeight", &exactHeight);
+
+                if (exact && exactWidth > 0 && exactHeight > 0 && exactWidth <= maxWidth && exactHeight <= maxHeight)
+                {
+                    outWidth = exactWidth;
+                    outHeight = exactHeight;
+                }
+
+                // Never above the output, the display size would grow past the upscale size
+                width = std::min((unsigned int) ((uint64_t) maxRenderWidth * outWidth / maxWidth) + 16, outWidth);
+                height = std::min((unsigned int) ((uint64_t) maxRenderHeight * outHeight / maxHeight) + 16, outHeight);
+            }
         }
 
         // Thanks to Crytek added these checks

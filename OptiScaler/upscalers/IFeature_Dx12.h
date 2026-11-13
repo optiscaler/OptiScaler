@@ -48,6 +48,15 @@ class IFeature_Dx12 : public virtual IFeature
     std::array<std::unique_ptr<RC_Dx12>, PadSlotCount> PadCopy;
     bool _padWarned = false;
 
+    // Padding costs the bigger size's work every frame, an upscale size kept this long gets its own upscaler
+    static constexpr uint32_t PadStableFrames = 60;
+    uint32_t _padStableFrames = 0;
+    uint32_t _padLastUpscaleWidth = 0;
+    uint32_t _padLastUpscaleHeight = 0;
+
+    // Recreates for an upscale size padding can't reach or one that stayed the same, true when this frame can't run
+    bool CheckPadRecreation(NVSDK_NGX_Parameter* InParameters);
+
     // Game's resources and render size the padding replaced, restored after EvaluateInternal
     struct PadRestore
     {

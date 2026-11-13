@@ -104,10 +104,14 @@ static bool CreateDLSSContext(ffxContext handle, const ffxDispatchDescUpscale* p
 
     // DLSS/XeSS stay at the max sizes, the inputs of smaller upscale sizes get padded to the max size's ratio
     const bool padToMax = State::Instance().gameQuirks & GameQuirk::PadToMaxUpscaleSize &&
-                          initParams->maxRenderSize.width > 0 && initParams->maxRenderSize.height > 0;
+                          initParams->maxRenderSize.width > 0 && initParams->maxRenderSize.height > 0 &&
+                          initParams->maxUpscaleSize.width > 0 && initParams->maxUpscaleSize.height > 0;
     params->Set("OptiScaler.PadToMaxUpscaleSize", padToMax ? 1 : 0);
+    params->Set("OptiScaler.PadExactUpscaleSize", 0);
     params->Set("FSR.maxRenderSize.width", initParams->maxRenderSize.width);
     params->Set("FSR.maxRenderSize.height", initParams->maxRenderSize.height);
+    params->Set("FSR.maxUpscaleSize.width", initParams->maxUpscaleSize.width);
+    params->Set("FSR.maxUpscaleSize.height", initParams->maxUpscaleSize.height);
 
     auto renderWidth = padToMax ? initParams->maxRenderSize.width : pExecParams->renderSize.width;
     auto width = pExecParams->upscaleSize.width > 0 && !padToMax ? pExecParams->upscaleSize.width
