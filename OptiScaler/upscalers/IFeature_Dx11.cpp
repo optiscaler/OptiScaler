@@ -341,17 +341,13 @@ bool IFeature_Dx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_Par
                              } });
     }
 
-    // The upscaler and the passes work on the view at (0, 0) of our buffers, this last pass writes it to the output
-    // base. Native subrect upscalers without passes write there by themselves.
-    const bool nativeSubrects = upscaler == Upscaler::XeSS || upscaler == Upscaler::DLSS || upscaler == Upscaler::DLSSD;
-
     D3D11_TEXTURE2D_DESC outputDesc {};
     ComPtr<ID3D11Texture2D> outputTexture;
 
     if (paramOutput != nullptr && paramOutput->QueryInterface(IID_PPV_ARGS(&outputTexture)) == S_OK)
         outputTexture->GetDesc(&outputDesc);
 
-    if (outputTexture && outputRect.HasOffset() && (!nativeSubrects || !pipeline.empty()) &&
+    if (outputTexture && PlacesOutput(outputRect, !pipeline.empty()) &&
         SubrectFits(SubrectSlot::Output, outputRect, outputDesc.Width, outputDesc.Height))
     {
         auto& slotCopy = SubrectCopy[(size_t) SubrectSlot::Output];
@@ -407,10 +403,7 @@ bool IFeature_Dx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_Par
     InParameters->Set(NVSDK_NGX_Parameter_Output, currentTarget);
 
     if (placeOutput)
-    {
-        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_X, 0u);
-        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_Y, 0u);
-    }
+        SetSubrectBase(InParameters, SubrectSlot::Output, 0, 0);
 
     UpscalerTime->Start(InDeviceContext);
 
@@ -421,10 +414,7 @@ bool IFeature_Dx11::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_Par
     InParameters->Set(NVSDK_NGX_Parameter_Output, paramOutput);
 
     if (placeOutput)
-    {
-        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_X, outputRect.X);
-        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_Y, outputRect.Y);
-    }
+        SetSubrectBase(InParameters, SubrectSlot::Output, outputRect.X, outputRect.Y);
 
     if (hasSharpness)
         InParameters->Set(NVSDK_NGX_Parameter_Sharpness, originalSharpness);

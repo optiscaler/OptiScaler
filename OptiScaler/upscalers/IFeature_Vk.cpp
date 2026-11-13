@@ -327,12 +327,9 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
               } });
     }
 
-    // The upscaler and the passes work on the view at (0, 0) of our image, this last pass writes it to the output
-    // base. Native subrect upscalers without passes write there by themselves.
-    const bool nativeSubrects = upscaler == Upscaler::XeSS || upscaler == Upscaler::DLSS || upscaler == Upscaler::DLSSD;
     bool placeOutput = false;
 
-    if (paramOutput && outputRect.HasOffset() && (!nativeSubrects || !pipeline.empty()) &&
+    if (paramOutput && PlacesOutput(outputRect, !pipeline.empty()) &&
         SubrectFits(SubrectSlot::Output, outputRect, originalOutput.Width, originalOutput.Height))
     {
         auto& slotCopy = SubrectCopy[(size_t) SubrectSlot::Output];
@@ -415,10 +412,7 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
     }
 
     if (placeOutput)
-    {
-        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_X, 0u);
-        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_Y, 0u);
-    }
+        SetSubrectBase(InParameters, SubrectSlot::Output, 0, 0);
 
     UpscalerTime->Start(InCmdBuffer);
 
@@ -438,10 +432,7 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
     }
 
     if (placeOutput)
-    {
-        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_X, outputRect.X);
-        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_Y, outputRect.Y);
-    }
+        SetSubrectBase(InParameters, SubrectSlot::Output, outputRect.X, outputRect.Y);
 
     if (hasSharpness)
         InParameters->Set(NVSDK_NGX_Parameter_Sharpness, originalSharpness);

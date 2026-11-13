@@ -294,6 +294,19 @@ void IFeature::ReadSubrects(const NVSDK_NGX_Parameter* InParameters)
         output.X = output.Y = 0;
 }
 
+bool IFeature::PlacesOutput(const Subrect& InRect, bool InHasPasses) const
+{
+    const auto upscaler = GetUpscalerType();
+    const bool nativeSubrects = upscaler == Upscaler::XeSS || upscaler == Upscaler::DLSS || upscaler == Upscaler::DLSSD;
+    return InRect.HasOffset() && (!nativeSubrects || InHasPasses);
+}
+
+void IFeature::SetSubrectBase(NVSDK_NGX_Parameter* InParameters, SubrectSlot InSlot, uint32_t InX, uint32_t InY)
+{
+    InParameters->Set(SubrectBaseKeys[(size_t) InSlot].first, InX);
+    InParameters->Set(SubrectBaseKeys[(size_t) InSlot].second, InY);
+}
+
 bool IFeature::SubrectFits(SubrectSlot InSlot, const Subrect& InRect, uint64_t InWidth, uint32_t InHeight)
 {
     const uint32_t slotBit = 1u << (uint32_t) InSlot;

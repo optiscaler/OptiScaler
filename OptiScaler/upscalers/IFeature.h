@@ -152,6 +152,10 @@ class IFeature
     const Subrect& GetSubrect(SubrectSlot InSlot) const { return _subrects[(size_t) InSlot]; }
     // Warns once when the subrect is outside the texture, otherwise logs it once
     bool SubrectFits(SubrectSlot InSlot, const Subrect& InRect, uint64_t InWidth, uint32_t InHeight);
+    // Upscalers and passes work on the view at (0, 0) of our buffers, a last pass writes it to the output base.
+    // Native subrect upscalers without passes write there by themselves.
+    bool PlacesOutput(const Subrect& InRect, bool InHasPasses) const;
+    static void SetSubrectBase(NVSDK_NGX_Parameter* InParameters, SubrectSlot InSlot, uint32_t InX, uint32_t InY);
     // Warns once that a mask with this integer format is ignored
     void WarnIntegerMask(uint32_t InFormat);
     void GetDynamicOutputResolution(NVSDK_NGX_Parameter* InParameters, unsigned int* width, unsigned int* height);

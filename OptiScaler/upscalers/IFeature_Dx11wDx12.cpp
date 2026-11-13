@@ -443,8 +443,7 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
 
     auto zeroSubrect = [&](SubrectSlot slot)
     {
-        InParameters->Set(SubrectBaseKeys[(size_t) slot].first, 0u);
-        InParameters->Set(SubrectBaseKeys[(size_t) slot].second, 0u);
+        SetSubrectBase(InParameters, slot, 0, 0);
         zeroedSubrects |= 1u << (uint32_t) slot;
     };
 
@@ -556,10 +555,7 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
     for (uint32_t slot = 0; slot < (uint32_t) SubrectSlot::Count; slot++)
     {
         if (zeroedSubrects & (1u << slot))
-        {
-            InParameters->Set(SubrectBaseKeys[slot].first, _subrects[slot].X);
-            InParameters->Set(SubrectBaseKeys[slot].second, _subrects[slot].Y);
-        }
+            SetSubrectBase(InParameters, (SubrectSlot) slot, _subrects[slot].X, _subrects[slot].Y);
     }
 
     if (commandListRecording)

@@ -316,12 +316,9 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
               } });
     }
 
-    // The upscaler and the passes work on the view at (0, 0) of our buffers, this last pass writes it to the output
-    // base. Native subrect upscalers without passes write there by themselves.
-    const bool nativeSubrects = upscaler == Upscaler::XeSS || upscaler == Upscaler::DLSS || upscaler == Upscaler::DLSSD;
     bool placeOutput = false;
 
-    if (paramOutput && outputRect.HasOffset() && (!nativeSubrects || !pipeline.empty()) &&
+    if (paramOutput && PlacesOutput(outputRect, !pipeline.empty()) &&
         CheckSubrect(SubrectSlot::Output, outputRect, paramOutput))
     {
         // By value, the lambdas run after this scope
@@ -374,10 +371,7 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     InParameters->Set(NVSDK_NGX_Parameter_Output, currentTarget);
 
     if (placeOutput)
-    {
-        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_X, 0u);
-        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_Y, 0u);
-    }
+        SetSubrectBase(InParameters, SubrectSlot::Output, 0, 0);
 
     UpscalerTime->Start(InCommandList);
 
@@ -398,10 +392,7 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     InParameters->Set(NVSDK_NGX_Parameter_Output, paramOutput);
 
     if (placeOutput)
-    {
-        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_X, outputRect.X);
-        InParameters->Set(NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_Y, outputRect.Y);
-    }
+        SetSubrectBase(InParameters, SubrectSlot::Output, outputRect.X, outputRect.Y);
 
     if (hasSharpness)
         InParameters->Set(NVSDK_NGX_Parameter_Sharpness, originalSharpness);
