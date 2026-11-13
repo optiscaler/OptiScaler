@@ -65,20 +65,25 @@ ResourceCopy_Vk::ResourceCopy_Vk(std::string InName, VkDevice InDevice, VkPhysic
             std::ranges::none_of(_descriptorSets, [](VkDescriptorSet set) { return set == VK_NULL_HANDLE; });
 }
 
-VkFormat ResourceCopy_Vk::BufferFormat(VkFormat InFormat, bool InDepth) const
+VkFormat ResourceCopy_Vk::BufferFormat(VkFormat InFormat, bool InDepth)
 {
     // Depth formats can't be storage images, the shader reads the depth aspect as float
     if (InDepth)
         return VK_FORMAT_R32_SFLOAT;
 
+    if (InFormat == _querySource)
+        return _queryResult;
+
     // sRGB, BGRA and others without storage support, float keeps the precision of what the shader reads
     VkFormatProperties properties {};
     vkGetPhysicalDeviceFormatProperties(_physicalDevice, InFormat, &properties);
 
-    if (!(properties.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT))
-        return VK_FORMAT_R16G16B16A16_SFLOAT;
+    _querySource = InFormat;
+    _queryResult = (properties.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT)
+                       ? InFormat
+                       : VK_FORMAT_R16G16B16A16_SFLOAT;
 
-    return InFormat;
+    return _queryResult;
 }
 
 bool ResourceCopy_Vk::IsInteger(VkFormat InFormat)

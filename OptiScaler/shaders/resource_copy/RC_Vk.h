@@ -8,6 +8,10 @@ class ResourceCopy_Vk : public Shader_Vk
     uint32_t InNumThreadsX = 16;
     uint32_t InNumThreadsY = 16;
 
+    // Last BufferFormat query, the source format rarely changes
+    VkFormat _querySource = VK_FORMAT_MAX_ENUM;
+    VkFormat _queryResult = VK_FORMAT_UNDEFINED;
+
   public:
     ResourceCopy_Vk(std::string InName, VkDevice InDevice, VkPhysicalDevice InPhysicalDevice);
     ~ResourceCopy_Vk() = default;
@@ -17,7 +21,7 @@ class ResourceCopy_Vk : public Shader_Vk
                   VkExtent2D OutExtent, VkOffset2D InSrc = {}, VkOffset2D InDst = {});
 
     // Storage image format for a copy of InFormat, depth is copied to R32_SFLOAT
-    VkFormat BufferFormat(VkFormat InFormat, bool InDepth) const;
+    VkFormat BufferFormat(VkFormat InFormat, bool InDepth);
 
     // Integer formats can't be read as float
     static bool IsInteger(VkFormat InFormat);
