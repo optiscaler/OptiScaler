@@ -6,7 +6,6 @@
 #include "IFeature_Dx12.h"
 #include "State.h"
 #include <misc/DeferredRelease.h>
-#include <magic_enum.hpp>
 
 void IFeature_Dx12::ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
                                     D3D12_RESOURCE_STATES InBeforeState, D3D12_RESOURCE_STATES InAfterState) const
@@ -40,28 +39,10 @@ void IFeature_Dx12::RestoreBarriers(ID3D12GraphicsCommandList* InCommandList)
 
 bool IFeature_Dx12::CheckSubrect(SubrectSlot InSlot, const Subrect& InRect, ID3D12Resource* InResource)
 {
-    const uint32_t slotBit = 1u << (uint32_t) InSlot;
     const auto desc = InResource->GetDesc();
 
-    if ((uint64_t) InRect.X + InRect.Width > desc.Width || (uint64_t) InRect.Y + InRect.Height > desc.Height)
-    {
-        if (!(_subrectWarned & slotBit))
-        {
-            LOG_WARN("{} subrect {}x{} at ({}, {}) is outside the {}x{} texture, using it as is",
-                     magic_enum::enum_name(InSlot), InRect.Width, InRect.Height, InRect.X, InRect.Y, desc.Width,
-                     desc.Height);
-            _subrectWarned |= slotBit;
-        }
-
+    if (!SubrectFits(InSlot, InRect, desc.Width, desc.Height))
         return false;
-    }
-
-    if (!(_subrectLogged & slotBit))
-    {
-        LOG_INFO("{} subrect {}x{} at ({}, {}) of the {}x{} texture, copying it for {}", magic_enum::enum_name(InSlot),
-                 InRect.Width, InRect.Height, InRect.X, InRect.Y, desc.Width, desc.Height, Name());
-        _subrectLogged |= slotBit;
-    }
 
     auto& copy = SubrectCopy[(size_t) InSlot];
 
@@ -326,11 +307,13 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     }
 
     // The upscaler and the passes work on the view at (0, 0) of our buffers, this last pass writes it to the output
-    // base. Native subrect upscalers without passes write there by themselves.
+    // base. Upscalers write only their view by themselves, at (0, 0) or at the base for native subrect ones, but the
+    // passes write the whole texture over the other views.
     const bool nativeSubrects = upscaler == Upscaler::XeSS || upscaler == Upscaler::DLSS || upscaler == Upscaler::DLSSD;
     bool placeOutput = false;
 
-    if (paramOutput && outputRect.HasOffset() && (!nativeSubrects || !pipeline.empty()) &&
+    if (paramOutput && outputRect.IsPartOf(paramOutput->GetDesc().Width, paramOutput->GetDesc().Height) &&
+        (!pipeline.empty() || (outputRect.HasOffset() && !nativeSubrects)) &&
         CheckSubrect(SubrectSlot::Output, outputRect, paramOutput))
     {
         // By value, the lambdas run after this scope

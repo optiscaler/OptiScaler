@@ -993,7 +993,8 @@ Dx11WithDx12::PrepareUpscalerResources(D3D11_UPSCALER_RESOURCE_CACHE_C& cache, c
     return result;
 }
 
-bool Dx11WithDx12::CopyUpscalerOutputToDx11(D3D11_UPSCALER_RESOURCE_CACHE_C& cache, UINT frameIndex)
+bool Dx11WithDx12::CopyUpscalerOutputToDx11(D3D11_UPSCALER_RESOURCE_CACHE_C& cache, UINT frameIndex,
+                                            const D3D11_BOX* InView, UINT InDstX, UINT InDstY)
 {
     if (Dx11DeviceContext == nullptr)
     {
@@ -1016,8 +1017,13 @@ bool Dx11WithDx12::CopyUpscalerOutputToDx11(D3D11_UPSCALER_RESOURCE_CACHE_C& cac
     }
 
     // An already shared output is written in place, copying a resource onto itself is invalid
-    if (cache.ParamOutput[outputIndex] != static_cast<ID3D11Resource*>(cache.Output[outputIndex].SharedTexture))
-        Dx11DeviceContext->CopyResource(cache.ParamOutput[outputIndex], cache.Output[outputIndex].SharedTexture);
+    auto output = cache.ParamOutput[outputIndex];
+    auto shared = cache.Output[outputIndex].SharedTexture;
+
+    if (output != static_cast<ID3D11Resource*>(shared) && InView != nullptr)
+        Dx11DeviceContext->CopySubresourceRegion(output, 0, InDstX, InDstY, 0, shared, 0, InView);
+    else if (output != static_cast<ID3D11Resource*>(shared))
+        Dx11DeviceContext->CopyResource(output, shared);
 
     // After a CPU wait the D3D11 queue is idle, submit right away instead of waiting for the next flush
     if (UseCpuWaitForDx12())

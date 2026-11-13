@@ -50,9 +50,26 @@ struct Subrect
     uint32_t Y = 0;
     uint32_t Width = 0;
     uint32_t Height = 0;
+    bool Given = false; // The game passed the base, even (0, 0)
 
     bool HasOffset() const { return X != 0 || Y != 0; }
+
+    // Only part of the texture belongs to this view, the rest can be other views
+    bool IsPartOf(uint64_t InWidth, uint32_t InHeight) const
+    {
+        return HasOffset() || (Given && (Width < InWidth || Height < InHeight));
+    }
 };
+
+// Base X/Y parameter names, in SubrectSlot order
+inline constexpr std::array<std::pair<const char*, const char*>, (size_t) SubrectSlot::Count> SubrectBaseKeys = { {
+    { NVSDK_NGX_Parameter_DLSS_Input_Color_Subrect_Base_X, NVSDK_NGX_Parameter_DLSS_Input_Color_Subrect_Base_Y },
+    { NVSDK_NGX_Parameter_DLSS_Input_Depth_Subrect_Base_X, NVSDK_NGX_Parameter_DLSS_Input_Depth_Subrect_Base_Y },
+    { NVSDK_NGX_Parameter_DLSS_Input_MV_SubrectBase_X, NVSDK_NGX_Parameter_DLSS_Input_MV_SubrectBase_Y },
+    { NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_SubrectBase_X,
+      NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_SubrectBase_Y },
+    { NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_X, NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_Y },
+} };
 
 struct DetailedGpuTime
 {
@@ -132,6 +149,8 @@ class IFeature
     void GetRenderResolution(const NVSDK_NGX_Parameter* InParameters, unsigned int* OutWidth, unsigned int* OutHeight);
     void ReadSubrects(const NVSDK_NGX_Parameter* InParameters);
     const Subrect& GetSubrect(SubrectSlot InSlot) const { return _subrects[(size_t) InSlot]; }
+    // Warns once when the subrect is outside the texture, otherwise logs it once
+    bool SubrectFits(SubrectSlot InSlot, const Subrect& InRect, uint64_t InWidth, uint32_t InHeight);
     void GetDynamicOutputResolution(NVSDK_NGX_Parameter* InParameters, unsigned int* width, unsigned int* height);
     float GetSharpness(const NVSDK_NGX_Parameter* InParameters);
 

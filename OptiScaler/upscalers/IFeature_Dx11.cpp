@@ -5,6 +5,39 @@
 
 using Microsoft::WRL::ComPtr;
 
+ID3D11Resource* IFeature_Dx11::SubrectInput(ID3D11DeviceContext* InContext, ID3D11Resource* InResource,
+                                            SubrectSlot InSlot)
+{
+    const auto& rect = GetSubrect(InSlot);
+
+    if (InResource == nullptr || !rect.HasOffset())
+        return InResource;
+
+    ComPtr<ID3D11Texture2D> texture;
+
+    if (InResource->QueryInterface(IID_PPV_ARGS(&texture)) != S_OK)
+        return InResource;
+
+    D3D11_TEXTURE2D_DESC desc {};
+    texture->GetDesc(&desc);
+
+    if (!SubrectFits(InSlot, rect, desc.Width, desc.Height))
+        return InResource;
+
+    auto& copy = SubrectCopy[(size_t) InSlot];
+
+    if (copy == nullptr)
+        copy = std::make_unique<RC_Dx11>("Subrect Copy", Device, InSlot == SubrectSlot::Depth);
+
+    if (!copy->IsInit() || !copy->CreateBufferResource(Device, InResource, rect.Width, rect.Height) ||
+        !copy->Dispatch(InContext, texture.Get(), copy->Buffer(), rect.X, rect.Y, 0, 0, rect.Width, rect.Height))
+    {
+        return InResource;
+    }
+
+    return copy->Buffer();
+}
+
 bool IFeature_Dx11::Init(ID3D11Device* InDevice, ID3D11DeviceContext* InContext, NVSDK_NGX_Parameter* InParameters)
 {
     if (InDevice == nullptr)

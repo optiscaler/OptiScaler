@@ -1,56 +1,8 @@
 #include "pch.h"
 #include "RC_Dx12.h"
 
+#include "RC_Common.h"
 #include "precompile/rc_offset_Shader.h"
-
-// Typeless formats TranslateTypelessFormats doesn't cover, R16 is D16 depth or the half float FFX assumes
-static DXGI_FORMAT SrvFormat(DXGI_FORMAT format, bool depth)
-{
-    switch (format)
-    {
-    case DXGI_FORMAT_R16_TYPELESS:
-        return depth ? DXGI_FORMAT_R16_UNORM : DXGI_FORMAT_R16_FLOAT;
-
-    case DXGI_FORMAT_R8_TYPELESS:
-        return DXGI_FORMAT_R8_UNORM;
-
-    case DXGI_FORMAT_B8G8R8X8_TYPELESS:
-        return DXGI_FORMAT_B8G8R8X8_UNORM;
-
-    default:
-        return DXGI_FORMAT_UNKNOWN;
-    }
-}
-
-// The copy must be writable through a UAV and read back the same values
-static DXGI_FORMAT BufferFormat(DXGI_FORMAT format, bool depth)
-{
-    // Depth formats can't be UAVs, the shader reads the depth plane as float
-    if (depth)
-        return DXGI_FORMAT_R32_FLOAT;
-
-    switch (format)
-    {
-    // sRGB can't be a UAV, the shader reads them decoded so keep the precision
-    case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
-    case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
-    case DXGI_FORMAT_B8G8R8X8_UNORM_SRGB:
-        return DXGI_FORMAT_R16G16B16A16_FLOAT;
-
-    // BGRA UAV stores are optional
-    case DXGI_FORMAT_B8G8R8A8_TYPELESS:
-    case DXGI_FORMAT_B8G8R8A8_UNORM:
-    case DXGI_FORMAT_B8G8R8X8_TYPELESS:
-    case DXGI_FORMAT_B8G8R8X8_UNORM:
-        return DXGI_FORMAT_R8G8B8A8_UNORM;
-
-    default:
-        if (auto srvFormat = SrvFormat(format, depth); srvFormat != DXGI_FORMAT_UNKNOWN)
-            return srvFormat;
-
-        return format;
-    }
-}
 
 bool RC_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InSource, uint32_t InWidth,
                                    uint32_t InHeight, D3D12_RESOURCE_STATES InState)
@@ -58,7 +10,7 @@ bool RC_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InSou
     if (InSource == nullptr)
         return false;
 
-    auto format = BufferFormat(InSource->GetDesc().Format, _depth);
+    auto format = RC_Formats::BufferFormat(InSource->GetDesc().Format, _depth);
     uint64_t width = InWidth;
     uint32_t height = InHeight;
 
@@ -105,7 +57,7 @@ bool RC_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InR
     FrameDescriptorHeap& currentHeap = _frameHeaps[_counter];
 
     CreateShaderResourceView(_device, InResource, currentHeap.GetSrvCPU(0),
-                             SrvFormat(InResource->GetDesc().Format, _depth));
+                             RC_Formats::SrvFormat(InResource->GetDesc().Format, _depth));
     CreateUnorderedAccessView(_device, OutResource, currentHeap.GetUavCPU(0), 0);
 
     InternalConstants constants {};

@@ -6,6 +6,7 @@
 #include <shaders/output_scaling/OS_Dx11.h>
 #include <shaders/bias/Bias_Dx11.h>
 #include <shaders/magnifier/Magnifier_Dx11.h>
+#include <shaders/resource_copy/RC_Dx11.h>
 #include <gpu_time/GpuTime_Dx11.h>
 
 class IFeature_Dx11 : public virtual IFeature
@@ -34,6 +35,12 @@ class IFeature_Dx11 : public virtual IFeature
     std::unique_ptr<Magnifier_Dx11> Magnifier = nullptr;
 
     std::unique_ptr<GpuTime_Dx11> UpscalerTime = nullptr;
+
+    // Created on the first view that doesn't start at (0, 0)
+    std::array<std::unique_ptr<RC_Dx11>, (size_t) SubrectSlot::Count> SubrectCopy;
+
+    // Resource for backends without subrect support, a copy of the view when it doesn't start at (0, 0)
+    ID3D11Resource* SubrectInput(ID3D11DeviceContext* InContext, ID3D11Resource* InResource, SubrectSlot InSlot);
 
     virtual bool InitInternal(ID3D11DeviceContext* InContext, NVSDK_NGX_Parameter* InParameters) = 0;
     virtual bool EvaluateInternal(ID3D11DeviceContext* DeviceContext, NVSDK_NGX_Parameter* InParameters) = 0;

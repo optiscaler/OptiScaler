@@ -2,6 +2,8 @@
 #include <Config.h>
 #include "IFeature.h"
 
+#include <magic_enum.hpp>
+
 void IFeature::SetHandle(unsigned int InHandleId)
 {
     _handle = new NVSDK_NGX_Handle { InHandleId };
@@ -269,21 +271,12 @@ void IFeature::GetRenderResolution(const NVSDK_NGX_Parameter* InParameters, unsi
 
 void IFeature::ReadSubrects(const NVSDK_NGX_Parameter* InParameters)
 {
-    static constexpr std::array<std::pair<const char*, const char*>, (size_t) SubrectSlot::Count> baseKeys = { {
-        { NVSDK_NGX_Parameter_DLSS_Input_Color_Subrect_Base_X, NVSDK_NGX_Parameter_DLSS_Input_Color_Subrect_Base_Y },
-        { NVSDK_NGX_Parameter_DLSS_Input_Depth_Subrect_Base_X, NVSDK_NGX_Parameter_DLSS_Input_Depth_Subrect_Base_Y },
-        { NVSDK_NGX_Parameter_DLSS_Input_MV_SubrectBase_X, NVSDK_NGX_Parameter_DLSS_Input_MV_SubrectBase_Y },
-        { NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_SubrectBase_X,
-          NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_SubrectBase_Y },
-        { NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_X, NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_Y },
-    } };
-
-    for (size_t i = 0; i < baseKeys.size(); i++)
+    for (size_t i = 0; i < SubrectBaseKeys.size(); i++)
     {
         auto& rect = _subrects[i];
         rect = { 0, 0, _renderWidth, _renderHeight };
-        InParameters->Get(baseKeys[i].first, &rect.X);
-        InParameters->Get(baseKeys[i].second, &rect.Y);
+        rect.Given = InParameters->Get(SubrectBaseKeys[i].first, &rect.X) == NVSDK_NGX_Result_Success;
+        rect.Given |= InParameters->Get(SubrectBaseKeys[i].second, &rect.Y) == NVSDK_NGX_Result_Success;
     }
 
     // Display resolution motion vectors and the output keep the creation size, even with dynamic resolution
@@ -298,7 +291,33 @@ void IFeature::ReadSubrects(const NVSDK_NGX_Parameter* InParameters)
     output.Height = DisplayHeight();
 
     if (!_outputSubrects)
-        output.X = output.Y = 0;
+        output = { 0, 0, output.Width, output.Height };
+}
+
+bool IFeature::SubrectFits(SubrectSlot InSlot, const Subrect& InRect, uint64_t InWidth, uint32_t InHeight)
+{
+    const uint32_t slotBit = 1u << (uint32_t) InSlot;
+
+    if ((uint64_t) InRect.X + InRect.Width > InWidth || (uint64_t) InRect.Y + InRect.Height > InHeight)
+    {
+        if (!(_subrectWarned & slotBit))
+        {
+            LOG_WARN("{} subrect {}x{} at ({}, {}) is outside the {}x{} texture, using it as is",
+                     magic_enum::enum_name(InSlot), InRect.Width, InRect.Height, InRect.X, InRect.Y, InWidth, InHeight);
+            _subrectWarned |= slotBit;
+        }
+
+        return false;
+    }
+
+    if (!(_subrectLogged & slotBit))
+    {
+        LOG_INFO("{} subrect {}x{} at ({}, {}) of the {}x{} texture, copying it for {}", magic_enum::enum_name(InSlot),
+                 InRect.Width, InRect.Height, InRect.X, InRect.Y, InWidth, InHeight, Name());
+        _subrectLogged |= slotBit;
+    }
+
+    return true;
 }
 
 float IFeature::GetSharpness(const NVSDK_NGX_Parameter* InParameters)
