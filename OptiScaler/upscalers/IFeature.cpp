@@ -298,11 +298,13 @@ bool IFeature::SubrectFits(SubrectSlot InSlot, const Subrect& InRect, uint64_t I
 {
     const uint32_t slotBit = 1u << (uint32_t) InSlot;
 
-    if ((uint64_t) InRect.X + InRect.Width > InWidth || (uint64_t) InRect.Y + InRect.Height > InHeight)
+    // A zero size is an unknown render size, copy buffers would take the source size
+    if (InRect.Width == 0 || InRect.Height == 0 || (uint64_t) InRect.X + InRect.Width > InWidth ||
+        (uint64_t) InRect.Y + InRect.Height > InHeight)
     {
         if (!(_subrectWarned & slotBit))
         {
-            LOG_WARN("{} subrect {}x{} at ({}, {}) is outside the {}x{} texture, using it as is",
+            LOG_WARN("{} subrect {}x{} at ({}, {}) doesn't fit the {}x{} texture, using it as is",
                      magic_enum::enum_name(InSlot), InRect.Width, InRect.Height, InRect.X, InRect.Y, InWidth, InHeight);
             _subrectWarned |= slotBit;
         }
