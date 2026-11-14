@@ -753,8 +753,9 @@ void MenuOverlayDx::Present(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
         if (!_dx12Device)
             LOG_DEBUG("D3D12CommandQueue captured");
 
-        if (!CheckForRealObject(__FUNCTION__, pDevice, &currentSCCommandQueue))
-            currentSCCommandQueue = pDevice;
+        // pDevice isn't always the queue interface (seen on Optimus), only the queried pointer is
+        if (!CheckForRealObject(__FUNCTION__, cq, &currentSCCommandQueue))
+            currentSCCommandQueue = cq;
 
         if (((ID3D12CommandQueue*) currentSCCommandQueue)->GetDevice(IID_PPV_ARGS(&device12)) == S_OK)
         {
