@@ -126,14 +126,10 @@ ID3D12Resource* IFeature_Dx12::PadInput(ID3D12GraphicsCommandList* InCommandList
     return copy->Buffer();
 }
 
-bool IFeature_Dx12::CheckPadRecreation(NVSDK_NGX_Parameter* InParameters)
+bool IFeature_Dx12::CheckPadRecreation(NVSDK_NGX_Parameter* InParameters, uint32_t InUpscaleWidth,
+                                       uint32_t InUpscaleHeight)
 {
-    unsigned int upscaleWidth = 0;
-    unsigned int upscaleHeight = 0;
-    InParameters->Get("FSR.upscaleSize.width", &upscaleWidth);
-    InParameters->Get("FSR.upscaleSize.height", &upscaleHeight);
-
-    if (upscaleWidth == 0 || upscaleHeight == 0)
+    if (InUpscaleWidth == 0 || InUpscaleHeight == 0)
         return false;
 
     // Padding only shrinks, a bigger upscale size needs the max size upscaler back
@@ -142,26 +138,26 @@ bool IFeature_Dx12::CheckPadRecreation(NVSDK_NGX_Parameter* InParameters)
     InParameters->Get("FSR.maxUpscaleSize.width", &maxWidth);
     InParameters->Get("FSR.maxUpscaleSize.height", &maxHeight);
 
-    if ((upscaleWidth > DisplayWidth() || upscaleHeight > DisplayHeight()) &&
+    if ((InUpscaleWidth > DisplayWidth() || InUpscaleHeight > DisplayHeight()) &&
         (DisplayWidth() < maxWidth || DisplayHeight() < maxHeight))
     {
-        LOG_INFO("Upscale size {}x{} is bigger than {}x{}, recreating the upscaler for the max size", upscaleWidth,
-                 upscaleHeight, DisplayWidth(), DisplayHeight());
+        LOG_INFO("Upscale size {}x{} is bigger than {}x{}, recreating the upscaler for the max size", InUpscaleWidth,
+                 InUpscaleHeight, DisplayWidth(), DisplayHeight());
         InParameters->Set("OptiScaler.PadExactUpscaleSize", 0);
         State::Instance().changeBackend[Handle()->Id] = true;
         return true;
     }
 
-    if (upscaleWidth == DisplayWidth() && upscaleHeight == DisplayHeight())
+    if (InUpscaleWidth == DisplayWidth() && InUpscaleHeight == DisplayHeight())
     {
         _padStableFrames = 0;
         return false;
     }
 
-    if (upscaleWidth != _padLastUpscaleWidth || upscaleHeight != _padLastUpscaleHeight)
+    if (InUpscaleWidth != _padLastUpscaleWidth || InUpscaleHeight != _padLastUpscaleHeight)
     {
-        _padLastUpscaleWidth = upscaleWidth;
-        _padLastUpscaleHeight = upscaleHeight;
+        _padLastUpscaleWidth = InUpscaleWidth;
+        _padLastUpscaleHeight = InUpscaleHeight;
         _padStableFrames = 0;
         return false;
     }
@@ -169,11 +165,11 @@ bool IFeature_Dx12::CheckPadRecreation(NVSDK_NGX_Parameter* InParameters)
     // Padded this frame too, the new upscaler takes over on the next one
     if (++_padStableFrames == PadStableFrames)
     {
-        LOG_INFO("Upscale size {}x{} stayed the same for {} frames, recreating the upscaler for it", upscaleWidth,
-                 upscaleHeight, PadStableFrames);
+        LOG_INFO("Upscale size {}x{} stayed the same for {} frames, recreating the upscaler for it", InUpscaleWidth,
+                 InUpscaleHeight, PadStableFrames);
         InParameters->Set("OptiScaler.PadExactUpscaleSize", 1);
-        InParameters->Set("OptiScaler.PadExactWidth", upscaleWidth);
-        InParameters->Set("OptiScaler.PadExactHeight", upscaleHeight);
+        InParameters->Set("OptiScaler.PadExactWidth", InUpscaleWidth);
+        InParameters->Set("OptiScaler.PadExactHeight", InUpscaleHeight);
         State::Instance().changeBackend[Handle()->Id] = true;
     }
 
@@ -181,15 +177,10 @@ bool IFeature_Dx12::CheckPadRecreation(NVSDK_NGX_Parameter* InParameters)
 }
 
 bool IFeature_Dx12::PadInputs(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters,
-                              PadRestore& OutRestore, uint32_t& OutUpscaleWidth, uint32_t& OutUpscaleHeight)
+                              uint32_t InUpscaleWidth, uint32_t InUpscaleHeight, PadRestore& OutRestore)
 {
-    unsigned int upscaleWidth = 0;
-    unsigned int upscaleHeight = 0;
-    InParameters->Get("FSR.upscaleSize.width", &upscaleWidth);
-    InParameters->Get("FSR.upscaleSize.height", &upscaleHeight);
-
-    if (upscaleWidth == 0 || upscaleHeight == 0 || upscaleWidth > DisplayWidth() || upscaleHeight > DisplayHeight() ||
-        (upscaleWidth == DisplayWidth() && upscaleHeight == DisplayHeight()))
+    if (InUpscaleWidth == 0 || InUpscaleHeight == 0 || InUpscaleWidth > DisplayWidth() ||
+        InUpscaleHeight > DisplayHeight() || (InUpscaleWidth == DisplayWidth() && InUpscaleHeight == DisplayHeight()))
     {
         return false;
     }
@@ -220,15 +211,15 @@ bool IFeature_Dx12::PadInputs(ID3D12GraphicsCommandList* InCommandList, NVSDK_NG
     }
 
     // Same pixel size as the upscale size's render, the upscaler can't take more than it was created with
-    auto padWidth = (uint32_t) ((uint64_t) renderWidth * DisplayWidth() / upscaleWidth);
-    auto padHeight = (uint32_t) ((uint64_t) renderHeight * DisplayHeight() / upscaleHeight);
+    auto padWidth = (uint32_t) ((uint64_t) renderWidth * DisplayWidth() / InUpscaleWidth);
+    auto padHeight = (uint32_t) ((uint64_t) renderHeight * DisplayHeight() / InUpscaleHeight);
 
     if (padWidth > _maxRenderWidth || padHeight > _maxRenderHeight)
     {
         if (!_padWarned)
         {
             LOG_WARN("Render {}x{} for upscale size {}x{} needs {}x{}, more than {}x{}, the view will be scaled",
-                     renderWidth, renderHeight, upscaleWidth, upscaleHeight, padWidth, padHeight, _maxRenderWidth,
+                     renderWidth, renderHeight, InUpscaleWidth, InUpscaleHeight, padWidth, padHeight, _maxRenderWidth,
                      _maxRenderHeight);
             _padWarned = true;
         }
@@ -290,8 +281,8 @@ bool IFeature_Dx12::PadInputs(ID3D12GraphicsCommandList* InCommandList, NVSDK_NG
             }
 
             // Display resolution motion vectors pad the upscale size to the max one
-            padded = input.Slot == PadMV && !LowResMV() ? PadInput(InCommandList, resource, input.Slot, upscaleWidth,
-                                                                   upscaleHeight, DisplayWidth(), DisplayHeight())
+            padded = input.Slot == PadMV && !LowResMV() ? PadInput(InCommandList, resource, input.Slot, InUpscaleWidth,
+                                                                   InUpscaleHeight, DisplayWidth(), DisplayHeight())
                                                         : PadInput(InCommandList, resource, input.Slot, renderWidth,
                                                                    renderHeight, padWidth, padHeight);
         }
@@ -309,8 +300,6 @@ bool IFeature_Dx12::PadInputs(ID3D12GraphicsCommandList* InCommandList, NVSDK_NG
     InParameters->Set(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Width, padWidth);
     InParameters->Set(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Height, padHeight);
 
-    OutUpscaleWidth = upscaleWidth;
-    OutUpscaleHeight = upscaleHeight;
     return true;
 }
 
@@ -408,15 +397,21 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
 
     // Smaller upscale sizes run at the max one, padded inputs and the upscale size cropped from the output
     PadRestore padRestore;
-    uint32_t padUpscaleWidth = 0;
-    uint32_t padUpscaleHeight = 0;
+    unsigned int padUpscaleWidth = 0;
+    unsigned int padUpscaleHeight = 0;
     const bool padding = _padToMaxUpscaleSize;
 
-    if (padding && CheckPadRecreation(InParameters))
-        return true;
+    if (padding)
+    {
+        InParameters->Get("FSR.upscaleSize.width", &padUpscaleWidth);
+        InParameters->Get("FSR.upscaleSize.height", &padUpscaleHeight);
+
+        if (CheckPadRecreation(InParameters, padUpscaleWidth, padUpscaleHeight))
+            return true;
+    }
 
     const bool padded =
-        padding && PadInputs(InCommandList, InParameters, padRestore, padUpscaleWidth, padUpscaleHeight);
+        padding && PadInputs(InCommandList, InParameters, padUpscaleWidth, padUpscaleHeight, padRestore);
 
     // Recreated for the upscale size, this frame would be stretched
     if (padding && !_padToMaxUpscaleSize)

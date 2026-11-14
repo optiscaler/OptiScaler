@@ -172,18 +172,13 @@ bool FeatureProvider_Dx12::ChangeFeature(Upscaler upscaler, ID3D12Device* device
 
             if (padToMax)
             {
+                // Our parameter store converts the int flags
                 if (!isPassthrough)
                 {
-                    for (const char* name : { "OptiScaler.PadToMaxUpscaleSize", "OptiScaler.PadExactUpscaleSize" })
-                    {
-                        int value = 0;
-                        parameters->Get(name, &value);
-                        contextData->createParams->Set(name, value);
-                    }
-
                     for (const char* name :
-                         { "FSR.maxRenderSize.width", "FSR.maxRenderSize.height", "FSR.maxUpscaleSize.width",
-                           "FSR.maxUpscaleSize.height", "OptiScaler.PadExactWidth", "OptiScaler.PadExactHeight" })
+                         { "OptiScaler.PadToMaxUpscaleSize", "OptiScaler.PadExactUpscaleSize",
+                           "OptiScaler.PadExactWidth", "OptiScaler.PadExactHeight", "FSR.maxRenderSize.width",
+                           "FSR.maxRenderSize.height", "FSR.maxUpscaleSize.width", "FSR.maxUpscaleSize.height" })
                     {
                         unsigned int value = 0;
                         parameters->Get(name, &value);

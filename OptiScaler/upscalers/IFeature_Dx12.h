@@ -55,7 +55,7 @@ class IFeature_Dx12 : public virtual IFeature
     uint32_t _padLastUpscaleHeight = 0;
 
     // Recreates for an upscale size padding can't reach or one that stayed the same, true when this frame can't run
-    bool CheckPadRecreation(NVSDK_NGX_Parameter* InParameters);
+    bool CheckPadRecreation(NVSDK_NGX_Parameter* InParameters, uint32_t InUpscaleWidth, uint32_t InUpscaleHeight);
 
     // Game's resources and render size the padding replaced, restored after EvaluateInternal
     struct PadRestore
@@ -69,10 +69,10 @@ class IFeature_Dx12 : public virtual IFeature
     ID3D12Resource* PadInput(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource, PadSlot InSlot,
                              uint32_t InWidth, uint32_t InHeight, uint32_t InPadWidth, uint32_t InPadHeight);
 
-    // Replaces the inputs and the render size with padded ones and returns the upscale size to crop the output to.
+    // Replaces the inputs and the render size with padded ones, false when the upscale size needs no padding.
     // A failed padding turns it off and recreates the upscaler for the upscale size.
-    bool PadInputs(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters, PadRestore& OutRestore,
-                   uint32_t& OutUpscaleWidth, uint32_t& OutUpscaleHeight);
+    bool PadInputs(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters, uint32_t InUpscaleWidth,
+                   uint32_t InUpscaleHeight, PadRestore& OutRestore);
     void RestorePadding(NVSDK_NGX_Parameter* InParameters, const PadRestore& InRestore);
 
   protected:
