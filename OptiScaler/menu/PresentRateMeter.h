@@ -12,8 +12,10 @@
 class PresentRateMeter final
 {
     static constexpr std::size_t Capacity = 512;
-    static constexpr double WindowMs = 125.0;
     static constexpr double MinimumSpanMs = 50.0;
+
+    // Presents are counted whole, a longer window is steadier at low frame rates
+    const double WindowMs;
 
     struct Sample
     {
@@ -33,6 +35,8 @@ class PresentRateMeter final
     std::deque<double> _intervals;
 
   public:
+    explicit PresentRateMeter(double windowMs = 125.0) : WindowMs(windowMs) {}
+
     // Called from the game's Vulkan present thread. Repeated 'true' calls are
     // harmless; a mode transition clears all data from the previous epoch.
     void SetEnabled(bool enabled)

@@ -1376,6 +1376,10 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
         double ftDelta = 0.0f;
         auto now = Util::MillisecondsNow();
 
+        // Nvngx input frames are counted at the game's DLSSG evaluate
+        if (state.activeFgInput != FGInput::NvngxFG)
+            state.gameFrameRate.Present(now);
+
         if (_lastFGFrameTime > 0.0)
             ftDelta = now - _lastFGFrameTime;
 

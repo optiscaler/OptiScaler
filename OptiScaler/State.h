@@ -8,6 +8,7 @@
 #include <inputs/FG/Streamline_Inputs.h>
 #include <inputs/FG/Streamline_Inputs_Sl1_Dx12.h>
 
+#include <menu/PresentRateMeter.h>
 #include <chrono>
 #include <set>
 #include <deque>
@@ -345,6 +346,10 @@ class State
 
     int _dlssgDetectedCount = 0;
     std::chrono::steady_clock::time_point _dlssgDetectedTime {};
+
+    // The game's own frames, for the base frame rate of frame generation. Timed where they arrive instead of
+    // the output rate divided by the FG ratio, that would be wrong whenever FG doesn't generate what it's set to
+    PresentRateMeter gameFrameRate { 500.0 };
 
     // What the game requested from DLSSG when it's used as FG Input
     // This might need to get moved to Sl_Inputs

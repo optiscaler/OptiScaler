@@ -131,22 +131,8 @@ bool XeFG_Dx12::CreateSwapchainContext(ID3D12Device* device)
     return createResult;
 }
 
-const char* XeFG_Dx12::Name()
-{
-    static std::string nameBuffer;
-
-    if (_maxInterpolationCount == 1 || _framesToInterpolate < 0)
-    {
-        nameBuffer = "XeFG";
-    }
-    else
-    {
-        auto count = _framesToInterpolate + 1;
-        nameBuffer = "XeFG " + std::to_string(count) + "x";
-    }
-
-    return nameBuffer.c_str();
-}
+// The multiplier is shown from GetInterpolatedFrameCount, which also follows Dynamic MFG
+const char* XeFG_Dx12::Name() { return "XeFG"; }
 
 feature_version XeFG_Dx12::Version()
 {

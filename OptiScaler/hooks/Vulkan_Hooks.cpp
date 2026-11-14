@@ -941,6 +941,10 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
         auto& state = State::Instance();
         state.fgLastFrame++;
 
+        // Nvngx input frames are counted at the game's DLSSG evaluate
+        if (state.activeFgInput != FGInput::NvngxFG)
+            state.gameFrameRate.Present(Util::MillisecondsNow());
+
         static double lastPresentTime = 0.0;
         auto now = Util::MillisecondsNow();
         state.lastFGFrameTime = lastPresentTime > 0.0 ? now - lastPresentTime : 0.0;

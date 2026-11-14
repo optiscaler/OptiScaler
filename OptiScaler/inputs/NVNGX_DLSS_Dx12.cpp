@@ -1166,6 +1166,13 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
         int frameCount = 0;
         InParameters->Get("DLSSG.MultiFrameCount", &frameCount);
         State::Instance().SetDlssgDetectedInterpolationCount(frameCount);
+
+        // MFG can evaluate once per generated frame, only the first one is a new game frame
+        uint32_t frameIndex = 1;
+        InParameters->Get("DLSSG.MultiFrameIndex", &frameIndex);
+
+        if (state.activeFgInput == FGInput::NvngxFG && frameIndex <= 1)
+            State::Instance().gameFrameRate.Present(Util::MillisecondsNow());
         ReflexHooks::setDlssgFrameCount(frameCount);
 
         float dlssgCameraNear = 0.0f;

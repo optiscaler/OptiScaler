@@ -957,6 +957,14 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_EvaluateFeature(VkCommandBuffer 
         }
         state.SetDlssgDetectedInterpolationCount(frameCount);
         evalWithoutFG = 0;
+
+        // MFG can evaluate once per generated frame, only the first one is a new game frame
+        uint32_t frameIndex = 1;
+        if (InParameters != nullptr)
+            InParameters->Get("DLSSG.MultiFrameIndex", &frameIndex);
+
+        if (state.activeFgInput == FGInput::NvngxFG && frameIndex <= 1)
+            state.gameFrameRate.Present(Util::MillisecondsNow());
         fgEvalSeen = true;
     }
     else if (fgEvalSeen && ++evalWithoutFG == 6)

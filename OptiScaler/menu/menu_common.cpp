@@ -2313,6 +2313,8 @@ struct MenuCommon::RenderMenuContext
     double frameRate = 0.0;
     // Current Vulkan FG output rate, kept separate from the long-term history.
     double fgOutputFrameTimeMs = 0.0;
+    // The game's own frame time with an FG input, 0 when it isn't measured
+    double baseFrameTimeMs = 0.0;
     float menuResScale = 1.0f;
     float fpsScale = 1.0f;
     float averageFrameTime = 0.0f;
@@ -2364,6 +2366,9 @@ void MenuCommon::UpdateRenderTiming(RenderMenuContext& ctx)
     }
 
     ctx.fgOutputFrameTimeMs = fgOutputPresentRate.FrameTime(now);
+
+    state.gameFrameRate.SetEnabled(state.activeFgInput != FGInput::NoFG && state.activeFgInput != FGInput::ForceXeLL);
+    ctx.baseFrameTimeMs = state.gameFrameRate.FrameTime(now);
     if (ctx.fgOutputFrameTimeMs > 0.0)
     {
         frameTime = ctx.fgOutputFrameTimeMs;
@@ -2962,8 +2967,13 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                 ImGui::PushFontSize(overlayFontPx);
 
             auto fg = state.CurrentFG();
-            auto fgText =
-                (fg != nullptr && fg->IsGenerating()) ? std::string(fg->Name()) : std::string();
+            std::string fgText;
+
+            // Reprojection as the output generates no frames
+            if (fg != nullptr && fg->IsGenerating())
+                fgText = state.activeFgOutput == FGOutput::Reprojection
+                             ? std::string(fg->Name())
+                             : std::format("{} x{}", fg->Name(), fg->GetInterpolatedFrameCount() + 1);
 
             const int fakeFramesCount = state.DlssgDetectedInterpolationCount();
             auto formatFg = [&](std::string_view name, int maxFakeFrames)
@@ -2982,9 +2992,7 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             // Its frames come from the replacement, but the count is its own, not the game's DLSSG one
             if (state.activeFgOutput == FGOutput::FlipMeter)
             {
-                if (fg != nullptr && fg->IsGenerating())
-                    fgText = std::format("{} x{}", fg->Name(), fg->GetInterpolatedFrameCount() + 1);
-                else
+                if (fgText.empty())
                     fgText = "Flip Meter off";
             }
             else if (activeNvngxFg == FGNvngxReplacement::Arturs)
@@ -3066,10 +3074,6 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                                      NameWithVersion(currentFeature).c_str(), usesDx12CompatLayer ? " w/Dx12" : "");
             }
 
-            uint32_t interpolatedFrameCount = 0;
-            if (fg != nullptr && fg->IsGenerating())
-                interpolatedFrameCount = fg->GetInterpolatedFrameCount();
-
             // The values that change every frame, as their average over the update interval so they can be read
             struct ShownTimes
             {
@@ -3079,11 +3083,13 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                 double lastFrameTime = 0.0;
                 double lastUpscalerTime = 0.0;
                 double averageUpscalerTime = 0.0;
+                double baseFrameTime = 0.0;
             };
 
             static ShownTimes shown;
             static ShownTimes summed;
             static uint32_t summedFrames = 0;
+            static uint32_t summedBaseFrames = 0;
             static double shownAt = 0.0;
 
             summed.frameRate += frameRate;
@@ -3094,25 +3100,35 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             summed.averageUpscalerTime += averageUpscalerFT;
             summedFrames++;
 
+            if (ctx.baseFrameTimeMs > 0.0)
+            {
+                summed.baseFrameTime += ctx.baseFrameTimeMs;
+                summedBaseFrames++;
+            }
+
             const float updateIntervalMs = config->FpsOverlayUpdateInterval.value_or_default();
 
             if (updateIntervalMs < 1.0f || shownAt <= 0.001 || now < shownAt || now - shownAt >= updateIntervalMs)
             {
                 const double frames = static_cast<double>(summedFrames);
-                shown = { summed.frameRate / frames,        summed.frameTime / frames,
-                          summed.averageFrameTime / frames, summed.lastFrameTime / frames,
-                          summed.lastUpscalerTime / frames, summed.averageUpscalerTime / frames };
+                shown = { summed.frameRate / frames,
+                          summed.frameTime / frames,
+                          summed.averageFrameTime / frames,
+                          summed.lastFrameTime / frames,
+                          summed.lastUpscalerTime / frames,
+                          summed.averageUpscalerTime / frames,
+                          summedBaseFrames > 0 ? summed.baseFrameTime / summedBaseFrames : 0.0 };
 
                 summed = {};
                 summedFrames = 0;
+                summedBaseFrames = 0;
                 shownAt = now;
             }
 
-            // With frame generation also the base frame rate
-            const std::string fpsValue =
-                interpolatedFrameCount
-                    ? StrFmt("%.1f/%.1f", shown.frameRate, shown.frameRate / (double) (interpolatedFrameCount + 1))
-                    : StrFmt("%.1f", shown.frameRate);
+            // With an FG input also the measured base frame rate, the same as FPS shows that FG isn't generating
+            const std::string fpsValue = shown.baseFrameTime > 0.0
+                                             ? StrFmt("%.1f/%.1f", shown.frameRate, 1000.0 / shown.baseFrameTime)
+                                             : StrFmt("%.1f", shown.frameRate);
 
             const auto overlayRows = OverlayRows(overlayType);
             std::array<bool, OverlayRow_COUNT> rowShown {};
@@ -10260,15 +10276,11 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
 
         else if (fg != nullptr && fg->IsGenerating())
         {
-            const UINT multiplier = fg->GetInterpolatedFrameCount() + 1;
-
-            // XeFG already has multiplier in name when MFG detected
-            std::string fgName = fg->Name();
-            const std::string multiplierSuffix = StrFmt(" %ux", multiplier);
-            if (fgName.ends_with(multiplierSuffix))
-                fgName.erase(fgName.size() - multiplierSuffix.size());
-
-            ImGui::TextColored(StatusOk(), "%s %ux", fgName.c_str(), multiplier);
+            // Reprojection as the output generates no frames
+            if (state.activeFgOutput == FGOutput::Reprojection)
+                ImGui::TextColored(StatusOk(), "%s", fg->Name());
+            else
+                ImGui::TextColored(StatusOk(), "%s %ux", fg->Name(), fg->GetInterpolatedFrameCount() + 1);
         }
         else
             ImGui::TextDisabled("Off");
