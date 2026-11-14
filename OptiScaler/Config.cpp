@@ -765,6 +765,7 @@ bool Config::Reload(std::filesystem::path iniPath)
         {
             UseFakenvapi.set_from_config(readBool("fakenvapi", "UseFakenvapi"));
             ForceXeLL.set_from_config(readBool("fakenvapi", "ForceXeLL"));
+            XeLLVsyncPacing.set_from_config(readBool("fakenvapi", "XeLLVsyncPacing"));
             FN_ForceLatencyFlex.set_from_config(readBool("fakenvapi", "ForceLatencyFlex"));
 
             if (auto v = readEnum<LFXMode>("fakenvapi", "LatencyFlexMode"))
@@ -2040,6 +2041,8 @@ bool Config::SaveIni()
     {
         ini.SetValue("fakenvapi", "UseFakenvapi", GetBoolValue(Instance()->UseFakenvapi.value_for_config()).c_str());
         ini.SetValue("fakenvapi", "ForceXeLL", GetBoolValue(Instance()->ForceXeLL.value_for_config()).c_str());
+        ini.SetValue("fakenvapi", "XeLLVsyncPacing",
+                     GetBoolValue(Instance()->XeLLVsyncPacing.value_for_config()).c_str());
         ini.SetValue("fakenvapi", "ForceLatencyFlex",
                      GetBoolValue(Instance()->FN_ForceLatencyFlex.value_for_config()).c_str());
         ini.SetValue("fakenvapi", "LatencyFlexMode",
