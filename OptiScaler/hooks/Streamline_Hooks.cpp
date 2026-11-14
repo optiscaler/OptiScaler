@@ -1410,7 +1410,6 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
         return sl::Result::eErrorFeatureMissing;
 
     lastDlssgViewport = viewport;
-    lastDlssgOptions = options;
 
     // Avoid reading past the game's struct's size
     sl::DLSSGOptions newOptions {};
@@ -1426,6 +1425,9 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
         newOptions = options;
 
     newOptions.structVersion = newStructVer;
+
+    // The game's options as a full struct, before our changes
+    lastDlssgOptions = newOptions;
 
     auto& state = State::Instance();
     state.slFGInputs.reportGameMode(newOptions.mode);
@@ -1467,7 +1469,8 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
         {
             sl::DLSSGState localState {};
             sl::DLSSGOptions localOptions {};
-            if (o_slDLSSGGetState(viewport, localState, &localOptions) == sl::Result::eOk &&
+            if (o_slDLSSGGetState != nullptr &&
+                o_slDLSSGGetState(viewport, localState, &localOptions) == sl::Result::eOk &&
                 localState.numFramesToGenerateMax > 0 && localState.numFramesToGenerateMax < 6)
             {
                 state.dlssgMfgMax = Nvngx_FG::limitToProvider(localState.numFramesToGenerateMax);
@@ -1735,6 +1738,9 @@ void* StreamlineHooks::hkdlssg_slGetPluginFunction(PFN_slGetPluginFunction origi
     {
         o_slDLSSGSetOptions = (decltype(&slDLSSGSetOptions)) original(functionName);
 
+        // Keep the pair from the plugin in use, the fallback below can hold a superseded one (MSFS 2020)
+        o_slDLSSGGetState = (decltype(&slDLSSGGetState)) original("slDLSSGGetState");
+
         // Give steam overlay the original as it seems to be hooking it
         auto steamOverlay = KernelBaseProxy::GetModuleHandleA_()("gameoverlayrenderer64.dll");
         if (steamOverlay != nullptr)
@@ -1749,6 +1755,7 @@ void* StreamlineHooks::hkdlssg_slGetPluginFunction(PFN_slGetPluginFunction origi
     if (strcmp(functionName, "slDLSSGGetState") == 0)
     {
         o_slDLSSGGetState = (decltype(&slDLSSGGetState)) original(functionName);
+        o_slDLSSGSetOptions = (decltype(&slDLSSGSetOptions)) original("slDLSSGSetOptions");
 
         // Give steam overlay the original as it seems to be hooking it
         auto steamOverlay = KernelBaseProxy::GetModuleHandleA_()("gameoverlayrenderer64.dll");
