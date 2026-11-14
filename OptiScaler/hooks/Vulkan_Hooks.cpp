@@ -8,6 +8,7 @@
 
 #include <menu/menu_overlay_vk.h>
 #include <menu/menu_common.h>
+#include <imgui/ImGuiNotify.hpp>
 #include <proxies/KernelBase_Proxy.h>
 #include <upscalers/IFeature_Vk.h>
 #include <framegen/ffx/FSRFG_Vk.h>
@@ -386,7 +387,19 @@ static IFGFeature_Vk* CreateFGFeature()
     }
     else if (state.activeFgOutput == FGOutput::DLSSG)
     {
-        if (StreamlineProxy::InitWithVulkan())
+        if (!StreamlineProxy::LoadStreamline())
+        {
+            ImGui::InsertNotification(
+                { ImGuiToastType::Error, 20000, "Can't init DLSSG Output\nAre you missing the streamline folder?" });
+
+            LOG_ERROR("Can't load Streamline, disabling FGOutput");
+            Config::Instance()->FGOutput.set_volatile_value(FGOutput::NoFG);
+            state.activeFgOutput = Config::Instance()->FGOutput.value_or_default();
+
+            Config::Instance()->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::None);
+            state.activeFgNvngx = Config::Instance()->FGNvngxReplacement.value_or_default();
+        }
+        else if (StreamlineProxy::InitWithVulkan())
             state.currentVkFG = new DLSSG_Vk();
         else
             LOG_ERROR("Can't init Streamline, DLSSG won't be available");
