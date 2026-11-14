@@ -140,8 +140,11 @@ class IFGFeature
     void SetExecuted(int index = -1);
     bool WaitingExecution(int index = -1);
 
+    // Also true while it waits for the game to send frame data again, like in menus
     bool IsActive();
     bool IsPaused();
+    // Generating frames right now, for showing the FG state
+    bool IsGenerating();
     bool IsDispatched();
     bool IsLowResMV();
     bool IsAsync();

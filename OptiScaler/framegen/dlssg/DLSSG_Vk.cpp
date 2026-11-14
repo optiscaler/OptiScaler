@@ -372,7 +372,7 @@ VkResult DLSSG_Vk::QueuePresent(VkQueue queue, const VkPresentInfoKHR* pPresentI
     auto& state = State::Instance();
     const bool active = IsActive() && !IsPaused();
 
-    state.dlssgDetectedInterpolationCount = active ? GetInterpolatedFrameCount() : 0;
+    state.SetDlssgDetectedInterpolationCount(active ? GetInterpolatedFrameCount() : 0);
 
     // The game's Vulkan Reflex markers don't reach this Streamline, DLSSG paces the generated frames with these
     sl::FrameToken* token = nullptr;

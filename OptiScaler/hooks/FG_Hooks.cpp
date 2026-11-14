@@ -1452,7 +1452,7 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
     sl::FrameToken* localToken = nullptr;
     sl::Result tokenResult = sl::Result::eErrorReflexAPI;
     if (willPresent && fg != nullptr && !fgFeatureActive)
-        state.dlssgDetectedInterpolationCount = 0;
+        state.SetDlssgDetectedInterpolationCount(0);
 
     if (willPresent && fgFeatureActive && state.activeFgOutput == FGOutput::DLSSG)
     {

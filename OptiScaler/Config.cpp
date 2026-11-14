@@ -448,7 +448,10 @@ bool Config::Reload(std::filesystem::path iniPath)
 
             NvngxFGDispatchFlags.set_from_config(readUInt("NvngxFG", "DispatchFlags"));
             NvngxFGShowDebug.set_from_config(readBool("NvngxFG", "ShowDebug"));
-            NvngxFGDisableHudless.set_from_config(readBool("NvngxFG", "DisableHudless"));
+
+            // Older configs keep it in [NvngxFG], it only applied with DLSSG via Nvngx as FG Input
+            if (FGInput.value_or_default() == FGInput::NvngxFG)
+                FGDisableHudless.set_from_config(readBool("NvngxFG", "DisableHudless"));
         }
 
         // Logging
@@ -1723,8 +1726,6 @@ bool Config::SaveIni()
         ini.SetValue("NvngxFG", "DispatchFlags",
                      GetIntValue(Instance()->NvngxFGDispatchFlags.value_for_config(), true).c_str());
         ini.SetValue("NvngxFG", "ShowDebug", GetBoolValue(Instance()->NvngxFGShowDebug.value_for_config()).c_str());
-        ini.SetValue("NvngxFG", "DisableHudless",
-                     GetBoolValue(Instance()->NvngxFGDisableHudless.value_for_config()).c_str());
     }
 
     // Sharpness

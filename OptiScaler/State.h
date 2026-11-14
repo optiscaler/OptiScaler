@@ -326,7 +326,25 @@ class State
 
     bool dlssgGameDMFGSupported = false;
     sl::DLSSGMode dlssgLastSetMode = sl::DLSSGMode::eOff;
-    int dlssgDetectedInterpolationCount = 0;
+
+    // The game's DLSSG frame count from its DLSSG evaluates. It stops calling them in menus and loading screens,
+    // so the count expires instead of staying at the last value
+    // ponytail: time based, a game below 2 FPS reads as FG off
+    int DlssgDetectedInterpolationCount() const
+    {
+        return std::chrono::steady_clock::now() - _dlssgDetectedTime < std::chrono::milliseconds(500)
+                   ? _dlssgDetectedCount
+                   : 0;
+    }
+
+    void SetDlssgDetectedInterpolationCount(int count)
+    {
+        _dlssgDetectedCount = count;
+        _dlssgDetectedTime = std::chrono::steady_clock::now();
+    }
+
+    int _dlssgDetectedCount = 0;
+    std::chrono::steady_clock::time_point _dlssgDetectedTime {};
 
     // What the game requested from DLSSG when it's used as FG Input
     // This might need to get moved to Sl_Inputs

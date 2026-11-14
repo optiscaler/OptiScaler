@@ -149,6 +149,8 @@ UINT64 IFGFeature::NextDispatchFrame()
 
 bool IFGFeature::IsActive() { return _isActive || _waitingNewFrameData; }
 
+bool IFGFeature::IsGenerating() { return _isActive && !_waitingNewFrameData && !IsPaused(); }
+
 void IFGFeature::Disable()
 {
     Deactivate();

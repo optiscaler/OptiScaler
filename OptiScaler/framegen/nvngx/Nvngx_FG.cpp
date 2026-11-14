@@ -459,7 +459,7 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InCm
         }
     }
 
-    if (Config::Instance()->NvngxFGDisableHudless.value_or_default())
+    if (Config::Instance()->FGDisableHudless.value_or_default())
         InParameters->Set("DLSSG.HUDLess", (void*) nullptr);
 
     // LOG_TRACE("Handle received from the game: {:X}", (uint64_t) InFeatureHandle);
@@ -773,7 +773,7 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_EvaluateFeature(VkCommandBuffer InCmdList, con
         }
     }
 
-    if (Config::Instance()->NvngxFGDisableHudless.value_or_default())
+    if (Config::Instance()->FGDisableHudless.value_or_default())
         InParameters->Set("DLSSG.HUDLess", (void*) nullptr);
 
     static constexpr const char* trackedImages[] = {
