@@ -358,6 +358,12 @@ ULONG STDMETHODCALLTYPE Dx11wDx12SC::Release()
 
         State::Instance().swapchainInteropApi = SwapchainInteropApi::None;
 
+        // XeFG destroys its swapchain context only when no reference to its swapchain is left
+        // (XEFG_SWAPCHAIN_RESULT_ERROR_POINTER_STILL_IN_USE otherwise), so the copies into its backbuffers
+        // finish and our reference goes before the FG releases its swapchain context
+        _WaitForCopyQueueIdle();
+        SafeRelease(_fgSwapChain);
+
         auto fg = State::Instance().currentFG;
         if (fg != nullptr && fg->Mutex.getOwner() != 1 && fg->SwapchainContext() != nullptr)
         {
