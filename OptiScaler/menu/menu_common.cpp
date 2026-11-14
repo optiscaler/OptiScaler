@@ -9608,6 +9608,25 @@ void MenuCommon::RenderDetectedCard(RenderMenuContext& ctx)
     ImGui::PopStyleVar(2);
 }
 
+static const char* NvngxFgName(const State& state)
+{
+    switch (state.activeFgNvngx)
+    {
+    case FGNvngxReplacement::None:
+        return "Off";
+    case FGNvngxReplacement::Nukems:
+        return "Nukems";
+    case FGNvngxReplacement::Arturs:
+        return "Enabler";
+    case FGNvngxReplacement::FFX:
+        return "FFX";
+    case FGNvngxReplacement::Custom:
+        return state.activeFgNvngxCustom.c_str();
+    default:
+        return "Combo";
+    }
+}
+
 void MenuCommon::RenderStatusInfo(RenderMenuContext& ctx)
 {
     auto& state = ctx.state;
@@ -9744,6 +9763,7 @@ void MenuCommon::RenderStatusInfo(RenderMenuContext& ctx)
             else
                 pair("FG Output", "Off", true);
 
+            pair("FG Nvngx", NvngxFgName(state), state.activeFgNvngx == FGNvngxReplacement::None);
             pair("Ratio override", ratioOverride, ratioOverride == "Off");
             pair("Mipmap bias",
                  config->MipmapBiasOverride.has_value() ? StrFmt("%.3f", config->MipmapBiasOverride.value()) : "Off",
@@ -10255,11 +10275,7 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
 
         if (activeNvngxFg != FGNvngxReplacement::None && state.activeFgOutput != FGOutput::FlipMeter)
         {
-            const char* nvngxName = activeNvngxFg == FGNvngxReplacement::Nukems   ? "Nukems"
-                                    : activeNvngxFg == FGNvngxReplacement::Arturs ? "Enabler"
-                                    : activeNvngxFg == FGNvngxReplacement::FFX    ? "FFX"
-                                    : activeNvngxFg == FGNvngxReplacement::Custom ? state.activeFgNvngxCustom.c_str()
-                                                                                  : "Combo";
+            const char* nvngxName = NvngxFgName(state);
             const int detectedCount = state.DlssgDetectedInterpolationCount();
 
             if (detectedCount <= 0)
