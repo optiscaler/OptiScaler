@@ -324,6 +324,6 @@ RCAS_Dx11::~RCAS_Dx11()
     SAFE_RELEASE(_computeShaderDASDA);
     SAFE_RELEASE(_srvMotionVectors);
     SAFE_RELEASE(_srvDepth);
-    SAFE_RELEASE(_currentMotionVectors);
-    SAFE_RELEASE(_currentDepth);
+
+    // _currentMotionVectors/_currentDepth are only cache keys, InitializeSRV holds no reference on them
 }
