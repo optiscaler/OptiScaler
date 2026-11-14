@@ -151,22 +151,24 @@ static std::optional<std::filesystem::path> GetDriverStoreOf(const LUID& adapter
 
 #pragma endregion
 
-// RX 6xxx and PRO W6xxx, the 3 digits keep the Polaris RX 640 out. NAVI2x is RADV's name on Linux
-static bool IsRdna2Name(const std::wstring& name)
+// ? in the pattern matches any digit
+static bool ContainsPattern(std::wstring_view name, std::wstring_view pattern)
 {
-    for (std::wstring prefix : { L"RX 6", L"PRO W6" })
+    auto matches = [](wchar_t p, wchar_t c) { return p == L'?' ? (c >= L'0' && c <= L'9') : p == c; };
+
+    for (size_t pos = 0; pos + pattern.size() <= name.size(); pos++)
     {
-        auto pos = name.find(prefix);
-
-        if (pos == std::wstring::npos)
-            continue;
-
-        auto digits = name.substr(pos + prefix.size(), 3);
-        if (digits.size() == 3 && std::ranges::all_of(digits, [](wchar_t c) { return c >= L'0' && c <= L'9'; }))
+        if (std::ranges::equal(pattern, name.substr(pos, pattern.size()), matches))
             return true;
     }
 
-    return name.contains(L"NAVI2");
+    return false;
+}
+
+// RX 6xxx and PRO W6xxx, the 3 digits keep the Polaris RX 640 out. NAVI2x is RADV's name on Linux
+static bool IsRdna2Name(const std::wstring& name)
+{
+    return ContainsPattern(name, L"RX 6???") || ContainsPattern(name, L"PRO W6???") || name.contains(L"NAVI2");
 }
 
 void CheckForGPU()
@@ -187,6 +189,9 @@ void CheckForGPU()
     UINT adapterIndex = 0;
     DXGI_ADAPTER_DESC adapterDesc {};
     IDXGIAdapter* adapter;
+
+    // Set when an FSR 4 Lite APU is found, true if it's RDNA2
+    std::optional<bool> apuIsRdna2;
 
     while (factory->EnumAdapters(adapterIndex, &adapter) == S_OK)
     {
@@ -250,7 +255,8 @@ void CheckForGPU()
 
                 // Don't look, checks for RDNA 3
                 if (szName.contains(L"7900") || szName.contains(L"7800") || szName.contains(L"7700") ||
-                    szName.contains(L"7600") || szName.find(L" GFX110") != std::wstring::npos)
+                    szName.contains(L"7600") || ContainsPattern(szName, L"Radeon 80??S") ||
+                    szName.find(L" GFX110") != std::wstring::npos)
                 {
                     LOG_DEBUG("RDNA3 GPU detected");
                     State::Instance().isRunningOnRDNA3 = true;
@@ -283,6 +289,17 @@ void CheckForGPU()
                     LOG_DEBUG("RDNA2 GPU detected");
                     State::Instance().isRunningOnRDNA2 = true;
                 }
+
+                // Steam Deck LCD and OLED on Windows, VANGOGH on Linux, RDNA2
+                bool isVanGogh = szName.contains(L"AMD Custom GPU 0405") || szName.contains(L"AMD Custom GPU 0932") ||
+                                 szName.contains(L"VANGOGH");
+
+                // FSR 4 Lite APUs, 7??M/8??M are RDNA3/3.5
+                if (ContainsPattern(szName, L"Radeon 7??M") || ContainsPattern(szName, L"Radeon 8??M") || isVanGogh)
+                {
+                    LOG_DEBUG("AMD APU detected");
+                    apuIsRdna2 = isVanGogh;
+                }
             }
         }
         else
@@ -298,15 +315,31 @@ void CheckForGPU()
     factory->Release();
     factory = nullptr;
 
+    // Only without a discrete RDNA card, the APU's flags would change the GPU check spoof of that card
+    if (apuIsRdna2.has_value() && !State::Instance().isRunningOnRDNA4.value() &&
+        !State::Instance().isRunningOnRDNA3.value() && !State::Instance().isRunningOnRDNA2.value())
+    {
+        State::Instance().isAmdApu = true;
+
+        if (apuIsRdna2.value())
+            State::Instance().isRunningOnRDNA2 = true;
+        else
+            State::Instance().isRunningOnRDNA3 = true;
+
+        // Index of INT8 Lite in FSR4ModelSelection's modelProviders, the normal pick runs if the dll doesn't have it
+        if (!Config::Instance()->Fsr4ForceEnableInt8.has_value())
+            Config::Instance()->Fsr4ForceEnableInt8.set_volatile_value(3);
+    }
+
     // If not set at Config, enable/disable Fsr4Update according to GPU detection
     if (!Config::Instance()->Fsr4Update.has_value())
         Config::Instance()->Fsr4Update.set_volatile_value(State::Instance().isRunningOnRDNA4.value() ||
                                                           State::Instance().isRunningOnRDNA3.value() ||
                                                           State::Instance().isRunningOnRDNA2.value());
 
-    LOG_INFO("RDNA4: {}, RDNA3: {}, RDNA2: {}, Fsr4Update: {}", State::Instance().isRunningOnRDNA4.value(),
+    LOG_INFO("RDNA4: {}, RDNA3: {}, RDNA2: {}, APU: {}, Fsr4Update: {}", State::Instance().isRunningOnRDNA4.value(),
              State::Instance().isRunningOnRDNA3.value(), State::Instance().isRunningOnRDNA2.value(),
-             Config::Instance()->Fsr4Update.value_or_default());
+             State::Instance().isAmdApu, Config::Instance()->Fsr4Update.value_or_default());
 }
 
 // Adapter of the device that asked for IAmdExtFfxApi, the driver dll is loaded from its driver package

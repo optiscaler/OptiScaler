@@ -250,6 +250,7 @@ class State
     std::optional<bool> isRunningOnRDNA4;
     std::optional<bool> isRunningOnRDNA3;
     std::optional<bool> isRunningOnRDNA2;
+    bool isAmdApu = false;
     bool isPascalOrOlder = false;
     WorkingMode workingMode = WorkingMode::Other;
 
