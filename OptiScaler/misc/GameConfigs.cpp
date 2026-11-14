@@ -893,8 +893,10 @@ const std::vector<GameConfig> gameConfigs = {
 
     // Split Fiction
     // Changes FFX upscaleSize with the split screen, recreating DLSS/XeSS for each change stutters
+    // Dxgi spoofing disabled
     {
         .exes = { "splitfiction.exe" },
+        .defaults = { DxgiSpoofing = false },
         .quirks = { PadToMaxUpscaleSize },
     },
 
