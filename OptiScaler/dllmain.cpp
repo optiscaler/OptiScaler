@@ -1885,6 +1885,9 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                      std::string_view(desc) == std::string_view("DXVK_NVAPI")))
                 {
                     spdlog::debug("Using dxvk-nvapi");
+
+                    // Display devices only list GPUs with a display attached, which misses PRIME offload GPUs,
+                    // but the call also makes Wine refresh the GPU list in the registry
                     DISPLAY_DEVICEA dd = {};
                     dd.cb = sizeof(dd);
                     int deviceIndex = 0;
@@ -1897,6 +1900,60 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                             nvidiaDetected = true;
                         }
                         deviceIndex++;
+                    }
+
+                    // Wine registers every GPU here and removes the ones that are gone
+                    // Windows keeps removed GPUs here too, so it's only used on Wine
+                    HKEY pciKey = nullptr;
+                    if (!nvidiaDetected && State::Instance().isRunningOnLinux &&
+                        RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"System\\CurrentControlSet\\Enum\\PCI", 0, KEY_READ,
+                                      &pciKey) == ERROR_SUCCESS)
+                    {
+                        wchar_t deviceName[256];
+
+                        for (DWORD i = 0; !nvidiaDetected; i++)
+                        {
+                            DWORD deviceNameLength = std::size(deviceName);
+                            if (RegEnumKeyExW(pciKey, i, deviceName, &deviceNameLength, nullptr, nullptr, nullptr,
+                                              nullptr) != ERROR_SUCCESS)
+                            {
+                                break;
+                            }
+
+                            if (!std::wstring_view(deviceName).starts_with(L"VEN_10DE"))
+                                continue;
+
+                            HKEY deviceKey = nullptr;
+                            if (RegOpenKeyExW(pciKey, deviceName, 0, KEY_READ, &deviceKey) != ERROR_SUCCESS)
+                                continue;
+
+                            wchar_t instanceName[256];
+
+                            for (DWORD j = 0; !nvidiaDetected; j++)
+                            {
+                                DWORD instanceNameLength = std::size(instanceName);
+                                if (RegEnumKeyExW(deviceKey, j, instanceName, &instanceNameLength, nullptr, nullptr,
+                                                  nullptr, nullptr) != ERROR_SUCCESS)
+                                {
+                                    break;
+                                }
+
+                                // Skip non display devices like the HDMI audio
+                                wchar_t classGuid[64];
+                                DWORD classGuidSize = sizeof(classGuid);
+                                if (RegGetValueW(deviceKey, instanceName, L"ClassGUID", RRF_RT_REG_SZ, nullptr,
+                                                 classGuid, &classGuidSize) == ERROR_SUCCESS &&
+                                    _wcsicmp(classGuid, L"{4d36e968-e325-11ce-bfc1-08002be10318}") == 0)
+                                {
+                                    spdlog::debug("Nvidia GPU found: {}", wstring_to_string(deviceName));
+                                    nvidiaDetected = true;
+                                }
+                            }
+
+                            RegCloseKey(deviceKey);
+                        }
+
+                        RegCloseKey(pciKey);
                     }
                 }
                 else if (o_NvAPI_QueryInterface(0x21382138))
