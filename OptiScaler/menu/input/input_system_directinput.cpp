@@ -1095,27 +1095,62 @@ template <std::size_t Slot> HRESULT WINAPI hkDirectInputGetDeviceState(void* dev
 
     if (shouldBlock)
     {
-        if (data != nullptr && dataSize > 0)
+        bool replayed = false;
+
+        if (data != nullptr && dataSize > 0 && kind == DirectInputDeviceKind::Other)
+        {
+            std::unique_lock lock(_state.Mutex);
+
+            if (const std::size_t slot = FindDirectInputDeviceSlotLocked(device); slot < MaxTrackedDirectInputDevices)
+            {
+                const auto& last = _state.DirectInputDeviceSlots[slot].LastState;
+
+                if (last.size() == dataSize)
+                {
+                    std::memcpy(data, last.data(), dataSize);
+                    replayed = true;
+                }
+            }
+        }
+
+        if (!replayed && data != nullptr && dataSize > 0)
             std::memset(data, 0, dataSize);
 
         // Outside the lock, it asks the device for its axis ranges
-        if (data != nullptr && kind == DirectInputDeviceKind::Other &&
+        if (!replayed && data != nullptr && kind == DirectInputDeviceKind::Other &&
             (dataSize == sizeof(DIJOYSTATE) || dataSize == sizeof(DIJOYSTATE2)))
         {
             ScopedHookBypass bypass;
             FillNeutralJoystickState(device, static_cast<DIJOYSTATE*>(data));
         }
 
-        OPTIINPUT_LOG_VERBOSE("blocking DirectInput GetDeviceState device:{} kind:{} size:{}", device,
-                              DirectInputDeviceKindName(kind), dataSize);
+        OPTIINPUT_LOG_VERBOSE("blocking DirectInput GetDeviceState device:{} kind:{} size:{} replayed:{}", device,
+                              DirectInputDeviceKindName(kind), dataSize, replayed ? 1 : 0);
         return DI_OK;
     }
 
     if (original == nullptr)
         return DIERR_GENERIC;
 
-    ScopedHookBypass bypass;
-    return original(device, dataSize, data);
+    HRESULT result = DI_OK;
+
+    {
+        ScopedHookBypass bypass;
+        result = original(device, dataSize, data);
+    }
+
+    if (SUCCEEDED(result) && data != nullptr && dataSize > 0 && kind == DirectInputDeviceKind::Other)
+    {
+        std::unique_lock lock(_state.Mutex);
+
+        if (const std::size_t slot = FindDirectInputDeviceSlotLocked(device); slot < MaxTrackedDirectInputDevices)
+        {
+            const auto* bytes = static_cast<const BYTE*>(data);
+            _state.DirectInputDeviceSlots[slot].LastState.assign(bytes, bytes + dataSize);
+        }
+    }
+
+    return result;
 }
 
 template <std::size_t Slot>

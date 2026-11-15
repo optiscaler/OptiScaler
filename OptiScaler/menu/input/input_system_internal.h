@@ -12,6 +12,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 #include <winerror.h>
 #include <Xinput.h>
 
@@ -84,6 +85,8 @@ struct DirectInputDeviceSlot
     std::bitset<256> DownSeenByGame;
     // Buffered events from before it came while input was blocked, cleared once the game read the queue empty
     std::optional<DWORD> BlockedUntilTick;
+    // Last GetDeviceState the game read, replayed while blocked so throttles and pedals keep their position
+    std::vector<BYTE> LastState;
 };
 
 enum class HidDeviceKind
