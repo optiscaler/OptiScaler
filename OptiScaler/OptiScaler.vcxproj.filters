@@ -992,6 +992,9 @@
     <ClInclude Include="shaders\rcas\precompile\RCAS_Shader_Vk.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="shaders\rcas\shaders\BABA_NEURAL_Shader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="shaders\rcas\shaders\DA_DAS_Shader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
