@@ -3395,7 +3395,9 @@ bool MenuCommon::RenderMenu()
                                 // FSR 4 models of the module FFX checked last, only listed when it has INT8 ones
                                 if (auto models = FSR4ModelSelection::SelectableModels(); !models.empty())
                                 {
-                                    auto selected = config->Fsr4ForceEnableInt8.value_or_default();
+                                    // Auto shows as Auto even when it resolves to the APU default
+                                    auto selected =
+                                        config->Fsr4ForceEnableInt8.value_for_config_ignore_default().value_or(0);
                                     auto selectedName = selected > 0 ? FSR4ModelSelection::ModelName(selected) : "Auto";
                                     bool modelChanged = false;
 
@@ -3405,6 +3407,11 @@ bool MenuCommon::RenderMenu()
                                         if (ImGui::Selectable("Auto", selected == 0) && selected != 0)
                                         {
                                             config->Fsr4ForceEnableInt8.reset();
+
+                                            // Same default as CheckForGPU, INT8 Lite on APUs
+                                            if (state.isAmdApu)
+                                                config->Fsr4ForceEnableInt8.set_volatile_value(3);
+
                                             modelChanged = true;
                                         }
 
