@@ -6,6 +6,15 @@
 #include "precompile/da_das_sharpen_Shader.h"
 #include "precompile/da_rcas_sharpen_Shader.h"
 
+// Optional. Made by shader_tools/build_precompiled_shader.bat from precompile/baba_neural_sharpen.hlsl (the nightly
+// build does it). Without it BaBa Neural is compiled from the source when it is first used
+#if __has_include("precompile/baba_neural_sharpen_Shader.h")
+#include "precompile/baba_neural_sharpen_Shader.h"
+#define BABA_NEURAL_DX12_CSO 1
+#else
+#define BABA_NEURAL_DX12_CSO 0
+#endif
+
 #include <Config.h>
 
 bool RCAS_Dx12::DispatchRCAS(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InResource,
@@ -98,6 +107,79 @@ bool RCAS_Dx12::DispatchDepthAdaptive(ID3D12PipelineState* pipelineState, ID3D12
     return true;
 }
 
+bool RCAS_Dx12::EnsureBabaPipeline()
+{
+    if (_pipelineStateBaba != nullptr)
+        return true;
+
+    // Don't try to compile it again every frame
+    if (_babaPipelineFailed || _device == nullptr)
+        return false;
+
+    LOG_INFO("[{0}] Creating BaBa Neural sharpening shader", _name);
+
+#if BABA_NEURAL_DX12_CSO
+    const void* bytecode = baba_neural_sharpen_cso;
+    const size_t bytecodeSize = sizeof(baba_neural_sharpen_cso);
+#else
+    // There is no precompiled version, it comes from the source
+    const void* bytecode = nullptr;
+    const size_t bytecodeSize = 0;
+#endif
+
+    if (!CreateComputePipeline(_device, &_pipelineStateBaba, bytecode, bytecodeSize, babaNeuralSharpenCode.c_str()))
+    {
+        LOG_ERROR("[{0}] Failed to create compute pipeline for BaBa Neural, RCAS will be used instead", _name);
+        _pipelineStateBaba = nullptr;
+        _babaPipelineFailed = true;
+        return false;
+    }
+
+    return true;
+}
+
+bool RCAS_Dx12::DispatchBaba(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InResource,
+                             ID3D12Resource* InMotionVectors, RcasConstants InConstants, ID3D12Resource* OutResource,
+                             FrameDescriptorHeap& currentHeap)
+{
+    if (InMotionVectors == nullptr || _pipelineStateBaba == nullptr || _device == nullptr)
+        return false;
+
+    CreateShaderResourceView(_device, InResource, currentHeap.GetSrvCPU(0));
+    CreateShaderResourceView(_device, InMotionVectors, currentHeap.GetSrvCPU(1));
+    CreateUnorderedAccessView(_device, OutResource, currentHeap.GetUavCPU(0), 0);
+
+    InternalConstantsBaba constants {};
+
+    auto outDesc = OutResource->GetDesc();
+    auto mvsDesc = InMotionVectors->GetDesc();
+
+    constants.OutputWidth = (uint32_t) outDesc.Width;
+    constants.OutputHeight = outDesc.Height;
+    constants.MotionWidth = (uint32_t) mvsDesc.Width;
+    constants.MotionHeight = mvsDesc.Height;
+
+    FillMotionConstants(constants, InConstants);
+
+    if (!CreateConstantsBuffer(_device, currentHeap, constants, currentHeap.GetCbvCPU(0)))
+    {
+        LOG_ERROR("[{0}] Failed to create a constants buffer", _name);
+        return false;
+    }
+
+    ID3D12DescriptorHeap* heaps[] = { currentHeap.GetHeapCSU() };
+    InCmdList->SetDescriptorHeaps(_countof(heaps), heaps);
+    InCmdList->SetComputeRootSignature(_rootSignature);
+    InCmdList->SetPipelineState(_pipelineStateBaba);
+    InCmdList->SetComputeRootDescriptorTable(0, currentHeap.GetTableGPUStart());
+
+    UINT dispatchWidth = static_cast<UINT>((constants.OutputWidth + InNumThreadsX - 1) / InNumThreadsX);
+    UINT dispatchHeight = (constants.OutputHeight + InNumThreadsY - 1) / InNumThreadsY;
+    InCmdList->Dispatch(dispatchWidth, dispatchHeight, 1);
+
+    return true;
+}
+
 bool RCAS_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InSource, D3D12_RESOURCE_STATES InState)
 {
     auto resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
@@ -142,6 +224,10 @@ bool RCAS_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* I
         (sharpnessShader == SharpenShader::LocalContrastDepthAware || sharpnessShader == SharpenShader::DepthAware))
         sharpnessShader = SharpenShader::RCAS;
 
+    // BaBa Neural falls back to plain RCAS when its shader can't be created
+    if (sharpnessShader == SharpenShader::BabaNeural && !EnsureBabaPipeline())
+        sharpnessShader = SharpenShader::RCAS;
+
     if (sharpnessShader == SharpenShader::LocalContrastDepthAware)
     {
         return DispatchDepthAdaptive(_pipelineStateDASDA, InCmdList, InResource, InMotionVectors, InDepth, InConstants,
@@ -151,6 +237,10 @@ bool RCAS_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* I
     {
         return DispatchDepthAdaptive(_pipelineStateDA, InCmdList, InResource, InMotionVectors, InDepth, InConstants,
                                      OutResource, currentHeap);
+    }
+    else if (sharpnessShader == SharpenShader::BabaNeural)
+    {
+        return DispatchBaba(InCmdList, InResource, InMotionVectors, InConstants, OutResource, currentHeap);
     }
     else if (sharpnessShader == SharpenShader::RCAS)
     {
@@ -208,6 +298,7 @@ RCAS_Dx12::~RCAS_Dx12()
 
     DeferredRelease::Release(_pipelineStateDA);
     DeferredRelease::Release(_pipelineStateDASDA);
+    DeferredRelease::Release(_pipelineStateBaba);
 
     for (int i = 0; i < RCAS_NUM_OF_HEAPS; i++)
     {

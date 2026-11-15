@@ -20,12 +20,20 @@ class RCAS_Vk : public Shader_Vk, public RCAS_Common
     VkPipeline _pipelineDA = VK_NULL_HANDLE;
     VkPipeline _pipelineDASDA = VK_NULL_HANDLE;
 
+    // BaBa Neural needs the precompiled spir-v (precompile/baba_neural_sharpen_Shader_Vk.h), without it RCAS is used.
+    // Uses the same resources as the plain RCAS
+    VkPipeline _pipelineBaba = VK_NULL_HANDLE;
+    bool _babaFallbackLogged = false;
+
     void UpdateDescriptorSet(VkDescriptorBufferInfo bufferInfo, int setIndex, VkImageView inputView,
                              VkImageView motionView, VkImageView outputView);
     void UpdateDescriptorSetDA(VkDescriptorSet descriptorSet, VkDescriptorBufferInfo bufferInfo, VkImageView inputView,
                                VkImageView motionView, VkImageView depthView, VkImageView outputView);
 
     bool DispatchRCAS(VkCommandBuffer InCmdList, RcasConstants InConstants, const VkImageInfo& InResourceInfo,
+                      const VkImageInfo& InMotionVectorsInfo, const VkImageInfo& OutResourceInfo);
+
+    bool DispatchBaba(VkCommandBuffer InCmdList, RcasConstants InConstants, const VkImageInfo& InResourceInfo,
                       const VkImageInfo& InMotionVectorsInfo, const VkImageInfo& OutResourceInfo);
 
     // Merged Dispatch for DA and DASDA

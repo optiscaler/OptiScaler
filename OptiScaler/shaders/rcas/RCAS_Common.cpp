@@ -60,3 +60,32 @@ void RCAS_Common::FillMotionConstants(InternalConstantsDA& OutConstants, const R
     else
         OutConstants.MotionTextureScale = (float) OutConstants.MotionWidth / (float) OutConstants.OutputWidth;
 }
+
+void RCAS_Common::FillMotionConstants(InternalConstantsBaba& OutConstants, const RcasConstants& InConstants)
+{
+    // Same mapping as the depth aware shaders, 0.5 strength is the 1.0 Intensity of the ReShade shader
+    OutConstants.Sharpness = InConstants.Sharpness * 2.0f;
+
+    OutConstants.EdgeResponse = Config::Instance()->BabaNeuralEdgeResponse.value_or_default();
+    OutConstants.Model = Config::Instance()->BabaNeuralModel.value_or_default();
+    OutConstants.ViewMode = Config::Instance()->BabaNeuralDebugView.value_or_default();
+
+    // LDR pipelines are limited to [0, 1] like the render target of the ReShade version
+    OutConstants.ClampOutput = InConstants.IsHdr ? 0 : 1;
+
+    OutConstants.MvScaleX = InConstants.MvScaleX;
+    OutConstants.MvScaleY = InConstants.MvScaleY;
+
+    OutConstants.DynamicSharpenEnabled = Config::Instance()->MotionSharpnessEnabled.value_or_default() ? 1 : 0;
+    OutConstants.Debug = Config::Instance()->MotionSharpnessDebug.value_or_default() ? 1 : 0;
+    OutConstants.MotionSharpness = Config::Instance()->MotionSharpness.value_or_default();
+    OutConstants.MotionThreshold = Config::Instance()->MotionThreshold.value_or_default();
+    OutConstants.MotionScaleLimit = Config::Instance()->MotionScaleLimit.value_or_default();
+
+    OutConstants.DisplaySizeMV = OutConstants.MotionWidth == OutConstants.OutputWidth ? 1 : 0;
+
+    if (OutConstants.DisplaySizeMV)
+        OutConstants.MotionTextureScale = 1.0f;
+    else
+        OutConstants.MotionTextureScale = (float) OutConstants.MotionWidth / (float) OutConstants.OutputWidth;
+}

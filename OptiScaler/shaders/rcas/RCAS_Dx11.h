@@ -12,6 +12,10 @@ class RCAS_Dx11 : public RCAS_Common, public Shader_Dx11
   private:
     ID3D11ComputeShader* _computeShaderDA = nullptr;
     ID3D11ComputeShader* _computeShaderDASDA = nullptr;
+
+    // BaBa Neural is created when it is first used
+    ID3D11ComputeShader* _computeShaderBaba = nullptr;
+    bool _babaShaderFailed = false;
     ID3D11ShaderResourceView* _srvMotionVectors = nullptr;
     ID3D11ShaderResourceView* _srvDepth = nullptr;
 
@@ -32,6 +36,9 @@ class RCAS_Dx11 : public RCAS_Common, public Shader_Dx11
     bool DispatchDASDepthAdaptive(ID3D11Device* InDevice, ID3D11DeviceContext* InContext, ID3D11Texture2D* InResource,
                                   ID3D11Texture2D* InMotionVectors, ID3D11Texture2D* InDepth, RcasConstants InConstants,
                                   ID3D11Texture2D* OutResource);
+    bool DispatchBaba(ID3D11Device* InDevice, ID3D11DeviceContext* InContext, ID3D11Texture2D* InResource,
+                      ID3D11Texture2D* InMotionVectors, RcasConstants InConstants, ID3D11Texture2D* OutResource);
+    bool EnsureBabaShader(ID3D11Device* InDevice);
 
   public:
     bool CreateBufferResource(ID3D11Device* InDevice, ID3D11Resource* InSource);
