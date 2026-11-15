@@ -24,6 +24,9 @@ env:
   # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
   BUILD_CONFIGURATION: Release
 
+  # BaBa Neural sharpening shader, source is OptiScaler/shaders/rcas/precompile/<name>.hlsl
+  BABA_SHADER: baba_neural_sharpen
+
 permissions:
   contents: write
 
@@ -37,6 +40,50 @@ jobs:
         fetch-depth: 0            
         submodules: 'true'
         
+    # BaBa Neural is built with the dxc / fxc from shader_tools, using the same scripts as the other shaders.
+    # The headers they make are picked up by the __has_include checks in RCAS_Dx12.cpp, RCAS_Dx11.cpp and RCAS_Vk.cpp
+    #   Dx12   -> <name>_Shader.h       (dxc, cs_6_0)
+    #   Dx11   -> <name>_Shader_Dx11.h  (fxc, cs_5_0)
+    #   Vulkan -> <name>_Shader_Vk.h    (dxc, spir-v)
+    - name: Build BaBa Neural shaders (Dx12, Dx11, Vulkan)
+      working-directory: OptiScaler/shaders/rcas/precompile
+      shell: cmd
+      run: |
+        python --version || exit /b 1
+        call ..\..\shader_tools\build_precompiled_shader.bat ${{ env.BABA_SHADER }} || exit /b 1
+        call ..\..\shader_tools\build_precompiled_shader_vk.bat ${{ env.BABA_SHADER }} || exit /b 1
+
+    # The scripts don't stop when dxc / fxc fail, so check what they made
+    - name: Check BaBa Neural shaders
+      working-directory: OptiScaler/shaders/rcas/precompile
+      shell: python
+      run: |
+        import pathlib, sys
+
+        name = "${{ env.BABA_SHADER }}"
+
+        # bytecode, header made from it, first bytes of a valid bytecode
+        outputs = [
+            (f"{name}_Shader.cso", f"{name}_Shader.h", b"DXBC"),  # Dx12 (dxil)
+            (f"{name}_Shader_Dx11.cso", f"{name}_Shader_Dx11.h", b"DXBC"),  # Dx11 (dxbc)
+            (f"{name}_Shader_Vk.spv", f"{name}_Shader_Vk.h", bytes([0x03, 0x02, 0x23, 0x07])),  # Vulkan (spir-v)
+        ]
+
+        ok = True
+        for binary, header, magic in outputs:
+            b, h = pathlib.Path(binary), pathlib.Path(header)
+
+            if not b.is_file() or not h.is_file():
+                print(f"::error::{binary} or {header} was not generated")
+                ok = False
+            elif not b.read_bytes().startswith(magic):
+                print(f"::error::{binary} is not a valid shader")
+                ok = False
+            else:
+                print(f"{binary}: {b.stat().st_size} bytes -> {header}")
+
+        sys.exit(0 if ok else 1)
+
     - name: Check Existing Release
       id: check_release
       uses: actions/github-script@v8
@@ -144,6 +191,39 @@ jobs:
       # See https://docs.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference
       run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} ${{env.SOLUTION_FILE_PATH}} /verbosity:minimal
       
+    # A missing header only makes the build quietly fall back to runtime compiling (Dx) or RCAS (Vulkan)
+    - name: Check BaBa Neural is built into the dll
+      shell: python
+      run: |
+        import pathlib, sys
+
+        name = "${{ env.BABA_SHADER }}"
+        precompile = pathlib.Path("OptiScaler/shaders/rcas/precompile")
+        dlls = {d: d.read_bytes() for d in pathlib.Path("x64/Release/a").glob("*.dll")}
+
+        if not dlls:
+            print("::error::No dll in x64/Release/a")
+            sys.exit(1)
+
+        shaders = {
+            "Dx12": f"{name}_Shader.cso",
+            "Dx11": f"{name}_Shader_Dx11.cso",
+            "Vulkan": f"{name}_Shader_Vk.spv",
+        }
+
+        ok = True
+        for api, file in shaders.items():
+            blob = (precompile / file).read_bytes()
+            hits = [d.name for d, data in dlls.items() if blob in data]
+
+            if hits:
+                print(f"{api}: {file} ({len(blob)} bytes) is in {', '.join(hits)}")
+            else:
+                print(f"::error::{api}: {file} is not in the build")
+                ok = False
+
+        sys.exit(0 if ok else 1)
+
     - name: Compress the artifact 
       run: |
         $zipName = "${{ steps.get_version.outputs.filename }}.7z"
