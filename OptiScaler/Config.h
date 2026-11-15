@@ -374,9 +374,9 @@ class Config
     CustomOptional<bool, NoDefault> DAClampOutput;
 
     // BaBa Neural Sharpening
-    CustomOptional<int> BabaNeuralModel { 0 };            // 0 = Model A (standard), 1 = Model B (edge-enhanced)
+    CustomOptional<int> BabaNeuralModel { 0 };             // 0 = Model A (standard), 1 = Model B (edge-enhanced)
     CustomOptional<float> BabaNeuralEdgeResponse { 0.0f }; // -1 smooth edges, +1 enhance edges
-    CustomOptional<int> BabaNeuralDebugView { 0 };        // 0 = normal, 1 = sharpening map, 2 = residual map
+    CustomOptional<int> BabaNeuralDebugView { 0 };         // 0 = normal, 1 = sharpening map, 2 = residual map
 
     // MAS
     CustomOptional<bool> MotionSharpnessEnabled { false };
