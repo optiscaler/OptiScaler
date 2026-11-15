@@ -113,9 +113,17 @@ HRESULT Shader_Dx11::CreateComputeShader(ID3D11Device* device, ID3D11ComputeShad
 {
     ComPtr<ID3DBlob> shaderBlob;
 
-    // Compile if not using precompiled
-    if (!Config::Instance()->UsePrecompiledShaders.value_or_default() && shaderCode)
-        shaderBlob = CompileShader(shaderCode, "CSMain", "cs_5_0");
+    // Compile if not using precompiled or when there is no precompiled version
+    const bool hasPrecompiled = bytecode != nullptr && bytecodeSize > 0;
+
+    if ((!hasPrecompiled || !Config::Instance()->UsePrecompiledShaders.value_or_default()) && shaderCode)
+        shaderBlob.Attach(CompileShader(shaderCode, "CSMain", "cs_5_0"));
+
+    if (!hasPrecompiled && shaderBlob.Get() == nullptr)
+    {
+        LOG_ERROR("[{0}] No precompiled shader and the compilation failed", _name);
+        return E_FAIL;
+    }
 
     auto shaderBlob_p = shaderBlob.Get();
 

@@ -99,9 +99,17 @@ bool Shader_Dx12::CreateComputePipeline(ID3D12Device* device, ID3D12PipelineStat
 {
     ComPtr<ID3DBlob> shaderBlob;
 
-    // Compile if not using precompiled
-    if (!Config::Instance()->UsePrecompiledShaders.value_or_default() && source)
-        shaderBlob = CompileShader(source, "CSMain", "cs_5_0");
+    // Compile if not using precompiled or when there is no precompiled version
+    const bool hasPrecompiled = bytecode != nullptr && bytecodeSize > 0;
+
+    if ((!hasPrecompiled || !Config::Instance()->UsePrecompiledShaders.value_or_default()) && source)
+        shaderBlob.Attach(CompileShader(source, "CSMain", "cs_5_0"));
+
+    if (!hasPrecompiled && shaderBlob.Get() == nullptr)
+    {
+        LOG_ERROR("[{0}] No precompiled shader and the compilation failed", _name);
+        return false;
+    }
 
     return CreateComputeShader(device, _rootSignature, pipelineState, shaderBlob.Get(),
                                CD3DX12_SHADER_BYTECODE(bytecode, bytecodeSize));
