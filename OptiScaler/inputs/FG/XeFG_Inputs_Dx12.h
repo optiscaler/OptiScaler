@@ -34,8 +34,9 @@ class XeFGInputs
     inline static FG_Constants _constants {};
     inline static xefg_swapchain_2d_t _mvSize {};
     inline static bool _enabled = false;
-    inline static uint64_t _frameIds[BUFFER_COUNT] {}; // Present id + 1 of each buffer index, 0 = none
-    inline static float _frameTimeScale = 0.0f;        // 1000 when the game passes seconds, 0 until decided
+    inline static uint64_t _frameIds[BUFFER_COUNT] {};   // Present id + 1 of each buffer index, 0 = none
+    inline static UINT64 _frameNumbers[BUFFER_COUNT] {}; // The FG output's frame count of each buffer index
+    inline static float _frameTimeScale = 0.0f;          // 1000 when the game passes seconds, 0 until decided
     inline static float _frameTimeMax = 0.0f;
     inline static int _frameTimeSamples = 0;
     inline static bool _gameDepthMV[BUFFER_COUNT] {}; // Frames without them from the game use the upscaler's
@@ -98,6 +99,7 @@ class XeFGInputs
     static xefg_swapchain_result_t TagFrameResource(xefg_swapchain_handle_t, ID3D12CommandList* cmdList,
                                                     uint32_t presentId,
                                                     const xefg_swapchain_d3d12_resource_data_t* data);
+    static xefg_swapchain_result_t SetPresentId(xefg_swapchain_handle_t, uint32_t presentId);
     static xefg_swapchain_result_t GetLastPresentStatus(xefg_swapchain_handle_t,
                                                         xefg_swapchain_present_status_t* status);
     static xefg_swapchain_result_t Destroy(xefg_swapchain_handle_t);
@@ -119,11 +121,11 @@ class XeFGInputs
         { "xefgSwapChainSetEnabled", (PVOID) &SetEnabled },
         { "xefgSwapChainTagFrameConstants", (PVOID) &TagFrameConstants },
         { "xefgSwapChainD3D12TagFrameResource", (PVOID) &TagFrameResource },
+        { "xefgSwapChainSetPresentId", (PVOID) &SetPresentId },
         { "xefgSwapChainGetLastPresentStatus", (PVOID) &GetLastPresentStatus },
         { "xefgSwapChainDestroy", (PVOID) &Destroy },
 
         // Nothing for the FG output to do
-        { "xefgSwapChainSetPresentId", (PVOID) &Ok },
         { "xefgSwapChainSetLatencyReduction", (PVOID) &Ok },
         { "xefgSwapChainSetLoggingCallback", (PVOID) &Ok },
         { "xefgSwapChainSetSceneChangeThreshold", (PVOID) &Ok },
