@@ -1882,9 +1882,6 @@ class FfxApiProxy
 
         LOG_INFO("LoadResult: {}", loadResult);
 
-        if (loadResult)
-            VersionVk();
-
         return loadResult;
     }
 
