@@ -8,6 +8,7 @@
 
 #include <menu/menu_overlay_vk.h>
 #include <menu/menu_common.h>
+#include <imgui/ImGuiNotify.hpp>
 #include <proxies/KernelBase_Proxy.h>
 #include <upscalers/IFeature_Vk.h>
 #include <framegen/ffx/FSRFG_Vk.h>
@@ -96,7 +97,7 @@ static VkDevice _lowLatency2Device = VK_NULL_HANDLE;
 // Device with VK_KHR/EXT_present_mode_fifo_latest_ready, the override can only use the mode on it
 static VkDevice _fifoLatestReadyDevice = VK_NULL_HANDLE;
 
-// The game's swapchain, its next acquire makes the game recreate it when the present mode override changes
+// The game's swapchain, its presents ask the game to recreate it when the present mode override changes
 static VkSwapchainKHR _gameSwapchain = VK_NULL_HANDLE;
 
 // Set while the FG output handles a swapchain call
@@ -379,14 +380,26 @@ static IFGFeature_Vk* CreateFGFeature()
         bool sdkLoaded = FfxApiProxy::IsFGReadyVk();
         bool driverLoaded = FSR4DriverProviderVk::InitFg();
 
-        if (sdkLoaded || driverLoaded)
+        if (sdkLoaded || driverLoaded || FfxApiProxy::ActiveCustomFgVk() != nullptr)
             state.currentVkFG = new FSRFG_Vk();
         else
             LOG_ERROR("Can't load FFX Vulkan frame generation, FSR FG won't be available");
     }
     else if (state.activeFgOutput == FGOutput::DLSSG)
     {
-        if (StreamlineProxy::InitWithVulkan())
+        if (!StreamlineProxy::LoadStreamline())
+        {
+            ImGui::InsertNotification(
+                { ImGuiToastType::Error, 20000, "Can't init DLSSG Output\nAre you missing the streamline folder?" });
+
+            LOG_ERROR("Can't load Streamline, disabling FGOutput");
+            Config::Instance()->FGOutput.set_volatile_value(FGOutput::NoFG);
+            state.activeFgOutput = Config::Instance()->FGOutput.value_or_default();
+
+            Config::Instance()->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::None);
+            state.activeFgNvngx = Config::Instance()->FGNvngxReplacement.value_or_default();
+        }
+        else if (StreamlineProxy::InitWithVulkan())
             state.currentVkFG = new DLSSG_Vk();
         else
             LOG_ERROR("Can't init Streamline, DLSSG won't be available");
@@ -941,6 +954,10 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
         auto& state = State::Instance();
         state.fgLastFrame++;
 
+        // Nvngx input frames are counted at the game's DLSSG evaluate
+        if (state.activeFgInput != FGInput::NvngxFG)
+            state.gameFrameRate.Present(Util::MillisecondsNow());
+
         static double lastPresentTime = 0.0;
         auto now = Util::MillisecondsNow();
         state.lastFGFrameTime = lastPresentTime > 0.0 ? now - lastPresentTime : 0.0;
@@ -977,6 +994,16 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
     // wait
     if (fgPresent)
         State::Instance().lastFGPresentMs = Util::MillisecondsNow() - presentStart;
+
+    // A changed present mode override needs a new swapchain. Out of date from acquire crashes Enshrouded,
+    // suboptimal after the present doesn't
+    if (State::Instance().vkPresentModeChanged && result == VK_SUCCESS && !dxgiBacked &&
+        std::find(localPresentInfo.pSwapchains, localPresentInfo.pSwapchains + localPresentInfo.swapchainCount,
+                  _gameSwapchain) != localPresentInfo.pSwapchains + localPresentInfo.swapchainCount)
+    {
+        LOG_TRACE("Present mode override changed, asking the game to recreate its swapchain");
+        result = VK_SUBOPTIMAL_KHR;
+    }
 
     LOG_FUNC_RESULT(result);
     return result;
@@ -1175,6 +1202,7 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
         LOG_DEBUG("_device captured: {0:X}", (UINT64) _device);
 
         _gameSwapchain = *pSwapchain;
+        State::Instance().vkPresentModeChanged = false;
 
         auto hwnd = VulkanHooks::SurfaceWindow(pCreateInfo->surface);
         MenuOverlayVk::CreateSwapchain(device, _PD, _instance, hwnd != nullptr ? hwnd : _hwnd, pCreateInfo, pAllocator,
@@ -1232,27 +1260,10 @@ static VkResult hkvkGetSwapchainImagesKHR(VkDevice device, VkSwapchainKHR swapch
     return o_GetSwapchainImagesKHR(device, swapchain, pSwapchainImageCount, pSwapchainImages);
 }
 
-// A changed present mode override needs a new swapchain, the game recreates it on VK_ERROR_OUT_OF_DATE_KHR.
-// Nothing gets acquired or signaled then.
-static bool PresentModeRecreateRequested(VkSwapchainKHR swapchain, void* returnAddress)
-{
-    auto& state = State::Instance();
-
-    if (!state.vkPresentModeChanged || swapchain != _gameSwapchain || FromFGOutput(returnAddress))
-        return false;
-
-    state.vkPresentModeChanged = false;
-    LOG_INFO("Present mode override changed, making the game recreate its swapchain");
-    return true;
-}
-
 VALIDATE_HOOK(hkvkAcquireNextImageKHR, PFN_vkAcquireNextImageKHR)
 static VkResult hkvkAcquireNextImageKHR(VkDevice device, VkSwapchainKHR swapchain, uint64_t timeout,
                                         VkSemaphore semaphore, VkFence fence, uint32_t* pImageIndex)
 {
-    if (PresentModeRecreateRequested(swapchain, _ReturnAddress()))
-        return VK_ERROR_OUT_OF_DATE_KHR;
-
     if (auto fg = State::Instance().currentVkFG;
         fg != nullptr && fg->OwnsSwapchain(swapchain) && !FromFGOutput(_ReturnAddress()))
     {
@@ -1269,9 +1280,6 @@ VALIDATE_HOOK(hkvkAcquireNextImage2KHR, PFN_vkAcquireNextImage2KHR)
 static VkResult hkvkAcquireNextImage2KHR(VkDevice device, const VkAcquireNextImageInfoKHR* pAcquireInfo,
                                          uint32_t* pImageIndex)
 {
-    if (pAcquireInfo != nullptr && PresentModeRecreateRequested(pAcquireInfo->swapchain, _ReturnAddress()))
-        return VK_ERROR_OUT_OF_DATE_KHR;
-
     if (auto fg = State::Instance().currentVkFG; fg != nullptr && pAcquireInfo != nullptr &&
                                                  fg->OwnsSwapchain(pAcquireInfo->swapchain) &&
                                                  !FromFGOutput(_ReturnAddress()))
