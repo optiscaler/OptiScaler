@@ -630,13 +630,29 @@ void CSMain(uint3 DTid : SV_DispatchThreadID)
     for (int j = 0; j < 9; j++)
         taps[j] = EncodeLuma(taps[j], localScale);
 
+    // The network gives a small positive residual even on a flat patch (~+0.007). Invisible after tonemapping,
+    // but it doubles the brightness of dark linear values (pre-tonemap input). Its answer for a flat patch at the
+    // local mean is subtracted, so only the detail is sharpened
+    float flat[9];
+    float mean = 0.0;
+
+    [unroll]
+    for (int k = 0; k < 9; k++)
+        mean += taps[k];
+
+    mean /= 9.0;
+
+    [unroll]
+    for (int f = 0; f < 9; f++)
+        flat[f] = mean;
+
     float rawResidual;
 
     [branch]
     if (Model == 0)
-        rawResidual = RunNetA(taps);
+        rawResidual = RunNetA(taps) - RunNetA(flat);
     else
-        rawResidual = RunNetB(taps);
+        rawResidual = RunNetB(taps) - RunNetB(flat);
 
     float normalizedResidual = saturate(abs(rawResidual) * 2.63); // 2.63 ~ 1/0.38
 
