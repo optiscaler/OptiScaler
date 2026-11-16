@@ -87,7 +87,7 @@ class DlssgNvngxDynamic
         }
 
         // Frame generation is off or hasn't started: begin at the most, the averages start over once it runs
-        const bool fgRunning = state.dlssgDetectedInterpolationCount > 0;
+        const bool fgRunning = state.DlssgDetectedInterpolationCount() > 0;
 
         if (!fgRunning)
         {

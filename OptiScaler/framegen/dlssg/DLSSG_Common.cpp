@@ -25,6 +25,14 @@ void DLSSG_Common::Activate()
 
     if (!_isActive)
     {
+        // Present markers sent while Reflex is off are dropped, the first dispatch comes after the present start
+        sl::ReflexOptions reflexConst = {};
+        reflexConst.mode = sl::ReflexMode::eLowLatency;
+        ScopedOptiScalerReflex optiScalerCall {};
+
+        if (StreamlineProxy::ReflexSetOptions() != nullptr)
+            StreamlineProxy::ReflexSetOptions()(reflexConst);
+
         UpdateTarget();
         _isActive = true;
 
@@ -116,8 +124,8 @@ void DLSSG_Common::SetOptions(bool gameMarkersReachStreamline, HWND window)
     dynamicSettings.limiterSleepMs = std::exchange(state.lastFrameLimitSleepMs, 0.0);
 
     // What the game waited in the present path is its last present
-    const auto dynamic = _dynamic.Update(dynamicSettings, targetCount, _framesToInterpolate, false,
-                                         state.lastFGPresentMs, window);
+    const auto dynamic =
+        _dynamic.Update(dynamicSettings, targetCount, _framesToInterpolate, false, state.lastFGPresentMs, window);
 
     if (_framesToInterpolate != dynamic.count)
     {
