@@ -73,6 +73,7 @@ class IFGFeature
     UINT64 _frameCount = 0;
     bool _allowLowerFrameId = false;
     UINT64 _lastDispatchedFrame = 0;
+    UINT64 _presentFrame = 0; // The frame the next present shows, from inputs that know it, 0 = unknown
     UINT64 _lastFGFrame = 0;
     bool _waitingNewFrameData = false;
     int _framesToInterpolate = -1;
@@ -154,6 +155,7 @@ class IFGFeature
     bool IsInfiniteDepth();
 
     void SetFrameCount(UINT64 frameId);
+    void SetPresentFrame(UINT64 frame);
     void SetJitter(float x, float y, int index = -1);
     void SetMVScale(float x, float y, int index = -1);
     void SetCameraValues(float nearValue, float farValue, float vFov, float aspectRatio, float meterFactor = 0.0f,

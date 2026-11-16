@@ -111,9 +111,10 @@ int XeFGInputs::FrameIndex(IFGFeature_Dx12* fg, uint32_t presentId)
             return i;
     }
 
-    fg->StartNewFrame();
+    auto frame = fg->StartNewFrame();
     auto index = fg->GetIndex();
     _frameIds[index] = (uint64_t) presentId + 1;
+    _frameNumbers[index] = frame;
     _gameDepthMV[index] = false;
     _reprojectionKnown[index] = false;
     _pendingDepth[index] = {};
@@ -604,6 +605,18 @@ xefg_swapchain_result_t XeFGInputs::TagFrameResource(xefg_swapchain_handle_t, ID
     }
 
     fg->SetResource(&res);
+    return XEFG_SWAPCHAIN_RESULT_SUCCESS;
+}
+
+// The next present shows this present id's frame, the FG output dispatches it instead of guessing from its frame count
+xefg_swapchain_result_t XeFGInputs::SetPresentId(xefg_swapchain_handle_t, uint32_t presentId)
+{
+    auto fg = State::Instance().currentFG;
+
+    if (fg == nullptr || _swapChain == nullptr)
+        return XEFG_SWAPCHAIN_RESULT_SUCCESS;
+
+    fg->SetPresentFrame(_frameNumbers[FrameIndex(fg, presentId)]);
     return XEFG_SWAPCHAIN_RESULT_SUCCESS;
 }
 

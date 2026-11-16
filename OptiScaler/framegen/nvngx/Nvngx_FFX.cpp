@@ -502,10 +502,10 @@ NVSDK_NGX_Result Nvngx_FFX::Evaluate(const Nvngx_FFX_Api& api, ffxApiHeader* bac
         InParameters->Get("DLSSG.CameraFar", &cameraFar);
     }
 
-    if (cameraNear != 0.0f && cameraFar == 0.0f)
+    if (cameraNear != 0.0f && (cameraFar == 0.0f || !std::isfinite(cameraFar)))
     {
-        // A CameraFar value of zero indicates an infinite far plane. Due to a bug in FSR's
-        // setupDeviceDepthToViewSpaceDepthParams function, CameraFar must always be greater than
+        // A CameraFar value of zero or infinity (OptiScaler's own DLSSG output) indicates an infinite far plane. Due to
+        // a bug in FSR's setupDeviceDepthToViewSpaceDepthParams function, CameraFar must always be greater than
         // CameraNear when in use.
         depthPlaneInfinite = true;
         cameraFar = cameraNear + 1.0f;
