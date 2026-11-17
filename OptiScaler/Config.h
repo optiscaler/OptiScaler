@@ -580,12 +580,12 @@ class Config
     CustomOptional<bool> FsrNonLinearPQ { false };
     CustomOptional<bool> FsrAgilitySDKUpgrade { false };
 
-    // These default values will be overwritten at upscaler init time with optimized values
-    CustomOptional<float> FsrVelocity { 1.0f };
-    CustomOptional<float> FsrReactiveScale { 1.0f };
-    CustomOptional<float> FsrShadingScale { 1.0f };
+    // Stability preset values
+    CustomOptional<float> FsrVelocity { 0.5f };
+    CustomOptional<float> FsrReactiveScale { 0.333f };
+    CustomOptional<float> FsrShadingScale { 0.5f };
     CustomOptional<float> FsrAccAddPerFrame { 0.333f };
-    CustomOptional<float> FsrMinDisOccAcc { -0.333f };
+    CustomOptional<float> FsrMinDisOccAcc { 0.0f };
 
     // FSR4
     // Overrides the FSR 4 support detected for the GPU

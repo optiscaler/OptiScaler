@@ -277,32 +277,6 @@ void FFXFeature::InitFlags()
         _contextDesc.maxUpscaleSize.width = TargetWidth();
         _contextDesc.maxUpscaleSize.height = TargetHeight();
     }
-
-    // Set stability values as default if not set by user
-    {
-        auto config = Config::Instance();
-        auto const scaleRatioX = (float) TargetWidth() / (float) RenderWidth();
-        auto const scaleRatioY = (float) TargetHeight() / (float) RenderHeight();
-        auto const scaleRatio = std::max(scaleRatioX, scaleRatioY);
-
-        if (scaleRatio > 0.0f && !std::isinf(scaleRatio))
-        {
-            if (config->FsrVelocity.value_for_config() == std::nullopt)
-                config->FsrVelocity.set_volatile_value(0.5f);
-
-            if (config->FsrReactiveScale.value_for_config() == std::nullopt)
-                config->FsrReactiveScale.set_volatile_value(0.25f);
-
-            if (config->FsrShadingScale.value_for_config() == std::nullopt)
-                config->FsrShadingScale.set_volatile_value(0.5f / scaleRatio);
-
-            if (config->FsrAccAddPerFrame.value_for_config() == std::nullopt)
-                config->FsrAccAddPerFrame.set_volatile_value(scaleRatio / 10.0f);
-
-            if (config->FsrMinDisOccAcc.value_for_config() == std::nullopt)
-                config->FsrMinDisOccAcc.set_volatile_value(scaleRatio / 20.0f);
-        }
-    }
 }
 
 FFXFeature::FFXFeature(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters) : IFeature(InHandleId, InParameters)

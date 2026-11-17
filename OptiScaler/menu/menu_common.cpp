@@ -4226,42 +4226,22 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                 // This will be applied by default
                 if (ImGui::Button("Stability"))
                 {
-                    auto const scaleRatioX =
-                        (float) currentFeature->TargetWidth() / (float) currentFeature->RenderWidth();
-                    auto const scaleRatioY =
-                        (float) currentFeature->TargetHeight() / (float) currentFeature->RenderHeight();
-                    auto const scaleRatio = std::max(scaleRatioX, scaleRatioY);
-
                     config->FsrVelocity = 0.5f;
-                    config->FsrReactiveScale = 0.25f;
-
-                    config->FsrShadingScale.reset();
-                    config->FsrAccAddPerFrame.reset();
-                    config->FsrMinDisOccAcc.reset();
-                    config->FsrShadingScale.set_volatile_value(0.5f / scaleRatio);
-                    config->FsrAccAddPerFrame.set_volatile_value(scaleRatio / 10.0f);
-                    config->FsrMinDisOccAcc.set_volatile_value(scaleRatio / 20.0f);
+                    config->FsrReactiveScale = 0.333f;
+                    config->FsrShadingScale = 0.5f;
+                    config->FsrAccAddPerFrame = 0.333f;
+                    config->FsrMinDisOccAcc = 0.0f;
                 }
 
                 ImGui::SameLine(0.0f, 6.0f);
 
                 if (ImGui::Button("Motion"))
                 {
-                    auto const scaleRatioX =
-                        (float) currentFeature->TargetWidth() / (float) currentFeature->RenderWidth();
-                    auto const scaleRatioY =
-                        (float) currentFeature->TargetHeight() / (float) currentFeature->RenderHeight();
-                    auto const scaleRatio = std::max(scaleRatioX, scaleRatioY);
-
                     config->FsrVelocity = 1.0f;
-                    config->FsrReactiveScale = 0.5f;
-
-                    config->FsrShadingScale.reset();
-                    config->FsrAccAddPerFrame.reset();
-                    config->FsrMinDisOccAcc.reset();
-                    config->FsrShadingScale.set_volatile_value(1.0f / scaleRatio);
-                    config->FsrAccAddPerFrame.set_volatile_value(scaleRatio / 10.0f);
-                    config->FsrMinDisOccAcc.set_volatile_value(scaleRatio / 20.0f);
+                    config->FsrReactiveScale = 0.666f;
+                    config->FsrShadingScale = 1.0f;
+                    config->FsrAccAddPerFrame = 0.166f;
+                    config->FsrMinDisOccAcc = 0.0f;
                 }
 
                 ImGui::SameLine(0.0f, 6.0f);
