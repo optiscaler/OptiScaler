@@ -387,9 +387,40 @@ void WritePassthrough(int2 p, float3 c, float alpha, float intensity)
 // taps: luma of the 3x3 neighbourhood, row major (0 1 2 / 3 4 5 / 6 7 8)
 // -----------------------------------------------------------------------------
 
-// Layers 2 and 3, shared by the full and the flat patch evaluation
-float RunNetTailA(float4 L1_0, float4 L1_1, float4 L1_2)
+float RunNetA(float taps[9])
 {
+    // LAYER 1: 3x3 convolution, 12 channels stored as 3 float4 groups
+    float4 L1_0 = A_Local_B[0];
+    float4 L1_1 = A_Local_B[1];
+    float4 L1_2 = A_Local_B[2];
+    L1_0 += taps[0] * A_Local_W[0];
+    L1_1 += taps[0] * A_Local_W[1];
+    L1_2 += taps[0] * A_Local_W[2];
+    L1_0 += taps[1] * A_Local_W[3];
+    L1_1 += taps[1] * A_Local_W[4];
+    L1_2 += taps[1] * A_Local_W[5];
+    L1_0 += taps[2] * A_Local_W[6];
+    L1_1 += taps[2] * A_Local_W[7];
+    L1_2 += taps[2] * A_Local_W[8];
+    L1_0 += taps[3] * A_Local_W[9];
+    L1_1 += taps[3] * A_Local_W[10];
+    L1_2 += taps[3] * A_Local_W[11];
+    L1_0 += taps[4] * A_Local_W[12];
+    L1_1 += taps[4] * A_Local_W[13];
+    L1_2 += taps[4] * A_Local_W[14];
+    L1_0 += taps[5] * A_Local_W[15];
+    L1_1 += taps[5] * A_Local_W[16];
+    L1_2 += taps[5] * A_Local_W[17];
+    L1_0 += taps[6] * A_Local_W[18];
+    L1_1 += taps[6] * A_Local_W[19];
+    L1_2 += taps[6] * A_Local_W[20];
+    L1_0 += taps[7] * A_Local_W[21];
+    L1_1 += taps[7] * A_Local_W[22];
+    L1_2 += taps[7] * A_Local_W[23];
+    L1_0 += taps[8] * A_Local_W[24];
+    L1_1 += taps[8] * A_Local_W[25];
+    L1_2 += taps[8] * A_Local_W[26];
+
     // PReLU 1
     L1_0 = max(0.0, L1_0) + min(0.0, L1_0) * A_Local_A[0];
     L1_1 = max(0.0, L1_1) + min(0.0, L1_1) * A_Local_A[1];
@@ -449,46 +480,40 @@ float RunNetTailA(float4 L1_0, float4 L1_1, float4 L1_2)
     return res;
 }
 
-float RunNetA(float taps[9])
+float RunNetB(float taps[9])
 {
     // LAYER 1: 3x3 convolution, 12 channels stored as 3 float4 groups
-    float4 L1_0 = A_Local_B[0];
-    float4 L1_1 = A_Local_B[1];
-    float4 L1_2 = A_Local_B[2];
-    L1_0 += taps[0] * A_Local_W[0];
-    L1_1 += taps[0] * A_Local_W[1];
-    L1_2 += taps[0] * A_Local_W[2];
-    L1_0 += taps[1] * A_Local_W[3];
-    L1_1 += taps[1] * A_Local_W[4];
-    L1_2 += taps[1] * A_Local_W[5];
-    L1_0 += taps[2] * A_Local_W[6];
-    L1_1 += taps[2] * A_Local_W[7];
-    L1_2 += taps[2] * A_Local_W[8];
-    L1_0 += taps[3] * A_Local_W[9];
-    L1_1 += taps[3] * A_Local_W[10];
-    L1_2 += taps[3] * A_Local_W[11];
-    L1_0 += taps[4] * A_Local_W[12];
-    L1_1 += taps[4] * A_Local_W[13];
-    L1_2 += taps[4] * A_Local_W[14];
-    L1_0 += taps[5] * A_Local_W[15];
-    L1_1 += taps[5] * A_Local_W[16];
-    L1_2 += taps[5] * A_Local_W[17];
-    L1_0 += taps[6] * A_Local_W[18];
-    L1_1 += taps[6] * A_Local_W[19];
-    L1_2 += taps[6] * A_Local_W[20];
-    L1_0 += taps[7] * A_Local_W[21];
-    L1_1 += taps[7] * A_Local_W[22];
-    L1_2 += taps[7] * A_Local_W[23];
-    L1_0 += taps[8] * A_Local_W[24];
-    L1_1 += taps[8] * A_Local_W[25];
-    L1_2 += taps[8] * A_Local_W[26];
+    float4 L1_0 = B_Local_B[0];
+    float4 L1_1 = B_Local_B[1];
+    float4 L1_2 = B_Local_B[2];
+    L1_0 += taps[0] * B_Local_W[0];
+    L1_1 += taps[0] * B_Local_W[1];
+    L1_2 += taps[0] * B_Local_W[2];
+    L1_0 += taps[1] * B_Local_W[3];
+    L1_1 += taps[1] * B_Local_W[4];
+    L1_2 += taps[1] * B_Local_W[5];
+    L1_0 += taps[2] * B_Local_W[6];
+    L1_1 += taps[2] * B_Local_W[7];
+    L1_2 += taps[2] * B_Local_W[8];
+    L1_0 += taps[3] * B_Local_W[9];
+    L1_1 += taps[3] * B_Local_W[10];
+    L1_2 += taps[3] * B_Local_W[11];
+    L1_0 += taps[4] * B_Local_W[12];
+    L1_1 += taps[4] * B_Local_W[13];
+    L1_2 += taps[4] * B_Local_W[14];
+    L1_0 += taps[5] * B_Local_W[15];
+    L1_1 += taps[5] * B_Local_W[16];
+    L1_2 += taps[5] * B_Local_W[17];
+    L1_0 += taps[6] * B_Local_W[18];
+    L1_1 += taps[6] * B_Local_W[19];
+    L1_2 += taps[6] * B_Local_W[20];
+    L1_0 += taps[7] * B_Local_W[21];
+    L1_1 += taps[7] * B_Local_W[22];
+    L1_2 += taps[7] * B_Local_W[23];
+    L1_0 += taps[8] * B_Local_W[24];
+    L1_1 += taps[8] * B_Local_W[25];
+    L1_2 += taps[8] * B_Local_W[26];
 
-    return RunNetTailA(L1_0, L1_1, L1_2);
-}
-
-// Layers 2 and 3, shared by the full and the flat patch evaluation
-float RunNetTailB(float4 L1_0, float4 L1_1, float4 L1_2)
-{
     // PReLU 1
     L1_0 = max(0.0, L1_0) + min(0.0, L1_0) * B_Local_A[0];
     L1_1 = max(0.0, L1_1) + min(0.0, L1_1) * B_Local_A[1];
@@ -548,74 +573,87 @@ float RunNetTailB(float4 L1_0, float4 L1_1, float4 L1_2)
     return res;
 }
 
-float RunNetB(float taps[9])
-{
-    // LAYER 1: 3x3 convolution, 12 channels stored as 3 float4 groups
-    float4 L1_0 = B_Local_B[0];
-    float4 L1_1 = B_Local_B[1];
-    float4 L1_2 = B_Local_B[2];
-    L1_0 += taps[0] * B_Local_W[0];
-    L1_1 += taps[0] * B_Local_W[1];
-    L1_2 += taps[0] * B_Local_W[2];
-    L1_0 += taps[1] * B_Local_W[3];
-    L1_1 += taps[1] * B_Local_W[4];
-    L1_2 += taps[1] * B_Local_W[5];
-    L1_0 += taps[2] * B_Local_W[6];
-    L1_1 += taps[2] * B_Local_W[7];
-    L1_2 += taps[2] * B_Local_W[8];
-    L1_0 += taps[3] * B_Local_W[9];
-    L1_1 += taps[3] * B_Local_W[10];
-    L1_2 += taps[3] * B_Local_W[11];
-    L1_0 += taps[4] * B_Local_W[12];
-    L1_1 += taps[4] * B_Local_W[13];
-    L1_2 += taps[4] * B_Local_W[14];
-    L1_0 += taps[5] * B_Local_W[15];
-    L1_1 += taps[5] * B_Local_W[16];
-    L1_2 += taps[5] * B_Local_W[17];
-    L1_0 += taps[6] * B_Local_W[18];
-    L1_1 += taps[6] * B_Local_W[19];
-    L1_2 += taps[6] * B_Local_W[20];
-    L1_0 += taps[7] * B_Local_W[21];
-    L1_1 += taps[7] * B_Local_W[22];
-    L1_2 += taps[7] * B_Local_W[23];
-    L1_0 += taps[8] * B_Local_W[24];
-    L1_1 += taps[8] * B_Local_W[25];
-    L1_2 += taps[8] * B_Local_W[26];
-
-    return RunNetTailB(L1_0, L1_1, L1_2);
-}
-
-// All 9 taps are the mean on a flat patch, layer 1 reduces to the summed weights (compile time constants)
+// Network answer for a flat patch (all 9 taps = mean). With one input and PReLU activations it is piecewise
+// linear in mean, written here as hinges at its breakpoints, the same function as RunNetA/B on a flat patch
+// (float32 differs ~1e-6). Generated from the weights above, regenerate if they change. Breakpoints above 1 are
+// left out: encoded taps are never above 1, localScale is at least the largest tap
 float RunNetFlatA(float mean)
 {
-    float4 sumW0 = A_Local_W[0] + A_Local_W[3] + A_Local_W[6] + A_Local_W[9] + A_Local_W[12] + A_Local_W[15] +
-                   A_Local_W[18] + A_Local_W[21] + A_Local_W[24];
-    float4 sumW1 = A_Local_W[1] + A_Local_W[4] + A_Local_W[7] + A_Local_W[10] + A_Local_W[13] + A_Local_W[16] +
-                   A_Local_W[19] + A_Local_W[22] + A_Local_W[25];
-    float4 sumW2 = A_Local_W[2] + A_Local_W[5] + A_Local_W[8] + A_Local_W[11] + A_Local_W[14] + A_Local_W[17] +
-                   A_Local_W[20] + A_Local_W[23] + A_Local_W[26];
+    float flat = 0.0060600224405 + 0.175067294912 * mean;
 
-    float4 L1_0 = A_Local_B[0] + mean * sumW0;
-    float4 L1_1 = A_Local_B[1] + mean * sumW1;
-    float4 L1_2 = A_Local_B[2] + mean * sumW2;
-    return RunNetTailA(L1_0, L1_1, L1_2);
+    // Only one side's hinges can be non zero, negative means are rare (SDR with negative luma)
+    [branch]
+    if (mean >= 0.0)
+    {
+        flat += -0.150968173604 * max(mean - 0.014251068354, 0.0);
+        flat += -0.0572397387027 * max(mean - 0.0247515683503, 0.0);
+        flat += 0.000115763534968 * max(mean - 0.0550066773131, 0.0);
+        flat += 0.0305009873447 * max(mean - 0.097019030578, 0.0);
+        flat += 0.0681568495192 * max(mean - 0.135350654766, 0.0);
+        flat += -0.225701032239 * max(mean - 0.167670870173, 0.0);
+        flat += 0.138205237234 * max(mean - 0.176185385576, 0.0);
+        flat += 0.0379811555884 * max(mean - 0.614819644624, 0.0);
+        flat += 0.312393273336 * max(mean - 0.878628609894, 0.0);
+        flat += -0.325835521453 * max(mean - 0.879908311442, 0.0);
+    }
+    else
+    {
+        flat += -0.320186759593 * max(-0.0153030932581 - mean, 0.0);
+        flat += 0.248268476742 * max(-0.0182633030934 - mean, 0.0);
+        flat += 0.131543843716 * max(-0.024893074335 - mean, 0.0);
+        flat += -0.828078985856 * max(-0.0286011565566 - mean, 0.0);
+        flat += 0.378372720001 * max(-0.029243185007 - mean, 0.0);
+        flat += -0.127722375726 * max(-0.116665666306 - mean, 0.0);
+        flat += 0.291334879569 * max(-0.1342146258 - mean, 0.0);
+        flat += -1.06977892019 * max(-0.166516498241 - mean, 0.0);
+        flat += -0.00634175929432 * max(-0.188603808329 - mean, 0.0);
+        flat += -0.218456127884 * max(-0.288253670903 - mean, 0.0);
+        flat += -0.0126240685325 * max(-0.342916063483 - mean, 0.0);
+        flat += 0.986959893291 * max(-0.39312024127 - mean, 0.0);
+        flat += 0.0909796853916 * max(-0.431024404817 - mean, 0.0);
+        flat += 0.236969792167 * max(-0.707216963513 - mean, 0.0);
+        flat += -0.161559871524 * max(-2.51984802432 - mean, 0.0);
+        flat += 0.00874072097725 * max(-6.13224086942 - mean, 0.0);
+    }
+)"
+                                           R"(
+
+    return flat;
 }
 
 float RunNetFlatB(float mean)
 {
-    float4 sumW0 = B_Local_W[0] + B_Local_W[3] + B_Local_W[6] + B_Local_W[9] + B_Local_W[12] + B_Local_W[15] +
-                   B_Local_W[18] + B_Local_W[21] + B_Local_W[24];
-    float4 sumW1 = B_Local_W[1] + B_Local_W[4] + B_Local_W[7] + B_Local_W[10] + B_Local_W[13] + B_Local_W[16] +
-                   B_Local_W[19] + B_Local_W[22] + B_Local_W[25];
-    float4 sumW2 = B_Local_W[2] + B_Local_W[5] + B_Local_W[8] + B_Local_W[11] + B_Local_W[14] + B_Local_W[17] +
-                   B_Local_W[20] + B_Local_W[23] + B_Local_W[26];
-)"
-                                           R"(
+    float flat = 0.0050881055069 + 0.751365926683 * mean;
 
-    float4 L1_0 = B_Local_B[0] + mean * sumW0;
-    float4 L1_1 = B_Local_B[1] + mean * sumW1;
-    float4 L1_2 = B_Local_B[2] + mean * sumW2;
-    return RunNetTailB(L1_0, L1_1, L1_2);
+    [branch]
+    if (mean >= 0.0)
+    {
+        flat += -3.1911015516 * max(mean - 0.00632336345482, 0.0);
+        flat += 2.92045777063 * max(mean - 0.00779963788163, 0.0);
+        flat += -0.545743344435 * max(mean - 0.0141646869386, 0.0);
+        flat += 0.481058718233 * max(mean - 0.0357847241578, 0.0);
+        flat += -0.746653119581 * max(mean - 0.0409117461946, 0.0);
+        flat += 0.248145308176 * max(mean - 0.0582469815953, 0.0);
+        flat += -0.287864643495 * max(mean - 0.0862950277974, 0.0);
+        flat += -0.287965471802 * max(mean - 0.0877899551077, 0.0);
+        flat += 0.666144589111 * max(mean - 0.0947852013482, 0.0);
+        flat += -0.00776714226758 * max(mean - 0.807396931514, 0.0);
+    }
+    else
+    {
+        flat += -0.395228421239 * max(-0.0118680346466 - mean, 0.0);
+        flat += -1.11449681372 * max(-0.200443822499 - mean, 0.0);
+        flat += 1.34960286286 * max(-0.409868462457 - mean, 0.0);
+        flat += -0.889477289545 * max(-0.4784245775 - mean, 0.0);
+        flat += 1.09211718264 * max(-0.480572785318 - mean, 0.0);
+        flat += 0.0136815823277 * max(-0.670213587711 - mean, 0.0);
+        flat += -0.418580677883 * max(-0.794003817545 - mean, 0.0);
+        flat += 0.243976450468 * max(-0.853032168865 - mean, 0.0);
+        flat += -0.1066883019 * max(-1.547628992 - mean, 0.0);
+        flat += -0.011665346854 * max(-6.33907306161 - mean, 0.0);
+    }
+
+    return flat;
 }
 
 // -----------------------------------------------------------------------------
