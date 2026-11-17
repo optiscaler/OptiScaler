@@ -337,6 +337,8 @@ bool RCAS_Dx11::Dispatch(ID3D11Device* InDevice, ID3D11DeviceContext* InContext,
     if (sharpnessShader == SharpenShader::BabaNeural && !EnsureBabaShader(InDevice))
         sharpnessShader = SharpenShader::RCAS;
 
+    SetTimedShader(sharpnessShader);
+
     if (sharpnessShader == SharpenShader::LocalContrastDepthAware)
     {
         return DispatchDASDepthAdaptive(InDevice, InContext, InResource, InMotionVectors, InDepth, InConstants,

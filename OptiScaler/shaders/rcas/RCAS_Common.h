@@ -7,6 +7,8 @@
 #include "shaders/DA_RCAS_Shader.h"
 #include "shaders/RCAS_Shader.h"
 
+#include <atomic>
+
 struct RcasConstants
 {
     float Sharpness;
@@ -25,7 +27,14 @@ struct RcasConstants
 
 class RCAS_Common
 {
+  public:
+    // The sharpening shader that ran last, its GPU time is shown under this name
+    const char* TimedShaderName() const { return _timedShaderName; }
+
   protected:
+    // Called by Dispatch with the shader it runs, after the fallbacks
+    void SetTimedShader(SharpenShader InShader);
+
     struct alignas(256) InternalConstants
     {
         float Sharpness;
@@ -121,4 +130,8 @@ class RCAS_Common
     void FillMotionConstants(InternalConstants& OutConstants, const RcasConstants& InConstants);
     void FillMotionConstants(InternalConstantsDA& OutConstants, const RcasConstants& InConstants);
     void FillMotionConstants(InternalConstantsBaba& OutConstants, const RcasConstants& InConstants);
+
+  private:
+    // Written by Dispatch, read by the present hooks
+    std::atomic<const char*> _timedShaderName { "RCAS" };
 };

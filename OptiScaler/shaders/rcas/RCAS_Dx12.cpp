@@ -215,6 +215,8 @@ bool RCAS_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* I
     if (sharpnessShader == SharpenShader::BabaNeural && !EnsureBabaPipeline())
         sharpnessShader = SharpenShader::RCAS;
 
+    SetTimedShader(sharpnessShader);
+
     if (sharpnessShader == SharpenShader::LocalContrastDepthAware)
     {
         return DispatchDepthAdaptive(_pipelineStateDASDA, InCmdList, InResource, InMotionVectors, InDepth, InConstants,

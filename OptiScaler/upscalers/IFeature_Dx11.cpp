@@ -515,7 +515,7 @@ void IFeature_Dx11::ReadDetailedGpuTimes(void* deviceContextVoid, std::vector<De
         detailedGpuTimes.emplace_back(DetailedGpuTime { ShortName(), lastUpscalerTime.value(), true });
 
     if (lastRcasTime)
-        detailedGpuTimes.emplace_back(DetailedGpuTime { RCAS->Name(), lastRcasTime.value(), true });
+        detailedGpuTimes.emplace_back(DetailedGpuTime { RCAS->TimedShaderName(), lastRcasTime.value(), true });
 
     if (lastOutputScalingTime)
         detailedGpuTimes.emplace_back(DetailedGpuTime { OutputScaler->Name(), lastOutputScalingTime.value(), true });

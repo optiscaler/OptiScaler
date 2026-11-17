@@ -30,6 +30,29 @@ void RCAS_Common::FillMotionConstants(InternalConstants& OutConstants, const Rca
         OutConstants.MotionTextureScale = (float) OutConstants.MotionWidth / (float) OutConstants.OutputWidth;
 }
 
+void RCAS_Common::SetTimedShader(SharpenShader InShader)
+{
+    // Same names as the Method combo of the menu
+    const char* name = "RCAS";
+
+    switch (InShader)
+    {
+    case SharpenShader::DepthAware:
+        name = "Depth Aware (RCAS)";
+        break;
+    case SharpenShader::LocalContrastDepthAware:
+        name = "Depth Aware (DAS)";
+        break;
+    case SharpenShader::BabaNeural:
+        name = "Neural (BaBa)";
+        break;
+    default:
+        break;
+    }
+
+    _timedShaderName = name;
+}
+
 void RCAS_Common::FillMotionConstants(InternalConstantsDA& OutConstants, const RcasConstants& InConstants)
 {
     OutConstants.Sharpness = InConstants.Sharpness * 2.0f;

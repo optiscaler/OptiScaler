@@ -226,18 +226,6 @@ bool RCAS_Vk::DispatchRCAS(VkCommandBuffer InCmdList, RcasConstants InConstants,
 bool RCAS_Vk::DispatchBaba(VkCommandBuffer InCmdList, RcasConstants InConstants, const VkImageInfo& InResourceInfo,
                            const VkImageInfo& InMotionVectorsInfo, const VkImageInfo& OutResourceInfo)
 {
-    // No spir-v for it, plain RCAS instead
-    if (_pipelineBaba == VK_NULL_HANDLE)
-    {
-        if (!_babaFallbackLogged)
-        {
-            LOG_WARN("BaBa Neural sharpening isn't available for Vulkan in this build, using RCAS");
-            _babaFallbackLogged = true;
-        }
-
-        return DispatchRCAS(InCmdList, InConstants, InResourceInfo, InMotionVectorsInfo, OutResourceInfo);
-    }
-
     InternalConstantsBaba constants {};
     constants.OutputWidth = OutResourceInfo.Width;
     constants.OutputHeight = OutResourceInfo.Height;
@@ -313,6 +301,21 @@ bool RCAS_Vk::Dispatch(VkDevice InDevice, VkCommandBuffer InCmdList, RcasConstan
     if (InDepthInfo == nullptr &&
         (sharpnessShader == SharpenShader::LocalContrastDepthAware || sharpnessShader == SharpenShader::DepthAware))
         sharpnessShader = SharpenShader::RCAS;
+
+    // No spir-v for BaBa Neural, plain RCAS instead
+    if (sharpnessShader == SharpenShader::BabaNeural && _pipelineBaba == VK_NULL_HANDLE)
+    {
+        if (!_babaFallbackLogged)
+        {
+            LOG_WARN("BaBa Neural sharpening isn't available for Vulkan in this build, using RCAS");
+            _babaFallbackLogged = true;
+        }
+
+        sharpnessShader = SharpenShader::RCAS;
+    }
+
+    SetTimedShader(sharpnessShader);
+
     if (sharpnessShader == SharpenShader::LocalContrastDepthAware)
     {
         return DispatchDepthAdaptive(InCmdList, InConstants, InResourceInfo, InMotionVectorsInfo, OutResourceInfo,
