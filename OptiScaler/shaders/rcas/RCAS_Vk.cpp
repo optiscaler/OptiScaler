@@ -4,7 +4,24 @@
 #include "precompile/da_das_sharpen_Shader_Vk.h"
 #include "precompile/da_rcas_sharpen_Shader_Vk.h"
 #include <Config.h>
+#include <magic_enum.hpp>
 #include <misc/DeferredRelease.h>
+
+static bool IsFloatVkFormat(VkFormat InFormat)
+{
+    switch (InFormat)
+    {
+    case VK_FORMAT_R32G32B32A32_SFLOAT:
+    case VK_FORMAT_R32G32B32_SFLOAT:
+    case VK_FORMAT_R16G16B16A16_SFLOAT:
+    case VK_FORMAT_R16G16B16_SFLOAT:
+    case VK_FORMAT_B10G11R11_UFLOAT_PACK32:
+    case VK_FORMAT_E5B9G9R9_UFLOAT_PACK32:
+        return true;
+    default:
+        return false;
+    }
+}
 
 #include "precompile/baba_neural_sharpen_Shader_Vk.h"
 
@@ -243,7 +260,8 @@ bool RCAS_Vk::DispatchBaba(VkCommandBuffer InCmdList, RcasConstants InConstants,
     constants.OutputHeight = OutResourceInfo.Height;
     constants.MotionWidth = InMotionVectorsInfo.Width;
     constants.MotionHeight = InMotionVectorsInfo.Height;
-    FillMotionConstants(constants, InConstants);
+    FillMotionConstants(constants, InConstants, IsFloatVkFormat(InResourceInfo.Format),
+                        (uint32_t) InResourceInfo.Format, magic_enum::enum_name(InResourceInfo.Format));
 
     _currentSetIndex = (_currentSetIndex + 1) % _maxFramesInFlight;
     UpdateDescriptorSet(WriteConstants(&constants, sizeof(InternalConstantsBaba)), _currentSetIndex,
@@ -312,6 +330,10 @@ bool RCAS_Vk::Dispatch(VkDevice InDevice, VkCommandBuffer InCmdList, RcasConstan
     // Depth aware shaders fall back to plain RCAS without depth
     if (InDepthInfo == nullptr &&
         (sharpnessShader == SharpenShader::LocalContrastDepthAware || sharpnessShader == SharpenShader::DepthAware))
+        sharpnessShader = SharpenShader::RCAS;
+
+    // BaBa Neural falls back to plain RCAS when its pipeline can't be created
+    if (sharpnessShader == SharpenShader::BabaNeural && _pipelineBaba == VK_NULL_HANDLE)
         sharpnessShader = SharpenShader::RCAS;
     if (sharpnessShader == SharpenShader::LocalContrastDepthAware)
     {

@@ -62,7 +62,26 @@ void RCAS_Common::FillMotionConstants(InternalConstantsDA& OutConstants, const R
         OutConstants.MotionTextureScale = (float) OutConstants.MotionWidth / (float) OutConstants.OutputWidth;
 }
 
-void RCAS_Common::FillMotionConstants(InternalConstantsBaba& OutConstants, const RcasConstants& InConstants)
+bool RCAS_Common::IsFloatFormat(DXGI_FORMAT InFormat)
+{
+    switch (InFormat)
+    {
+    case DXGI_FORMAT_R32G32B32A32_TYPELESS:
+    case DXGI_FORMAT_R32G32B32A32_FLOAT:
+    case DXGI_FORMAT_R32G32B32_TYPELESS:
+    case DXGI_FORMAT_R32G32B32_FLOAT:
+    case DXGI_FORMAT_R16G16B16A16_TYPELESS:
+    case DXGI_FORMAT_R16G16B16A16_FLOAT:
+    case DXGI_FORMAT_R11G11B10_FLOAT:
+    case DXGI_FORMAT_R9G9B9E5_SHAREDEXP:
+        return true;
+    default:
+        return false;
+    }
+}
+
+void RCAS_Common::FillMotionConstants(InternalConstantsBaba& OutConstants, const RcasConstants& InConstants,
+                                      bool InputIsFloat, uint32_t InputFormat, std::string_view FormatName)
 {
     // Same mapping as the depth aware shaders, 0.5 strength is the 1.0 Intensity of the ReShade shader
     OutConstants.Sharpness = InConstants.Sharpness * 2.0f;
@@ -72,18 +91,41 @@ void RCAS_Common::FillMotionConstants(InternalConstantsBaba& OutConstants, const
     OutConstants.ViewMode = Config::Instance()->BabaNeuralDebugView.value_or_default();
 
     OutConstants.ClampOutput = Config::Instance()->DAClampOutput.value_or(false) ? 1 : 0;
-    OutConstants.IsHdr = InConstants.IsHdr ? 1 : 0;
+
+    // Games frequently feed pre-tonemap linear float buffers without setting the HDR flag; treating float formats as
+    // linear ensures perceptual gamma encoding and hue-preserving RGB scaling are used instead of gamma YCbCr.
+    // Non-float HDR10 PQ inputs are already perceptual in [0, 1].
+    const bool isPqUnorm = !InputIsFloat && Config::Instance()->FsrNonLinearPQ.value_or_default();
+    const bool linear = InputIsFloat || (InConstants.IsHdr && !isPqUnorm);
+    OutConstants.IsHdr = linear ? 1 : 0;
+
+    if (_babaLoggedFormat != (int64_t) InputFormat || _babaLoggedLinear != linear ||
+        _babaLoggedHdr != InConstants.IsHdr)
+    {
+        _babaLoggedFormat = InputFormat;
+        _babaLoggedLinear = linear;
+        _babaLoggedHdr = InConstants.IsHdr;
+        const std::string_view name = FormatName.empty() ? "unknown" : FormatName;
+        LOG_INFO("BaBa Neural input format: {} ({}), float: {}, HDR flag: {}, PQ: {}, handled as {}", name, InputFormat,
+                 InputIsFloat, InConstants.IsHdr, isPqUnorm, linear ? "linear" : "display ready");
+    }
 
     OutConstants.MvScaleX = InConstants.MvScaleX;
     OutConstants.MvScaleY = InConstants.MvScaleY;
 
-    OutConstants.DynamicSharpenEnabled = Config::Instance()->MotionSharpnessEnabled.value_or_default() ? 1 : 0;
+    OutConstants.DynamicSharpenEnabled = (Config::Instance()->MotionSharpnessEnabled.value_or_default() &&
+                                          OutConstants.MotionWidth > 0 && OutConstants.MotionHeight > 0)
+                                             ? 1
+                                             : 0;
     OutConstants.Debug = Config::Instance()->MotionSharpnessDebug.value_or_default() ? 1 : 0;
     OutConstants.MotionSharpness = Config::Instance()->MotionSharpness.value_or_default();
     OutConstants.MotionThreshold = Config::Instance()->MotionThreshold.value_or_default();
     OutConstants.MotionScaleLimit = Config::Instance()->MotionScaleLimit.value_or_default();
 
-    OutConstants.DisplaySizeMV = OutConstants.MotionWidth == OutConstants.OutputWidth ? 1 : 0;
+    OutConstants.DisplaySizeMV =
+        (OutConstants.MotionWidth == OutConstants.OutputWidth && OutConstants.MotionHeight == OutConstants.OutputHeight)
+            ? 1
+            : 0;
 
     if (OutConstants.DisplaySizeMV)
         OutConstants.MotionTextureScale = 1.0f;

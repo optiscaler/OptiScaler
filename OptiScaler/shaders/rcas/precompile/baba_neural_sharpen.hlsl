@@ -246,6 +246,9 @@ static const float B_Out_Bias = 0.065220654;
 // BT.601 weights, paired with RGBToYCbCr / YCbCrToRGB below (same as the ReShade version)
 static const float3 kLumaCoeff = float3(0.299, 0.587, 0.114);
 
+// 16x16 thread group + 1-pixel border on each side for the 3x3 luma taps
+groupshared float s_luma[18][18];
+
 float GetLuma(float3 rgb)
 {
     return dot(rgb, kLumaCoeff);
@@ -293,6 +296,11 @@ bool IsFinite(float x)
     return (asuint(x) & 0x7f800000) != 0x7f800000;
 }
 
+bool IsFinite3(float3 v)
+{
+    return IsFinite(v.x) && IsFinite(v.y) && IsFinite(v.z);
+}
+
 int2 ClampCoord(int2 p)
 {
     return int2(clamp(p.x, 0, DisplayWidth - 1), clamp(p.y, 0, DisplayHeight - 1));
@@ -318,7 +326,7 @@ float ComputeAdaptiveSharpness(int2 pixelCoord)
 {
     float setSharpness = Sharpness;
 
-    if (DynamicSharpenEnabled > 0)
+    if (DynamicSharpenEnabled > 0 && MotionWidth > 0 && MotionHeight > 0)
     {
         float2 mv;
 
@@ -328,7 +336,7 @@ float ComputeAdaptiveSharpness(int2 pixelCoord)
         }
         else
         {
-            float2 mvf = (float2(pixelCoord) + 0.5) * MotionTextureScale;
+            float2 mvf = (float2(pixelCoord) + 0.5) * (float2(MotionWidth, MotionHeight) / float2(DisplayWidth, DisplayHeight));
             mv = LoadMotion(int2(mvf));
         }
 
@@ -360,7 +368,7 @@ float3 ApplyMasDebugTint(float3 color, float baseSharpness, float adaptiveSharpn
     return color;
 }
 
-void WritePassthrough(int2 p, float3 c, float intensity)
+void WritePassthrough(int2 p, float3 c, float alpha, float intensity)
 {
     if (Debug > 0 && DynamicSharpenEnabled > 0)
         c = ApplyMasDebugTint(c, Sharpness, intensity);
@@ -368,7 +376,7 @@ void WritePassthrough(int2 p, float3 c, float intensity)
     if (ClampOutput > 0)
         c = saturate(c);
 
-    Dest[p] = float4(c, 1.0);
+    Dest[p] = float4(c, alpha);
 }
 
 // -----------------------------------------------------------------------------
@@ -562,40 +570,199 @@ float RunNetB(float taps[9])
     return res;
 }
 
+float RunNetFlatA(float mean)
+{
+    float4 sumW0 = A_Local_W[0] + A_Local_W[3] + A_Local_W[6] + A_Local_W[9] + A_Local_W[12] + A_Local_W[15] +
+                   A_Local_W[18] + A_Local_W[21] + A_Local_W[24];
+    float4 sumW1 = A_Local_W[1] + A_Local_W[4] + A_Local_W[7] + A_Local_W[10] + A_Local_W[13] + A_Local_W[16] +
+                   A_Local_W[19] + A_Local_W[22] + A_Local_W[25];
+    float4 sumW2 = A_Local_W[2] + A_Local_W[5] + A_Local_W[8] + A_Local_W[11] + A_Local_W[14] + A_Local_W[17] +
+                   A_Local_W[20] + A_Local_W[23] + A_Local_W[26];
+
+    float4 L1_0 = A_Local_B[0] + mean * sumW0;
+    float4 L1_1 = A_Local_B[1] + mean * sumW1;
+    float4 L1_2 = A_Local_B[2] + mean * sumW2;
+
+    L1_0 = max(0.0, L1_0) + min(0.0, L1_0) * A_Local_A[0];
+    L1_1 = max(0.0, L1_1) + min(0.0, L1_1) * A_Local_A[1];
+    L1_2 = max(0.0, L1_2) + min(0.0, L1_2) * A_Local_A[2];
+
+    float4 L2_0 = A_Mix_B[0];
+    float4 L2_1 = A_Mix_B[1];
+    float4 L2_2 = A_Mix_B[2];
+    L2_0.x += dot(L1_0, A_Mix_W[0]);
+    L2_0.y += dot(L1_0, A_Mix_W[1]);
+    L2_0.z += dot(L1_0, A_Mix_W[2]);
+    L2_0.w += dot(L1_0, A_Mix_W[3]);
+    L2_0.x += dot(L1_1, A_Mix_W[4]);
+    L2_0.y += dot(L1_1, A_Mix_W[5]);
+    L2_0.z += dot(L1_1, A_Mix_W[6]);
+    L2_0.w += dot(L1_1, A_Mix_W[7]);
+    L2_0.x += dot(L1_2, A_Mix_W[8]);
+    L2_0.y += dot(L1_2, A_Mix_W[9]);
+    L2_0.z += dot(L1_2, A_Mix_W[10]);
+    L2_0.w += dot(L1_2, A_Mix_W[11]);
+    L2_1.x += dot(L1_0, A_Mix_W[12]);
+    L2_1.y += dot(L1_0, A_Mix_W[13]);
+    L2_1.z += dot(L1_0, A_Mix_W[14]);
+    L2_1.w += dot(L1_0, A_Mix_W[15]);
+    L2_1.x += dot(L1_1, A_Mix_W[16]);
+    L2_1.y += dot(L1_1, A_Mix_W[17]);
+    L2_1.z += dot(L1_1, A_Mix_W[18]);
+    L2_1.w += dot(L1_1, A_Mix_W[19]);
+    L2_1.x += dot(L1_2, A_Mix_W[20]);
+    L2_1.y += dot(L1_2, A_Mix_W[21]);
+    L2_1.z += dot(L1_2, A_Mix_W[22]);
+    L2_1.w += dot(L1_2, A_Mix_W[23]);
+    L2_2.x += dot(L1_0, A_Mix_W[24]);
+    L2_2.y += dot(L1_0, A_Mix_W[25]);
+    L2_2.z += dot(L1_0, A_Mix_W[26]);
+    L2_2.w += dot(L1_0, A_Mix_W[27]);
+    L2_2.x += dot(L1_1, A_Mix_W[28]);
+    L2_2.y += dot(L1_1, A_Mix_W[29]);
+    L2_2.z += dot(L1_1, A_Mix_W[30]);
+    L2_2.w += dot(L1_1, A_Mix_W[31]);
+    L2_2.x += dot(L1_2, A_Mix_W[32]);
+    L2_2.y += dot(L1_2, A_Mix_W[33]);
+    L2_2.z += dot(L1_2, A_Mix_W[34]);
+    L2_2.w += dot(L1_2, A_Mix_W[35]);
+
+    L2_0 = max(0.0, L2_0) + min(0.0, L2_0) * A_Mix_A[0];
+    L2_1 = max(0.0, L2_1) + min(0.0, L2_1) * A_Mix_A[1];
+    L2_2 = max(0.0, L2_2) + min(0.0, L2_2) * A_Mix_A[2];
+
+    float res = A_Out_Bias;
+    res += dot(L2_0, A_Out_W[0]);
+    res += dot(L2_1, A_Out_W[1]);
+    res += dot(L2_2, A_Out_W[2]);
+    return res;
+}
+
+float RunNetFlatB(float mean)
+{
+    float4 sumW0 = B_Local_W[0] + B_Local_W[3] + B_Local_W[6] + B_Local_W[9] + B_Local_W[12] + B_Local_W[15] +
+                   B_Local_W[18] + B_Local_W[21] + B_Local_W[24];
+    float4 sumW1 = B_Local_W[1] + B_Local_W[4] + B_Local_W[7] + B_Local_W[10] + B_Local_W[13] + B_Local_W[16] +
+                   B_Local_W[19] + B_Local_W[22] + B_Local_W[25];
+    float4 sumW2 = B_Local_W[2] + B_Local_W[5] + B_Local_W[8] + B_Local_W[11] + B_Local_W[14] + B_Local_W[17] +
+                   B_Local_W[20] + B_Local_W[23] + B_Local_W[26];
+
+    float4 L1_0 = B_Local_B[0] + mean * sumW0;
+    float4 L1_1 = B_Local_B[1] + mean * sumW1;
+    float4 L1_2 = B_Local_B[2] + mean * sumW2;
+
+    L1_0 = max(0.0, L1_0) + min(0.0, L1_0) * B_Local_A[0];
+    L1_1 = max(0.0, L1_1) + min(0.0, L1_1) * B_Local_A[1];
+    L1_2 = max(0.0, L1_2) + min(0.0, L1_2) * B_Local_A[2];
+
+    float4 L2_0 = B_Mix_B[0];
+    float4 L2_1 = B_Mix_B[1];
+    float4 L2_2 = B_Mix_B[2];
+    L2_0.x += dot(L1_0, B_Mix_W[0]);
+    L2_0.y += dot(L1_0, B_Mix_W[1]);
+    L2_0.z += dot(L1_0, B_Mix_W[2]);
+    L2_0.w += dot(L1_0, B_Mix_W[3]);
+    L2_0.x += dot(L1_1, B_Mix_W[4]);
+    L2_0.y += dot(L1_1, B_Mix_W[5]);
+    L2_0.z += dot(L1_1, B_Mix_W[6]);
+    L2_0.w += dot(L1_1, B_Mix_W[7]);
+    L2_0.x += dot(L1_2, B_Mix_W[8]);
+    L2_0.y += dot(L1_2, B_Mix_W[9]);
+    L2_0.z += dot(L1_2, B_Mix_W[10]);
+    L2_0.w += dot(L1_2, B_Mix_W[11]);
+    L2_1.x += dot(L1_0, B_Mix_W[12]);
+    L2_1.y += dot(L1_0, B_Mix_W[13]);
+    L2_1.z += dot(L1_0, B_Mix_W[14]);
+    L2_1.w += dot(L1_0, B_Mix_W[15]);
+    L2_1.x += dot(L1_1, B_Mix_W[16]);
+    L2_1.y += dot(L1_1, B_Mix_W[17]);
+    L2_1.z += dot(L1_1, B_Mix_W[18]);
+    L2_1.w += dot(L1_1, B_Mix_W[19]);
+    L2_1.x += dot(L1_2, B_Mix_W[20]);
+    L2_1.y += dot(L1_2, B_Mix_W[21]);
+    L2_1.z += dot(L1_2, B_Mix_W[22]);
+    L2_1.w += dot(L1_2, B_Mix_W[23]);
+    L2_2.x += dot(L1_0, B_Mix_W[24]);
+    L2_2.y += dot(L1_0, B_Mix_W[25]);
+    L2_2.z += dot(L1_0, B_Mix_W[26]);
+    L2_2.w += dot(L1_0, B_Mix_W[27]);
+    L2_2.x += dot(L1_1, B_Mix_W[28]);
+    L2_2.y += dot(L1_1, B_Mix_W[29]);
+    L2_2.z += dot(L1_1, B_Mix_W[30]);
+    L2_2.w += dot(L1_1, B_Mix_W[31]);
+    L2_2.x += dot(L1_2, B_Mix_W[32]);
+    L2_2.y += dot(L1_2, B_Mix_W[33]);
+    L2_2.z += dot(L1_2, B_Mix_W[34]);
+    L2_2.w += dot(L1_2, B_Mix_W[35]);
+
+    L2_0 = max(0.0, L2_0) + min(0.0, L2_0) * B_Mix_A[0];
+    L2_1 = max(0.0, L2_1) + min(0.0, L2_1) * B_Mix_A[1];
+    L2_2 = max(0.0, L2_2) + min(0.0, L2_2) * B_Mix_A[2];
+
+    float res = B_Out_Bias;
+    res += dot(L2_0, B_Out_W[0]);
+    res += dot(L2_1, B_Out_W[1]);
+    res += dot(L2_2, B_Out_W[2]);
+    return res;
+}
+
 // -----------------------------------------------------------------------------
 // Main
 // -----------------------------------------------------------------------------
 
 [numthreads(16, 16, 1)]
-void CSMain(uint3 DTid : SV_DispatchThreadID)
+void CSMain(uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3 Gid : SV_GroupID,
+            uint GIndex : SV_GroupIndex)
 {
+    const int2 groupOrigin = int2(Gid.xy) * 16 - 1;
+
+    // Populate the 18x18 luma tile once per threadgroup; propagate Inf/NaN as QNaN
+    for (uint ti = GIndex; ti < 18 * 18; ti += 256)
+    {
+        const int2 local = int2(ti % 18, ti / 18);
+        const float3 tc = LoadColor(groupOrigin + local);
+        const float tl = GetLuma(tc);
+        s_luma[local.y][local.x] = (IsFinite3(tc) && IsFinite(tl)) ? tl : asfloat(0x7fc00000);
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+
     int2 p = int2(DTid.x, DTid.y);
 
     // Guard against oversized dispatch
     if (p.x >= DisplayWidth || p.y >= DisplayHeight)
         return;
 
-    float3 c = LoadColor(p);
+    float4 source = Source.Load(int3(p, 0));
+    float3 c = source.rgb;
+
+    if (!IsFinite3(c))
+    {
+        Dest[p] = source;
+        return;
+    }
+
     float intensity = ComputeAdaptiveSharpness(p);
 
     // Nothing to add, the debug views still need the network so they skip this
     if (intensity <= 0.0 && ViewMode == 0)
     {
-        WritePassthrough(p, c, intensity);
+        WritePassthrough(p, c, source.a, intensity);
         return;
     }
 
-    // Luma of the 3x3 neighbourhood. Borders are clamped, like the clamped sampler of the ReShade version
+    // Luma of the 3x3 neighbourhood from shared memory
+    const int2 s = int2(GTid.xy) + 1;
     float taps[9];
-    taps[0] = GetLuma(LoadColor(p + int2(-1, -1)));
-    taps[1] = GetLuma(LoadColor(p + int2(0, -1)));
-    taps[2] = GetLuma(LoadColor(p + int2(1, -1)));
-    taps[3] = GetLuma(LoadColor(p + int2(-1, 0)));
-    taps[4] = GetLuma(c);
-    taps[5] = GetLuma(LoadColor(p + int2(1, 0)));
-    taps[6] = GetLuma(LoadColor(p + int2(-1, 1)));
-    taps[7] = GetLuma(LoadColor(p + int2(0, 1)));
-    taps[8] = GetLuma(LoadColor(p + int2(1, 1)));
+    taps[0] = s_luma[s.y - 1][s.x - 1];
+    taps[1] = s_luma[s.y - 1][s.x];
+    taps[2] = s_luma[s.y - 1][s.x + 1];
+    taps[3] = s_luma[s.y][s.x - 1];
+    taps[4] = s_luma[s.y][s.x];
+    taps[5] = s_luma[s.y][s.x + 1];
+    taps[6] = s_luma[s.y + 1][s.x - 1];
+    taps[7] = s_luma[s.y + 1][s.x];
+    taps[8] = s_luma[s.y + 1][s.x + 1];
 
     float lumaLinear = taps[4];
     float localScale = 1.0;
@@ -611,7 +778,7 @@ void CSMain(uint3 DTid : SV_DispatchThreadID)
     // An Inf / NaN would set the scale of the whole neighbourhood, leave the pixel as it is
     if (!finite)
     {
-        WritePassthrough(p, c, intensity);
+        WritePassthrough(p, c, source.a, intensity);
         return;
     }
 
@@ -622,7 +789,6 @@ void CSMain(uint3 DTid : SV_DispatchThreadID)
     // The network gives a small positive residual even on a flat patch (~+0.007). Invisible after tonemapping,
     // but it doubles the brightness of dark linear values (pre-tonemap input). Its answer for a flat patch at the
     // local mean is subtracted, so only the detail is sharpened
-    float flat[9];
     float mean = 0.0;
 
     [unroll]
@@ -631,17 +797,13 @@ void CSMain(uint3 DTid : SV_DispatchThreadID)
 
     mean /= 9.0;
 
-    [unroll]
-    for (int f = 0; f < 9; f++)
-        flat[f] = mean;
-
     float rawResidual;
 
     [branch]
     if (Model == 0)
-        rawResidual = RunNetA(taps) - RunNetA(flat);
+        rawResidual = RunNetA(taps) - RunNetFlatA(mean);
     else
-        rawResidual = RunNetB(taps) - RunNetB(flat);
+        rawResidual = RunNetB(taps) - RunNetFlatB(mean);
 
     float normalizedResidual = saturate(abs(rawResidual) * 2.63); // 2.63 ~ 1/0.38
 
@@ -719,7 +881,7 @@ void CSMain(uint3 DTid : SV_DispatchThreadID)
 
         // DecodeLuma(lumaC) and not lumaLinear, a negative luma is encoded as 0
         float3 added = c + (lumaOut - DecodeLuma(lumaC, localScale));
-        outColor = lerp(added, c * ratio, ratioWeight);
+        outColor = max(floorC, lerp(added, c * ratio, ratioWeight));
     }
 
     if (Debug > 0 && DynamicSharpenEnabled > 0)
@@ -728,5 +890,5 @@ void CSMain(uint3 DTid : SV_DispatchThreadID)
     if (ClampOutput > 0)
         outColor = saturate(outColor);
 
-    Dest[p] = float4(outColor, 1.0);
+    Dest[p] = float4(outColor, source.a);
 }

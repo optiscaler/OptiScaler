@@ -10,6 +10,7 @@
 #include "precompile/baba_neural_sharpen_Shader_Dx11.h"
 
 #include <Config.h>
+#include <magic_enum.hpp>
 
 bool RCAS_Dx11::CreateBufferResource(ID3D11Device* InDevice, ID3D11Resource* InResource)
 {
@@ -268,13 +269,16 @@ bool RCAS_Dx11::DispatchBaba(ID3D11Device* InDevice, ID3D11DeviceContext* InCont
     OutResource->GetDesc(&outDesc);
     D3D11_TEXTURE2D_DESC mvsDesc {};
     InMotionVectors->GetDesc(&mvsDesc);
+    D3D11_TEXTURE2D_DESC inDesc {};
+    InResource->GetDesc(&inDesc);
 
     constants.OutputWidth = (uint32_t) outDesc.Width;
     constants.OutputHeight = outDesc.Height;
     constants.MotionWidth = (uint32_t) mvsDesc.Width;
     constants.MotionHeight = mvsDesc.Height;
 
-    FillMotionConstants(constants, InConstants);
+    FillMotionConstants(constants, InConstants, IsFloatFormat(inDesc.Format), (uint32_t) inDesc.Format,
+                        magic_enum::enum_name(inDesc.Format));
 
     D3D11_MAPPED_SUBRESOURCE mappedResource;
     auto hr = InContext->Map(_constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);

@@ -9,6 +9,7 @@
 #include "precompile/baba_neural_sharpen_Shader.h"
 
 #include <Config.h>
+#include <magic_enum.hpp>
 
 bool RCAS_Dx12::DispatchRCAS(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InResource,
                              ID3D12Resource* InMotionVectors, RcasConstants InConstants, ID3D12Resource* OutResource,
@@ -146,7 +147,9 @@ bool RCAS_Dx12::DispatchBaba(ID3D12GraphicsCommandList* InCmdList, ID3D12Resourc
     constants.MotionWidth = (uint32_t) mvsDesc.Width;
     constants.MotionHeight = mvsDesc.Height;
 
-    FillMotionConstants(constants, InConstants);
+    const auto inFormat = InResource->GetDesc().Format;
+    FillMotionConstants(constants, InConstants, IsFloatFormat(inFormat), (uint32_t) inFormat,
+                        magic_enum::enum_name(inFormat));
 
     if (!CreateConstantsBuffer(_device, currentHeap, constants, currentHeap.GetCbvCPU(0)))
     {

@@ -7,6 +7,9 @@
 #include "shaders/DA_RCAS_Shader.h"
 #include "shaders/RCAS_Shader.h"
 
+#include <cstdint>
+#include <string_view>
+
 struct RcasConstants
 {
     float Sharpness;
@@ -120,5 +123,14 @@ class RCAS_Common
 
     void FillMotionConstants(InternalConstants& OutConstants, const RcasConstants& InConstants);
     void FillMotionConstants(InternalConstantsDA& OutConstants, const RcasConstants& InConstants);
-    void FillMotionConstants(InternalConstantsBaba& OutConstants, const RcasConstants& InConstants);
+
+    // Float formats carry scene-referred linear values even when IsHdr isn't flagged
+    static bool IsFloatFormat(DXGI_FORMAT InFormat);
+    void FillMotionConstants(InternalConstantsBaba& OutConstants, const RcasConstants& InConstants, bool InputIsFloat,
+                             uint32_t InputFormat, std::string_view FormatName);
+
+  private:
+    std::int64_t _babaLoggedFormat = -1;
+    bool _babaLoggedLinear = false;
+    bool _babaLoggedHdr = false;
 };
