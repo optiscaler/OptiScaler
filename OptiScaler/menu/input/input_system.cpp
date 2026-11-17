@@ -41,10 +41,6 @@ SetWindowsHookExA_t o_SetWindowsHookExA = ::SetWindowsHookExA;
 SetWindowsHookExW_t o_SetWindowsHookExW = ::SetWindowsHookExW;
 UnhookWindowsHookEx_t o_UnhookWindowsHookEx = ::UnhookWindowsHookEx;
 GameInputCreate_t o_GameInputCreate = nullptr;
-XInputGetState_t o_XInputGetState = nullptr;
-XInputGetState_t o_XInputGetStateEx = nullptr;
-XInputGetKeystroke_t o_XInputGetKeystroke = nullptr;
-XInputSetState_t o_XInputSetState = nullptr;
 DirectInput8Create_t o_DirectInput8Create = nullptr;
 DirectInputCreateA_t o_DirectInputCreateA = nullptr;
 DirectInputCreateW_t o_DirectInputCreateW = nullptr;
@@ -97,7 +93,8 @@ void HandleBlockingFocusLossLocked()
 
     // Focus loss temporarily releases game-input blocking while the menu may remain open.
     EndCursorClipBlockLocked();
-    DrainDirectInputBufferedDataLocked();
+    EndDirectInputBlockLocked();
+    ForgetTakenAsyncKeyPresses();
     DrainXInputKeystrokesLocked();
     ResetButtonBlockedStateLocked();
     ResetRawInputBlockStateLocked();
@@ -783,7 +780,8 @@ void ApplyMenuVisibilityChangeLocked(bool visible)
         // Event-style controller APIs keep their own queues. Drain them before
         // releasing the menu block so menu-time events cannot replay into the
         // game on the first frame after closing.
-        DrainDirectInputBufferedDataLocked();
+        EndDirectInputBlockLocked();
+        ForgetTakenAsyncKeyPresses();
         DrainXInputKeystrokesLocked();
 
         _state.HasBlockedCursorScreenPos = false;
@@ -1664,6 +1662,9 @@ InputAcquisitionMode GetInputAcquisitionMode()
 
 void ResetMenuInputTransientState()
 {
+    // The window thread adds text and key events under the lock
+    std::unique_lock lock(_state.Mutex);
+
     _state.ExternalPendingMouseDeltaX = 0;
     _state.ExternalPendingMouseDeltaY = 0;
     _state.MouseWheel = 0.0f;

@@ -9,9 +9,10 @@ static NVSDK_NGX_Parameter* SetParameters(NVSDK_NGX_Parameter* InParameters)
     return InParameters;
 }
 
-FFXFeatureVkOn12::FFXFeatureVkOn12(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters)
+FFXFeatureVkOn12::FFXFeatureVkOn12(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters,
+                                   const std::string& customUpscaler)
     : IFeature_VkwDx12(InHandleId, InParameters), IFeature_Vk(InHandleId, InParameters),
       IFeature(InHandleId, SetParameters(InParameters))
 {
-    dx12Feature = std::make_unique<FFXFeatureDx12>(InHandleId, InParameters);
+    dx12Feature = std::make_unique<FFXFeatureDx12>(InHandleId, InParameters, customUpscaler);
 }

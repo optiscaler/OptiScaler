@@ -24,6 +24,6 @@ class DLSSDFeatureVk : public DLSSDFeature, public IFeature_Vk
 
     bool IsWithDx12() override { return false; }
 
-    DLSSDFeatureVk(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters);
+    DLSSDFeatureVk(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters, const std::string& customRR = "");
     ~DLSSDFeatureVk();
 };

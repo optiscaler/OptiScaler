@@ -7,6 +7,7 @@
 #include <ankerl/unordered_dense.h>
 #include <misc/IdentifyGpu.h>
 #include <framegen/nvngx/Nvngx_FG.h>
+#include <upscalers/nvngx/Nvngx_RR.h>
 
 /// @brief Calculates the resolution scaling ratio override based on the provided quality level and current
 /// configuration.
@@ -835,6 +836,9 @@ void InitNGXParameters(NVSDK_NGX_Parameter* InParams, API api)
             InParams->Set("FrameGeneration.MinDriverVersionMajor", 0);
         }
     }
+
+    // Ray reconstruction is available when it doesn't run on NVIDIA's DLSSD
+    Nvngx_RR::PopulateParameters(InParams, api);
 }
 
 NVNGX_Parameters* GetNGXParameters(API api, bool isPersistent)

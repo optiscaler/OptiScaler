@@ -1,12 +1,13 @@
 #include "pch.h"
 #include "FfxApi_Dx12.h"
+#include "NVNGX_DLSS.h"
 
 #include "Util.h"
 #include "Config.h"
 
 #include "resource.h"
 #include "NVNGX_Parameter.h"
-#include <proxies/NVNGX_Proxy.h>
+#include <proxies/Nvngx_Proxy.h>
 #include "proxies/FfxApi_Proxy.h"
 
 #include "FG/FfxApi_Dx12_FG.h"
@@ -101,11 +102,24 @@ static bool CreateDLSSContext(ffxContext handle, const ffxDispatchDescUpscale* p
     params->Set("FSR.upscaleSize.width", pExecParams->upscaleSize.width);
     params->Set("FSR.upscaleSize.height", pExecParams->upscaleSize.height);
 
-    auto width = pExecParams->upscaleSize.width > 0 ? pExecParams->upscaleSize.width : initParams->maxUpscaleSize.width;
+    // DLSS/XeSS stay at the max sizes, the inputs of smaller upscale sizes get padded to the max size's ratio
+    const bool padToMax = State::Instance().gameQuirks & GameQuirk::PadToMaxUpscaleSize &&
+                          initParams->maxRenderSize.width > 0 && initParams->maxRenderSize.height > 0 &&
+                          initParams->maxUpscaleSize.width > 0 && initParams->maxUpscaleSize.height > 0;
+    params->Set("OptiScaler.PadToMaxUpscaleSize", padToMax ? 1 : 0);
+    params->Set("OptiScaler.PadExactUpscaleSize", 0);
+    params->Set("FSR.maxRenderSize.width", initParams->maxRenderSize.width);
+    params->Set("FSR.maxRenderSize.height", initParams->maxRenderSize.height);
+    params->Set("FSR.maxUpscaleSize.width", initParams->maxUpscaleSize.width);
+    params->Set("FSR.maxUpscaleSize.height", initParams->maxUpscaleSize.height);
 
-    auto ratio = (float) width / (float) pExecParams->renderSize.width;
+    auto renderWidth = padToMax ? initParams->maxRenderSize.width : pExecParams->renderSize.width;
+    auto width = pExecParams->upscaleSize.width > 0 && !padToMax ? pExecParams->upscaleSize.width
+                                                                 : initParams->maxUpscaleSize.width;
 
-    LOG_INFO("renderWidth: {}, maxWidth: {}, ratio: {}", pExecParams->renderSize.width, width, ratio);
+    auto ratio = (float) width / (float) renderWidth;
+
+    LOG_INFO("renderWidth: {}, maxWidth: {}, ratio: {}", renderWidth, width, ratio);
 
     if (ratio > 2.0)
         params->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_UltraPerformance);
@@ -268,9 +282,9 @@ ffxReturnCode_t ffxCreateContext_Dx12(ffxContext* context, ffxCreateContextDescH
         NVSDK_NGX_FeatureCommonInfo fcInfo {};
         auto exePath = Util::ExePath().remove_filename();
 
-        auto nvResult = NVSDK_NGX_D3D12_Init_with_ProjectID(
-            OPTI_GUID, state.NVNGX_Engine, OPTI_VERSION, exePath.c_str(), _d3d12Device, &fcInfo,
-            state.NVNGX_Version == 0 ? NVSDK_NGX_Version_API : state.NVNGX_Version);
+        auto nvResult =
+            NVNGXDx12InputInit(OPTI_GUID, state.NVNGX_Engine, OPTI_VERSION, exePath.c_str(), _d3d12Device, &fcInfo,
+                               state.NVNGX_Version == 0 ? NVSDK_NGX_Version_API : state.NVNGX_Version);
 
         if (nvResult != NVSDK_NGX_Result_Success)
             return FFX_API_RETURN_ERROR_RUNTIME_ERROR;

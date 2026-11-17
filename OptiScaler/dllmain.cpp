@@ -19,7 +19,7 @@
 #include <proxies/XeSS_Proxy.h>
 #include <proxies/XeFG_Proxy.h>
 #include <proxies/XeLL_Proxy.h>
-#include <proxies/NVNGX_Proxy.h>
+#include <proxies/Nvngx_Proxy.h>
 #include <proxies/FfxApi_Proxy.h>
 
 #include "inputs/FSR2_Dx11.h"
@@ -50,6 +50,7 @@
 #include <magic_enum.hpp>
 #include <version_check.h>
 #include <misc/IdentifyGpu.h>
+#include <misc/CrashDumps.h>
 #include <sha1/sha1.hpp>
 
 static std::vector<HMODULE> _asiHandles;
@@ -430,12 +431,19 @@ static bool ShouldLoadReShade()
            !Config::Instance()->CreateD3D12DeviceForLuma.value_or_default();
 }
 
+static bool ShouldLoadForLuma()
+{
+    return Config::Instance()->CreateD3D12DeviceForLuma.value_or_default() &&
+           ((skModule == nullptr && Config::Instance()->LoadSpecialK.value_or_default()) ||
+            (reshadeModule == nullptr && Config::Instance()->LoadReShade.value_or_default()));
+}
+
 static void LoadInjectedDlls()
 {
+    // No RESHADE_DISABLE_GRAPHICS_HOOK, Special K sets it itself when it wants ReShade without hooks
     if (ShouldLoadSpecialK())
     {
         auto skFile = Util::ExePath().parent_path() / L"SpecialK64.dll";
-        SetEnvironmentVariableW(L"RESHADE_DISABLE_GRAPHICS_HOOK", L"1");
 
         State::EnableServeOriginal(200);
         skModule = NtdllProxy::LoadLibraryExW_Ldr(skFile.c_str(), NULL, 0);
@@ -468,7 +476,6 @@ typedef int(WINAPI* PFN_ExeEntry)(PVOID);
 static PFN_ExeEntry o_ExeEntry = nullptr;
 static std::atomic<bool> _entryLoadsStarted = false;
 static std::atomic<bool> _entryLoadsDone = false;
-static bool _asiAtEntry = false;
 
 // Not call_once, an asi creating a factory while loading would call this again
 static void RunEntryLoads()
@@ -489,19 +496,14 @@ static void RunEntryLoads()
     LOG_INFO("Loading injected dlls");
 
     // So ReShade hooks the factory methods after us, Special K should hook before us
-    if (!ShouldLoadSpecialK())
+    if (skModule != nullptr || !Config::Instance()->LoadSpecialK.value_or_default())
         DxgiHooks::HookFactoryMethods();
 
     // Detection fails under the loader lock, nvapi loaded by an injected dll's DllMain would pick fakenvapi
     IdentifyGpu::getAllGpus();
 
+    DxgiHooks::LoadForLuma();
     LoadInjectedDlls();
-
-    if (_asiAtEntry)
-    {
-        spdlog::info("");
-        LoadAsiPlugins();
-    }
 
     // Started here to not create a factory together with the one above
     CreateThread(nullptr, 0, getGpuInfo, GetDllNameWModule(&dx12NamesW), 0, nullptr);
@@ -523,11 +525,34 @@ static int WINAPI hkExeEntry(PVOID param)
     return o_ExeEntry(param);
 }
 
+// TLS callbacks run before the entry, protectors (Denuvo, VMProtect) use them to check the exe code
+static bool ExeHasTlsCallbacks()
+{
+    auto base = (BYTE*) exeModule;
+    auto dosHeader = (IMAGE_DOS_HEADER*) base;
+    auto ntHeaders = (IMAGE_NT_HEADERS*) (base + dosHeader->e_lfanew);
+    auto tlsData = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS];
+
+    if (tlsData.VirtualAddress == 0)
+        return false;
+
+    auto tlsDir = (IMAGE_TLS_DIRECTORY*) (base + tlsData.VirtualAddress);
+    auto callbacks = (PIMAGE_TLS_CALLBACK*) tlsDir->AddressOfCallBacks;
+
+    return callbacks != nullptr && *callbacks != nullptr;
+}
+
 // Runs after the loader lock is released and before any game code
 static bool HookExeEntry()
 {
     if (o_ExeEntry != nullptr)
         return true;
+
+    if (ExeHasTlsCallbacks())
+    {
+        LOG_INFO("Exe has TLS callbacks, not hooking the entry");
+        return false;
+    }
 
     o_ExeEntry = (PFN_ExeEntry) DetourGetEntryPoint(nullptr);
 
@@ -1191,6 +1216,14 @@ static void CheckWorkingMode()
         StreamlineHooks::hookDlss(slDlss);
     }
 
+    HMODULE slDlssd = GetDllNameWModule(&slDlssdNamesW);
+    if (slDlssd != nullptr)
+    {
+        State::Instance().postCodes |= PostCode::SlPluginsAlreadyInMemory;
+        LOG_WARN("sl.dlss_d.dll already in memory");
+        StreamlineHooks::hookDlssd(slDlssd);
+    }
+
     HMODULE slDlssg = nullptr;
     slDlssg = GetDllNameWModule(&slDlssgNamesW);
     if (slDlssg != nullptr)
@@ -1346,6 +1379,10 @@ static void CheckWorkingMode()
     if ((ShouldLoadSpecialK() || ShouldLoadReShade()) && (!_staticLoad || !HookExeEntry()))
         LoadInjectedDlls();
 
+    // Luma's device can't be created under the loader lock, without the entry hook the first factory does it
+    if (_staticLoad && ShouldLoadForLuma())
+        HookExeEntry();
+
     // Version check
     if (Config::Instance()->CheckForUpdate.value_or_default())
         VersionCheck::Start();
@@ -1429,6 +1466,9 @@ static void printQuirks(flag_set<GameQuirk>& quirks)
 
     if (quirks & GameQuirk::ExtendedSearch)
         stringQuirks.push_back("Extended DLL search");
+
+    if (quirks & GameQuirk::PadToMaxUpscaleSize)
+        stringQuirks.push_back("Keep DLSS/XeSS at the max FFX upscale size");
 
     state->detectedQuirks.append_range(stringQuirks);
     for (auto& stringQuirk : stringQuirks)
@@ -1749,9 +1789,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         spdlog::info("");
         spdlog::info("LogLevel: {}", Config::Instance()->LogLevel.value_or_default());
 
-        CustomProviders::ResolveDx12Upscaler();
-        CustomProviders::ResolveVulkanUpscaler();
-        CustomProviders::ResolveFGNvngx();
+        CustomProviders::ResolveAll();
 
         spdlog::info("");
         if (Util::GetRealWindowsVersion(winVer))
@@ -1782,6 +1820,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         State::Instance().activeFgOutput = Config::Instance()->FGOutput.value_or_default();
         State::Instance().activeFgNvngx = Config::Instance()->FGNvngxReplacement.value_or_default();
         State::Instance().activeFgNvngxCustom = State::Instance().fgNvngxCustom;
+        State::Instance().activeFsrFgProvider = Config::Instance()->FSRFGProvider.value_or("");
 
         // Ensure valid FG configuration
         if (State::Instance().activeFgOutput == FGOutput::NoFG && State::Instance().activeFgInput != FGInput::NoFG &&
@@ -1793,8 +1832,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
             State::Instance().activeFgInput = FGInput::NoFG;
         }
 
-        if (State::Instance().activeFgInput != FGInput::NvngxFG && State::Instance().activeFgOutput != FGOutput::DLSSG)
+        if (State::Instance().activeFgInput != FGInput::NvngxFG &&
+            State::Instance().activeFgOutput != FGOutput::DLSSG &&
+            State::Instance().activeFgOutput != FGOutput::FlipMeter)
+        {
             State::Instance().activeFgNvngx = FGNvngxReplacement::None;
+        }
 
         if (State::Instance().activeFgInput == FGInput::NvngxFG)
             State::Instance().activeFgOutput = FGOutput::NoFG;
@@ -1807,6 +1850,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         NtdllProxy::Init();
         KernelBaseProxy::Init();
         Kernel32Proxy::Init();
+
+        CrashDumps::Init();
 
         // Check for Wine
         spdlog::info("");
@@ -1839,6 +1884,9 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                      std::string_view(desc) == std::string_view("DXVK_NVAPI")))
                 {
                     spdlog::debug("Using dxvk-nvapi");
+
+                    // Display devices only list GPUs with a display attached, which misses PRIME offload GPUs,
+                    // but the call also makes Wine refresh the GPU list in the registry
                     DISPLAY_DEVICEA dd = {};
                     dd.cb = sizeof(dd);
                     int deviceIndex = 0;
@@ -1851,6 +1899,60 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                             nvidiaDetected = true;
                         }
                         deviceIndex++;
+                    }
+
+                    // Wine registers every GPU here and removes the ones that are gone
+                    // Windows keeps removed GPUs here too, so it's only used on Wine
+                    HKEY pciKey = nullptr;
+                    if (!nvidiaDetected && State::Instance().isRunningOnLinux &&
+                        RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"System\\CurrentControlSet\\Enum\\PCI", 0, KEY_READ,
+                                      &pciKey) == ERROR_SUCCESS)
+                    {
+                        wchar_t deviceName[256];
+
+                        for (DWORD i = 0; !nvidiaDetected; i++)
+                        {
+                            DWORD deviceNameLength = std::size(deviceName);
+                            if (RegEnumKeyExW(pciKey, i, deviceName, &deviceNameLength, nullptr, nullptr, nullptr,
+                                              nullptr) != ERROR_SUCCESS)
+                            {
+                                break;
+                            }
+
+                            if (!std::wstring_view(deviceName).starts_with(L"VEN_10DE"))
+                                continue;
+
+                            HKEY deviceKey = nullptr;
+                            if (RegOpenKeyExW(pciKey, deviceName, 0, KEY_READ, &deviceKey) != ERROR_SUCCESS)
+                                continue;
+
+                            wchar_t instanceName[256];
+
+                            for (DWORD j = 0; !nvidiaDetected; j++)
+                            {
+                                DWORD instanceNameLength = std::size(instanceName);
+                                if (RegEnumKeyExW(deviceKey, j, instanceName, &instanceNameLength, nullptr, nullptr,
+                                                  nullptr, nullptr) != ERROR_SUCCESS)
+                                {
+                                    break;
+                                }
+
+                                // Skip non display devices like the HDMI audio
+                                wchar_t classGuid[64];
+                                DWORD classGuidSize = sizeof(classGuid);
+                                if (RegGetValueW(deviceKey, instanceName, L"ClassGUID", RRF_RT_REG_SZ, nullptr,
+                                                 classGuid, &classGuidSize) == ERROR_SUCCESS &&
+                                    _wcsicmp(classGuid, L"{4d36e968-e325-11ce-bfc1-08002be10318}") == 0)
+                                {
+                                    spdlog::debug("Nvidia GPU found: {}", wstring_to_string(deviceName));
+                                    nvidiaDetected = true;
+                                }
+                            }
+
+                            RegCloseKey(deviceKey);
+                        }
+
+                        RegCloseKey(pciKey);
                     }
                 }
                 else if (o_NvAPI_QueryInterface(0x21382138))
@@ -2006,18 +2108,11 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                 Config::Instance()->FpsOverlayPosition.set_volatile_value(FpsOverlayPos_TopRight);
         }
 
-        // Asi plugins, after the injected dlls like before
+        // Asi plugins stay in DllMain, some expect to run before other dlls and the exe's TLS callbacks
         if (Config::Instance()->LoadAsiPlugins.value_or_default())
         {
-            if (_staticLoad && HookExeEntry())
-            {
-                _asiAtEntry = true;
-            }
-            else
-            {
-                spdlog::info("");
-                LoadAsiPlugins();
-            }
+            spdlog::info("");
+            LoadAsiPlugins();
         }
 
         if (!Config::Instance()->DxgiSpoofing.has_value() && !State::Instance().nvngxReplacement.has_value())

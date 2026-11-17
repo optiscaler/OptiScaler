@@ -5,10 +5,14 @@
 #include <Windows.h>
 
 #include <array>
+#include <bitset>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
+#include <optional>
 #include <string>
+#include <unordered_map>
+#include <vector>
 #include <winerror.h>
 #include <Xinput.h>
 
@@ -77,7 +81,12 @@ struct DirectInputDeviceSlot
     bool InUse = false;
     void* Device = nullptr;
     DirectInputDeviceKind Kind = DirectInputDeviceKind::Other;
-    DWORD LastObjectDataSize = 0;
+    // Keys and buttons the game was told are down, their releases stay owed to it while input is blocked
+    std::bitset<256> DownSeenByGame;
+    // Buffered events from before it came while input was blocked, cleared once the game read the queue empty
+    std::optional<DWORD> BlockedUntilTick;
+    // Last GetDeviceState the game read, replayed while blocked so throttles and pedals keep their position
+    std::vector<BYTE> LastState;
 };
 
 enum class HidDeviceKind
@@ -123,6 +132,9 @@ struct InputState
     HWND InputRootHwnd = nullptr;
 
     WNDPROC OriginalWndProc = nullptr;
+    // Each subclassed window's own original, another WndProc on top of ours can keep calling us for a window we
+    // no longer track
+    std::unordered_map<HWND, WNDPROC> OriginalWndProcs;
 
     bool Initialized = false;
     bool HooksInstalled = false;
@@ -449,10 +461,6 @@ extern SetWindowsHookExA_t o_SetWindowsHookExA;
 extern SetWindowsHookExW_t o_SetWindowsHookExW;
 extern UnhookWindowsHookEx_t o_UnhookWindowsHookEx;
 extern GameInputCreate_t o_GameInputCreate;
-extern XInputGetState_t o_XInputGetState;
-extern XInputGetState_t o_XInputGetStateEx;
-extern XInputGetKeystroke_t o_XInputGetKeystroke;
-extern XInputSetState_t o_XInputSetState;
 extern DirectInput8Create_t o_DirectInput8Create;
 extern DirectInputCreateA_t o_DirectInputCreateA;
 extern DirectInputCreateW_t o_DirectInputCreateW;
@@ -494,25 +502,15 @@ HRESULT WINAPI hkGameInputCreate(void** gameInput);
 void UpdateXInputIntegration();
 bool RemoveXInputHooksLocked();
 void DrainXInputKeystrokesLocked();
-DWORD WINAPI hkXInputGetState(DWORD userIndex, XINPUT_STATE* state);
-DWORD WINAPI hkXInputGetStateEx(DWORD userIndex, XINPUT_STATE* state);
-DWORD WINAPI hkXInputGetKeystroke(DWORD userIndex, DWORD reserved, PXINPUT_KEYSTROKE keystroke);
-DWORD WINAPI hkXInputSetState(DWORD userIndex, XINPUT_VIBRATION* vibration);
 
 // DirectInput
 void UpdateDirectInputIntegration();
 bool RemoveDirectInputHooksLocked();
-void DrainDirectInputBufferedDataLocked();
+void EndDirectInputBlockLocked();
 HRESULT WINAPI hkDirectInput8Create(HINSTANCE instance, DWORD version, REFIID riid, LPVOID* out, LPUNKNOWN outer);
 HRESULT WINAPI hkDirectInputCreateA(HINSTANCE instance, DWORD version, void** out, LPUNKNOWN outer);
 HRESULT WINAPI hkDirectInputCreateW(HINSTANCE instance, DWORD version, void** out, LPUNKNOWN outer);
 HRESULT WINAPI hkDirectInputCreateEx(HINSTANCE instance, DWORD version, REFIID riid, LPVOID* out, LPUNKNOWN outer);
-HRESULT WINAPI hkDirectInputCreateDeviceA(void* directInput, REFGUID guid, void** device, LPUNKNOWN outer);
-HRESULT WINAPI hkDirectInputCreateDeviceW(void* directInput, REFGUID guid, void** device, LPUNKNOWN outer);
-HRESULT WINAPI hkDirectInputGetDeviceState(void* device, DWORD dataSize, LPVOID data);
-HRESULT WINAPI hkDirectInputGetDeviceData(void* device, DWORD objectDataSize, LPDIDEVICEOBJECTDATA data, LPDWORD inOut,
-                                          DWORD flags);
-ULONG WINAPI hkDirectInputDeviceRelease(void* device);
 
 // Target/input window
 void SetTargetWindow(HWND hwnd, bool isUwp, bool useWndProcSubclass);
@@ -566,6 +564,8 @@ void UpdateMousePositionFromClient(HWND hwnd, LPARAM lParam);
 bool ProcessRemovedMessage(MSG* msg);
 void ConsumeMessage(MSG* msg);
 SHORT RealGetAsyncKeyStateSafe(int vk);
+SHORT WithTakenAsyncKeyPress(int vk, SHORT state, bool blocked);
+void ForgetTakenAsyncKeyPresses();
 SHORT RealGetKeyStateSafe(int vk);
 BOOL RealGetCursorPosSafe(LPPOINT point);
 void SetMouseDownFromRawState(int button, DWORD messageTime, bool blocked);

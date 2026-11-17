@@ -155,6 +155,8 @@ bool FSR31FeatureDx11::EvaluateInternal(ID3D11DeviceContext* DeviceContext, NVSD
     if (InParameters->Get(NVSDK_NGX_Parameter_Color, &paramColor) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_Color, (void**) &paramColor);
 
+    paramColor = SubrectInput(DeviceContext, paramColor, SubrectSlot::Color);
+
     if (paramColor)
     {
         LOG_DEBUG("Color exist..");
@@ -181,6 +183,8 @@ bool FSR31FeatureDx11::EvaluateInternal(ID3D11DeviceContext* DeviceContext, NVSD
     ID3D11Resource* paramVelocity = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, &paramVelocity) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, (void**) &paramVelocity);
+
+    paramVelocity = SubrectInput(DeviceContext, paramVelocity, SubrectSlot::MV);
 
     if (paramVelocity)
     {
@@ -212,6 +216,8 @@ bool FSR31FeatureDx11::EvaluateInternal(ID3D11DeviceContext* DeviceContext, NVSD
     ID3D11Resource* paramDepth = nullptr;
     if (InParameters->Get(NVSDK_NGX_Parameter_Depth, &paramDepth) != NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_Depth, (void**) &paramDepth);
+
+    paramDepth = SubrectInput(DeviceContext, paramDepth, SubrectSlot::Depth);
 
     if (paramDepth)
     {
@@ -255,6 +261,8 @@ bool FSR31FeatureDx11::EvaluateInternal(ID3D11DeviceContext* DeviceContext, NVSD
     if (InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, &paramReactiveMask) !=
         NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void**) &paramReactiveMask);
+
+    paramReactiveMask = SubrectInput(DeviceContext, MaskInput(paramReactiveMask), SubrectSlot::Mask);
 
     if (!Config::Instance()->DisableReactiveMask.value_or(paramReactiveMask == nullptr))
     {

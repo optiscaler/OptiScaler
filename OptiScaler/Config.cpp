@@ -62,24 +62,34 @@ bool Config::Reload(std::filesystem::path iniPath)
 
         // Upscalers
         {
-            // transform converts only when optional has a value
-            Dx11Upscaler.set_from_config(readString("Upscalers", "Dx11Upscaler", true).transform(CodeToUpscaler));
-            auto dx12Upscaler = readString("Upscalers", "Dx12Upscaler", true).transform(CodeToUpscalerFfx);
+            // Any value other than an upscaler is the name of a custom upscaler, the upscaler it runs as is set by
+            // CustomProviders::ResolveUpscaler once the Opti folder is known
+            auto readUpscaler = [&](const char* key, auto codeToUpscaler, auto& upscaler, auto& custom)
+            {
+                // transform converts only when optional has a value
+                auto value = readString("Upscalers", key, true).transform(codeToUpscaler);
 
-            // Any other value is the folder name of a custom upscaler, its kind is set by
-            // CustomProviders::ResolveDx12Upscaler once the Opti folder is known
-            if (dx12Upscaler == Upscaler::Reset)
-                CustomUpscaler.set_from_config(std::string(ini.GetValue("Upscalers", "Dx12Upscaler")));
-            else
-                Dx12Upscaler.set_from_config(dx12Upscaler);
+                if (value == Upscaler::Reset)
+                    custom.set_from_config(std::string(ini.GetValue("Upscalers", key)));
+                else
+                    upscaler.set_from_config(value);
+            };
 
-            // Same for Vulkan, checked by CustomProviders::ResolveVulkanUpscaler
-            auto vulkanUpscaler = readString("Upscalers", "VulkanUpscaler", true).transform(CodeToUpscalerFfx);
+            readUpscaler("Dx11Upscaler", CodeToUpscaler, Dx11Upscaler, CustomUpscalerDx11);
+            readUpscaler("Dx12Upscaler", CodeToUpscalerFfx, Dx12Upscaler, CustomUpscaler);
+            readUpscaler("VulkanUpscaler", CodeToUpscalerFfx, VulkanUpscaler, CustomUpscalerVk);
 
-            if (vulkanUpscaler == Upscaler::Reset)
-                CustomUpscalerVk.set_from_config(std::string(ini.GetValue("Upscalers", "VulkanUpscaler")));
-            else
-                VulkanUpscaler.set_from_config(vulkanUpscaler);
+            // A regular upscaler or a custom name for ray reconstruction, dlssd is the same as auto, custom names
+            // are checked by CustomProviders::ResolveAll
+            if (auto rrUpscaler = readString("Upscalers", "RRUpscaler", true); rrUpscaler.value_or("dlssd") != "dlssd")
+            {
+                if (auto upscaler = CodeToUpscalerFfx(rrUpscaler.value()); IsRRRegularUpscaler(upscaler))
+                    RRRegularUpscaler.set_from_config(upscaler);
+                else
+                    CustomRRUpscaler.set_from_config(std::string(ini.GetValue("Upscalers", "RRUpscaler")));
+            }
+
+            RRAllowRegularUpscalers.set_from_config(readBool("Upscalers", "RRAllowRegularUpscalers"));
         }
 
         // Frame Generation
@@ -90,8 +100,9 @@ bool Config::Reload(std::filesystem::path iniPath)
             FGInput.set_from_config(readString("FrameGen", "FGInput").transform(CodeToEnum<enum FGInput>));
             FGOutput.set_from_config(readString("FrameGen", "FGOutput").transform(CodeToEnum<enum FGOutput>));
 
-            const bool canUseNvngxReplacement =
-                FGInput.value_or_default() == FGInput::NvngxFG || FGOutput.value_or_default() == FGOutput::DLSSG;
+            const bool canUseNvngxReplacement = FGInput.value_or_default() == FGInput::NvngxFG ||
+                                                FGOutput.value_or_default() == FGOutput::DLSSG ||
+                                                FGOutput.value_or_default() == FGOutput::FlipMeter;
 
             if (auto FGNvngxReplacementString = readString("FrameGen", "FGNvngxReplacement");
                 canUseNvngxReplacement && FGNvngxReplacementString.has_value())
@@ -166,6 +177,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             FGFPTAllowWaitForSingleObjectOnFence.set_from_config(readBool("FSRFG", "FPTWaitForSingleObjectOnFence"));
             FSRFGEnableWatermark.set_from_config(readBool("FSRFG", "EnableWatermark"));
             FSRFGDisableFlipMetering.set_from_config(readBool("FSRFG", "DisableFlipMetering"));
+            FSRFGProvider.set_from_config(readString("FSRFG", "Provider"));
         }
 
         // OptiFG
@@ -235,6 +247,13 @@ bool Config::Reload(std::filesystem::path iniPath)
             FGXeFGHighResMV.set_from_config(readBool("XeFG", "HighResMV"));
             FGXeFGDebugView.set_from_config(readBool("XeFG", "DebugView"));
             FGXeFGForceBorderless.set_from_config(readBool("XeFG", "ForceBorderless"));
+        }
+
+        {
+            FGFlipMeterInterpolationCount.set_from_config(readInt("FlipMeter", "InterpolationCount"));
+            if (FGFlipMeterInterpolationCount.has_value() &&
+                (FGFlipMeterInterpolationCount.value() < 1 || FGFlipMeterInterpolationCount.value() > 5))
+                FGFlipMeterInterpolationCount.reset();
         }
 
         {
@@ -435,7 +454,10 @@ bool Config::Reload(std::filesystem::path iniPath)
 
             NvngxFGDispatchFlags.set_from_config(readUInt("NvngxFG", "DispatchFlags"));
             NvngxFGShowDebug.set_from_config(readBool("NvngxFG", "ShowDebug"));
-            NvngxFGDisableHudless.set_from_config(readBool("NvngxFG", "DisableHudless"));
+
+            // Older configs keep it in [NvngxFG], it only applied with DLSSG via Nvngx as FG Input
+            if (FGInput.value_or_default() == FGInput::NvngxFG)
+                FGDisableHudless.set_from_config(readBool("NvngxFG", "DisableHudless"));
         }
 
         // Logging
@@ -450,6 +472,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             LogSingleFile.set_from_config(readBool("Log", "SingleFile"));
             LogAsync.set_from_config(readBool("Log", "LogAsync"));
             LogAsyncThreads.set_from_config(readInt("Log", "LogAsyncThreads"));
+            CreateDumps.set_from_config(readBool("Log", "CreateDumps"));
 
             {
                 auto setting = readString("Log", "LogFileName", false);
@@ -566,6 +589,15 @@ bool Config::Reload(std::filesystem::path iniPath)
             DADepthScale.set_from_config(readFloat("CAS", "DADepthScale"));
             DADepthBias.set_from_config(readFloat("CAS", "DADepthBias"));
             DAClampOutput.set_from_config(readBool("CAS", "DAClampOutput"));
+
+            if (auto setting = readInt("CAS", "BabaModel"); setting.has_value())
+                BabaNeuralModel.set_from_config(std::clamp(setting.value(), 0, 1));
+
+            if (auto setting = readFloat("CAS", "BabaEdgeResponse"); setting.has_value())
+                BabaNeuralEdgeResponse.set_from_config(std::clamp(setting.value(), -1.0f, 1.0f));
+
+            if (auto setting = readInt("CAS", "BabaDebugView"); setting.has_value())
+                BabaNeuralDebugView.set_from_config(std::clamp(setting.value(), 0, 2));
 
             MotionSharpnessDebug.set_from_config(readBool("CAS", "SharpenerDebug"));
         }
@@ -1331,27 +1363,37 @@ bool Config::SaveIni()
 
     // Upscalers
     {
-        auto SaveUpscaler = [&](const char* key, auto& upscalerSetting)
+        // A custom name is saved in place of the upscaler it runs as
+        auto SaveUpscaler = [&](const char* key, auto& upscalerSetting, auto& customSetting)
         {
-            std::string value = upscalerSetting.value_for_config()
+            auto upscaler = upscalerSetting.value_for_config();
+            auto custom = customSetting.value_or("");
+
+            if (!custom.empty() && (upscaler == Upscaler::FFX || upscaler == Upscaler::FFX_on12 ||
+                                    upscaler == Upscaler::DLSS || upscaler == Upscaler::DLSS_on12))
+            {
+                ini.SetValue("Upscalers", key, custom.c_str());
+                return;
+            }
+
+            std::string value = upscaler
                                     .transform(UpscalerToCode) // Turn enum into string
                                     .value_or("auto");
 
             ini.SetValue("Upscalers", key, value.c_str());
         };
 
-        SaveUpscaler("Dx11Upscaler", Instance()->Dx11Upscaler);
-        if (auto custom = Instance()->CustomUpscaler.value_or("");
-            !custom.empty() && (Instance()->Dx12Upscaler.value_for_config() == Upscaler::FFX ||
-                                Instance()->Dx12Upscaler.value_for_config() == Upscaler::DLSS))
-            ini.SetValue("Upscalers", "Dx12Upscaler", custom.c_str());
+        SaveUpscaler("Dx11Upscaler", Instance()->Dx11Upscaler, Instance()->CustomUpscalerDx11);
+        SaveUpscaler("Dx12Upscaler", Instance()->Dx12Upscaler, Instance()->CustomUpscaler);
+        SaveUpscaler("VulkanUpscaler", Instance()->VulkanUpscaler, Instance()->CustomUpscalerVk);
+
+        if (auto regular = Instance()->RRRegularUpscaler.value_for_config(); regular.has_value())
+            ini.SetValue("Upscalers", "RRUpscaler", UpscalerToCode(regular.value()).c_str());
         else
-            SaveUpscaler("Dx12Upscaler", Instance()->Dx12Upscaler);
-        if (auto custom = Instance()->CustomUpscalerVk.value_or("");
-            !custom.empty() && Instance()->VulkanUpscaler.value_for_config() == Upscaler::FFX)
-            ini.SetValue("Upscalers", "VulkanUpscaler", custom.c_str());
-        else
-            SaveUpscaler("VulkanUpscaler", Instance()->VulkanUpscaler);
+            ini.SetValue("Upscalers", "RRUpscaler", Instance()->CustomRRUpscaler.value_for_config_or("auto").c_str());
+
+        ini.SetValue("Upscalers", "RRAllowRegularUpscalers",
+                     GetBoolValue(Instance()->RRAllowRegularUpscalers.value_for_config()).c_str());
     }
 
     // Frame Generation
@@ -1447,6 +1489,7 @@ bool Config::SaveIni()
                      GetBoolValue(Instance()->FSRFGEnableWatermark.value_for_config()).c_str());
         ini.SetValue("FSRFG", "DisableFlipMetering",
                      GetBoolValue(Instance()->FSRFGDisableFlipMetering.value_for_config()).c_str());
+        ini.SetValue("FSRFG", "Provider", Instance()->FSRFGProvider.value_for_config().value_or("auto").c_str());
     }
 
     // XeFG output
@@ -1472,6 +1515,11 @@ bool Config::SaveIni()
         ini.SetValue("XeFG", "DebugView", GetBoolValue(Instance()->FGXeFGDebugView.value_for_config()).c_str());
         ini.SetValue("XeFG", "ForceBorderless",
                      GetBoolValue(Instance()->FGXeFGForceBorderless.value_for_config()).c_str());
+    }
+
+    {
+        ini.SetValue("FlipMeter", "InterpolationCount",
+                     GetIntValue(Instance()->FGFlipMeterInterpolationCount.value_for_config()).c_str());
     }
 
     {
@@ -1697,8 +1745,6 @@ bool Config::SaveIni()
         ini.SetValue("NvngxFG", "DispatchFlags",
                      GetIntValue(Instance()->NvngxFGDispatchFlags.value_for_config(), true).c_str());
         ini.SetValue("NvngxFG", "ShowDebug", GetBoolValue(Instance()->NvngxFGShowDebug.value_for_config()).c_str());
-        ini.SetValue("NvngxFG", "DisableHudless",
-                     GetBoolValue(Instance()->NvngxFGDisableHudless.value_for_config()).c_str());
     }
 
     // Sharpness
@@ -1730,6 +1776,11 @@ bool Config::SaveIni()
         ini.SetValue("CAS", "DADepthScale", GetFloatValue(Instance()->DADepthScale.value_for_config()).c_str());
         ini.SetValue("CAS", "DADepthBias", GetFloatValue(Instance()->DADepthBias.value_for_config()).c_str());
         ini.SetValue("CAS", "DAClampOutput", GetBoolValue(Instance()->DAClampOutput.value_for_config()).c_str());
+
+        ini.SetValue("CAS", "BabaModel", GetIntValue(Instance()->BabaNeuralModel.value_for_config()).c_str());
+        ini.SetValue("CAS", "BabaEdgeResponse",
+                     GetFloatValue(Instance()->BabaNeuralEdgeResponse.value_for_config()).c_str());
+        ini.SetValue("CAS", "BabaDebugView", GetIntValue(Instance()->BabaNeuralDebugView.value_for_config()).c_str());
 
         ini.SetValue("CAS", "SharpenerDebug",
                      GetBoolValue(Instance()->MotionSharpnessDebug.value_for_config()).c_str());
@@ -1945,6 +1996,7 @@ bool Config::SaveIni()
                      wstring_to_string(Instance()->LogFileName.value_for_config_or(L"auto")).c_str());
         ini.SetValue("Log", "LogAsync", GetBoolValue(Instance()->LogAsync.value_for_config()).c_str());
         ini.SetValue("Log", "LogAsyncThreads", GetIntValue(Instance()->LogAsyncThreads.value_for_config()).c_str());
+        ini.SetValue("Log", "CreateDumps", GetBoolValue(Instance()->CreateDumps.value_for_config()).c_str());
     }
 
     // NvApi

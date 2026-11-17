@@ -135,6 +135,18 @@ bool Sl_Inputs::setConstants(const sl::Constants& values, uint32_t frameId)
             LOG_TRACE("FG not enabled");
             return true;
         }
+        else if (state.activeFgInput == FGInput::DLSSG && _gameFGOff && _inputsUntagged)
+        {
+            // Some games keep tagging with DLSSG off, only stop when the inputs are untagged too
+            if (fgOutput->IsActive())
+            {
+                fgOutput->Disable();
+                fgOutput->ResetCounters();
+            }
+
+            LOG_TRACE("Game's DLSSG is off");
+            return true;
+        }
         else
         {
             if (!fgOutput->IsActive() && !fgOutput->IsPaused())
@@ -299,6 +311,14 @@ static std::optional<FG_ResourceType> GetResourceType(sl::BufferType type)
         return FG_ResourceType::UIColor;
 
     return std::nullopt;
+}
+
+void Sl_Inputs::reportTagState(const sl::ResourceTag& tag)
+{
+    auto type = GetResourceType(tag.type);
+
+    if (type == FG_ResourceType::Depth || type == FG_ResourceType::Velocity)
+        _inputsUntagged = tag.resource == nullptr || tag.resource->native == nullptr;
 }
 
 bool Sl_Inputs::reportResource(const sl::ResourceTag& tag, void* cmdBuffer, uint32_t frameId)

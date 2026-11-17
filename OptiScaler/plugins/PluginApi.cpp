@@ -4,6 +4,7 @@
 
 #include "Config.h"
 #include "menu/menu_common.h"
+#include "misc/CustomProviders.h"
 
 #include <imgui/imgui_internal.h>
 
@@ -466,6 +467,16 @@ bool Api_ReInitUpscalers(OptiPlugin* plugin)
     return true;
 }
 
+bool Api_RegisterProvider(OptiPlugin* plugin, const char* name, OptiProviderKind kind, OptiGetProcFn getProc,
+                          void* userData)
+{
+    if (plugin == nullptr || name == nullptr)
+        return false;
+
+    LOG_INFO("[{}] Registering provider {}", plugin->name, name);
+    return CustomProviders::Register(name, (CustomProviders::Kind) kind, getProc, userData);
+}
+
 const OptiPluginApi _api = {
     .size = sizeof(OptiPluginApi),
     .version = OPTI_PLUGIN_API_VERSION,
@@ -508,6 +519,8 @@ const OptiPluginApi _api = {
     .Log = Api_Log,
 
     .ReInitUpscalers = Api_ReInitUpscalers,
+
+    .RegisterProvider = Api_RegisterProvider,
 };
 } // namespace
 

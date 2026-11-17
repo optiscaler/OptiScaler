@@ -384,6 +384,16 @@ bool InstallWindowSubclass(HWND hwnd)
         return _state.WndProcSubclassed;
     }
 
+    // Another WndProc took over on top of ours and still calls us, subclassing again would chain it into us twice
+    if (const auto it = _state.OriginalWndProcs.find(hwnd);
+        it != _state.OriginalWndProcs.end() && it->second != currentWndProc)
+    {
+        LOG_WARN("InstallWindowSubclass skipped, another WndProc chains through OptiInput hwnd:{} current:{}",
+                 static_cast<void*>(hwnd), reinterpret_cast<std::uintptr_t>(currentWndProc));
+        _state.WndProcSubclassed = false;
+        return false;
+    }
+
     SetLastError(0);
 
     LONG_PTR previous = SetWindowLongPtrW(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(OptiInputWndProc));
@@ -398,6 +408,7 @@ bool InstallWindowSubclass(HWND hwnd)
     }
 
     _state.OriginalWndProc = reinterpret_cast<WNDPROC>(previous);
+    _state.OriginalWndProcs[hwnd] = _state.OriginalWndProc;
     _state.WndProcSubclassed = true;
 
     LOG_INFO("subclass installed hwnd:{} previousWndProc:{} optiWndProc:{}", static_cast<void*>(hwnd),
@@ -513,6 +524,9 @@ bool RemoveWindowSubclass(bool preserveLostChain)
                      GetLastError());
             return false;
         }
+
+        // Restored, nothing chains through us for it anymore
+        _state.OriginalWndProcs.erase(_state.InputHwnd);
     }
     else
     {

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "SysUtils.h"
-#include <proxies/NVNGX_Proxy.h>
+#include <proxies/Nvngx_Proxy.h>
 #include <upscalers/IFeature.h>
 
 class DLSSFeature : public virtual IFeature

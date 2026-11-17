@@ -7657,9 +7657,12 @@ void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)
                 selectedMode = 2;
             else if (currentShader == SharpenShader::LocalContrastDepthAware)
                 selectedMode = 3;
+            else if (currentShader == SharpenShader::BabaNeural)
+                selectedMode = 4;
         }
 
-        const char* sharpenModes[] = { "Upscaler's default", "RCAS", "Depth Aware (RCAS)", "Depth Aware (DAS)" };
+        const char* sharpenModes[] = { "Upscaler's default", "RCAS", "Depth Aware (RCAS)", "Depth Aware (DAS)",
+                                       "Neural (BaBa)" };
 
         if (ImGui::Combo("Method", &selectedMode, sharpenModes, IM_ARRAYSIZE(sharpenModes)))
         {
@@ -7676,13 +7679,18 @@ void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)
                     Config::Instance()->SharpnessShader = SharpenShader::DepthAware;
                 else if (selectedMode == 3)
                     Config::Instance()->SharpnessShader = SharpenShader::LocalContrastDepthAware;
+                else if (selectedMode == 4)
+                    Config::Instance()->SharpnessShader = SharpenShader::BabaNeural;
             }
         }
 
         ShowTooltip("Select the sharpening filter to apply.\n\n"
                     "Upscaler's default: Uses the sharpening provided by the upscaler.\n"
                     "RCAS: AMD's RCAS, modified for Contrast and MAS.\n"
-                    "Depth Aware: Smarter sharpening with fewer artifacts (heavier).\n\n"
+                    "Depth Aware: Smarter sharpening with fewer artifacts (heavier).\n"
+                    "Neural (BaBa): Small neural network from the BaBa ReShade shaders. Only changes the luma and\n"
+                    "skips aliased edges and fireflies. 0.5 strength is the default intensity of the ReShade shader.\n"
+                    "Uses RCAS when its shader isn't available for the current API.\n\n"
                     "By default uses a sharpening value provided by the game.\n"
                     "Select 'Override' under 'Sharpness' and adjust the slider to change it.");
 
@@ -7696,7 +7704,77 @@ void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)
                 config->MotionSharpnessEnabled = overrideMotionSharpness;
             ShowTooltip("Enables sharpness adjustments according to the motion");
 
-            if (Config::Instance()->SharpnessShader.value_or_default() != SharpenShader::RCAS)
+            // Shared by the DA and Neural shaders
+            auto ClampOutputCheckbox = [config]()
+            {
+                if (bool clamp = config->DAClampOutput.value_or(false); ImGui::Checkbox("Clamp Output", &clamp))
+                {
+                    if (clamp)
+                        config->DAClampOutput = true;
+                    else
+                        config->DAClampOutput.reset();
+                }
+
+                ShowTooltip("Clamps the final image to the [0, 1] range.\n\n"
+                            "Prevents overshoot artifacts such as bright halos or negative colors.\n"
+                            "Recommended for LDR pipelines; optional for HDR depending on tone-mapping.\n\n"
+                            "Off when not set, games that report SDR can still send HDR color");
+            };
+
+            if (Config::Instance()->SharpnessShader.value_or_default() == SharpenShader::BabaNeural)
+            {
+                if (bool overrideMSDebug = config->MotionSharpnessDebug.value_or_default();
+                    ImGui::Checkbox("MAS Debug", &overrideMSDebug))
+                    config->MotionSharpnessDebug = overrideMSDebug;
+
+                ShowTooltip("Areas that are more red will have more sharpness applied\n"
+                            "Green areas will get reduced sharpness");
+
+                if (auto ch = ScopedCollapsingHeader("Neural Sharpening Parameters"); ch.IsHeaderOpen())
+                {
+                    ScopedIndent indent {};
+                    ImGui::Spacing();
+
+                    const char* babaModels[] = { "Model A (standard)", "Model B (edge-enhanced)" };
+                    int babaModel = std::clamp(config->BabaNeuralModel.value_or_default(), 0, 1);
+
+                    if (ImGui::Combo("Neural Model", &babaModel, babaModels, IM_ARRAYSIZE(babaModels)))
+                        config->BabaNeuralModel = babaModel;
+
+                    ShowTooltip("Model A: Standard sharpening.\n"
+                                "Model B: Edge-enhanced.");
+
+                    float edgeResponse = config->BabaNeuralEdgeResponse.value_or_default();
+                    if (ImGui::SliderFloat("Edge Response", &edgeResponse, -1.0f, 1.0f, "%.2f",
+                                           ImGuiSliderFlags_AlwaysClamp))
+                        config->BabaNeuralEdgeResponse = edgeResponse;
+
+                    ShowTooltip("Controls how the sharpening adapts to the detected edges.\n\n"
+                                "Negative values smooth the edges.\n"
+                                "Positive values enhance the edges.\n"
+                                "0 is uniform.");
+
+                    const char* babaViews[] = { "Normal", "Sharpening map", "Residual map" };
+                    int babaView = std::clamp(config->BabaNeuralDebugView.value_or_default(), 0, 2);
+
+                    if (ImGui::Combo("Debug View", &babaView, babaViews, IM_ARRAYSIZE(babaViews)))
+                        config->BabaNeuralDebugView = babaView;
+
+                    ShowTooltip("Normal: The final image.\n"
+                                "Sharpening map: The sharpening that gets applied, plain gray means no change.\n"
+                                "Residual map: Where the network wants to change the image.");
+
+                    ClampOutputCheckbox();
+
+                    if (ImGui::Button("Reset Neural Values"))
+                    {
+                        config->BabaNeuralModel.reset();
+                        config->BabaNeuralEdgeResponse.reset();
+                        config->BabaNeuralDebugView.reset();
+                    }
+                }
+            }
+            else if (Config::Instance()->SharpnessShader.value_or_default() != SharpenShader::RCAS)
             {
                 if (bool overrideMSDebug = config->MotionSharpnessDebug.value_or_default();
                     ImGui::Checkbox("DA + MAS Debug", &overrideMSDebug))
@@ -7712,18 +7790,7 @@ void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)
                     ScopedIndent indent {};
                     ImGui::Spacing();
 
-                    if (bool clamp = config->DAClampOutput.value_or(false); ImGui::Checkbox("Clamp Output", &clamp))
-                    {
-                        if (clamp)
-                            config->DAClampOutput = true;
-                        else
-                            config->DAClampOutput.reset();
-                    }
-
-                    ShowTooltip("Clamps the final image to the [0, 1] range.\n\n"
-                                "Prevents overshoot artifacts such as bright halos or negative colors.\n"
-                                "Recommended for LDR pipelines; optional for HDR depending on tone-mapping.\n\n"
-                                "When not set OptiScaler controls it via upscalers HDR flag");
+                    ClampOutputCheckbox();
 
                     if (currentFeature->DepthLinear())
                     {

@@ -1,33 +1,101 @@
 #include "pch.h"
 #include "input_system_internal.h"
 
+#include <algorithm>
+#include <intrin.h>
+#include <bitset>
+#include <vector>
+
 #include <hooks/Kernel_Hooks.h>
 
 #include <detours/detours.h>
 
 namespace OptiInput
 {
+// One instance per XInput DLL, games and their middleware can load more than one
+template <std::size_t Module> DWORD WINAPI hkXInputGetState(DWORD userIndex, XINPUT_STATE* state);
+template <std::size_t Module> DWORD WINAPI hkXInputGetStateEx(DWORD userIndex, XINPUT_STATE* state);
+template <std::size_t Module>
+DWORD WINAPI hkXInputGetKeystroke(DWORD userIndex, DWORD reserved, PXINPUT_KEYSTROKE keystroke);
+template <std::size_t Module> DWORD WINAPI hkXInputSetState(DWORD userIndex, XINPUT_VIBRATION* vibration);
+
 namespace
 {
 constexpr const wchar_t* XInputModuleNames[] = {
     L"xinput1_4.dll", L"xinput1_3.dll", L"xinput9_1_0.dll", L"xinput1_2.dll", L"xinput1_1.dll",
 };
 
+constexpr std::size_t XInputModuleCount = std::size(XInputModuleNames);
+
 constexpr char XInputGetStateExportName[] = "XInputGetState";
 constexpr char XInputGetKeystrokeExportName[] = "XInputGetKeystroke";
 constexpr char XInputSetStateExportName[] = "XInputSetState";
 
-HMODULE FindLoadedXInputModule()
+struct XInputModuleHooks
 {
-    for (const wchar_t* moduleName : XInputModuleNames)
-    {
-        HMODULE module = GetModuleHandleW(moduleName);
+    HMODULE Module = nullptr;
+    bool Attempted = false; // Installed once, a failed install isn't retried every frame
 
-        if (module != nullptr)
-            return module;
-    }
+    XInputGetState_t GetState = nullptr;
+    XInputGetState_t GetStateEx = nullptr;
+    XInputGetKeystroke_t GetKeystroke = nullptr;
+    XInputSetState_t SetState = nullptr;
+};
 
-    return nullptr;
+std::array<XInputModuleHooks, XInputModuleCount> XInputModules {};
+
+template <std::size_t... I> constexpr auto GetStateDetours(std::index_sequence<I...>)
+{
+    return std::array { &hkXInputGetState<I>... };
+}
+template <std::size_t... I> constexpr auto GetStateExDetours(std::index_sequence<I...>)
+{
+    return std::array { &hkXInputGetStateEx<I>... };
+}
+template <std::size_t... I> constexpr auto GetKeystrokeDetours(std::index_sequence<I...>)
+{
+    return std::array { &hkXInputGetKeystroke<I>... };
+}
+template <std::size_t... I> constexpr auto SetStateDetours(std::index_sequence<I...>)
+{
+    return std::array { &hkXInputSetState<I>... };
+}
+
+constexpr auto XInputGetStateDetours = GetStateDetours(std::make_index_sequence<XInputModuleCount> {});
+constexpr auto XInputGetStateExDetours = GetStateExDetours(std::make_index_sequence<XInputModuleCount> {});
+constexpr auto XInputGetKeystrokeDetours = GetKeystrokeDetours(std::make_index_sequence<XInputModuleCount> {});
+constexpr auto XInputSetStateDetours = SetStateDetours(std::make_index_sequence<XInputModuleCount> {});
+
+// Gamepad keys the game was told are down, per user, their releases stay owed to it while input is blocked
+std::array<std::bitset<64>, XUSER_MAX_COUNT> XInputKeysDownSeenByGame {};
+
+// Owed releases read by the drain, handed to the game before anything newer
+std::vector<XINPUT_KEYSTROKE> XInputOwedReleases;
+
+bool IsTrackedXInputKey(const XINPUT_KEYSTROKE& keystroke)
+{
+    return keystroke.UserIndex < XUSER_MAX_COUNT && keystroke.VirtualKey >= VK_PAD_A &&
+           keystroke.VirtualKey < VK_PAD_A + XInputKeysDownSeenByGame[0].size();
+}
+
+void NoteXInputKeystrokeDeliveredLocked(const XINPUT_KEYSTROKE& keystroke)
+{
+    if (!IsTrackedXInputKey(keystroke))
+        return;
+
+    auto down = XInputKeysDownSeenByGame[keystroke.UserIndex][keystroke.VirtualKey - VK_PAD_A];
+
+    if ((keystroke.Flags & XINPUT_KEYSTROKE_KEYDOWN) != 0)
+        down = true;
+    else if ((keystroke.Flags & XINPUT_KEYSTROKE_KEYUP) != 0)
+        down = false;
+}
+
+// A release of a key the game saw pressed, it gets it even while blocked
+bool IsOwedXInputReleaseLocked(const XINPUT_KEYSTROKE& keystroke)
+{
+    return (keystroke.Flags & XINPUT_KEYSTROKE_KEYUP) != 0 && IsTrackedXInputKey(keystroke) &&
+           XInputKeysDownSeenByGame[keystroke.UserIndex][keystroke.VirtualKey - VK_PAD_A];
 }
 
 bool ShouldBlockXInputLocked()
@@ -35,83 +103,60 @@ bool ShouldBlockXInputLocked()
     return _state.Initialized && (ShouldBlockKeyboardInputLocked() || ShouldBlockMouseInputLocked());
 }
 
-void FillNeutralXInputState(XINPUT_STATE* state)
+void RefreshXInputHookStateLocked()
 {
-    if (state == nullptr)
-        return;
-
-    const DWORD packetNumber = state->dwPacketNumber;
-    *state = {};
-    state->dwPacketNumber = packetNumber;
-}
-
-void ClearXInputHookPointersLocked()
-{
-    o_XInputGetState = nullptr;
-    o_XInputGetStateEx = nullptr;
-    o_XInputGetKeystroke = nullptr;
-    o_XInputSetState = nullptr;
-
+    _state.XInputModule = nullptr;
+    _state.XInputModuleLoaded = false;
     _state.XInputGetStateHookInstalled = false;
     _state.XInputGetStateExHookInstalled = false;
     _state.XInputGetKeystrokeHookInstalled = false;
     _state.XInputSetStateHookInstalled = false;
+
+    for (const auto& hooks : XInputModules)
+    {
+        if (hooks.Module == nullptr)
+            continue;
+
+        if (_state.XInputModule == nullptr)
+            _state.XInputModule = hooks.Module;
+
+        _state.XInputModuleLoaded = true;
+        _state.XInputGetStateHookInstalled |= hooks.GetState != nullptr;
+        _state.XInputGetStateExHookInstalled |= hooks.GetStateEx != nullptr;
+        _state.XInputGetKeystrokeHookInstalled |= hooks.GetKeystroke != nullptr;
+        _state.XInputSetStateHookInstalled |= hooks.SetState != nullptr;
+    }
 }
 
-} // namespace
-
-void UpdateXInputIntegration()
+void InstallXInputModuleHooks(std::size_t index, HMODULE module)
 {
+    XInputModuleHooks hooks {};
+    hooks.Module = module;
+    hooks.Attempted = true;
+    hooks.GetState =
+        reinterpret_cast<XInputGetState_t>(KernelBaseProxy::GetProcAddress_()(module, XInputGetStateExportName));
+    hooks.GetStateEx =
+        reinterpret_cast<XInputGetState_t>(KernelBaseProxy::GetProcAddress_()(module, MAKEINTRESOURCEA(100)));
+    hooks.GetKeystroke = reinterpret_cast<XInputGetKeystroke_t>(
+        KernelBaseProxy::GetProcAddress_()(module, XInputGetKeystrokeExportName));
+    hooks.SetState =
+        reinterpret_cast<XInputSetState_t>(KernelBaseProxy::GetProcAddress_()(module, XInputSetStateExportName));
+
+    if (hooks.GetState == nullptr && hooks.GetStateEx == nullptr && hooks.GetKeystroke == nullptr &&
+        hooks.SetState == nullptr)
     {
+        LOG_WARN("XInput module loaded but no supported exports found module:{}", static_cast<void*>(module));
         std::unique_lock lock(_state.Mutex);
-
-        if (_state.XInputGetStateHookInstalled || _state.XInputGetStateExHookInstalled ||
-            _state.XInputGetKeystrokeHookInstalled || _state.XInputSetStateHookInstalled)
-        {
-            return;
-        }
-    }
-
-    // A mapped XInput DLL can still be inside loader initialization
-    HMODULE module = FindLoadedXInputModule();
-    XInputGetState_t getState = nullptr;
-    XInputGetState_t getStateEx = nullptr;
-    XInputGetKeystroke_t getKeystroke = nullptr;
-    XInputSetState_t setState = nullptr;
-
-    if (module != nullptr)
-    {
-        getState =
-            reinterpret_cast<XInputGetState_t>(KernelBaseProxy::GetProcAddress_()(module, XInputGetStateExportName));
-        getStateEx =
-            reinterpret_cast<XInputGetState_t>(KernelBaseProxy::GetProcAddress_()(module, MAKEINTRESOURCEA(100)));
-        getKeystroke = reinterpret_cast<XInputGetKeystroke_t>(
-            KernelBaseProxy::GetProcAddress_()(module, XInputGetKeystrokeExportName));
-        setState =
-            reinterpret_cast<XInputSetState_t>(KernelBaseProxy::GetProcAddress_()(module, XInputSetStateExportName));
+        XInputModules[index] = { .Attempted = true };
+        return;
     }
 
     {
         std::unique_lock lock(_state.Mutex);
-
-        _state.XInputModule = module;
-        _state.XInputModuleLoaded = module != nullptr;
-
-        if (module == nullptr)
-            return;
-
-        if (getState == nullptr && getStateEx == nullptr && getKeystroke == nullptr && setState == nullptr)
-        {
-            LOG_WARN("XInput module loaded but no supported exports found module:{}", static_cast<void*>(module));
-            return;
-        }
-
-        o_XInputGetState = getState;
-        o_XInputGetStateEx = getStateEx;
-        o_XInputGetKeystroke = getKeystroke;
-        o_XInputSetState = setState;
+        XInputModules[index] = hooks;
     }
 
+    auto& installed = XInputModules[index];
     LONG result = NO_ERROR;
 
     {
@@ -119,17 +164,17 @@ void UpdateXInputIntegration()
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());
 
-        if (o_XInputGetState != nullptr)
-            DetourAttach(reinterpret_cast<PVOID*>(&o_XInputGetState), hkXInputGetState);
+        if (installed.GetState != nullptr)
+            DetourAttach(reinterpret_cast<PVOID*>(&installed.GetState), XInputGetStateDetours[index]);
 
-        if (o_XInputGetStateEx != nullptr)
-            DetourAttach(reinterpret_cast<PVOID*>(&o_XInputGetStateEx), hkXInputGetStateEx);
+        if (installed.GetStateEx != nullptr)
+            DetourAttach(reinterpret_cast<PVOID*>(&installed.GetStateEx), XInputGetStateExDetours[index]);
 
-        if (o_XInputGetKeystroke != nullptr)
-            DetourAttach(reinterpret_cast<PVOID*>(&o_XInputGetKeystroke), hkXInputGetKeystroke);
+        if (installed.GetKeystroke != nullptr)
+            DetourAttach(reinterpret_cast<PVOID*>(&installed.GetKeystroke), XInputGetKeystrokeDetours[index]);
 
-        if (o_XInputSetState != nullptr)
-            DetourAttach(reinterpret_cast<PVOID*>(&o_XInputSetState), hkXInputSetState);
+        if (installed.SetState != nullptr)
+            DetourAttach(reinterpret_cast<PVOID*>(&installed.SetState), XInputSetStateDetours[index]);
 
         result = DetourTransactionCommit();
     }
@@ -138,45 +183,134 @@ void UpdateXInputIntegration()
 
     if (result != NO_ERROR)
     {
-        LOG_ERROR("XInput hook installation failed result:{}", result);
-        ClearXInputHookPointersLocked();
+        LOG_ERROR("XInput hook installation failed result:{} module:{}", result, static_cast<void*>(module));
+        XInputModules[index] = { .Attempted = true };
+        RefreshXInputHookStateLocked();
         return;
     }
 
-    _state.XInputGetStateHookInstalled = o_XInputGetState != nullptr;
-    _state.XInputGetStateExHookInstalled = o_XInputGetStateEx != nullptr;
-    _state.XInputGetKeystrokeHookInstalled = o_XInputGetKeystroke != nullptr;
-    _state.XInputSetStateHookInstalled = o_XInputSetState != nullptr;
+    RefreshXInputHookStateLocked();
 
     LOG_INFO("XInput hooks installed module:{} getState:{} getStateEx:{} getKeystroke:{} setState:{}",
-             static_cast<void*>(module), _state.XInputGetStateHookInstalled ? 1 : 0,
-             _state.XInputGetStateExHookInstalled ? 1 : 0, _state.XInputGetKeystrokeHookInstalled ? 1 : 0,
-             _state.XInputSetStateHookInstalled ? 1 : 0);
+             static_cast<void*>(module), installed.GetState != nullptr ? 1 : 0, installed.GetStateEx != nullptr ? 1 : 0,
+             installed.GetKeystroke != nullptr ? 1 : 0, installed.SetState != nullptr ? 1 : 0);
+}
+
+DWORD CallXInputGetState(XInputGetState_t original, DWORD userIndex, XINPUT_STATE* state, void* caller)
+{
+    if (original == nullptr)
+        return state == nullptr ? ERROR_BAD_ARGUMENTS : ERROR_DEVICE_NOT_CONNECTED;
+
+    if (state == nullptr)
+    {
+        ScopedHookBypass bypass;
+        return original(userIndex, state);
+    }
+
+    bool shouldBlock = false;
+
+    {
+        std::unique_lock lock(_state.Mutex);
+        _state.XInputGetStateCallCount++;
+        shouldBlock = ShouldBlockXInputLocked();
+
+        if (!shouldBlock)
+            _state.XInputGetStatePassedCount++;
+    }
+
+    // The menu's own gamepad navigation (ImGui) reads it through the hook too
+    if (shouldBlock && Util::GetCallerModule(caller) == dllModule)
+        shouldBlock = false;
+
+    if (!shouldBlock)
+    {
+        ScopedHookBypass bypass;
+        return original(userIndex, state);
+    }
+
+    XINPUT_STATE realState {};
+    DWORD result = ERROR_DEVICE_NOT_CONNECTED;
+
+    {
+        ScopedHookBypass bypass;
+        result = original(userIndex, &realState);
+    }
+
+    {
+        std::unique_lock lock(_state.Mutex);
+        _state.XInputGetStateBlockedCount++;
+    }
+
+    if (result != ERROR_SUCCESS)
+    {
+        *state = {};
+        return result;
+    }
+
+    *state = realState;
+    state->Gamepad = {}; // neutral connected controller only if it really exists
+
+    return ERROR_SUCCESS;
+}
+
+} // namespace
+
+void UpdateXInputIntegration()
+{
+    for (std::size_t i = 0; i < XInputModuleCount; ++i)
+    {
+        // A mapped XInput DLL can still be inside loader initialization
+        HMODULE module = GetModuleHandleW(XInputModuleNames[i]);
+
+        {
+            std::unique_lock lock(_state.Mutex);
+            auto& hooks = XInputModules[i];
+
+            // Unloaded, its hooks went with it and a reload is hooked again
+            if (hooks.Module != nullptr && hooks.Module != module)
+            {
+                LOG_INFO("XInput module unloaded module:{}", static_cast<void*>(hooks.Module));
+                hooks = {};
+                RefreshXInputHookStateLocked();
+            }
+
+            if (hooks.Attempted || module == nullptr)
+                continue;
+        }
+
+        InstallXInputModuleHooks(i, module);
+    }
 }
 
 bool RemoveXInputHooksLocked()
 {
-    if (!_state.XInputGetStateHookInstalled && !_state.XInputGetStateExHookInstalled &&
-        !_state.XInputGetKeystrokeHookInstalled && !_state.XInputSetStateHookInstalled)
+    if (std::none_of(XInputModules.begin(), XInputModules.end(),
+                     [](const XInputModuleHooks& hooks) { return hooks.Module != nullptr; }))
     {
-        ClearXInputHookPointersLocked();
+        XInputModules = {};
+        RefreshXInputHookStateLocked();
         return true;
     }
 
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
 
-    if (_state.XInputGetStateHookInstalled && o_XInputGetState != nullptr)
-        DetourDetach(reinterpret_cast<PVOID*>(&o_XInputGetState), hkXInputGetState);
+    for (std::size_t i = 0; i < XInputModuleCount; ++i)
+    {
+        auto& hooks = XInputModules[i];
 
-    if (_state.XInputGetStateExHookInstalled && o_XInputGetStateEx != nullptr)
-        DetourDetach(reinterpret_cast<PVOID*>(&o_XInputGetStateEx), hkXInputGetStateEx);
+        if (hooks.GetState != nullptr)
+            DetourDetach(reinterpret_cast<PVOID*>(&hooks.GetState), XInputGetStateDetours[i]);
 
-    if (_state.XInputGetKeystrokeHookInstalled && o_XInputGetKeystroke != nullptr)
-        DetourDetach(reinterpret_cast<PVOID*>(&o_XInputGetKeystroke), hkXInputGetKeystroke);
+        if (hooks.GetStateEx != nullptr)
+            DetourDetach(reinterpret_cast<PVOID*>(&hooks.GetStateEx), XInputGetStateExDetours[i]);
 
-    if (_state.XInputSetStateHookInstalled && o_XInputSetState != nullptr)
-        DetourDetach(reinterpret_cast<PVOID*>(&o_XInputSetState), hkXInputSetState);
+        if (hooks.GetKeystroke != nullptr)
+            DetourDetach(reinterpret_cast<PVOID*>(&hooks.GetKeystroke), XInputGetKeystrokeDetours[i]);
+
+        if (hooks.SetState != nullptr)
+            DetourDetach(reinterpret_cast<PVOID*>(&hooks.SetState), XInputSetStateDetours[i]);
+    }
 
     const LONG result = DetourTransactionCommit();
 
@@ -186,156 +320,62 @@ bool RemoveXInputHooksLocked()
         return false;
     }
 
-    ClearXInputHookPointersLocked();
+    XInputModules = {};
+    RefreshXInputHookStateLocked();
     return true;
 }
 
 void DrainXInputKeystrokesLocked()
 {
-    if (!_state.XInputGetKeystrokeHookInstalled || o_XInputGetKeystroke == nullptr)
-        return;
-
+    // Menu-time keystrokes are dropped, owed releases wait for the game's next read
     constexpr DWORD MaxDrainPerUser = 256;
 
-    for (DWORD userIndex = 0; userIndex < XUSER_MAX_COUNT; ++userIndex)
+    for (std::size_t i = 0; i < XInputModuleCount; ++i)
     {
-        DWORD drained = 0;
+        const auto& hooks = XInputModules[i];
 
-        for (; drained < MaxDrainPerUser; ++drained)
+        // Its trampoline jumps into the DLL, which may be gone since the last frame
+        if (hooks.GetKeystroke == nullptr || GetModuleHandleW(XInputModuleNames[i]) != hooks.Module)
+            continue;
+
+        for (DWORD userIndex = 0; userIndex < XUSER_MAX_COUNT; ++userIndex)
         {
-            XINPUT_KEYSTROKE keystroke {};
-            DWORD result = ERROR_EMPTY;
+            DWORD drained = 0;
 
+            for (; drained < MaxDrainPerUser; ++drained)
             {
-                ScopedHookBypass bypass;
-                result = o_XInputGetKeystroke(userIndex, 0, &keystroke);
+                XINPUT_KEYSTROKE keystroke {};
+                DWORD result = ERROR_EMPTY;
+
+                {
+                    ScopedHookBypass bypass;
+                    result = hooks.GetKeystroke(userIndex, 0, &keystroke);
+                }
+
+                if (result != ERROR_SUCCESS)
+                    break;
+
+                if (IsOwedXInputReleaseLocked(keystroke))
+                    XInputOwedReleases.push_back(keystroke);
             }
 
-            if (result != ERROR_SUCCESS)
-                break;
+            if (drained == MaxDrainPerUser)
+                LOG_WARN("XInput keystroke drain reached safety limit userIndex:{}", userIndex);
         }
-
-        if (drained == MaxDrainPerUser)
-            LOG_WARN("XInput keystroke drain reached safety limit userIndex:{}", userIndex);
     }
 }
 
-DWORD WINAPI hkXInputGetState(DWORD userIndex, XINPUT_STATE* state)
+template <std::size_t Module> DWORD WINAPI hkXInputGetState(DWORD userIndex, XINPUT_STATE* state)
 {
-    if (state == nullptr)
-    {
-        if (o_XInputGetState != nullptr)
-        {
-            ScopedHookBypass bypass;
-            return o_XInputGetState(userIndex, state);
-        }
-
-        return ERROR_BAD_ARGUMENTS;
-    }
-
-    bool shouldBlock = false;
-
-    {
-        std::unique_lock lock(_state.Mutex);
-        _state.XInputGetStateCallCount++;
-        shouldBlock = ShouldBlockXInputLocked();
-
-        if (!shouldBlock)
-            _state.XInputGetStatePassedCount++;
-    }
-
-    if (o_XInputGetState == nullptr)
-        return ERROR_DEVICE_NOT_CONNECTED;
-
-    if (!shouldBlock)
-    {
-        ScopedHookBypass bypass;
-        return o_XInputGetState(userIndex, state);
-    }
-
-    XINPUT_STATE realState {};
-    DWORD result = ERROR_DEVICE_NOT_CONNECTED;
-
-    {
-        ScopedHookBypass bypass;
-        result = o_XInputGetState(userIndex, &realState);
-    }
-
-    {
-        std::unique_lock lock(_state.Mutex);
-        _state.XInputGetStateBlockedCount++;
-    }
-
-    if (result != ERROR_SUCCESS)
-    {
-        *state = {};
-        return result;
-    }
-
-    *state = realState;
-    state->Gamepad = {}; // neutral connected controller only if it really exists
-
-    return ERROR_SUCCESS;
+    return CallXInputGetState(XInputModules[Module].GetState, userIndex, state, _ReturnAddress());
 }
 
-DWORD WINAPI hkXInputGetStateEx(DWORD userIndex, XINPUT_STATE* state)
+template <std::size_t Module> DWORD WINAPI hkXInputGetStateEx(DWORD userIndex, XINPUT_STATE* state)
 {
-    if (state == nullptr)
-    {
-        if (o_XInputGetStateEx != nullptr)
-        {
-            ScopedHookBypass bypass;
-            return o_XInputGetStateEx(userIndex, state);
-        }
-
-        return ERROR_BAD_ARGUMENTS;
-    }
-
-    bool shouldBlock = false;
-
-    {
-        std::unique_lock lock(_state.Mutex);
-        _state.XInputGetStateCallCount++;
-        shouldBlock = ShouldBlockXInputLocked();
-
-        if (!shouldBlock)
-            _state.XInputGetStatePassedCount++;
-    }
-
-    if (o_XInputGetStateEx == nullptr)
-        return ERROR_DEVICE_NOT_CONNECTED;
-
-    if (!shouldBlock)
-    {
-        ScopedHookBypass bypass;
-        return o_XInputGetStateEx(userIndex, state);
-    }
-
-    XINPUT_STATE realState {};
-    DWORD result = ERROR_DEVICE_NOT_CONNECTED;
-
-    {
-        ScopedHookBypass bypass;
-        result = o_XInputGetStateEx(userIndex, &realState);
-    }
-
-    {
-        std::unique_lock lock(_state.Mutex);
-        _state.XInputGetStateBlockedCount++;
-    }
-
-    if (result != ERROR_SUCCESS)
-    {
-        *state = {};
-        return result;
-    }
-
-    *state = realState;
-    state->Gamepad = {}; // neutral connected controller only if it really exists
-
-    return ERROR_SUCCESS;
+    return CallXInputGetState(XInputModules[Module].GetStateEx, userIndex, state, _ReturnAddress());
 }
 
+template <std::size_t Module>
 DWORD WINAPI hkXInputGetKeystroke(DWORD userIndex, DWORD reserved, PXINPUT_KEYSTROKE keystroke)
 {
     bool shouldBlock = false;
@@ -349,52 +389,89 @@ DWORD WINAPI hkXInputGetKeystroke(DWORD userIndex, DWORD reserved, PXINPUT_KEYST
             _state.XInputGetKeystrokeBlockedCount++;
         else
             _state.XInputGetKeystrokePassedCount++;
+
+        // Releases the drain kept come first
+        if (!shouldBlock && keystroke != nullptr)
+        {
+            auto owed = std::find_if(XInputOwedReleases.begin(), XInputOwedReleases.end(),
+                                     [userIndex](const XINPUT_KEYSTROKE& k)
+                                     { return userIndex == XUSER_INDEX_ANY || k.UserIndex == userIndex; });
+
+            if (owed != XInputOwedReleases.end())
+            {
+                *keystroke = *owed;
+                XInputOwedReleases.erase(owed);
+                NoteXInputKeystrokeDeliveredLocked(*keystroke);
+                return ERROR_SUCCESS;
+            }
+        }
     }
 
-    if (o_XInputGetKeystroke == nullptr)
+    const XInputGetKeystroke_t original = XInputModules[Module].GetKeystroke;
+
+    if (original == nullptr)
     {
         if (keystroke != nullptr)
             *keystroke = {};
         return ERROR_EMPTY;
     }
 
-    if (!shouldBlock)
+    if (!shouldBlock || keystroke == nullptr)
     {
-        ScopedHookBypass bypass;
-        return o_XInputGetKeystroke(userIndex, reserved, keystroke);
+        DWORD result = ERROR_EMPTY;
+
+        {
+            ScopedHookBypass bypass;
+            result = original(userIndex, reserved, keystroke);
+        }
+
+        if (result == ERROR_SUCCESS && keystroke != nullptr)
+        {
+            std::unique_lock lock(_state.Mutex);
+            NoteXInputKeystrokeDeliveredLocked(*keystroke);
+        }
+
+        return result;
     }
 
-    // XInputGetKeystroke is a destructive queue read. Consume all pending
-    // events for the requested index while the overlay owns input so they
-    // cannot replay after the menu closes.
+    // XInputGetKeystroke is a destructive queue read. Menu-time keystrokes are consumed so they can't
+    // replay after the menu closes, but releases of keys the game saw pressed are passed on.
     constexpr DWORD MaxDrain = 256;
     DWORD drained = 0;
 
     for (; drained < MaxDrain; ++drained)
     {
-        XINPUT_KEYSTROKE discarded {};
+        XINPUT_KEYSTROKE read {};
         DWORD result = ERROR_EMPTY;
 
         {
             ScopedHookBypass bypass;
-            result = o_XInputGetKeystroke(userIndex, reserved, &discarded);
+            result = original(userIndex, reserved, &read);
         }
 
         if (result != ERROR_SUCCESS)
             break;
+
+        std::unique_lock lock(_state.Mutex);
+
+        if (IsOwedXInputReleaseLocked(read))
+        {
+            NoteXInputKeystrokeDeliveredLocked(read);
+            *keystroke = read;
+            return ERROR_SUCCESS;
+        }
     }
 
     if (drained == MaxDrain)
         LOG_WARN("XInputGetKeystroke drain reached safety limit userIndex:{}", userIndex);
 
-    if (keystroke != nullptr)
-        *keystroke = {};
+    *keystroke = {};
 
     OPTIINPUT_LOG_VERBOSE("blocking XInputGetKeystroke userIndex:{} drained:{}", userIndex, drained);
     return ERROR_EMPTY;
 }
 
-DWORD WINAPI hkXInputSetState(DWORD userIndex, XINPUT_VIBRATION* vibration)
+template <std::size_t Module> DWORD WINAPI hkXInputSetState(DWORD userIndex, XINPUT_VIBRATION* vibration)
 {
     bool shouldBlock = false;
 
@@ -407,13 +484,15 @@ DWORD WINAPI hkXInputSetState(DWORD userIndex, XINPUT_VIBRATION* vibration)
             _state.XInputSetStatePassedCount++;
     }
 
-    if (o_XInputSetState == nullptr)
+    const XInputSetState_t original = XInputModules[Module].SetState;
+
+    if (original == nullptr)
         return ERROR_DEVICE_NOT_CONNECTED;
 
     if (!shouldBlock)
     {
         ScopedHookBypass bypass;
-        return o_XInputSetState(userIndex, vibration);
+        return original(userIndex, vibration);
     }
 
     XINPUT_VIBRATION zeroVibration {};
@@ -421,7 +500,7 @@ DWORD WINAPI hkXInputSetState(DWORD userIndex, XINPUT_VIBRATION* vibration)
 
     {
         ScopedHookBypass bypass;
-        result = o_XInputSetState(userIndex, &zeroVibration);
+        result = original(userIndex, &zeroVibration);
     }
 
     {

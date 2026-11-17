@@ -24,6 +24,9 @@ class FSRFG_Vk : public virtual IFGFeature_Vk
     FfxModule* _ffxSwapchain = nullptr;
     FfxModule* _ffx = nullptr;
 
+    // Custom FG and swapchain provider, nullptr for the SDK and driver ones
+    CustomFfxModule* _custom = FfxApiProxy::ActiveCustomFgVk();
+
     // Selected FG version needs the swapchain from the other provider, the game recreates it on out of date
     bool _swapchainOutdated = false;
 

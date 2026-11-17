@@ -102,11 +102,18 @@ bool hkIsSupported(void* provider, void* device)
             selected = detected;
 
         auto useSelected = selected.has_value() && hooked.HasModel(*selected) && FSR4Models::CanGpuRun(*selected);
+
+        // FFX's INT8 check passes on some non AMD GPUs, there FSR 4 needs Fsr4GpuSupport
+        auto gpu = IdentifyGpu::getPrimaryGpu();
+        auto blocked = gpu.fsr4Support == FSR4Support::None && gpu.vendorId != VendorId::AMD;
         lock.unlock();
 
         auto supported = o_IsSupported(provider, device);
 
-        if (useSelected)
+        if (blocked)
+            supported = false;
+
+        else if (useSelected)
             supported = model == *selected && (supported || Provider(model).ignoreSupportCheck);
 
         // FFX picks FP8 wherever the device reports it, emulated FP8 on Linux included

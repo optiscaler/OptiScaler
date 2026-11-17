@@ -5,17 +5,17 @@ void Nvngx_Nukems::LoadLibraries()
 {
     HMODULE memModule = nullptr;
     auto& optiPath = Config::Instance()->MainDllPath.value();
-    Util::LoadProxyLibrary(L"dlssg_to_fsr3_amd_is_better.dll", L"", optiPath, &memModule, &dll);
+    Util::LoadProxyLibrary(L"dlssg_to_fsr3_amd_is_better.dll", L"", optiPath, &memModule, &ngx.dll);
 
-    if (dll == nullptr && memModule != nullptr)
-        dll = memModule;
+    if (ngx.dll == nullptr && memModule != nullptr)
+        ngx.dll = memModule;
 
-    if (dll != nullptr)
+    if (ngx.dll != nullptr)
     {
         _refreshGlobalConfiguration =
-            (PFN_RefreshGlobalConfiguration) GetProcAddress(dll, "RefreshGlobalConfiguration");
+            (PFN_RefreshGlobalConfiguration) KernelBaseProxy::GetProcAddress_()(ngx.dll, "RefreshGlobalConfiguration");
 
-        LoadNgxExports();
+        ngx.LoadExports();
 
         LOG_INFO("Nukem's initialized");
     }

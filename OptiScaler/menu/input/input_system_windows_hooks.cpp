@@ -143,8 +143,14 @@ HINSTANCE GetWindowsHookInstallModule(int hookType, DWORD threadId, HINSTANCE or
 
 int AllocateWindowsHookSlotLocked(int hookType, HOOKPROC proc, HINSTANCE module, DWORD threadId)
 {
-    for (std::size_t i = 0; i < _state.WindowsHookSlots.size(); i++)
+    // A hook proc can still be called after UnhookWindowsHookEx returns. Slots are taken round-robin so a freed
+    // one is reused last and a late call doesn't reach the next hook's proc.
+    static std::size_t nextSlot = 0;
+    const std::size_t slotCount = _state.WindowsHookSlots.size();
+
+    for (std::size_t n = 0; n < slotCount; n++)
     {
+        const std::size_t i = (nextSlot + n) % slotCount;
         WindowsHookSlot& slot = _state.WindowsHookSlots[i];
 
         if (slot.InUse)
@@ -158,6 +164,7 @@ int AllocateWindowsHookSlotLocked(int hookType, HOOKPROC proc, HINSTANCE module,
         slot.Module = module;
         LOG_DEBUG("allocated windows hook slot:{} type:{} proc:{} module:{} threadId:{}", static_cast<unsigned>(i),
                   hookType, reinterpret_cast<std::uintptr_t>(proc), static_cast<void*>(module), threadId);
+        nextSlot = i + 1;
         return static_cast<int>(i);
     }
 
@@ -393,7 +400,6 @@ LRESULT CALLBACK InvokeWindowsHookProxy(std::size_t slotIndex, int code, WPARAM 
 {
     HHOOK hook = nullptr;
     HOOKPROC originalProc = nullptr;
-    int hookType = 0;
     bool shouldBlock = false;
     bool keyboardHook = false;
     bool mouseHook = false;
@@ -411,7 +417,6 @@ LRESULT CALLBACK InvokeWindowsHookProxy(std::size_t slotIndex, int code, WPARAM 
 
         hook = slot.Hook;
         originalProc = slot.OriginalProc;
-        hookType = slot.HookType;
         keyboardHook = IsKeyboardWindowsHookType(slot.HookType);
         mouseHook = IsMouseWindowsHookType(slot.HookType);
         shouldBlock = ShouldBlockWindowsHookCallbackLocked(slot, code, wParam, lParam);
@@ -440,14 +445,9 @@ LRESULT CALLBACK InvokeWindowsHookProxy(std::size_t slotIndex, int code, WPARAM 
 
     if (shouldBlock)
     {
-        // Low-level hooks run before Windows processes the input. Returning non-zero from
-        // WH_MOUSE_LL/WH_KEYBOARD_LL would discard the event system-wide, including the
-        // physical cursor/keyboard state used by our own polling fallback. Keep the event
-        // moving through the system hook chain while still bypassing the intercepted proc.
-        if (hookType == WH_MOUSE_LL || hookType == WH_KEYBOARD_LL)
-            return CallNextHookEx(hook, code, wParam, lParam);
-
-        return 1;
+        // Only the intercepted proc is skipped. Returning non-zero would discard the event: system-wide for the
+        // low-level hooks, and for WH_KEYBOARD/WH_MOUSE before the window, where the menu reads it as well.
+        return CallNextHookEx(hook, code, wParam, lParam);
     }
 
     if (originalProc == nullptr)

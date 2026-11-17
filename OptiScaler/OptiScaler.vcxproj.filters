@@ -122,7 +122,7 @@
     <ClInclude Include="dllmain.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="proxies\NVNGX_Proxy.h">
+    <ClInclude Include="proxies\Nvngx_Proxy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="upscalers\dlssd\DLSSDFeature.h">
@@ -132,6 +132,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="upscalers\dlssd\DLSSDFeature_Dx12.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="upscalers\nvngx\Nvngx_RR.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="proxies\Nvngx_RRDllProxy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="upscalers\dlssd\DLSSDFeature_Vk.h">
@@ -719,10 +725,25 @@
     <ClInclude Include="shaders\depth_transfer\DT_Vk.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="shaders\resource_copy\RC_Common.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\resource_copy\RC_Dx11.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\resource_copy\RC_Dx12.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\resource_copy\precompile\rc_offset_Shader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\resource_copy\precompile\rc_offset_Shader_Dx11.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="shaders\resource_copy\RC_Vk.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="shaders\resource_copy\precompile\rc_Shader_Vk.h">
+    <ClInclude Include="shaders\resource_copy\precompile\rc_offset_Shader_Vk.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="shaders\velocity_convert\VC_Vk.h">
@@ -860,6 +881,9 @@
     <ClInclude Include="misc\IdentifyGpu.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="misc\CrashDumps.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="shaders\hud_copy\precompile\HudCopy_Shader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -914,6 +938,9 @@
     <ClInclude Include="shaders\hudless_compare_compute\HCC_Dx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="hooks\AmdExtFlipMeter.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="hooks\Amdxc64_Hooks.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -963,6 +990,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="shaders\rcas\precompile\RCAS_Shader_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\rcas\shaders\BABA_NEURAL_Shader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="shaders\rcas\shaders\DA_DAS_Shader.h">
@@ -1055,7 +1085,7 @@
     <ClInclude Include="framegen\nvngx\Nvngx_Nukems.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="framegen\nvngx\Nvngx_DllProxy.h">
+    <ClInclude Include="proxies\Nvngx_DllProxy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="framegen\nvngx\Nvngx_Arturs.h">
@@ -1089,6 +1119,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="shaders\magnifier\precompile\Magnifier_Shader_Vk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="framegen\flipmeter\FlipMeterFG_Dx12.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="framegen\flipmeter\FlipMeterSwapChain.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="framegen\reprojection\Reprojection_Dx12.h">
@@ -1284,6 +1320,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="upscalers\dlssd\DLSSDFeature_Dx12.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="upscalers\nvngx\Nvngx_RR.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="proxies\Nvngx_RRDllProxy.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="upscalers\dlssd\DLSSDFeature_Vk.cpp">
@@ -1610,6 +1652,12 @@
     <ClCompile Include="shaders\depth_transfer\DT_Vk.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="shaders\resource_copy\RC_Dx11.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="shaders\resource_copy\RC_Dx12.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="shaders\resource_copy\RC_Vk.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -1662,6 +1710,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="misc\IdentifyGpu.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="misc\CrashDumps.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="framegen\dlssg\DLSSG_Dx12.cpp">
@@ -1820,7 +1871,7 @@
     <ClCompile Include="framegen\nvngx\Nvngx_Nukems.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="framegen\nvngx\Nvngx_DllProxy.cpp">
+    <ClCompile Include="proxies\Nvngx_DllProxy.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="framegen\nvngx\Nvngx_Arturs.cpp">
@@ -1854,6 +1905,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="shaders\magnifier\Magnifier_Vk.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="framegen\flipmeter\FlipMeterFG_Dx12.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="framegen\flipmeter\FlipMeterSwapChain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="framegen\reprojection\Reprojection_Dx12.cpp">

@@ -126,10 +126,17 @@ int IFGFeature::GetDispatchIndex(UINT64& willDispatchFrame)
 // Shared by GetDispatchIndex and GetIndexWillBeDispatched so they pick the same slot
 UINT64 IFGFeature::NextDispatchFrame()
 {
+    if (_presentFrame > _lastDispatchedFrame && _presentFrame <= _frameCount)
+        return _presentFrame;
+
+    // Nothing dispatched since (re)activation: +1 would be frame 1, XeFG needs it to match the tagged frame id
+    if (_lastDispatchedFrame == 0)
+        return _frameCount;
+
     auto frame = _lastDispatchedFrame + 1; // By default render next one
 
     auto diff = _frameCount - _lastDispatchedFrame;
-    if (diff > Config::Instance()->FGAllowedFrameAhead.value_or_default() || _lastDispatchedFrame == 0)
+    if (diff > Config::Instance()->FGAllowedFrameAhead.value_or_default())
     {
         auto index = GetIndex();
 
@@ -144,6 +151,8 @@ UINT64 IFGFeature::NextDispatchFrame()
 }
 
 bool IFGFeature::IsActive() { return _isActive || _waitingNewFrameData; }
+
+bool IFGFeature::IsGenerating() { return _isActive && !_waitingNewFrameData && !IsPaused(); }
 
 void IFGFeature::Disable()
 {
@@ -192,6 +201,8 @@ void IFGFeature::SetFrameCount(UINT64 frameId)
     _allowLowerFrameId = false;
     _frameCount = frameId;
 }
+
+void IFGFeature::SetPresentFrame(UINT64 frame) { _presentFrame = frame; }
 
 void IFGFeature::SetJitter(float x, float y, int index)
 {

@@ -82,6 +82,8 @@ class InputCommon
     // it last marked
     inline static std::atomic<ID3D12CommandQueue*> xefg_present_queue = nullptr;
     inline static std::atomic_uint64_t xefg_frame_id = 0;
+    // The present any XeFG (also one OptiScaler doesn't own) last sent its XeLL markers on, 0 = never
+    inline static std::atomic_uint64_t xefg_marker_present = 0;
     // Time the output's last sleep took, for XeFG's Dynamic MFG (the frame time it doesn't need)
     inline static std::atomic<double> last_sleep_ms = 0.0;
 
@@ -174,6 +176,8 @@ class InputCommon
     // The game's DLSSG presents through the wrapped swapchain, AntiLag 2 gets the frame type of each present there
     static bool dlssg_types_presents();
     static void dlssg_present();
+    // The flip meter output presents its frames itself and knows the type of each one, for AntiLag 2
+    static void fg_frame_type(bool interpolated);
 
     // The Reflex output reports that frame multiplier to the driver (Reflex Sync), which then applies the FPS limit
     // to the output frames itself

@@ -418,6 +418,14 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::Present(UINT SyncInterval, UINT Flags)
     if ((Flags & DXGI_PRESENT_TEST) != 0)
         return _fgSwapChain->Present(SyncInterval, ValidPresentFlags(_fgSwapChain, SyncInterval, Flags));
 
+    if (_fgColorSpaceDirty && _gameColorSpace.has_value())
+    {
+        _fgColorSpaceDirty = false;
+
+        auto csResult = _fgSwapChain->SetColorSpace1(_gameColorSpace.value());
+        LOG_DEBUG("Re-applied {} to FG swapchain: {:X}", (UINT) _gameColorSpace.value(), (UINT) csResult);
+    }
+
     // The FG library's swapchain isn't the current one, game's frames are counted here
     if (State::Instance().currentSwapchain == this)
         State::Instance().frameCount++;
@@ -610,6 +618,7 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::ResizeBuffers(UINT BufferCount, UINT Widt
     if (SUCCEEDED(realResult) && SUCCEEDED(fgResult))
     {
         _fgResizedFullscreen = fgFullscreen;
+        _fgColorSpaceDirty = true;
         _RefreshCachedSwapchainDesc();
 
         if (Config::Instance()->IsFGEnabled())
@@ -789,8 +798,20 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::CheckColorSpaceSupport(DXGI_COLOR_SPACE_T
 
 HRESULT STDMETHODCALLTYPE Dx11wDx12SC::SetColorSpace1(DXGI_COLOR_SPACE_TYPE ColorSpace)
 {
+    LOG_DEBUG("Dx11wDx12SC SetColorSpace1: {}", (UINT) ColorSpace);
+
     if (_fgSwapChain != nullptr)
-        return _fgSwapChain->SetColorSpace1(ColorSpace);
+    {
+        auto result = _fgSwapChain->SetColorSpace1(ColorSpace);
+
+        if (SUCCEEDED(result))
+        {
+            _gameColorSpace = ColorSpace;
+            _fgColorSpaceDirty = true;
+        }
+
+        return result;
+    }
 
     return _real3 != nullptr ? _real3->SetColorSpace1(ColorSpace) : DXGI_ERROR_DEVICE_REMOVED;
 }
@@ -874,6 +895,7 @@ HRESULT STDMETHODCALLTYPE Dx11wDx12SC::ResizeBuffers1(UINT BufferCount, UINT Wid
     if (SUCCEEDED(realResult) && SUCCEEDED(fgResult))
     {
         _fgResizedFullscreen = fgFullscreen;
+        _fgColorSpaceDirty = true;
         _RefreshCachedSwapchainDesc();
 
         if (Config::Instance()->IsFGEnabled())

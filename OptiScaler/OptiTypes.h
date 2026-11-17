@@ -75,6 +75,8 @@ enum class ApiUpscalerInput
     DLSS_DX11,
     DLSS_DX12,
     DLSS_VK,
+    DLSSD_DX12,
+    DLSSD_VK,
     XeSS_DX11,
     XeSS_DX12,
     XeSS_VK,
@@ -92,7 +94,8 @@ enum class SharpenShader
 {
     RCAS,
     DepthAware,
-    LocalContrastDepthAware
+    LocalContrastDepthAware,
+    BabaNeural
 };
 
 template <> struct EnumConfig<SharpenShader>
@@ -102,7 +105,8 @@ template <> struct EnumConfig<SharpenShader>
     static constexpr std::pair<SharpenShader, std::string_view> mapping[] = { { SharpenShader::RCAS, "rcas" },
                                                                               { SharpenShader::DepthAware, "da" },
                                                                               { SharpenShader::LocalContrastDepthAware,
-                                                                                "lcda" } };
+                                                                                "lcda" },
+                                                                              { SharpenShader::BabaNeural, "baba" } };
 };
 
 enum class FSR4Support : uint8_t
@@ -262,6 +266,13 @@ std::string ApiUpscalerInputName(ApiUpscalerInput upscaler);
 std::string UpscalerDisplayName(Upscaler upscaler, API api = API::NotSelected);
 std::string UpscalerShortName(Upscaler upscaler);
 bool IsFsr(Upscaler upscaler);
+
+// Native DX12 and Vulkan upscalers that can take the game's ray reconstruction in place of DLSSD
+inline bool IsRRRegularUpscaler(Upscaler upscaler)
+{
+    return upscaler == Upscaler::XeSS || upscaler == Upscaler::FSR21 || upscaler == Upscaler::FSR22 ||
+           upscaler == Upscaler::FFX || upscaler == Upscaler::DLSS;
+}
 
 // Converts enum to the string codes for config
 std::string UpscalerToCode(Upscaler upscaler);

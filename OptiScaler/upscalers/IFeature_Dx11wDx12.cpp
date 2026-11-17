@@ -227,10 +227,10 @@ bool IFeature_Dx11wDx12::ProcessDx11Textures(const NVSDK_NGX_Parameter* InParame
     return true;
 }
 
-bool IFeature_Dx11wDx12::CopyBackOutput()
+bool IFeature_Dx11wDx12::CopyBackOutput(const D3D11_BOX* InView, UINT InDstX, UINT InDstY)
 {
     const auto resourceFrame = (UINT) (_frameCount % DX11_WITH_DX12_CACHED_FRAMES);
-    return Dx11WithDx12::CopyUpscalerOutputToDx11(ResourceCache, resourceFrame);
+    return Dx11WithDx12::CopyUpscalerOutputToDx11(ResourceCache, resourceFrame, InView, InDstX, InDstY);
 }
 
 bool IFeature_Dx11wDx12::Init(ID3D11Device* InDevice, ID3D11DeviceContext* InContext, NVSDK_NGX_Parameter* InParameters)
@@ -261,9 +261,34 @@ bool IFeature_Dx11wDx12::Init(ID3D11Device* InDevice, ID3D11DeviceContext* InCon
 
     SetInitParameters(InParameters);
 
-    // Non-DLSS upscalers don't use the cmdList during Init
-    // We have more than one cmdList so unsure how that would even work
+    // NGX CreateFeature records init work into the cmdList, so it must be open and submitted afterwards
+    auto result = Dx12CommandAllocator[0]->Reset();
+    if (result == S_OK)
+        result = Dx12CommandList[0]->Reset(Dx12CommandAllocator[0], nullptr);
+
+    if (result != S_OK)
+    {
+        LOG_ERROR("Init CommandList Reset error: {:X}", (UINT) result);
+        return false;
+    }
+
     SetInit(dx12Feature->Init(_dx11on12Device, Dx12CommandList[0], InParameters));
+
+    result = Dx12CommandList[0]->Close();
+    if (result != S_OK)
+    {
+        LOG_ERROR("Init CommandList Close error: {:X}", (UINT) result);
+        SetInit(false);
+        return false;
+    }
+
+    ID3D12CommandList* ppCommandLists[] = { Dx12CommandList[0] };
+    Dx12CommandQueue->ExecuteCommandLists(1, ppCommandLists);
+
+    // Frame 0 reuses allocator 0, it must wait for the init work
+    const auto fenceValue = ++Dx12FenceValue;
+    if (Dx12CommandQueue->Signal(Dx12Fence, fenceValue) == S_OK)
+        Dx12CommandAllocatorFenceValue[0] = fenceValue;
 
     return IsInited();
 }
@@ -364,8 +389,15 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
     ComPtr<ID3D11RenderTargetView> restoreRTVs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
     ID3D11RenderTargetView* rawRTVs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
     ComPtr<ID3D11DepthStencilView> restoreDSV = nullptr;
+    ComPtr<ID3D11ComputeShader> restoreCS = nullptr;
+
+    // Feature level 11.0 has 8 UAV slots, the others are invalid calls there
+    const UINT uavSlots =
+        Device->GetFeatureLevel() >= D3D_FEATURE_LEVEL_11_1 ? D3D11_1_UAV_SLOT_COUNT : D3D11_PS_CS_UAV_REGISTER_COUNT;
 
     // backup compute shader resources
+    InDeviceContext->CSGetShader(restoreCS.GetAddressOf(), nullptr, nullptr);
+
     for (UINT i = 0; i < D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT; i++)
     {
         InDeviceContext->CSGetShaderResources(i, 1, restoreSRVs[i].GetAddressOf());
@@ -381,7 +413,7 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
         InDeviceContext->CSGetConstantBuffers(i, 1, restoreCBVs[i].GetAddressOf());
     }
 
-    for (UINT i = 0; i < D3D11_1_UAV_SLOT_COUNT; i++)
+    for (UINT i = 0; i < uavSlots; i++)
     {
         InDeviceContext->CSGetUnorderedAccessViews(i, 1, restoreUAVs[i].GetAddressOf());
     }
@@ -397,11 +429,58 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
     ID3D11RenderTargetView* nullRTVs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
     InDeviceContext->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, nullRTVs, nullptr);
 
+    // D3D11 drops an SRV whose resource is still bound as a UAV, our passes read the game's textures
+    ID3D11UnorderedAccessView* nullUAVs[D3D11_1_UAV_SLOT_COUNT] = {};
+    InDeviceContext->CSSetUnorderedAccessViews(0, uavSlots, nullUAVs, nullptr);
+
     bool dx12EvalResult = false;
     bool commandListRecording = false;
     bool commandListExecuted = false;
+
+    // The D3D12 feature gets the views at (0, 0), so only they are shared and copied back
+    uint32_t zeroedSubrects = 0;
+    std::optional<D3D11_BOX> outputView;
+
+    auto zeroSubrect = [&](SubrectSlot slot)
+    {
+        SetSubrectBase(InParameters, slot, 0, 0);
+        zeroedSubrects |= 1u << (uint32_t) slot;
+    };
+
     do
     {
+        // The D3D12 feature calls GetRenderResolution, without dimensions it's the creation size like DLSS
+        InParameters->Get(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Width, &_renderWidth);
+        InParameters->Get(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Height, &_renderHeight);
+        ReadSubrects(InParameters);
+
+        static constexpr std::pair<SubrectSlot, const char*> subrectInputs[] = {
+            { SubrectSlot::Color, NVSDK_NGX_Parameter_Color },
+            { SubrectSlot::Depth, NVSDK_NGX_Parameter_Depth },
+            { SubrectSlot::MV, NVSDK_NGX_Parameter_MotionVectors },
+            { SubrectSlot::Mask, NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask },
+        };
+
+        for (const auto& [slot, name] : subrectInputs)
+        {
+            ID3D11Resource* resource = nullptr;
+
+            // An integer mask is dropped by the D3D12 feature, it can't be cropped as float either
+            if (!getOriginalNgxResource(InParameters, name, &resource) ||
+                (slot == SubrectSlot::Mask && MaskInput(resource) == nullptr))
+            {
+                continue;
+            }
+
+            auto view = SubrectInput(InDeviceContext, resource, slot);
+
+            if (view != resource)
+            {
+                InParameters->Set(name, (void*) view);
+                zeroSubrect(slot);
+            }
+        }
+
         if (!ProcessDx11Textures(InParameters))
         {
             LOG_ERROR("Can't process Dx11 textures!");
@@ -414,6 +493,21 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
         }
 
         commandListRecording = true;
+
+        // An already shared output is written in place, the D3D12 feature places the view there
+        const auto& outputRect = GetSubrect(SubrectSlot::Output);
+        const auto& outputDesc = dx11Out.SourceDesc;
+
+        if (cache.ParamOutput[resourceFrame] != static_cast<ID3D11Resource*>(dx11Out.SharedTexture) &&
+            outputRect.IsPartOf(outputDesc.Width, outputDesc.Height) &&
+            SubrectFits(SubrectSlot::Output, outputRect, outputDesc.Width, outputDesc.Height))
+        {
+            outputView = D3D11_BOX { 0, 0, 0, outputRect.Width, outputRect.Height, 1 };
+
+            // Restored from _subrects, which has (0, 0) when output subrects are off
+            if (outputRect.HasOffset())
+                zeroSubrect(SubrectSlot::Output);
+        }
 
         InParameters->Set(NVSDK_NGX_Parameter_Color, (void*) dx11Color.Dx12Resource);
         InParameters->Set(NVSDK_NGX_Parameter_MotionVectors, (void*) dx11Mv.Dx12Resource);
@@ -458,6 +552,12 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
     InParameters->Set("FSR.reactive", restoreFsrReactive);
     InParameters->Set("FSR.transparencyAndComposition", restoreFsrTransparency);
 
+    for (uint32_t slot = 0; slot < (uint32_t) SubrectSlot::Count; slot++)
+    {
+        if (zeroedSubrects & (1u << slot))
+            SetSubrectBase(InParameters, (SubrectSlot) slot, _subrects[slot].X, _subrects[slot].Y);
+    }
+
     if (commandListRecording)
     {
         const auto closeResult = cmdList->Close();
@@ -494,7 +594,9 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
         if (!dx12EvalResult || !commandListExecuted)
             break;
 
-        if (!CopyBackOutput())
+        const auto& outputRect = GetSubrect(SubrectSlot::Output);
+
+        if (!CopyBackOutput(outputView ? &outputView.value() : nullptr, outputRect.X, outputRect.Y))
         {
             LOG_ERROR("Can't copy output texture back!");
             break;
@@ -509,7 +611,9 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
     else
         Dx11WithDx12::ClearLastPreparedUpscalerFrameState(ResourceCache);
 
-    // restore compute shader resources
+    // restore compute shader resources, the input crops and the depth transfer change the shader
+    InDeviceContext->CSSetShader(restoreCS.Get(), nullptr, 0);
+
     for (UINT i = 0; i < D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT; i++)
     {
         auto raw = restoreSRVs[i].Get();
@@ -528,7 +632,7 @@ bool IFeature_Dx11wDx12::Evaluate(ID3D11DeviceContext* InDeviceContext, NVSDK_NG
         InDeviceContext->CSSetConstantBuffers(i, 1, &raw);
     }
 
-    for (UINT i = 0; i < D3D11_1_UAV_SLOT_COUNT; i++)
+    for (UINT i = 0; i < uavSlots; i++)
     {
         auto raw = restoreUAVs[i].Get();
         InDeviceContext->CSSetUnorderedAccessViews(i, 1, &raw, 0);

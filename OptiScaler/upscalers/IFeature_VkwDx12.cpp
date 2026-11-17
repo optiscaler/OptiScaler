@@ -1129,7 +1129,7 @@ bool IFeature_VkwDx12::ProcessVulkanTextures(VkCommandBuffer InCmdList, const NV
     {
         if (InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void**) &paramReactiveMask) !=
                 NVSDK_NGX_Result_Success ||
-            NvVkResourceNotValid(paramReactiveMask))
+            NvVkResourceNotValid(paramReactiveMask) || MaskInput(paramReactiveMask) == nullptr)
         {
             paramReactiveMask = nullptr;
         }
@@ -1431,9 +1431,13 @@ bool IFeature_VkwDx12::ProcessVulkanTextures(VkCommandBuffer InCmdList, const NV
     return true;
 }
 
-bool IFeature_VkwDx12::CopyBackOutput(VkCommandBuffer InCmdBuffer)
+bool IFeature_VkwDx12::CopyBackOutput(VkCommandBuffer InCmdBuffer, const Subrect* InView)
 {
     LOG_FUNC();
+
+    const VkOffset2D viewOffset = InView ? VkOffset2D { (int32_t) InView->X, (int32_t) InView->Y } : VkOffset2D {};
+    const VkExtent2D viewExtent =
+        InView ? VkExtent2D { InView->Width, InView->Height } : VkExtent2D { vkOut.Width, vkOut.Height };
 
     auto frame = _frameCount % VKDX12_BUFFER_COUNT;
     LOG_DEBUG("frame: {}", frame);
@@ -1592,9 +1596,8 @@ bool IFeature_VkwDx12::CopyBackOutput(VkCommandBuffer InCmdBuffer)
             }
         }
 
-        VkExtent2D extent = { vkOut.Width, vkOut.Height };
         if (!OutCopy->Dispatch(VulkanDevice, b.VulkanCopyCommandBuffer[frame], vkOut.VkSharedImageView,
-                               vkOut.VkSourceImageView, extent))
+                               vkOut.VkSourceImageView, viewExtent, viewOffset, viewOffset))
         {
             LOG_ERROR("Failed to dispatch resource copy!");
             return false;
@@ -1635,9 +1638,10 @@ bool IFeature_VkwDx12::CopyBackOutput(VkCommandBuffer InCmdBuffer)
         vkCmdPipelineBarrier(b.VulkanCopyCommandBuffer[frame], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 2, copyBarriers);
 
-        VkExtent3D extent = { vkOut.Width, vkOut.Height, 1 };
         VkImageCopy copyRegion = {};
-        copyRegion.extent = extent;
+        copyRegion.extent = { viewExtent.width, viewExtent.height, 1 };
+        copyRegion.srcOffset = { viewOffset.x, viewOffset.y, 0 };
+        copyRegion.dstOffset = copyRegion.srcOffset;
         copyRegion.dstSubresource.aspectMask = copyBarriers[0].subresourceRange.aspectMask;
         copyRegion.dstSubresource.mipLevel = copyBarriers[0].subresourceRange.baseMipLevel;
         copyRegion.dstSubresource.baseArrayLayer = copyBarriers[0].subresourceRange.baseArrayLayer;
@@ -2320,7 +2324,14 @@ bool IFeature_VkwDx12::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter
         return false;
     }
 
-    if (!CopyBackOutput(InCmdBuffer))
+    // The D3D12 feature writes only its view to the shared output, which doesn't hold the game's output.
+    // Copying the whole image back would overwrite the other views.
+    ReadSubrects(InParameters);
+    const auto& outputRect = GetSubrect(SubrectSlot::Output);
+    const bool copyView = outputRect.IsPartOf(vkOut.Width, vkOut.Height) &&
+                          SubrectFits(SubrectSlot::Output, outputRect, vkOut.Width, vkOut.Height);
+
+    if (!CopyBackOutput(InCmdBuffer, copyView ? &outputRect : nullptr))
     {
         LOG_ERROR("Can't copy output texture back!");
         AbortPendingInterop(InCmdBuffer, frame);

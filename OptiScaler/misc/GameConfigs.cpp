@@ -85,6 +85,7 @@ GAME_SETTING(MVResourceBarrier);
 GAME_SETTING(OverlayMenu);
 GAME_SETTING(OverrideVsync);
 GAME_SETTING(RestoreComputeSignature);
+GAME_SETTING(RRAllowRegularUpscalers);
 GAME_SETTING(SkipFirstFrames);
 GAME_SETTING(SpoofRegistry);
 GAME_SETTING(UseFakenvapi);
@@ -137,10 +138,10 @@ using enum GameQuirk;
 const std::vector<GameConfig> gameConfigs = {
 
     // BeamNG
-    // Spoofing not required for DLSS inputs for both Dx12 and Vk
+    // Spoofing not required for DLSS inputs for both Dx12 and Vk, Auto Exposure required for XeSS
     {
         .exes = { "beamng.drive.x64.exe" },
-        .defaults = { DxgiSpoofing = false },
+        .defaults = { DxgiSpoofing = false, AutoExposure = true },
         .quirks = { HideFsr4 },
     },
 
@@ -272,12 +273,17 @@ const std::vector<GameConfig> gameConfigs = {
         .exes = { "kunitsugami.exe", "kunitsugamidemo.exe", "drdr.exe" },
         .defaults = { OnNonNvidia(RestoreComputeSignature = true), DxgiSpoofing = false },
     },
-    // Monster Hunter Wilds, Resident Evil Requiem (+ demo), Monster Hunter Stories 3: Twisted Reflection,
-    // Onimusha: Way of the Sword (+ demo)
+    // Monster Hunter Wilds, Monster Hunter Stories 3: Twisted Reflection, Onimusha: Way of the Sword (+ demo)
     {
-        .exes = { "monsterhunterwilds.exe", "re9.exe", "re9demo.exe", "monster_hunter_stories_3_twisted_reflection.exe",
-                  "onimushawots_demo.exe", "onimushawots.exe" },
+        .exes = { "monsterhunterwilds.exe", "monster_hunter_stories_3_twisted_reflection.exe", "onimushawots_demo.exe",
+                  "onimushawots.exe" },
         .defaults = { RestoreComputeSignature = true, DxgiSpoofing = false },
+    },
+    // Resident Evil Requiem (+ demo)
+    // PT is locked behind DLSSD so allow regular upscalers
+    {
+        .exes = { "re9.exe", "re9demo.exe" },
+        .defaults = { RestoreComputeSignature = true, DxgiSpoofing = false, RRAllowRegularUpscalers = true },
     },
     // MONSTER HUNTER RISE
     // AMD/Intel need spoofing, Restoresig seems to fix real DLSS
@@ -305,10 +311,17 @@ const std::vector<GameConfig> gameConfigs = {
         .quirks = { PregmataFixDLSSModes },
     },
     // PRAGMATA
+    // PT is locked behind DLSSD so allow regular upscalers
     {
         .exes = { "pragmata.exe" },
-        .defaults = { RestoreComputeSignature = true, DxgiSpoofing = false },
+        .defaults = { RestoreComputeSignature = true, DxgiSpoofing = false, RRAllowRegularUpscalers = true },
         .quirks = { PregmataFixDLSSModes },
+    },
+    // Hogwarts Legacy
+    // Reflections look better when DLSSD is selected in the game, allow DLSSD -> Upscaler, doesn't cause noise
+    {
+        .exes = { "hogwartslegacy.exe" },
+        .defaults = { RRAllowRegularUpscalers = true },
     },
 
     // REF PDUpscaler branch
@@ -664,6 +677,14 @@ const std::vector<GameConfig> gameConfigs = {
         .defaults = { DxgiSpoofing = false },
     },
 
+    // Assassin's Creed Origins, Assassin's Creed Odyssey, Tom Clancy's Ghost Recon Wildlands
+    // Disabled spoofing for DLSS mods
+    {
+        .exes = { "acorigins.exe", "acorigins_plus.exe", "acodyssey.exe", "acodyssey_plus.exe", "grw.exe",
+                  "grw_plus.exe" },
+        .defaults = { DxgiSpoofing = false },
+    },
+
     // CONTROL Resonant
     // SL spoof enough to unlock everything DLSS, SimulateWaitableObject required to avoid freeze with DLSSG inputs
     {
@@ -868,6 +889,15 @@ const std::vector<GameConfig> gameConfigs = {
         .exes = { "doomthedarkages.exe" },
         .defaults = { DxgiSpoofing = false },
         .quirks = { ForceCreateD3D12Device },
+    },
+
+    // Split Fiction
+    // Changes FFX upscaleSize with the split screen, recreating DLSS/XeSS for each change stutters
+    // Dxgi spoofing disabled
+    {
+        .exes = { "splitfiction.exe" },
+        .defaults = { DxgiSpoofing = false },
+        .quirks = { PadToMaxUpscaleSize },
     },
 
 };

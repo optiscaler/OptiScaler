@@ -93,7 +93,6 @@ static void CheckLumaAndReShade(IDXGIFactory* factory)
     if (loadSpecialK)
     {
         auto skFile = Util::ExePath().parent_path() / L"SpecialK64.dll";
-        SetEnvironmentVariableW(L"RESHADE_DISABLE_GRAPHICS_HOOK", L"1");
 
         State::EnableServeOriginal(200);
         skModule = NtdllProxy::LoadLibraryExW_Ldr(skFile.c_str(), NULL, 0);
@@ -357,5 +356,36 @@ void DxgiHooks::HookFactoryMethods()
         return;
 
     DxgiFactoryHooks::HookToFactory(factory);
+    factory->Release();
+}
+
+void DxgiHooks::LoadForLuma()
+{
+    if (!Config::Instance()->CreateD3D12DeviceForLuma.value_or_default() ||
+        State::Instance().currentD3D12Device != nullptr)
+    {
+        return;
+    }
+
+    auto createFactory = o_CreateDXGIFactory1 != nullptr ? o_CreateDXGIFactory1 : DxgiProxy::CreateDxgiFactory1_();
+
+    if (createFactory == nullptr)
+        return;
+
+    IDXGIFactory1* factory = nullptr;
+    auto owner = State::GetOwner();
+    State::DisableChecks(owner, "dxgi");
+
+    {
+        ScopedCreatingD3DDevice creatingD3DDevice {};
+        createFactory(__uuidof(IDXGIFactory1), &factory);
+    }
+
+    State::EnableChecks(owner);
+
+    if (factory == nullptr)
+        return;
+
+    CheckLumaAndReShade(factory);
     factory->Release();
 }

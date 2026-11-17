@@ -707,6 +707,13 @@ void ClearTransientState()
     _state.LastMouseClientPos = _state.MouseClientPos;
 }
 
+// The window's own original, not the current input window's, they differ once the input window changed
+static WNDPROC OriginalWndProcLocked(HWND hwnd)
+{
+    const auto it = _state.OriginalWndProcs.find(hwnd);
+    return it != _state.OriginalWndProcs.end() ? it->second : nullptr;
+}
+
 LRESULT CALLBACK OptiInputWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if (msg == WM_NULL)
@@ -715,7 +722,7 @@ LRESULT CALLBACK OptiInputWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPa
 
         {
             std::unique_lock lock(_state.Mutex);
-            originalWndProc = _state.OriginalWndProc;
+            originalWndProc = OriginalWndProcLocked(hwnd);
         }
 
         if (originalWndProc != nullptr)
@@ -731,7 +738,7 @@ LRESULT CALLBACK OptiInputWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPa
     {
         std::unique_lock lock(_state.Mutex);
 
-        originalWndProc = _state.OriginalWndProc;
+        originalWndProc = OriginalWndProcLocked(hwnd);
         OPTIINPUT_LOG_VERBOSE("WndProc dispatch hwnd:{} msg:{}({:#x}) input:{} original:{} menu:{} focused:{}",
                               static_cast<void*>(hwnd), WindowMessageName(msg), static_cast<unsigned>(msg),
                               static_cast<void*>(_state.InputHwnd), reinterpret_cast<std::uintptr_t>(originalWndProc),
@@ -1060,10 +1067,10 @@ SHORT WINAPI hkGetAsyncKeyState(int vk)
         }
 
         OPTIINPUT_LOG_VERBOSE("blocking GetAsyncKeyState vk:{}", vk);
-        return 0;
+        return WithTakenAsyncKeyPress(vk, 0, true);
     }
 
-    return o_GetAsyncKeyState(vk);
+    return WithTakenAsyncKeyPress(vk, o_GetAsyncKeyState(vk), false);
 }
 
 SHORT WINAPI hkGetKeyState(int vk)

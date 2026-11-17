@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "XeSS_Dx11.h"
+#include "NVNGX_DLSS.h"
 
 #include "NVNGX_Parameter.h"
 
@@ -110,7 +111,7 @@ xess_result_t hk_xessD3D11CreateContext(ID3D11Device* device, xess_context_handl
 
         auto exePath = Util::ExePath().remove_filename();
 
-        auto nvResult = NVSDK_NGX_D3D11_Init_with_ProjectID(
+        auto nvResult = NVNGXDx11InputInit(
             OPTI_GUID, NVSDK_NGX_ENGINE_TYPE_CUSTOM, OPTI_VERSION, exePath.c_str(), device, &fcInfo,
             State::Instance().NVNGX_Version == 0 ? NVSDK_NGX_Version_API : State::Instance().NVNGX_Version);
 

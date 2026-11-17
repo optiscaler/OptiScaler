@@ -450,6 +450,7 @@ void IdentifyGpu::updateD3d12Capabilities(D3d12Proxy::PFN_D3D12CreateDevice o_D3
             // D3D12 device is needed to be able to query amdxc and check for vkd3d-proton
             ScopedCreatingD3DDevice scopedCreating {};
             ScopedSkipVulkanHooks skipVulkanHooks {};
+            std::scoped_lock probeLock(probeDeviceMutex); // Declared before localDevice, held until its last release
             ComPtr<ID3D12Device> localDevice;
             auto createResult = pD3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&localDevice));
 
@@ -756,11 +757,9 @@ void IdentifyGpu::updateInt8Support(bool sdkSupportsInt8, bool driverSupportsInt
     }
 }
 
-bool IdentifyGpu::queryAmdAsicInfo(LUID luid, uint32_t vendorId, uint32_t deviceId, uint32_t& family,
-                                   uint32_t& revision)
+NTSTATUS IdentifyGpu::queryAdapterInfo(LUID luid, KMTQUERYADAPTERINFOTYPE type, void* data, UINT size)
 {
-    family = 0;
-    revision = 0;
+    constexpr NTSTATUS statusUnsuccessful = 0xC0000001;
 
     auto gdi32 = KernelBaseProxy::GetModuleHandleW_()(L"gdi32.dll");
 
@@ -768,23 +767,44 @@ bool IdentifyGpu::queryAmdAsicInfo(LUID luid, uint32_t vendorId, uint32_t device
         gdi32 = NtdllProxy::LoadLibraryExW_Ldr(L"gdi32.dll", NULL, 0);
 
     if (gdi32 == nullptr)
-        return false;
+        return statusUnsuccessful;
 
     auto openAdapter = reinterpret_cast<decltype(&D3DKMTOpenAdapterFromLuid)>(
         KernelBaseProxy::GetProcAddress_()(gdi32, "D3DKMTOpenAdapterFromLuid"));
-    auto queryAdapterInfo = reinterpret_cast<decltype(&D3DKMTQueryAdapterInfo)>(
+    auto queryInfo = reinterpret_cast<decltype(&D3DKMTQueryAdapterInfo)>(
         KernelBaseProxy::GetProcAddress_()(gdi32, "D3DKMTQueryAdapterInfo"));
     auto closeAdapter = reinterpret_cast<decltype(&D3DKMTCloseAdapter)>(
         KernelBaseProxy::GetProcAddress_()(gdi32, "D3DKMTCloseAdapter"));
 
-    if (openAdapter == nullptr || queryAdapterInfo == nullptr || closeAdapter == nullptr)
-        return false;
+    if (openAdapter == nullptr || queryInfo == nullptr || closeAdapter == nullptr)
+        return statusUnsuccessful;
 
     D3DKMT_OPENADAPTERFROMLUID openData {};
     openData.AdapterLuid = luid;
 
     if (openAdapter(&openData) != 0)
-        return false;
+        return statusUnsuccessful;
+
+    D3DKMT_QUERYADAPTERINFO query {};
+    query.hAdapter = openData.hAdapter;
+    query.Type = type;
+    query.pPrivateDriverData = data;
+    query.PrivateDriverDataSize = size;
+
+    const auto status = queryInfo(&query);
+
+    D3DKMT_CLOSEADAPTER closeData {};
+    closeData.hAdapter = openData.hAdapter;
+    closeAdapter(&closeData);
+
+    return status;
+}
+
+bool IdentifyGpu::queryAmdAsicInfo(LUID luid, uint32_t vendorId, uint32_t deviceId, uint32_t& family,
+                                   uint32_t& revision)
+{
+    family = 0;
+    revision = 0;
 
     // AMD private driver data, the driver dlls query it the same way
     constexpr NTSTATUS statusBufferTooSmall = 0xC0000023;
@@ -804,33 +824,25 @@ bool IdentifyGpu::queryAmdAsicInfo(LUID luid, uint32_t vendorId, uint32_t device
 
     std::vector<uint8_t> buffer(singleSize);
 
-    D3DKMT_QUERYADAPTERINFO query {};
-    query.hAdapter = openData.hAdapter;
-    query.Type = KMTQAITYPE_UMDRIVERPRIVATE;
-    query.pPrivateDriverData = buffer.data();
-    query.PrivateDriverDataSize = singleSize;
-
+    auto query = [&]
+    { return queryAdapterInfo(luid, KMTQAITYPE_UMDRIVERPRIVATE, buffer.data(), static_cast<UINT>(buffer.size())); };
     auto read32 = [&](size_t offset) { return *reinterpret_cast<uint32_t*>(buffer.data() + offset); };
     auto read16 = [&](size_t offset) { return *reinterpret_cast<uint16_t*>(buffer.data() + offset); };
 
-    auto status = queryAdapterInfo(&query);
+    auto status = query();
 
     if (status == statusBufferTooSmall)
     {
         // First query gets the entry count
         buffer.assign(multiHeaderSize + multiEntrySize, 0);
-        query.pPrivateDriverData = buffer.data();
-        query.PrivateDriverDataSize = static_cast<UINT>(buffer.size());
-        status = queryAdapterInfo(&query);
+        status = query();
 
         auto count = std::min(read32(multiCountOffset), multiMaxEntries);
 
         if (count > 1)
         {
             buffer.assign(multiHeaderSize + multiEntrySize * count, 0);
-            query.pPrivateDriverData = buffer.data();
-            query.PrivateDriverDataSize = static_cast<UINT>(buffer.size());
-            status = queryAdapterInfo(&query);
+            status = query();
         }
 
         if (status >= 0)
@@ -852,10 +864,6 @@ bool IdentifyGpu::queryAmdAsicInfo(LUID luid, uint32_t vendorId, uint32_t device
         family = read32(familyIndex * sizeof(uint32_t));
         revision = read32(revisionIndex * sizeof(uint32_t));
     }
-
-    D3DKMT_CLOSEADAPTER closeData {};
-    closeData.hAdapter = openData.hAdapter;
-    closeAdapter(&closeData);
 
     return family != 0;
 }

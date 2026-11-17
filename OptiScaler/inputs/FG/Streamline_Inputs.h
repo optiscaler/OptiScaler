@@ -1,6 +1,7 @@
 #pragma once
 #include "SysUtils.h"
 #include <sl.h>
+#include <sl_dlss_g.h>
 
 class IFGFeature;
 
@@ -10,6 +11,8 @@ class Sl_Inputs
   private:
     bool infiniteDepth = false;
     sl::EngineType engineType = sl::EngineType::eCount;
+    std::atomic<bool> _gameFGOff = false;
+    std::atomic<bool> _inputsUntagged = false;
 
     std::mutex _frameBoundaryMutex;
     bool _isFrameFinished = true;
@@ -30,7 +33,9 @@ class Sl_Inputs
     bool evaluateState();
     // cmdBuffer is ID3D12GraphicsCommandList* or VkCommandBuffer
     bool reportResource(const sl::ResourceTag& tag, void* cmdBuffer, uint32_t frameId);
+    void reportTagState(const sl::ResourceTag& tag);
     void reportEngineType(sl::EngineType type) { engineType = type; };
+    void reportGameMode(sl::DLSSGMode mode) { _gameFGOff = mode == sl::DLSSGMode::eOff; };
     bool dispatchFG();
     void markPresent(uint64_t frameId);
 

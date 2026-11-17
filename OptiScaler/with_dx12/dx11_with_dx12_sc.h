@@ -94,6 +94,10 @@ class DECLSPEC_UUID("23b064bb-482d-416c-93b1-829acedfb3d0") Dx11wDx12SC final : 
 
     IDXGISwapChain4* _fgSwapChain = nullptr;
 
+    // Re-applied to the FG swapchain on the next present, it can lose it between the game's call and presenting
+    std::optional<DXGI_COLOR_SPACE_TYPE> _gameColorSpace;
+    bool _fgColorSpaceDirty = false;
+
     int _id = 0;
     LONG _refcount = 1;
     UINT _lastFlags = 0;

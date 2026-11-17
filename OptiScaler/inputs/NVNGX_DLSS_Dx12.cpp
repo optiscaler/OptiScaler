@@ -1172,6 +1172,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
         uint32_t frameIndex = 1;
         if (InParameters->Get("DLSSG.MultiFrameIndex", &frameIndex) != NVSDK_NGX_Result_Success)
             frameIndex = 1;
+        InParameters->Get("DLSSG.MultiFrameIndex", &frameIndex);
 
         if (state.activeFgInput == FGInput::NvngxFG && frameIndex <= 1)
             State::Instance().gameFrameRate.Present(Util::MillisecondsNow());

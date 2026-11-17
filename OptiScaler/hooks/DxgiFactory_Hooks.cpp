@@ -32,7 +32,8 @@ static Microsoft::WRL::ComPtr<ID3D12CommandQueue> ReShadeRealQueue(IUnknown* pDe
     Microsoft::WRL::ComPtr<IUnknown> original;
     Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue;
 
-    if (Config::Instance()->LoadReShade.value_or_default())
+    // ReShade loaded by Special K sits above Opti too
+    if (reshadeModule != nullptr)
         return queue;
 
     original.Attach(Util::GetReShadeOriginal(pDevice));
@@ -282,6 +283,14 @@ void DxgiFactoryHooks::HookToFactory(IDXGIFactory* pFactory, bool fromSpecialK)
     IDXGIFactory* real = nullptr;
     if (!Util::CheckForRealObject(__FUNCTION__, pFactory, (IUnknown**) &real))
         real = pFactory;
+
+    // ReShade 6.6+ returns a proxy factory, hooking the real one keeps ReShade above us in any load order.
+    // Special K hooks the real factory too.
+    if (auto original = Util::GetReShadeOriginal(real); original != nullptr)
+    {
+        real = (IDXGIFactory*) original;
+        original->Release();
+    }
 
     void** pFactoryVTable = *reinterpret_cast<void***>(real);
 

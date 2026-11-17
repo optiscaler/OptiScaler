@@ -2,22 +2,33 @@
 #include <pch.h>
 #include <shaders/Shader_Vk.h>
 
+// Copies a rectangle between images, In is read in SHADER_READ_ONLY_OPTIMAL, Out written in GENERAL
 class ResourceCopy_Vk : public Shader_Vk
 {
-    VkImageView _currentInResourceView = VK_NULL_HANDLE;
-    VkImageView _currentOutResourceView = VK_NULL_HANDLE;
-
     uint32_t InNumThreadsX = 16;
     uint32_t InNumThreadsY = 16;
 
-    bool InitializeViews(VkImageView InResourceView, VkImageView OutResourceView);
+    // Last BufferFormat query, the source format rarely changes
+    VkFormat _querySource = VK_FORMAT_MAX_ENUM;
+    VkFormat _queryResult = VK_FORMAT_UNDEFINED;
 
   public:
     ResourceCopy_Vk(std::string InName, VkDevice InDevice, VkPhysicalDevice InPhysicalDevice);
     ~ResourceCopy_Vk() = default;
 
+    // Copies OutExtent from InSrc in the input to InDst in the output
     bool Dispatch(VkDevice InDevice, VkCommandBuffer InCmdList, VkImageView InResourceView, VkImageView OutResourceView,
-                  VkExtent2D OutExtent);
+                  VkExtent2D OutExtent, VkOffset2D InSrc = {}, VkOffset2D InDst = {});
+
+    // Storage image format for a copy of InFormat, depth is copied to R32_SFLOAT
+    VkFormat BufferFormat(VkFormat InFormat, bool InDepth);
+
+    // Integer formats can't be read as float
+    static bool IsInteger(VkFormat InFormat);
+
+    // Only grows, so dynamic resolution doesn't recreate it every frame
+    bool CreateGrowingImage(uint32_t width, uint32_t height, VkFormat format);
+    VkExtent2D ImageExtent() const { return { _width, _height }; }
 
     // Wrappers to maintain the public API while leveraging base class implementation
     bool CreateImageResource(VkDevice device, VkPhysicalDevice physicalDevice, uint32_t width, uint32_t height,

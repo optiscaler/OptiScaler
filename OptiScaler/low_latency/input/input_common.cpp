@@ -1242,7 +1242,17 @@ bool InputCommon::dlssg_types_presents()
     auto fgOutput = State::Instance().activeFgOutput;
 
     return activeOutput == LowLatencyMode::AntiLag2 && fgOutput != FGOutput::FSRFG && fgOutput != FGOutput::XeFG &&
-           State::Instance().dlssgDetectedInterpolationCount > 0;
+           fgOutput != FGOutput::FlipMeter && State::Instance().DlssgDetectedInterpolationCount() > 0;
+}
+
+// As FSR-FG's swapchain: the frame type right before each present of a game frame with generated frames
+void InputCommon::fg_frame_type(bool interpolated)
+{
+    if (activeOutput != LowLatencyMode::AntiLag2)
+        return;
+
+    if (auto tech = currently_active_tech.load())
+        tech->set_async_marker(nullptr, { 0, MarkerType::OUT_OF_BAND_PRESENT_START, interpolated });
 }
 
 void InputCommon::dlssg_present()
@@ -1261,7 +1271,7 @@ void InputCommon::dlssg_present()
     if (tech == nullptr)
         return;
 
-    auto frames = static_cast<uint32_t>(State::Instance().dlssgDetectedInterpolationCount) + 1;
+    auto frames = static_cast<uint32_t>(State::Instance().DlssgDetectedInterpolationCount()) + 1;
     bool interpolated = presents++ % frames != 0;
 
     tech->set_async_marker(nullptr, { 0, MarkerType::OUT_OF_BAND_PRESENT_START, interpolated });
@@ -1284,6 +1294,7 @@ void InputCommon::xefg_marker(void* xellContext, uint32_t frame_id, uint32_t mar
     }
 
     auto index = marker - 80860000;
+    xefg_marker_present = present_count + 1;
 
     if (!seen[index].exchange(true))
         LOG_INFO("XeFG sends XeLL marker {} ({}), frame id {}", marker, magic_enum::enum_name(type), frame_id);
@@ -1393,10 +1404,14 @@ void InputCommon::update()
         // changed back afterwards. The FPS Limiter doesn't care.
         static bool lastMultiFrame = false;
         bool multiFrame = state.dlssgLastSetMode == sl::DLSSGMode::eDynamic ||
-                          (state.dlssgDetectedInterpolationCount > 1 && activeOutput != LowLatencyMode::AntiLag2);
+                          (state.DlssgDetectedInterpolationCount() > 1 && activeOutput != LowLatencyMode::AntiLag2);
+
+        // Another XeFG behind DLSSG (DLSS Enabler's) knows its frames too, turning XeLL off under it hangs the GPU
+        auto lastMarker = xefg_marker_present.load();
+        bool otherXefg = lastMarker != 0 && present_count + 1 - lastMarker < 20;
 
         if (!std::exchange(lastMultiFrame, multiFrame) && multiFrame && activeOutput != LowLatencyMode::Reflex &&
-            activeOutput != LowLatencyMode::FpsLimiter && !xefgPaced &&
+            activeOutput != LowLatencyMode::FpsLimiter && !xefgPaced && !otherXefg &&
             Config::Instance()->FN_ForceReflex.value_or_default() != ForceReflex::ForceEnable)
         {
             LOG_INFO("Multi frame generation, disabling {}", magic_enum::enum_name(activeOutput));
@@ -1454,14 +1469,21 @@ void InputCommon::update()
         // The limit is for the presented frames, the output limits the game's. XeFG paces through XeLL, which knows
         // about its generated frames. The game's own DLSSG reports its count through the NGX evaluate.
         auto fg = state.CurrentFG();
-        bool fgActive = fg != nullptr && fg->IsActive() && !fg->IsPaused();
+        // Not while the output waits for frame data, like in menus
+        bool fgActive = fg != nullptr && fg->IsGenerating();
 
         // VK_NV_low_latency2 enforces the interval between all presents to the swapchain, DLSSG's generated ones too
         auto vkFg = state.currentVkFG;
         bool driverCountsFg = fgActive && activeOutput == LowLatencyMode::Reflex && output_api == API::Vulkan &&
                               vkFg != nullptr && vkFg->OwnsSwapchain(VulkanHooks::LowLatencySwapchain());
 
-        if (xefg_paced() || driverCountsFg)
+        // The game's own DLSSG (NvngxFG input) presents its generated frames to the same swapchain, so the driver
+        // counts those too. Counted again here, a 72 FPS limit at 4x became 18 presents per second (Endfield).
+        bool driverCountsGameDlssg = !fgActive && state.DlssgDetectedInterpolationCount() > 0 &&
+                                     activeOutput == LowLatencyMode::Reflex && output_api == API::Vulkan &&
+                                     VulkanHooks::LowLatencySwapchain() != VK_NULL_HANDLE;
+
+        if (xefg_paced() || driverCountsFg || driverCountsGameDlssg)
         {
             // XeLL already counts XeFG's generated frames, the driver DLSSG's
         }
@@ -1469,9 +1491,9 @@ void InputCommon::update()
         {
             interval *= fg->GetInterpolatedFrameCount() + 1;
         }
-        else if (state.dlssgDetectedInterpolationCount > 0)
+        else if (state.DlssgDetectedInterpolationCount() > 0)
         {
-            interval *= state.dlssgDetectedInterpolationCount + 1;
+            interval *= state.DlssgDetectedInterpolationCount() + 1;
         }
         else if (activeInput == LowLatencyInput::AntiLag2 && reports_frame_generation(LowLatencyInput::AntiLag2))
         {
@@ -1494,8 +1516,10 @@ void InputCommon::update()
 InputResult InputCommon::mark_present_start(IUnknown* pDevice)
 {
     auto fg = State::Instance().CurrentFG();
+    // Outputs that give AntiLag 2 the frame types, it then also needs the end of the game's frame
+    auto fgOutput = State::Instance().activeFgOutput;
     bool fsrfgTypesFrames =
-        State::Instance().activeFgOutput == FGOutput::FSRFG && fg != nullptr && fg->IsActive() && !fg->IsPaused();
+        (fgOutput == FGOutput::FSRFG || fgOutput == FGOutput::FlipMeter) && fg != nullptr && fg->IsGenerating();
 
     // UE only sends simulation markers
     bool marksEnds =

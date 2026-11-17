@@ -4,7 +4,7 @@
 #include <NVNGX_Parameter.h>
 #include <nvsdk_ngx_vk.h>
 
-#include "proxies/NVNGX_Proxy.h"
+#include "proxies/Nvngx_Proxy.h"
 #include "proxies/Ntdll_Proxy.h"
 #include <proxies/FfxApi_Proxy.h>
 #include <numbers>
@@ -317,7 +317,8 @@ static constexpr Nvngx_FFX_Api ApiDx12 {
     FfxApiProxy::D3D12_Configure,
     FfxApiProxy::D3D12_Query,
     FfxApiProxy::D3D12_Dispatch,
-    FfxApiProxy::D3D12_QueryFgVersions,
+    [](void* device, std::vector<uint64_t>& ids, std::vector<const char*>& names)
+    { return FfxApiProxy::D3D12_QueryFgVersions(device, ids, names); },
     GetResourceDx12,
     CopyTextureDx12,
 };
@@ -328,7 +329,8 @@ static constexpr Nvngx_FFX_Api ApiVk {
     FfxApiProxy::VULKAN_Configure,
     FfxApiProxy::VULKAN_Query,
     FfxApiProxy::VULKAN_Dispatch,
-    FfxApiProxy::VULKAN_QueryFgVersions,
+    [](void* device, std::vector<uint64_t>& ids, std::vector<const char*>& names)
+    { return FfxApiProxy::VULKAN_QueryFgVersions(device, ids, names); },
     GetResourceVk,
     CopyTextureVk,
 };
@@ -500,10 +502,10 @@ NVSDK_NGX_Result Nvngx_FFX::Evaluate(const Nvngx_FFX_Api& api, ffxApiHeader* bac
         InParameters->Get("DLSSG.CameraFar", &cameraFar);
     }
 
-    if (cameraNear != 0.0f && cameraFar == 0.0f)
+    if (cameraNear != 0.0f && (cameraFar == 0.0f || !std::isfinite(cameraFar)))
     {
-        // A CameraFar value of zero indicates an infinite far plane. Due to a bug in FSR's
-        // setupDeviceDepthToViewSpaceDepthParams function, CameraFar must always be greater than
+        // A CameraFar value of zero or infinity (OptiScaler's own DLSSG output) indicates an infinite far plane. Due to
+        // a bug in FSR's setupDeviceDepthToViewSpaceDepthParams function, CameraFar must always be greater than
         // CameraNear when in use.
         depthPlaneInfinite = true;
         cameraFar = cameraNear + 1.0f;

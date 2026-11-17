@@ -14,8 +14,9 @@
 //  - A step down after which the presented rate stays more than 7% under the target is undone (judged on the frames
 //    after the 3 still in flight for the old count, at least 6 and 0.4 s, nothing else decided for 1.5 s), and so is
 //    one whose mean over those 1.5 s is more than 3% under (the bar Up uses, or the two take turns). The next waits
-//    twice as long (5 s up to 60 s), unless the reachable rate has since grown by 10%: a GPU bound game's low
-//    latency sleep also holds the CPU while the GPU works, so that measure can promise more than the GPU gives.
+//    twice as long (5 s up to 60 s), unless the reachable rate has since grown by 10% over the highest it failed at
+//    (it swings 250-410 fps from noise alone): a GPU bound game's low latency sleep also holds the CPU while the GPU
+//    works, so that measure can promise more than the GPU gives. A pause or focus change keeps all of this.
 class XeFG_DynamicCap
 {
   public:
@@ -95,7 +96,7 @@ class XeFG_DynamicCap
             {
                 _backoffMs = std::min(_backoffMs * 2.0, kMaxBackoffMs);
                 _downBlockedUntilMs = s.nowMs + _backoffMs;
-                _failedReachable = _downReachable;
+                _failedReachable = std::max(_failedReachable, _downReachable);
                 return Change(count + 1, s.nowMs, Reason::Undo, reachable);
             }
 
@@ -109,7 +110,7 @@ class XeFG_DynamicCap
             {
                 _backoffMs = std::min(_backoffMs * 2.0, kMaxBackoffMs);
                 _downBlockedUntilMs = s.nowMs + _backoffMs;
-                _failedReachable = _downReachable;
+                _failedReachable = std::max(_failedReachable, _downReachable);
                 return Change(count + 1, s.nowMs, Reason::Undo, reachable);
             }
 
@@ -187,6 +188,24 @@ class XeFG_DynamicCap
     }
 
     void Reset() { *this = XeFG_DynamicCap {}; }
+
+    // FG back on or the game back in front: the averages start over, what failed step downs taught stays
+    void Restart()
+    {
+        const auto blockedUntil = _downBlockedUntilMs;
+        const auto backoff = _backoffMs;
+        const auto failed = _failedReachable;
+        const auto sleepShare = _sleepShare;
+        const auto sleepSeen = _sleepSeen;
+
+        Reset();
+
+        _downBlockedUntilMs = blockedUntil;
+        _backoffMs = backoff;
+        _failedReachable = failed;
+        _sleepShare = sleepShare;
+        _sleepSeen = sleepSeen;
+    }
 
     Reason LastReason() const { return _reason; }
     // The reachable real frame rate the last change was decided on

@@ -8,6 +8,7 @@
 #include <inputs/FG/Streamline_Inputs.h>
 #include <inputs/FG/Streamline_Inputs_Sl1_Dx12.h>
 
+#include <menu/PresentRateMeter.h>
 #include <chrono>
 #include <set>
 #include <deque>
@@ -61,7 +62,8 @@ enum class FGOutput : uint32_t
     FSRFG,
     DLSSG,
     XeFG,
-    Reprojection
+    Reprojection,
+    FlipMeter, // AMD flip meter + NvngxFX
 };
 
 template <> struct EnumConfig<FGOutput>
@@ -74,6 +76,7 @@ template <> struct EnumConfig<FGOutput>
         { FGOutput::DLSSG, "DLSSG" },
         { FGOutput::XeFG, "XeFG" },
         { FGOutput::Reprojection, "Reprojection" },
+        { FGOutput::FlipMeter, "FlipMeter" },
     };
 };
 
@@ -214,6 +217,8 @@ class State
     FGNvngxReplacement activeFgNvngx = FGNvngxReplacement::None;
     std::string fgNvngxCustom;
     std::string activeFgNvngxCustom;
+    // Config::FSRFGProvider FSR FG was started with, applied after a restart
+    std::string activeFsrFgProvider;
 
     // Streamline FG inputs
     Sl_Inputs slFGInputs = {};
@@ -290,10 +295,18 @@ class State
     // AMD driver flip metering
     bool amdFlipMeterCreated = false;
     uint32_t amdFlipMeterMode = 0;
+    std::optional<bool> amdFlipMeterSupported {}; // Set once the flip meter output has asked the driver
 
     // for realtime changes
     ankerl::unordered_dense::map<unsigned int, bool> changeBackend;
     Upscaler newBackend = Upscaler::Reset;
+
+    // Handles of the game's ray reconstruction, they run on a DLSSD picked by Nvngx_RR
+    ankerl::unordered_dense::set<unsigned int> rrHandles;
+
+    // The game looked for ray reconstruction: loaded Streamline's DLSSD plugin, asked NGX for its requirements
+    // or read its parameters
+    bool rrRequested = false;
 
     // XeSS debug stuff
     bool xessDebug = false;
@@ -319,7 +332,29 @@ class State
 
     bool dlssgGameDMFGSupported = false;
     sl::DLSSGMode dlssgLastSetMode = sl::DLSSGMode::eOff;
-    int dlssgDetectedInterpolationCount = 0;
+
+    // The game's DLSSG frame count from its DLSSG evaluates. It stops calling them in menus and loading screens,
+    // so the count expires instead of staying at the last value
+    // ponytail: time based, a game below 2 FPS reads as FG off
+    int DlssgDetectedInterpolationCount() const
+    {
+        return std::chrono::steady_clock::now() - _dlssgDetectedTime < std::chrono::milliseconds(500)
+                   ? _dlssgDetectedCount
+                   : 0;
+    }
+
+    void SetDlssgDetectedInterpolationCount(int count)
+    {
+        _dlssgDetectedCount = count;
+        _dlssgDetectedTime = std::chrono::steady_clock::now();
+    }
+
+    int _dlssgDetectedCount = 0;
+    std::chrono::steady_clock::time_point _dlssgDetectedTime {};
+
+    // The game's own frames, for the base frame rate of frame generation. Timed where they arrive instead of
+    // the output rate divided by the FG ratio, that would be wrong whenever FG doesn't generate what it's set to
+    PresentRateMeter gameFrameRate { 500.0 };
 
     // What the game requested from DLSSG when it's used as FG Input
     // This might need to get moved to Sl_Inputs

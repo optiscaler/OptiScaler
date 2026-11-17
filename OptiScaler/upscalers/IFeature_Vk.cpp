@@ -5,6 +5,66 @@
 #include "nvsdk_ngx_vk.h"
 #include <misc/DeferredRelease.h>
 
+NVSDK_NGX_Resource_VK* IFeature_Vk::MaskInput(NVSDK_NGX_Resource_VK* InResource)
+{
+    if (InResource == nullptr || !ResourceCopy_Vk::IsInteger(InResource->Resource.ImageViewInfo.Format))
+        return InResource;
+
+    WarnIntegerMask(InResource->Resource.ImageViewInfo.Format);
+    return nullptr;
+}
+
+NVSDK_NGX_Resource_VK* IFeature_Vk::SubrectInput(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Resource_VK* InResource,
+                                                 SubrectSlot InSlot)
+{
+    const auto& rect = GetSubrect(InSlot);
+
+    if (InResource == nullptr || !rect.HasOffset())
+        return InResource;
+
+    const auto& info = InResource->Resource.ImageViewInfo;
+
+    if (!SubrectFits(InSlot, rect, info.Width, info.Height))
+        return InResource;
+
+    auto& copy = SubrectCopy[(size_t) InSlot];
+
+    if (copy == nullptr)
+        copy = std::make_unique<ResourceCopy_Vk>("Subrect Copy", Device, PhysicalDevice);
+
+    const auto format = copy->BufferFormat(info.Format, InSlot == SubrectSlot::Depth);
+
+    if (!copy->IsInit() || !copy->CreateGrowingImage(rect.Width, rect.Height, format))
+        return InResource;
+
+    const VkImageSubresourceRange range { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+    copy->SetImageLayout(InCmdBuffer, copy->GetImage(), VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, range);
+
+    if (!copy->Dispatch(Device, InCmdBuffer, info.ImageView, copy->GetImageView(), { rect.Width, rect.Height },
+                        { (int32_t) rect.X, (int32_t) rect.Y }))
+    {
+        return InResource;
+    }
+
+    copy->SetImageLayout(InCmdBuffer, copy->GetImage(), VK_IMAGE_LAYOUT_GENERAL,
+                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
+
+    auto& view = _subrectViews[(size_t) InSlot];
+    view = *InResource;
+    view.ReadWrite = false;
+
+    auto& viewInfo = view.Resource.ImageViewInfo;
+    viewInfo.ImageView = copy->GetImageView();
+    viewInfo.Image = copy->GetImage();
+    viewInfo.SubresourceRange = range;
+    viewInfo.Format = format;
+    viewInfo.Width = copy->ImageExtent().width;
+    viewInfo.Height = copy->ImageExtent().height;
+
+    _subrectCopied |= 1u << (uint32_t) InSlot;
+    return &view;
+}
+
 bool IFeature_Vk::Init(VkInstance InInstance, VkPhysicalDevice InPD, VkDevice InDevice, VkCommandBuffer InCmdBuffer,
                        PFN_vkGetInstanceProcAddr InGIPA, PFN_vkGetDeviceProcAddr InGDPA,
                        NVSDK_NGX_Parameter* InParameters)
@@ -32,6 +92,8 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
 {
     // Frees deferred objects even when presents aren't hooked
     DeferredRelease::Collect();
+
+    _subrectCopied = 0;
 
     if (!IsInited())
     {
@@ -91,6 +153,11 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
         originalOutput.Width = paramOutput->Resource.ImageViewInfo.Width;
         originalOutput.Height = paramOutput->Resource.ImageViewInfo.Height;
     }
+
+    // The output base is needed before EvaluateInternal, which reads them again with this frame's render size.
+    // Kept as a copy, the backend reads the zeroed base when we place the output.
+    ReadSubrects(InParameters);
+    const Subrect outputRect = GetSubrect(SubrectSlot::Output);
 
     const VkImageUsageFlags intermediateUsage =
         VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
@@ -202,9 +269,19 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
                       rcasConstants.CameraFar = Config::Instance()->FsrCameraFar.value_or_default();
                   }
 
+                  // RCAS works on the view at (0, 0), reuse the backend's copies or crop for native subrect backends
+                  auto viewInput = [&](SubrectSlot slot, NVSDK_NGX_Resource_VK* resource)
+                  {
+                      return (_subrectCopied & (1u << (uint32_t) slot)) ? &_subrectViews[(size_t) slot]
+                                                                        : SubrectInput(InCmdBuffer, resource, slot);
+                  };
+
+                  auto motion = viewInput(SubrectSlot::MV, paramMotion);
+                  auto depth = paramDepth ? viewInput(SubrectSlot::Depth, paramDepth) : nullptr;
+
                   // In Vulkan we pass the Info structs instead of raw resources
-                  VkImageInfo mvInfo = *(VkImageInfo*) &paramMotion->Resource.ImageViewInfo;
-                  VkImageInfo* depthInfo = paramDepth ? (VkImageInfo*) &paramDepth->Resource.ImageViewInfo : nullptr;
+                  VkImageInfo mvInfo = *(VkImageInfo*) &motion->Resource.ImageViewInfo;
+                  VkImageInfo* depthInfo = depth ? (VkImageInfo*) &depth->Resource.ImageViewInfo : nullptr;
 
                   if (!RCAS->Dispatch(Device, InCmdBuffer, rcasConstants, input, mvInfo, output, depthInfo))
                   {
@@ -250,6 +327,60 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
               } });
     }
 
+    bool placeOutput = false;
+
+    if (paramOutput && PlacesOutput(outputRect, !pipeline.empty()) &&
+        SubrectFits(SubrectSlot::Output, outputRect, originalOutput.Width, originalOutput.Height))
+    {
+        auto& slotCopy = SubrectCopy[(size_t) SubrectSlot::Output];
+
+        if (slotCopy == nullptr)
+            slotCopy = std::make_unique<ResourceCopy_Vk>("Subrect Copy", Device, PhysicalDevice);
+
+        // By value, the lambdas run after this scope
+        ResourceCopy_Vk* copy = slotCopy.get();
+
+        if (copy->IsInit())
+        {
+            pipeline.push_back({ // Setup
+                                 [&, copy](const VkImageInfo& nextOutput) -> VkImageInfo
+                                 {
+                                     const auto format = copy->BufferFormat(nextOutput.Format, false);
+
+                                     // Exact, output scaling and RCAS size their work by it
+                                     if (!copy->CreateImageResource(Device, PhysicalDevice, outputRect.Width,
+                                                                    outputRect.Height, format, 0))
+                                         return VkImageInfo {};
+
+                                     VkImageInfo info = nextOutput;
+                                     info.Image = copy->GetImage();
+                                     info.ImageView = copy->GetImageView();
+                                     info.SubresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+                                     info.Format = format;
+                                     info.Width = copy->ImageExtent().width;
+                                     info.Height = copy->ImageExtent().height;
+
+                                     copy->SetImageLayout(InCmdBuffer, info.Image, VK_IMAGE_LAYOUT_UNDEFINED,
+                                                          VK_IMAGE_LAYOUT_GENERAL, info.SubresourceRange);
+
+                                     placeOutput = true;
+                                     return info;
+                                 },
+
+                                 // Dispatch
+                                 [&, copy](const VkImageInfo& input, const VkImageInfo& output) -> bool
+                                 {
+                                     copy->SetImageLayout(InCmdBuffer, input.Image, VK_IMAGE_LAYOUT_GENERAL,
+                                                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                                          input.SubresourceRange);
+
+                                     return copy->Dispatch(Device, InCmdBuffer, input.ImageView, output.ImageView,
+                                                           { outputRect.Width, outputRect.Height }, {},
+                                                           { (int32_t) outputRect.X, (int32_t) outputRect.Y });
+                                 } });
+        }
+    }
+
     // RCAS setup and DLSS zero the game's sharpness, restored after EvaluateInternal
     float originalSharpness = 0.0f;
     bool hasSharpness =
@@ -280,6 +411,9 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
         paramOutput->Resource.ImageViewInfo.Height = currentTarget.Height;
     }
 
+    if (placeOutput)
+        SetSubrectBase(InParameters, SubrectSlot::Output, 0, 0);
+
     UpscalerTime->Start(InCmdBuffer);
 
     auto evalResult = EvaluateInternal(InCmdBuffer, InParameters);
@@ -296,6 +430,9 @@ bool IFeature_Vk::Evaluate(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InP
         paramOutput->Resource.ImageViewInfo.Width = originalOutput.Width;
         paramOutput->Resource.ImageViewInfo.Height = originalOutput.Height;
     }
+
+    if (placeOutput)
+        SetSubrectBase(InParameters, SubrectSlot::Output, outputRect.X, outputRect.Y);
 
     if (hasSharpness)
         InParameters->Set(NVSDK_NGX_Parameter_Sharpness, originalSharpness);

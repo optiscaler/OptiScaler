@@ -880,7 +880,6 @@ UINT WINAPI hkGetRawInputBuffer(PRAWINPUT data, PUINT size, UINT headerSize)
             if (!IsRawInputPacketReadable(*current, static_cast<UINT>(remainingSize)))
                 break;
 
-            const DWORD packetSize = current->header.dwSize;
             USHORT allowedMouseButtonUpFlags = 0;
             const RawSanitizeAction action = GetRawInputSanitizeActionLocked(*current, &allowedMouseButtonUpFlags);
 
@@ -890,7 +889,9 @@ UINT WINAPI hkGetRawInputBuffer(PRAWINPUT data, PUINT size, UINT headerSize)
             RecordRawInputSanitizeCounterLocked(*current, action);
             ApplyRawInputSanitizeActionLocked(*current, action, allowedMouseButtonUpFlags);
 
-            current = reinterpret_cast<PRAWINPUT>(currentBytes + packetSize);
+            // Packets start 8-byte aligned like NEXTRAWINPUTBLOCK steps, a HID packet's size doesn't have to be
+            const std::uintptr_t next = reinterpret_cast<std::uintptr_t>(currentBytes) + current->header.dwSize;
+            current = reinterpret_cast<PRAWINPUT>((next + 7) & ~std::uintptr_t { 7 });
         }
     }
 

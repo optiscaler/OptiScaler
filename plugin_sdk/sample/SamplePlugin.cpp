@@ -4,10 +4,13 @@
 // bin/Release/SamplePlugin.asi to the plugins folder next to OptiScaler and set LoadAsiPlugins=true
 // in OptiScaler.ini. Two tabs show up under PLUGINS in the menu and
 // the settings are kept in the [Plugin.SamplePlugin] section of OptiScaler.ini.
+// It also registers two upscalers, "Sample FSR" and "Sample DLSS", that always fail.
 
 #include <Windows.h>
 
 #include <cstdio>
+#include <cstring>
+#include <iterator>
 
 #include "../optiscaler_plugin.h"
 
@@ -222,6 +225,70 @@ void DrawInfoTab(void* userData)
     snprintf(text, sizeof(text), "Clicked %d times", *counter);
     api->Text(text);
 }
+
+// Providers ------------------------------------------------------------------------------------------------
+// "Sample FSR" and "Sample DLSS" show up in the upscaler lists. Every function fails, so picking one only
+// shows how OptiScaler handles a provider that errors out. A real provider would include the FFX API (ffx_api.h)
+// and NGX (nvsdk_ngx.h) headers, these stubs only take the right number of arguments.
+
+constexpr uint32_t FfxReturnError = 1;         // FFX_API_RETURN_ERROR
+constexpr uint32_t NgxResultFail = 0xBAD00000; // NVSDK_NGX_Result_Fail
+
+uint32_t NgxFailWith1(void*) { return NgxResultFail; }
+uint32_t FfxFailWith2(void*, void*) { return FfxReturnError; }
+uint32_t FfxFailWith3(void*, void*, void*) { return FfxReturnError; }
+uint32_t NgxFailWith4(void*, void*, void*, void*) { return NgxResultFail; }
+uint32_t NgxFailWith5(void*, void*, void*, void*, void*) { return NgxResultFail; }
+uint32_t NgxFailWith7(void*, void*, void*, void*, void*, void*, void*) { return NgxResultFail; }
+
+struct Export
+{
+    const char* name;
+    void* function;
+};
+
+// Same names as the exports of amd_fidelityfx_upscaler_dx12.dll
+const Export ffxExports[] = {
+    { "ffxCreateContext", (void*) FfxFailWith3 }, { "ffxDestroyContext", (void*) FfxFailWith2 },
+    { "ffxConfigure", (void*) FfxFailWith2 },     { "ffxQuery", (void*) FfxFailWith2 },
+    { "ffxDispatch", (void*) FfxFailWith2 },
+};
+
+// Same names as the exports of nvngx.dll, the ones OptiScaler needs to run DLSS on D3D12 and Vulkan
+const Export ngxExports[] = {
+    { "NVSDK_NGX_D3D12_Init_Ext", (void*) NgxFailWith5 },
+    { "NVSDK_NGX_D3D12_CreateFeature", (void*) NgxFailWith4 },
+    { "NVSDK_NGX_D3D12_EvaluateFeature", (void*) NgxFailWith4 },
+    { "NVSDK_NGX_D3D12_ReleaseFeature", (void*) NgxFailWith1 },
+    { "NVSDK_NGX_VULKAN_Init_Ext", (void*) NgxFailWith7 },
+    { "NVSDK_NGX_VULKAN_CreateFeature", (void*) NgxFailWith4 },
+    { "NVSDK_NGX_VULKAN_EvaluateFeature", (void*) NgxFailWith4 },
+    { "NVSDK_NGX_VULKAN_ReleaseFeature", (void*) NgxFailWith1 },
+};
+
+// userData is the export table of the provider
+template <size_t N> void* GetProc(void* userData, const char* exportName)
+{
+    for (const auto& entry : *(const Export(*)[N]) userData)
+    {
+        if (strcmp(entry.name, exportName) == 0)
+            return entry.function;
+    }
+
+    return nullptr; // Not provided, OptiScaler skips what it doesn't need
+}
+
+void RegisterProviders()
+{
+    if (!OPTI_API_HAS(api, RegisterProvider))
+    {
+        api->Log(self, OptiLog_Info, "OptiScaler is too old to register providers");
+        return;
+    }
+
+    api->RegisterProvider(self, "Sample FSR", OptiProvider_Ffx, GetProc<std::size(ffxExports)>, (void*) &ffxExports);
+    api->RegisterProvider(self, "Sample DLSS", OptiProvider_Dlss, GetProc<std::size(ngxExports)>, (void*) &ngxExports);
+}
 } // namespace
 
 extern "C" __declspec(dllexport) bool OptiPluginInit(const OptiPluginApi* optiApi, OptiPlugin* plugin)
@@ -233,6 +300,8 @@ extern "C" __declspec(dllexport) bool OptiPluginInit(const OptiPluginApi* optiAp
 
     api->RegisterTab(self, "Sample", "Settings of the sample plugin", DrawMainTab, nullptr);
     api->RegisterTab(self, "Sample Info", "What the plugin API reports", DrawInfoTab, &clickCount);
+
+    RegisterProviders();
 
     api->Log(self, OptiLog_Info, "Sample plugin initialized");
 
