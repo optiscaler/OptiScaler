@@ -38,6 +38,30 @@ void DS_Dx12::SetBufferState(ID3D12GraphicsCommandList* InCommandList, D3D12_RES
 
 bool DS_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InResource, ID3D12Resource* OutResource)
 {
+    if (State::Instance().currentFeature == nullptr)
+        return false;
+
+    UINT width = 0;
+    UINT height = 0;
+
+    if ((State::Instance().currentFeature->GetFeatureFlags() & NVSDK_NGX_DLSS_Feature_Flags_MVLowRes) == 0)
+    {
+        width = State::Instance().currentFeature->DisplayWidth();
+        height = State::Instance().currentFeature->DisplayHeight();
+    }
+    else
+    {
+        width = State::Instance().currentFeature->RenderWidth();
+        height = State::Instance().currentFeature->RenderHeight();
+    }
+
+    return Dispatch(InCmdList, InResource, OutResource, Config::Instance()->FGDepthScaleMax.value_or_default(), width,
+                    height);
+}
+
+bool DS_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InResource, ID3D12Resource* OutResource,
+                       float InDepthScale, UINT InWidth, UINT InHeight)
+{
     if (!_init || _device == nullptr || InCmdList == nullptr || InResource == nullptr || OutResource == nullptr)
         return false;
 
@@ -53,7 +77,7 @@ bool DS_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InR
     CreateUnorderedAccessView(_device, OutResource, currentHeap.GetUavCPU(0), 0);
 
     DSConstants constants {};
-    constants.DepthScale = Config::Instance()->FGDepthScaleMax.value_or_default();
+    constants.DepthScale = InDepthScale;
 
     if (!CreateConstantsBuffer(_device, currentHeap, constants, currentHeap.GetCbvCPU(0)))
     {
@@ -69,21 +93,8 @@ bool DS_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InR
 
     InCmdList->SetComputeRootDescriptorTable(0, currentHeap.GetTableGPUStart());
 
-    UINT dispatchWidth = 0;
-    UINT dispatchHeight = 0;
-
-    if ((State::Instance().currentFeature->GetFeatureFlags() & NVSDK_NGX_DLSS_Feature_Flags_MVLowRes) == 0)
-    {
-        dispatchWidth =
-            static_cast<UINT>((State::Instance().currentFeature->DisplayWidth() + InNumThreadsX - 1) / InNumThreadsX);
-        dispatchHeight = (State::Instance().currentFeature->DisplayHeight() + InNumThreadsY - 1) / InNumThreadsY;
-    }
-    else
-    {
-        dispatchWidth =
-            static_cast<UINT>((State::Instance().currentFeature->RenderWidth() + InNumThreadsX - 1) / InNumThreadsX);
-        dispatchHeight = (State::Instance().currentFeature->RenderHeight() + InNumThreadsY - 1) / InNumThreadsY;
-    }
+    UINT dispatchWidth = (InWidth + InNumThreadsX - 1) / InNumThreadsX;
+    UINT dispatchHeight = (InHeight + InNumThreadsY - 1) / InNumThreadsY;
 
     InCmdList->Dispatch(dispatchWidth, dispatchHeight, 1);
 

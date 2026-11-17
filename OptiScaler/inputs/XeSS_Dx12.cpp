@@ -7,6 +7,8 @@
 #include <proxies/XeSS_Proxy.h>
 #include "menu/menu_overlay_dx.h"
 
+#include "XeSS_UE_Dx12.h"
+
 static UINT64 _handleCounter = 13370000;
 static UINT64 _frameCounter = 0;
 static xess_context_handle_t _currentContext = nullptr;
@@ -15,8 +17,11 @@ static ID3D12Device* _d3d12Device = nullptr;
 static std::atomic<ID3D12Device*> _nvngxDevice { nullptr };
 static bool _nvngxInited = false;
 
+// Motion vector resolution the feature was created with
+static std::unordered_map<xess_context_handle_t, bool> _lowResMVs;
+
 static bool CreateDLSSContext(xess_context_handle_t handle, ID3D12GraphicsCommandList* commandList,
-                              const xess_d3d12_execute_params_t* pExecParams)
+                              const xess_d3d12_execute_params_t* pExecParams, bool lowResMVs)
 {
     LOG_DEBUG("");
 
@@ -32,7 +37,8 @@ static bool CreateDLSSContext(xess_context_handle_t handle, ID3D12GraphicsComman
     if ((initParams->initFlags & XESS_INIT_FLAG_LDR_INPUT_COLOR) == 0)
         initFlags |= NVSDK_NGX_DLSS_Feature_Flags_IsHDR;
 
-    if (initParams->initFlags & XESS_INIT_FLAG_INVERTED_DEPTH)
+    // Unreal Engine renders with reversed Z
+    if ((initParams->initFlags & XESS_INIT_FLAG_INVERTED_DEPTH) || XeSSUnreal::Hooked())
         initFlags |= NVSDK_NGX_DLSS_Feature_Flags_DepthInverted;
 
     if (initParams->initFlags & XESS_INIT_FLAG_ENABLE_AUTOEXPOSURE)
@@ -41,7 +47,7 @@ static bool CreateDLSSContext(xess_context_handle_t handle, ID3D12GraphicsComman
     if (initParams->initFlags & XESS_INIT_FLAG_JITTERED_MV)
         initFlags |= NVSDK_NGX_DLSS_Feature_Flags_MVJittered;
 
-    if ((initParams->initFlags & XESS_INIT_FLAG_HIGH_RES_MV) == 0)
+    if (lowResMVs)
         initFlags |= NVSDK_NGX_DLSS_Feature_Flags_MVLowRes;
 
     if (initParams->initFlags & XESS_INIT_FLAG_EXPOSURE_SCALE_TEXTURE)
@@ -104,6 +110,9 @@ xess_result_t hk_xessD3D12CreateContext(ID3D12Device* pDevice, xess_context_hand
 
     if (pDevice == nullptr)
         return XESS_RESULT_ERROR_DEVICE;
+
+    if (State::Instance().gameEngine == GameEngineType::Unreal)
+        XeSSUnreal::Hook();
 
     // Re-initialise NGX when the device this input initialised it with was replaced
     if (!State::Instance().nvngxDx12Inited || (_nvngxInited && _nvngxDevice.load() != pDevice))
@@ -179,12 +188,44 @@ xess_result_t hk_xessD3D12Execute(xess_context_handle_t hContext, ID3D12Graphics
     if (pCommandList == nullptr)
         return XESS_RESULT_ERROR_INVALID_ARGUMENT;
 
-    if (!_contexts.contains(hContext) && !CreateDLSSContext(hContext, pCommandList, pExecParams))
-        return XESS_RESULT_ERROR_UNKNOWN;
+    auto depth = pExecParams->pDepthTexture;
+    auto depthBase = pExecParams->inputDepthBase;
+    auto depthState = D3D12_RESOURCE_STATE_COMMON;
+    auto ueSceneDepth = false;
+
+    // Captured scene depth shares the scene color's view rect
+    if (depth == nullptr && XeSSUnreal::Hooked())
+    {
+        depth = XeSSUnreal::SceneDepth(pCommandList, pExecParams, depthState);
+        depthBase = pExecParams->inputColorBase;
+        ueSceneDepth = depth != nullptr;
+    }
+
+    auto initParams = &_d3d12InitParams[hContext];
+
+    // The UE plugin's motion vectors are at render resolution once its flattening is resized, which can start after
+    // the first execute
+    auto lowResMVs = (initParams->initFlags & XESS_INIT_FLAG_HIGH_RES_MV) == 0 ||
+                     (pExecParams->pVelocityTexture != nullptr &&
+                      pExecParams->pVelocityTexture->GetDesc().Width < initParams->outputResolution.x);
+
+    if (_contexts.contains(hContext) && _lowResMVs[hContext] != lowResMVs)
+    {
+        LOG_INFO("Recreating the feature, render resolution motion vectors: {}", lowResMVs);
+        NVSDK_NGX_D3D12_ReleaseFeature(_contexts[hContext]);
+        _contexts.erase(hContext);
+    }
+
+    if (!_contexts.contains(hContext))
+    {
+        if (!CreateDLSSContext(hContext, pCommandList, pExecParams, lowResMVs))
+            return XESS_RESULT_ERROR_UNKNOWN;
+
+        _lowResMVs[hContext] = lowResMVs;
+    }
 
     NVSDK_NGX_Parameter* params = _nvParams[hContext];
     NVSDK_NGX_Handle* handle = _contexts[hContext];
-    xess_d3d12_init_params_t* initParams = &_d3d12InitParams[hContext];
 
     if (_motionScales.contains(hContext))
     {
@@ -192,7 +233,7 @@ xess_result_t hk_xessD3D12Execute(xess_context_handle_t hContext, ID3D12Graphics
 
         if ((initParams->initFlags & XESS_INIT_FLAG_USE_NDC_VELOCITY))
         {
-            if (initParams->initFlags & XESS_INIT_FLAG_HIGH_RES_MV)
+            if (!lowResMVs)
             {
                 params->Set(NVSDK_NGX_Parameter_MV_Scale_X, initParams->outputResolution.x * 0.5 * scales->x);
                 params->Set(NVSDK_NGX_Parameter_MV_Scale_Y, initParams->outputResolution.y * -0.5 * scales->y);
@@ -228,7 +269,10 @@ xess_result_t hk_xessD3D12Execute(xess_context_handle_t hContext, ID3D12Graphics
     params->Set(NVSDK_NGX_Parameter_Height, pExecParams->inputHeight);
     params->Set(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Width, pExecParams->inputWidth);
     params->Set(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Height, pExecParams->inputHeight);
-    params->Set(NVSDK_NGX_Parameter_Depth, pExecParams->pDepthTexture);
+    params->Set(NVSDK_NGX_Parameter_Depth, depth);
+
+    // The captured depth is left in whatever read state the engine chose, frame generation transitions from it
+    params->Set(OptiKeys::DepthState, ueSceneDepth ? (unsigned int) depthState : 0u);
     params->Set(NVSDK_NGX_Parameter_ExposureTexture, pExecParams->pExposureScaleTexture);
 
     if (feature_version { XeSSProxy::Version().major, XeSSProxy::Version().minor, XeSSProxy::Version().patch } <
@@ -243,8 +287,8 @@ xess_result_t hk_xessD3D12Execute(xess_context_handle_t hContext, ID3D12Graphics
 
     params->Set(NVSDK_NGX_Parameter_DLSS_Input_Color_Subrect_Base_X, pExecParams->inputColorBase.x);
     params->Set(NVSDK_NGX_Parameter_DLSS_Input_Color_Subrect_Base_Y, pExecParams->inputColorBase.y);
-    params->Set(NVSDK_NGX_Parameter_DLSS_Input_Depth_Subrect_Base_X, pExecParams->inputDepthBase.x);
-    params->Set(NVSDK_NGX_Parameter_DLSS_Input_Depth_Subrect_Base_Y, pExecParams->inputDepthBase.y);
+    params->Set(NVSDK_NGX_Parameter_DLSS_Input_Depth_Subrect_Base_X, depthBase.x);
+    params->Set(NVSDK_NGX_Parameter_DLSS_Input_Depth_Subrect_Base_Y, depthBase.y);
     params->Set(NVSDK_NGX_Parameter_DLSS_Input_MV_SubrectBase_X, pExecParams->inputMotionVectorBase.x);
     params->Set(NVSDK_NGX_Parameter_DLSS_Input_MV_SubrectBase_Y, pExecParams->inputMotionVectorBase.y);
     params->Set(NVSDK_NGX_Parameter_DLSS_Output_Subrect_Base_X, pExecParams->outputColorBase.x);

@@ -7,7 +7,8 @@ struct SectionRange
     BYTE *start, *end;
 };
 
-std::vector<SectionRange> GetExecSections(HMODULE hMod)
+// Executable sections, or the initialized data ones
+std::vector<SectionRange> GetSections(HMODULE hMod, bool executable = true)
 {
     std::vector<SectionRange> secs;
 
@@ -23,8 +24,9 @@ std::vector<SectionRange> GetExecSections(HMODULE hMod)
     {
         auto& s = first[i];
 
-        // filter for executable
-        if (s.Characteristics & IMAGE_SCN_MEM_EXECUTE)
+        auto isExecutable = (s.Characteristics & IMAGE_SCN_MEM_EXECUTE) != 0;
+
+        if (executable ? isExecutable : !isExecutable && (s.Characteristics & IMAGE_SCN_CNT_INITIALIZED_DATA))
         {
             BYTE* start = base + s.VirtualAddress;
             BYTE* end = start + s.Misc.VirtualSize;
@@ -75,7 +77,7 @@ uintptr_t scanner::GetAddress(const std::wstring_view moduleName, const std::str
     if (module == nullptr)
         return NULL;
 
-    auto sections = GetExecSections(module);
+    auto sections = GetSections(module);
 
     if (startAddress != 0)
     {
@@ -129,7 +131,7 @@ uintptr_t scanner::GetAddress(HMODULE module, const std::string_view pattern, pt
         return NULL;
 
     uintptr_t address = NULL;
-    auto sections = GetExecSections(module);
+    auto sections = GetSections(module);
 
     if (startAddress != 0)
     {
@@ -236,7 +238,7 @@ uintptr_t scanner::GetOffsetFromInstruction(const std::wstring_view moduleName, 
 
     uintptr_t address = NULL;
 
-    auto sections = GetExecSections(module);
+    auto sections = GetSections(module);
 
     for (size_t i = 0; i < sections.size(); i++)
     {
@@ -257,4 +259,50 @@ uintptr_t scanner::GetOffsetFromInstruction(const std::wstring_view moduleName, 
     {
         return NULL;
     }
+}
+
+uintptr_t scanner::FindWideString(HMODULE module, std::wstring_view text)
+{
+    // Includes the terminator so a longer string with the same prefix doesn't match
+    auto needle = reinterpret_cast<const BYTE*>(text.data());
+    auto needleSize = (text.size() + 1) * sizeof(wchar_t);
+
+    for (auto& section : GetSections(module, false))
+    {
+        auto found = std::search(section.start, section.end, needle, needle + needleSize);
+
+        if (found != section.end)
+            return reinterpret_cast<uintptr_t>(found);
+    }
+
+    return 0;
+}
+
+uintptr_t scanner::FindRipReference(HMODULE module, uintptr_t target)
+{
+    for (auto& section : GetSections(module))
+    {
+        // lea r64, [rip + disp32]
+        for (auto p = section.start; p + 7 <= section.end; p++)
+        {
+            if ((p[0] != 0x48 && p[0] != 0x4C) || p[1] != 0x8D || (p[2] & 0xC7) != 0x05)
+                continue;
+
+            if (reinterpret_cast<uintptr_t>(p + 7) + *reinterpret_cast<int32_t*>(p + 3) == target)
+                return reinterpret_cast<uintptr_t>(p);
+        }
+    }
+
+    return 0;
+}
+
+uintptr_t scanner::GetFunctionStart(uintptr_t address)
+{
+    DWORD64 imageBase = 0;
+    auto function = RtlLookupFunctionEntry(address, &imageBase, nullptr);
+
+    if (function == nullptr)
+        return 0;
+
+    return imageBase + GetFirstChunkRva(reinterpret_cast<const BYTE*>(imageBase), function);
 }
