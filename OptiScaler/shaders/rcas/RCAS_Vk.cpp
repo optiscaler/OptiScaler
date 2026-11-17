@@ -335,6 +335,8 @@ bool RCAS_Vk::Dispatch(VkDevice InDevice, VkCommandBuffer InCmdList, RcasConstan
     // BaBa Neural falls back to plain RCAS when its pipeline can't be created
     if (sharpnessShader == SharpenShader::BabaNeural && _pipelineBaba == VK_NULL_HANDLE)
         sharpnessShader = SharpenShader::RCAS;
+
+    SetTimedShader(sharpnessShader);
     if (sharpnessShader == SharpenShader::LocalContrastDepthAware)
     {
         return DispatchDepthAdaptive(InCmdList, InConstants, InResourceInfo, InMotionVectorsInfo, OutResourceInfo,
