@@ -22,7 +22,6 @@ cbuffer Params : register(b0)
     int Debug; // MAS debug tint
 
     float MotionSharpness; // usually negative
-    float MotionTextureScale;
     float MvScaleX;
     float MvScaleY;
 
@@ -331,9 +330,7 @@ float ComputeAdaptiveSharpness(int2 pixelCoord)
         }
         else
         {
-            // Per axis, MotionTextureScale is width only
-            float2 mvScale = float2(MotionWidth, MotionHeight) / float2(DisplayWidth, DisplayHeight);
-            float2 mvf = (float2(pixelCoord) + 0.5) * mvScale;
+            float2 mvf = (float2(pixelCoord) + 0.5) * (float2(MotionWidth, MotionHeight) / float2(DisplayWidth, DisplayHeight));
             mv = LoadMotion(int2(mvf));
         }
 
@@ -706,7 +703,7 @@ void CSMain(uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uin
     // Debug: residual map
     if (ViewMode == 2)
     {
-        Dest[p] = float4(normalizedResidual, normalizedResidual, normalizedResidual, 1.0);
+        Dest[p] = float4(normalizedResidual, normalizedResidual, normalizedResidual, source.a);
         return;
     }
 
@@ -721,7 +718,7 @@ void CSMain(uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uin
     if (ViewMode == 1)
     {
         float debugRes = residual * intensity;
-        Dest[p] = float4(0.5 + debugRes, 0.5 + debugRes, 0.5 + debugRes, 1.0);
+        Dest[p] = float4(0.5 + debugRes, 0.5 + debugRes, 0.5 + debugRes, source.a);
         return;
     }
 

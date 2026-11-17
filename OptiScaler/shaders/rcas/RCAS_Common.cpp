@@ -23,11 +23,6 @@ void RCAS_Common::FillMotionConstants(InternalConstants& OutConstants, const Rca
     OutConstants.Debug = Config::Instance()->MotionSharpnessDebug.value_or_default() ? 1 : 0;
     OutConstants.Threshold = Config::Instance()->MotionThreshold.value_or_default();
     OutConstants.ScaleLimit = Config::Instance()->MotionScaleLimit.value_or_default();
-
-    if (OutConstants.DisplaySizeMV)
-        OutConstants.MotionTextureScale = 1.0f;
-    else
-        OutConstants.MotionTextureScale = (float) OutConstants.MotionWidth / (float) OutConstants.OutputWidth;
 }
 
 void RCAS_Common::SetTimedShader(SharpenShader InShader)
@@ -84,11 +79,6 @@ void RCAS_Common::FillMotionConstants(InternalConstantsDA& OutConstants, const R
         (OutConstants.MotionWidth == OutConstants.OutputWidth && OutConstants.MotionHeight == OutConstants.OutputHeight)
             ? 1
             : 0;
-
-    if (OutConstants.DisplaySizeMV)
-        OutConstants.MotionTextureScale = 1.0f;
-    else
-        OutConstants.MotionTextureScale = (float) OutConstants.MotionWidth / (float) OutConstants.OutputWidth;
 }
 
 void RCAS_Common::FillMotionConstants(InternalConstantsBaba& OutConstants, const RcasConstants& InConstants)
@@ -119,9 +109,4 @@ void RCAS_Common::FillMotionConstants(InternalConstantsBaba& OutConstants, const
         (OutConstants.MotionWidth == OutConstants.OutputWidth && OutConstants.MotionHeight == OutConstants.OutputHeight)
             ? 1
             : 0;
-
-    if (OutConstants.DisplaySizeMV)
-        OutConstants.MotionTextureScale = 1.0f;
-    else
-        OutConstants.MotionTextureScale = (float) OutConstants.MotionWidth / (float) OutConstants.OutputWidth;
 }

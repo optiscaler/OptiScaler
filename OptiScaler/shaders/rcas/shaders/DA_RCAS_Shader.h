@@ -33,7 +33,6 @@ cbuffer Params : register(b0)
     int Debug; // 0=off, 1=motion, 2=depth, 3=combined
 
     float MotionSharpness; // usually negative
-    float MotionTextureScale; // explicit mapping from output pixel space to motion texel space
     float MvScaleX;
     float MvScaleY;
     float MotionThreshold;
@@ -200,7 +199,7 @@ float ComputeAdaptiveSharpness(int2 pixelCoord)
         }
         else
         {
-            float2 mvf = (float2(pixelCoord) + 0.5) * MotionTextureScale;
+            float2 mvf = (float2(pixelCoord) + 0.5) * (float2(MotionWidth, MotionHeight) / float2(DisplayWidth, DisplayHeight));
             int2 mvCoord = int2(mvf);
             mv = SafeLoadMotion(mvCoord);
         }

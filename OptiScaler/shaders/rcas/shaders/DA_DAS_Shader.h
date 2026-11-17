@@ -26,7 +26,6 @@ cbuffer Params : register(b0)
     int Debug;
 
     float MotionSharpness;
-    float MotionTextureScale;
     float MvScaleX;
     float MvScaleY;
     float MotionThreshold;
@@ -228,7 +227,7 @@ float ComputeAdaptiveSharpness(int2 pixelCoord)
         {
             // For lower-resolution motion, map the output pixel center into motion texture space.
             // Display-size motion uses the same integer pixel coordinate directly.
-            float2 mvf = (float2(pixelCoord) + 0.5) * MotionTextureScale;
+            float2 mvf = (float2(pixelCoord) + 0.5) * (float2(MotionWidth, MotionHeight) / float2(DisplayWidth, DisplayHeight));
             int2 mvCoord = int2(mvf);
             mv = SafeLoadMotion(mvCoord);
         }

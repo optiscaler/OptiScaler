@@ -23,7 +23,6 @@ cbuffer Params : register(b0)
     int MotionHeight;
 
     float MotionSharpness;
-    float MotionTextureScale;
     float MvScaleX;
     float MvScaleY;
     float Threshold;
@@ -72,7 +71,7 @@ void CSMain(uint3 DTid : SV_DispatchThreadID)
         }
         else
         {
-            mvCoord = int2(pixel * MotionTextureScale);
+            mvCoord = int2(float2(pixel) * (float2(MotionWidth, MotionHeight) / float2(DisplayWidth, DisplayHeight)));
         }
 
         // Clamp motion texture reads to valid range

@@ -48,7 +48,6 @@ class RCAS_Common
         int MotionHeight;
 
         float MotionSharpness;
-        float MotionTextureScale;
         float MvScaleX;
         float MvScaleY;
         float Threshold;
@@ -77,7 +76,6 @@ class RCAS_Common
         int Debug;
 
         float MotionSharpness;
-        float MotionTextureScale;
         float MvScaleX;
         float MvScaleY;
         float MotionThreshold;
@@ -109,7 +107,6 @@ class RCAS_Common
         int Debug;
 
         float MotionSharpness;
-        float MotionTextureScale;
         float MvScaleX;
         float MvScaleY;
 
