@@ -311,11 +311,14 @@ class StreamlineProxy
         return true;
     }
 
-    // The game gives NGX the real device, Streamline's NGX has to use the same one, not ReShade's proxy
+    // Streamline's NGX has to use the device the game gives NGX. With ReShade above Opti the game gives the real
+    // one, with ReShade loaded by Opti (or Special K) the game and Opti both get ReShade's proxy.
     static sl::Result SetD3D12Device(void* device, bool bind)
     {
         Microsoft::WRL::ComPtr<IUnknown> original;
-        original.Attach(Util::GetReShadeOriginal((IUnknown*) device));
+
+        if (reshadeModule == nullptr)
+            original.Attach(Util::GetReShadeOriginal((IUnknown*) device));
 
         if (original != nullptr)
         {
