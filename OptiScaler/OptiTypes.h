@@ -98,7 +98,8 @@ enum class SharpenShader
     RCAS,
     DepthAware,
     LocalContrastDepthAware,
-    BabaNeural
+    BabaNeural,
+    OptiSharpen
 };
 
 template <> struct EnumConfig<SharpenShader>
@@ -109,7 +110,8 @@ template <> struct EnumConfig<SharpenShader>
                                                                               { SharpenShader::DepthAware, "da" },
                                                                               { SharpenShader::LocalContrastDepthAware,
                                                                                 "lcda" },
-                                                                              { SharpenShader::BabaNeural, "baba" } };
+                                                                              { SharpenShader::BabaNeural, "baba" },
+                                                                              { SharpenShader::OptiSharpen, "opti" } };
 };
 
 enum class FSR4Support : uint8_t

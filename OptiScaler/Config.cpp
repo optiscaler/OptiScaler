@@ -593,6 +593,12 @@ bool Config::Reload(std::filesystem::path iniPath)
             if (auto setting = readInt("CAS", "BabaDebugView"); setting.has_value())
                 BabaNeuralDebugView.set_from_config(std::clamp(setting.value(), 0, 2));
 
+            if (auto setting = readInt("CAS", "OptiSharpenModel"); setting.has_value())
+                OptiSharpenModel.set_from_config(std::clamp(setting.value(), 0, 5));
+
+            if (auto setting = readInt("CAS", "OptiSharpenDebugView"); setting.has_value())
+                OptiSharpenDebugView.set_from_config(std::clamp(setting.value(), 0, 2));
+
             MotionSharpnessDebug.set_from_config(readBool("CAS", "SharpenerDebug"));
         }
 
@@ -1771,6 +1777,9 @@ bool Config::SaveIni()
         ini.SetValue("CAS", "BabaEdgeResponse",
                      GetFloatValue(Instance()->BabaNeuralEdgeResponse.value_for_config()).c_str());
         ini.SetValue("CAS", "BabaDebugView", GetIntValue(Instance()->BabaNeuralDebugView.value_for_config()).c_str());
+        ini.SetValue("CAS", "OptiSharpenModel", GetIntValue(Instance()->OptiSharpenModel.value_for_config()).c_str());
+        ini.SetValue("CAS", "OptiSharpenDebugView",
+                     GetIntValue(Instance()->OptiSharpenDebugView.value_for_config()).c_str());
 
         ini.SetValue("CAS", "SharpenerDebug",
                      GetBoolValue(Instance()->MotionSharpnessDebug.value_for_config()).c_str());

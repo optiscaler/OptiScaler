@@ -7420,10 +7420,12 @@ void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)
                 selectedMode = 3;
             else if (currentShader == SharpenShader::BabaNeural)
                 selectedMode = 4;
+            else if (currentShader == SharpenShader::OptiSharpen)
+                selectedMode = 5;
         }
 
-        const char* sharpenModes[] = { "Upscaler's default", "RCAS", "Depth Aware (RCAS)", "Depth Aware (DAS)",
-                                       "Neural (BaBa)" };
+        const char* sharpenModes[] = { "Upscaler's default", "RCAS",          "Depth Aware (RCAS)",
+                                       "Depth Aware (DAS)",  "Neural (BaBa)", "OptiSharpen" };
 
         if (ImGui::Combo("Method", &selectedMode, sharpenModes, IM_ARRAYSIZE(sharpenModes)))
         {
@@ -7442,6 +7444,8 @@ void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)
                     Config::Instance()->SharpnessShader = SharpenShader::LocalContrastDepthAware;
                 else if (selectedMode == 4)
                     Config::Instance()->SharpnessShader = SharpenShader::BabaNeural;
+                else if (selectedMode == 5)
+                    Config::Instance()->SharpnessShader = SharpenShader::OptiSharpen;
             }
         }
 
@@ -7451,7 +7455,9 @@ void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)
                     "Depth Aware: Smarter sharpening with fewer artifacts (heavier).\n"
                     "Neural (BaBa): Small neural network from the BaBa ReShade shaders. Only changes the luma and\n"
                     "skips aliased edges and fireflies. 0.5 strength is the default intensity of the ReShade shader.\n"
-                    "Uses RCAS when its shader isn't available for the current API.\n\n"
+                    "OptiSharpen: Small neural network trained for OptiScaler. Only changes the luma, works the same\n"
+                    "for SDR and HDR. 0.5 strength is the trained strength.\n"
+                    "Neural shaders use RCAS when their shader isn't available for the current API.\n\n"
                     "By default uses a sharpening value provided by the game.\n"
                     "Select 'Override' under 'Sharpness' and adjust the slider to change it.");
 
@@ -7532,6 +7538,52 @@ void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)
                         config->BabaNeuralModel.reset();
                         config->BabaNeuralEdgeResponse.reset();
                         config->BabaNeuralDebugView.reset();
+                    }
+                }
+            }
+            else if (Config::Instance()->SharpnessShader.value_or_default() == SharpenShader::OptiSharpen)
+            {
+                if (bool overrideMSDebug = config->MotionSharpnessDebug.value_or_default();
+                    ImGui::Checkbox("MAS Debug", &overrideMSDebug))
+                    config->MotionSharpnessDebug = overrideMSDebug;
+
+                ShowTooltip("Areas that are more red will have more sharpness applied\n"
+                            "Green areas will get reduced sharpness");
+
+                if (auto ch = ScopedCollapsingHeader("OptiSharpen Parameters"); ch.IsHeaderOpen())
+                {
+                    ScopedIndent indent {};
+                    ImGui::Spacing();
+
+                    const char* optiModels[] = { "Clean", "TAA", "TAA Wide", "TAA Wide 12", "Punch 10", "Punch 15" };
+                    int optiModel = std::clamp(config->OptiSharpenModel.value_or_default(), 0, 5);
+
+                    if (ImGui::Combo("Model", &optiModel, optiModels, IM_ARRAYSIZE(optiModels)))
+                        config->OptiSharpenModel = optiModel;
+
+                    ShowTooltip("Clean: The first 3x3 model.\n"
+                                "TAA: Model trained for TAA / upscaler output.\n"
+                                "TAA Wide: TAA model with a wider 13 tap window.\n"
+                                "TAA Wide 12 (default): TAA Wide with a larger network (12 hidden units).\n"
+                                "Punch 10: Stronger TAA Wide 12, allowed to overshoot the local range a little.\n"
+                                "Punch 15: Stronger than Punch 10, overshoots a bit more.");
+
+                    const char* optiViews[] = { "Normal", "Sharpening map", "Change magnitude" };
+                    int optiView = std::clamp(config->OptiSharpenDebugView.value_or_default(), 0, 2);
+
+                    if (ImGui::Combo("Debug View", &optiView, optiViews, IM_ARRAYSIZE(optiViews)))
+                        config->OptiSharpenDebugView = optiView;
+
+                    ShowTooltip("Normal: The final image.\n"
+                                "Sharpening map: The relative luma change, plain gray means no change.\n"
+                                "Change magnitude: How much each pixel changes, black means no change.");
+
+                    ClampOutputCheckbox();
+
+                    if (ImGui::Button("Reset OptiSharpen Values"))
+                    {
+                        config->OptiSharpenModel.reset();
+                        config->OptiSharpenDebugView.reset();
                     }
                 }
             }

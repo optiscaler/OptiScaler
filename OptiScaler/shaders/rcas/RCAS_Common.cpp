@@ -41,6 +41,9 @@ void RCAS_Common::SetTimedShader(SharpenShader InShader)
     case SharpenShader::BabaNeural:
         name = "Neural (BaBa)";
         break;
+    case SharpenShader::OptiSharpen:
+        name = "OptiSharpen";
+        break;
     default:
         break;
     }
@@ -81,14 +84,24 @@ void RCAS_Common::FillMotionConstants(InternalConstantsDA& OutConstants, const R
             : 0;
 }
 
-void RCAS_Common::FillMotionConstants(InternalConstantsBaba& OutConstants, const RcasConstants& InConstants)
+void RCAS_Common::FillMotionConstants(InternalConstantsBaba& OutConstants, const RcasConstants& InConstants,
+                                      SharpenShader InShader)
 {
     // Same mapping as the depth aware shaders, 0.5 strength is the 1.0 Intensity of the ReShade shader
+    // and the trained strength of OptiSharpen
     OutConstants.Sharpness = InConstants.Sharpness * 2.0f;
 
-    OutConstants.EdgeResponse = Config::Instance()->BabaNeuralEdgeResponse.value_or_default();
-    OutConstants.Model = Config::Instance()->BabaNeuralModel.value_or_default();
-    OutConstants.ViewMode = Config::Instance()->BabaNeuralDebugView.value_or_default();
+    if (InShader == SharpenShader::OptiSharpen)
+    {
+        OutConstants.Model = Config::Instance()->OptiSharpenModel.value_or_default();
+        OutConstants.ViewMode = Config::Instance()->OptiSharpenDebugView.value_or_default();
+    }
+    else
+    {
+        OutConstants.EdgeResponse = Config::Instance()->BabaNeuralEdgeResponse.value_or_default();
+        OutConstants.Model = Config::Instance()->BabaNeuralModel.value_or_default();
+        OutConstants.ViewMode = Config::Instance()->BabaNeuralDebugView.value_or_default();
+    }
 
     OutConstants.ClampOutput = Config::Instance()->DAClampOutput.value_or(false) ? 1 : 0;
     OutConstants.IsHdr = InConstants.IsHdr ? 1 : 0;

@@ -5,6 +5,7 @@
 #include "shaders/BABA_NEURAL_Shader.h"
 #include "shaders/DA_DAS_Shader.h"
 #include "shaders/DA_RCAS_Shader.h"
+#include "shaders/OPTI_SHARPEN_Shader.h"
 #include "shaders/RCAS_Shader.h"
 
 #include <atomic>
@@ -93,7 +94,7 @@ class RCAS_Common
         int DepthHeight;
     };
 
-    // Same order as the cbuffer of BABA_NEURAL_Shader.h / baba_neural_sharpen.hlsl
+    // Same order as the cbuffer of baba_neural_sharpen.hlsl and opti_sharpen.hlsl
     struct alignas(256) InternalConstantsBaba
     {
         float Sharpness;
@@ -126,7 +127,9 @@ class RCAS_Common
 
     void FillMotionConstants(InternalConstants& OutConstants, const RcasConstants& InConstants);
     void FillMotionConstants(InternalConstantsDA& OutConstants, const RcasConstants& InConstants);
-    void FillMotionConstants(InternalConstantsBaba& OutConstants, const RcasConstants& InConstants);
+    // InShader is BabaNeural or OptiSharpen, they share the constants layout
+    void FillMotionConstants(InternalConstantsBaba& OutConstants, const RcasConstants& InConstants,
+                             SharpenShader InShader);
 
   private:
     // Written by Dispatch, read by the present hooks

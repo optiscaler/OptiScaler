@@ -378,6 +378,11 @@ class Config
     CustomOptional<float> BabaNeuralEdgeResponse { 0.0f }; // -1 smooth edges, +1 enhance edges
     CustomOptional<int> BabaNeuralDebugView { 0 };         // 0 = normal, 1 = sharpening map, 2 = residual map
 
+    // OptiSharpen
+    // 0 = Clean, 1 = TAA, 2 = TAA Wide, 3 = TAA Wide 12 (default), 4 = Punch 10, 5 = Punch 15
+    CustomOptional<int> OptiSharpenModel { 3 };
+    CustomOptional<int> OptiSharpenDebugView { 0 }; // 0 = normal, 1 = sharpening map, 2 = change magnitude
+
     // MAS
     CustomOptional<bool> MotionSharpnessEnabled { false };
     CustomOptional<bool> MotionSharpnessDebug { false };
