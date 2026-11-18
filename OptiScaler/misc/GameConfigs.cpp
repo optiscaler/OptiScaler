@@ -150,6 +150,7 @@ const std::vector<GameConfig> gameConfigs = {
     {
         .exes = { "rdr2.exe", "playrdr2.exe" },
         .defaults = { EnableFsr3Inputs = false, DxgiSpoofing = false },
+        .quirks = { DeferStreamlineUntilRenderApi },
     },
 
     // Red Dead Redemption
