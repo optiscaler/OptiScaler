@@ -583,7 +583,7 @@ class Config
     CustomOptional<bool> FsrNonLinearColorSpace { false };
     CustomOptional<bool> FsrNonLinearSRGB { false };
     CustomOptional<bool> FsrNonLinearPQ { false };
-    CustomOptional<bool> FsrAgilitySDKUpgrade { false };
+    CustomOptional<bool, NoDefault> FsrAgilitySDKUpgrade;
 
     // Stability preset values
     CustomOptional<float> FsrVelocity { 0.5f };
