@@ -120,7 +120,16 @@ void* __cdecl fakenvapi::queryInterface(NvU32 id)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_SK_5)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_Unload)
 
-    LOG_DEBUG("{}: not implemented, placeholder given", it->func);
+    // ReflexHooks resolves these on every nvapi, the game's low latency calls are answered before reaching fakenvapi
+    const bool reflexHooksQuery = id == GET_ID(NvAPI_D3D_SetSleepMode) || id == GET_ID(NvAPI_D3D_Sleep) ||
+                                  id == GET_ID(NvAPI_D3D_GetLatency) || id == GET_ID(NvAPI_D3D_SetLatencyMarker) ||
+                                  id == GET_ID(NvAPI_D3D12_SetAsyncFrameMarker) ||
+                                  id == GET_ID(NvAPI_Vulkan_SetLatencyMarker) ||
+                                  id == GET_ID(NvAPI_Vulkan_SetSleepMode) || id == GET_ID(NvAPI_Vulkan_GetLatency);
+
+    if (!reflexHooksQuery)
+        LOG_DEBUG("{}: not implemented, placeholder given", it->func);
+
     return idToFuncMapping.insert({ id, (void*) placeholder }).first->second;
     // return registry.insert({ id, nullptr }).first->second;
 }
