@@ -65,6 +65,10 @@ class VulkanHooks
     // vkGetDeviceProcAddr without OptiScaler's hooks
     static PFN_vkVoidFunction GetDeviceProcAddr(VkDevice device, const char* pName);
 
+    // The game's device and its physical device, VK_NULL_HANDLE before the device is created or after it's destroyed
+    static VkDevice GameDevice();
+    static VkPhysicalDevice GamePhysicalDevice();
+
     // vkGetInstanceProcAddr without OptiScaler's hooks
     static PFN_vkVoidFunction GetInstanceProcAddr(VkInstance instance, const char* pName);
 

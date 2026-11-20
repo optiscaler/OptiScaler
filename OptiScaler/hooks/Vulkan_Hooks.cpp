@@ -672,6 +672,9 @@ static void hkvkDestroyDevice(VkDevice device, const VkAllocationCallbacks* pAll
         if (device == _fifoLatestReadyDevice)
             _fifoLatestReadyDevice = VK_NULL_HANDLE;
 
+        if (device == _device)
+            _device = VK_NULL_HANDLE;
+
         ReflexHooks::deviceDestroyed(device);
         InputCommon::vk_device_destroyed(device);
         NVNGXVkDeviceDestroyed(device);
@@ -1470,6 +1473,10 @@ HWND VulkanHooks::SurfaceWindow(VkSurfaceKHR surface)
 // A promoted core function is missing on a device that only has its extension (RDR2's vkGetSemaphoreCounterValue and
 // vkCmdPushDescriptorSetWithTemplate are null), the extension's name then gives the same function. FFX and OptiScaler
 // ask for the core names.
+VkDevice VulkanHooks::GameDevice() { return _device; }
+
+VkPhysicalDevice VulkanHooks::GamePhysicalDevice() { return _device != VK_NULL_HANDLE ? _PD : VK_NULL_HANDLE; }
+
 PFN_vkVoidFunction VulkanHooks::GetDeviceProcAddr(VkDevice device, const char* pName)
 {
     auto getProc = o_vkGetDeviceProcAddr != nullptr ? o_vkGetDeviceProcAddr : vkGetDeviceProcAddr;

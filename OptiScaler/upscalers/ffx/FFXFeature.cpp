@@ -6,6 +6,7 @@
 #include <proxies/D3d12_Proxy.h>
 #include <misc/IdentifyGpu.h>
 #include <fsr4/FSR4DriverProviderVk.h>
+#include <hooks/Vulkan_Hooks.h>
 
 static void FfxLogCallback(uint32_t type, const wchar_t* message)
 {
@@ -163,11 +164,21 @@ void FFXFeature::EnsureVersionsDx12()
 void FFXFeature::EnsureVersionsVulkan()
 {
     static bool queryTried = false;
+    static bool queriedWithoutDevice = false;
 
-    if (queryTried || !State::Instance().ffxUpscalerVersionsVk.names.empty())
+    // The device is used for filtering out unsupported upscalers (FSR4), a list made without one lacks them
+    ffxCreateBackendVKDesc backendDesc {};
+    backendDesc.vkDevice = VulkanHooks::GameDevice();
+    backendDesc.vkPhysicalDevice = VulkanHooks::GamePhysicalDevice();
+    backendDesc.vkDeviceProcAddr = &VulkanHooks::GetDeviceProcAddr;
+
+    const bool hasDevice = backendDesc.vkDevice != VK_NULL_HANDLE && backendDesc.vkPhysicalDevice != VK_NULL_HANDLE;
+
+    if (queryTried ? !(queriedWithoutDevice && hasDevice) : !State::Instance().ffxUpscalerVersionsVk.names.empty())
         return;
 
     queryTried = true;
+    queriedWithoutDevice = !hasDevice;
 
     // Driver provided FSR 4 doesn't need the FFX SDK
     if (!FfxApiProxy::InitFfxVk() && !FSR4DriverProviderVk::Init())
@@ -175,7 +186,8 @@ void FFXFeature::EnsureVersionsVulkan()
 
     ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
 
-    if (!QueryVersionsVulkan())
+    // The fields after the header are VkDeviceContext of FFX SDK 2.x
+    if (!QueryVersionsVulkan(hasDevice ? &backendDesc.vkDevice : nullptr))
         LOG_ERROR("Querying FFX Vulkan upscaler versions failed");
 }
 

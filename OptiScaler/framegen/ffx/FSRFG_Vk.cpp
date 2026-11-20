@@ -650,7 +650,15 @@ void FSRFG_Vk::ConfigureFramePaceTuning()
 void FSRFG_Vk::QueryVersions()
 {
     auto& state = State::Instance();
-    FfxApiProxy::VULKAN_QueryFgVersions(nullptr, state.ffxFGVersionIds, state.ffxFGVersionNames,
+
+    ffxCreateBackendVKDesc backendDesc {};
+    backendDesc.vkDevice = _device;
+    backendDesc.vkPhysicalDevice = _physicalDevice;
+    backendDesc.vkDeviceProcAddr = &VulkanHooks::GetDeviceProcAddr;
+
+    void* deviceContext = _device != VK_NULL_HANDLE ? &backendDesc.vkDevice : nullptr;
+
+    FfxApiProxy::VULKAN_QueryFgVersions(deviceContext, state.ffxFGVersionIds, state.ffxFGVersionNames,
                                         _custom != nullptr ? &_custom->module : nullptr);
 
     auto config = Config::Instance();
