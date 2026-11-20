@@ -747,7 +747,8 @@ void HookFSR2VkExeInputs()
         LOG_DEBUG("o_ffxGetDevice_Vk: {:X}", (size_t) o_ffxGetDevice_Vk);
     }
 
-    State::Instance().fsrHooks = o_ffxFsr2ContextCreate_Vk != nullptr;
+    if (o_ffxFsr2ContextCreate_Vk != nullptr)
+        State::Instance().fsrHooks = true;
 
     auto detourResult = DetourTransactionCommit();
     if (detourResult != NO_ERROR)

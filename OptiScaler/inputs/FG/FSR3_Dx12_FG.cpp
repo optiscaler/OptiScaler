@@ -980,7 +980,8 @@ void FSR3FG::HookFSR3FGExeInputs()
     }
     else
     {
-        State::Instance().fsrHooks = o_ffxReplaceSwapchainForFrameinterpolationDX12 != nullptr;
+        if (o_ffxReplaceSwapchainForFrameinterpolationDX12 != nullptr)
+            State::Instance().fsrHooks = true;
     }
 }
 
@@ -1106,7 +1107,8 @@ void FSR3FG::HookFSR3FGInputs()
     }
     else
     {
-        State::Instance().fsrHooks = o_ffxReplaceSwapchainForFrameinterpolationDX12 != nullptr;
+        if (o_ffxReplaceSwapchainForFrameinterpolationDX12 != nullptr)
+            State::Instance().fsrHooks = true;
     }
 }
 

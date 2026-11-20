@@ -502,6 +502,7 @@ void HookFSR2Dx11ExeInputs()
     }
     else
     {
-        State::Instance().fsrHooks = o_ffxFsr2ContextCreate_Dx11 != nullptr;
+        if (o_ffxFsr2ContextCreate_Dx11 != nullptr)
+            State::Instance().fsrHooks = true;
     }
 }

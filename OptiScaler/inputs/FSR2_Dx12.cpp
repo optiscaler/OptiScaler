@@ -1287,8 +1287,8 @@ void HookFSR2ExeInputs()
     }
     else
     {
-        State::Instance().fsrHooks =
-            o_ffxFsr2ContextCreate_Dx12 != nullptr || o_ffxFsr2ContextCreate_Pattern_Dx12 != nullptr;
+        if (o_ffxFsr2ContextCreate_Dx12 != nullptr || o_ffxFsr2ContextCreate_Pattern_Dx12 != nullptr)
+            State::Instance().fsrHooks = true;
     }
 }
 
@@ -1374,7 +1374,8 @@ void HookFSR2Inputs(HMODULE module)
         }
         else
         {
-            State::Instance().fsrHooks = o_ffxFsr2ContextCreate_Dx12 != nullptr;
+            if (o_ffxFsr2ContextCreate_Dx12 != nullptr)
+                State::Instance().fsrHooks = true;
         }
     }
 }

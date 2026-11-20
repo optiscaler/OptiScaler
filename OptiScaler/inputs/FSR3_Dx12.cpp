@@ -837,8 +837,8 @@ void HookFSR3ExeInputs()
     }
     else
     {
-        State::Instance().fsrHooks =
-            o_ffxFsr3UpscalerContextCreate_Dx12 != nullptr || o_ffxFsr3UpscalerContextCreate_Pattern_Dx12 != nullptr;
+        if (o_ffxFsr3UpscalerContextCreate_Dx12 != nullptr || o_ffxFsr3UpscalerContextCreate_Pattern_Dx12 != nullptr)
+            State::Instance().fsrHooks = true;
     }
 }
 
@@ -927,7 +927,8 @@ void HookFSR3Inputs(HMODULE module)
         }
         else
         {
-            State::Instance().fsrHooks = o_ffxFsr3UpscalerContextCreate_Dx12 != nullptr;
+            if (o_ffxFsr3UpscalerContextCreate_Dx12 != nullptr)
+                State::Instance().fsrHooks = true;
         }
     }
 }
