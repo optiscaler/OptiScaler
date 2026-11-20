@@ -337,7 +337,7 @@ bool RCAS_Dx11::Dispatch(ID3D11Device* InDevice, ID3D11DeviceContext* InContext,
 
     // Depth aware shaders fall back to plain RCAS without depth
     if (InDepth == nullptr &&
-        (sharpnessShader == SharpenShader::LocalContrastDepthAware || sharpnessShader == SharpenShader::DepthAware))
+        (sharpnessShader == SharpenShader::DepthAwareDAS || sharpnessShader == SharpenShader::DepthAware))
         sharpnessShader = SharpenShader::RCAS;
 
     // Neural shaders fall back to plain RCAS when their shader can't be created
@@ -347,7 +347,7 @@ bool RCAS_Dx11::Dispatch(ID3D11Device* InDevice, ID3D11DeviceContext* InContext,
 
     SetTimedShader(sharpnessShader);
 
-    if (sharpnessShader == SharpenShader::LocalContrastDepthAware)
+    if (sharpnessShader == SharpenShader::DepthAwareDAS)
     {
         return DispatchDASDepthAdaptive(InDevice, InContext, InResource, InMotionVectors, InDepth, InConstants,
                                         OutResource);

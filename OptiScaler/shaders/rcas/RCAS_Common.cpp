@@ -35,7 +35,7 @@ void RCAS_Common::SetTimedShader(SharpenShader InShader)
     case SharpenShader::DepthAware:
         name = "Depth Aware (RCAS)";
         break;
-    case SharpenShader::LocalContrastDepthAware:
+    case SharpenShader::DepthAwareDAS:
         name = "Depth Aware (DAS)";
         break;
     case SharpenShader::BabaNeural:

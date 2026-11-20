@@ -218,7 +218,7 @@ bool RCAS_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* I
 
     // Depth aware shaders fall back to plain RCAS without depth
     if (InDepth == nullptr &&
-        (sharpnessShader == SharpenShader::LocalContrastDepthAware || sharpnessShader == SharpenShader::DepthAware))
+        (sharpnessShader == SharpenShader::DepthAwareDAS || sharpnessShader == SharpenShader::DepthAware))
         sharpnessShader = SharpenShader::RCAS;
 
     // Neural shaders fall back to plain RCAS when their shader can't be created
@@ -228,7 +228,7 @@ bool RCAS_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* I
 
     SetTimedShader(sharpnessShader);
 
-    if (sharpnessShader == SharpenShader::LocalContrastDepthAware)
+    if (sharpnessShader == SharpenShader::DepthAwareDAS)
     {
         return DispatchDepthAdaptive(_pipelineStateDASDA, InCmdList, InResource, InMotionVectors, InDepth, InConstants,
                                      OutResource, currentHeap);

@@ -7430,7 +7430,7 @@ void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)
                 selectedMode = 1;
             else if (currentShader == SharpenShader::DepthAware)
                 selectedMode = 2;
-            else if (currentShader == SharpenShader::LocalContrastDepthAware)
+            else if (currentShader == SharpenShader::DepthAwareDAS)
                 selectedMode = 3;
             else if (currentShader == SharpenShader::BabaNeural)
                 selectedMode = 4;
@@ -7455,7 +7455,7 @@ void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)
                 else if (selectedMode == 2)
                     Config::Instance()->SharpnessShader = SharpenShader::DepthAware;
                 else if (selectedMode == 3)
-                    Config::Instance()->SharpnessShader = SharpenShader::LocalContrastDepthAware;
+                    Config::Instance()->SharpnessShader = SharpenShader::DepthAwareDAS;
                 else if (selectedMode == 4)
                     Config::Instance()->SharpnessShader = SharpenShader::BabaNeural;
                 else if (selectedMode == 5)

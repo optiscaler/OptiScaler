@@ -312,7 +312,7 @@ bool RCAS_Vk::Dispatch(VkDevice InDevice, VkCommandBuffer InCmdList, RcasConstan
 
     // Depth aware shaders fall back to plain RCAS without depth
     if (InDepthInfo == nullptr &&
-        (sharpnessShader == SharpenShader::LocalContrastDepthAware || sharpnessShader == SharpenShader::DepthAware))
+        (sharpnessShader == SharpenShader::DepthAwareDAS || sharpnessShader == SharpenShader::DepthAware))
         sharpnessShader = SharpenShader::RCAS;
 
     // No pipeline for the neural shader, plain RCAS instead
@@ -330,7 +330,7 @@ bool RCAS_Vk::Dispatch(VkDevice InDevice, VkCommandBuffer InCmdList, RcasConstan
 
     SetTimedShader(sharpnessShader);
 
-    if (sharpnessShader == SharpenShader::LocalContrastDepthAware)
+    if (sharpnessShader == SharpenShader::DepthAwareDAS)
     {
         return DispatchDepthAdaptive(InCmdList, InConstants, InResourceInfo, InMotionVectorsInfo, OutResourceInfo,
                                      InDepthInfo, true);

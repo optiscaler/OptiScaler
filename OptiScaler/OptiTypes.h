@@ -97,7 +97,7 @@ enum class SharpenShader
 {
     RCAS,
     DepthAware,
-    LocalContrastDepthAware,
+    DepthAwareDAS,
     BabaNeural,
     OptiSharpen
 };
@@ -106,12 +106,12 @@ template <> struct EnumConfig<SharpenShader>
 {
     static constexpr auto default_value = SharpenShader::RCAS;
 
-    static constexpr std::pair<SharpenShader, std::string_view> mapping[] = { { SharpenShader::RCAS, "rcas" },
-                                                                              { SharpenShader::DepthAware, "da" },
-                                                                              { SharpenShader::LocalContrastDepthAware,
-                                                                                "lcda" },
-                                                                              { SharpenShader::BabaNeural, "baba" },
-                                                                              { SharpenShader::OptiSharpen, "opti" } };
+    // EnumToCode returns the first match, so "das" is what gets saved; "lcda" is only read from older configs
+    static constexpr std::pair<SharpenShader, std::string_view> mapping[] = {
+        { SharpenShader::RCAS, "rcas" },         { SharpenShader::DepthAware, "da" },
+        { SharpenShader::DepthAwareDAS, "das" }, { SharpenShader::DepthAwareDAS, "lcda" },
+        { SharpenShader::BabaNeural, "baba" },   { SharpenShader::OptiSharpen, "opti" }
+    };
 };
 
 enum class FSR4Support : uint8_t
