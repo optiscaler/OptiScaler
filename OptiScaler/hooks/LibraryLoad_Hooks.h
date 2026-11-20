@@ -1,6 +1,8 @@
 #pragma once
 #include "SysUtils.h"
 
+#include <atomic>
+
 class LibraryLoadHooks
 {
   private:
@@ -8,6 +10,8 @@ class LibraryLoadHooks
     static bool StartsWithInsensitive(std::wstring_view str, std::wstring_view prefix);
 
   public:
+    inline static std::atomic<uint32_t> macTypeRejections = 0;
+
     static HMODULE LoadLibraryCheckA(std::string libName, LPCSTR lpLibFullPath);
     static HMODULE LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibFullPath);
     static std::optional<NTSTATUS> FreeLibrary(PVOID library);

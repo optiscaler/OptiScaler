@@ -26,6 +26,7 @@
 #include <nvapi/fakenvapi.h>
 #include <hooks/Reflex_Hooks.h>
 #include <hooks/Vulkan_Hooks.h>
+#include <hooks/LibraryLoad_Hooks.h>
 
 #include <BuildInfo.h>
 #include <version_check.h>
@@ -2596,6 +2597,19 @@ void MenuCommon::UpdateVersionAndStartupNotifications(RenderMenuContext& ctx)
         }
 
         state.postDone = true;
+    }
+
+    static bool macTypeNoticeShown = false;
+    if (!macTypeNoticeShown && LibraryLoadHooks::macTypeRejections.load(std::memory_order_relaxed) >= 20)
+    {
+        macTypeNoticeShown = true;
+
+        ImGuiToast notification { ImGuiToastType::Warning, 20000 };
+        notification.setTitle("MacType detected");
+        notification.setContent("MacType is known to cause performance issues,\n"
+                                "especially with high polling rate mice.\n"
+                                "Please disable it while playing.");
+        ImGui::InsertNotification(notification);
     }
 
     // Initialize splash timing and select the splash text once per process.

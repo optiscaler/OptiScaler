@@ -287,6 +287,12 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
     if (CheckDllNameW(&libName, &blockedDllNamesW))
     {
         LOG_DEBUG("Blocking dll: {}", wstring_to_string(libName));
+
+        // MacType injects through a global window hook, win32k retries the blocked load
+        // for every hooked message and that costs a lot of performance with high polling rate mice
+        if (normalizedPath.contains(L"mactype"))
+            macTypeRejections.fetch_add(1, std::memory_order_relaxed);
+
         return (HMODULE) 1337;
     }
     else if (Config::Instance()->DisableOverlays.value_or_default() && CheckDllNameW(&libName, &blockOverlayNamesW))
