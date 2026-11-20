@@ -3001,8 +3001,14 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                              : std::format("{} x{}", fg->Name(), fg->GetInterpolatedFrameCount() + 1);
 
             const int fakeFramesCount = state.DlssgDetectedInterpolationCount();
+
+            // Nvngx/DLSSG paths report generation through the game's DLSSG frame count, not IsGenerating()
+            bool nvngxFgGenerating = false;
+
             auto formatFg = [&](std::string_view name, int maxFakeFrames)
             {
+                nvngxFgGenerating = fakeFramesCount > 0 && fakeFramesCount <= maxFakeFrames;
+
                 if (fakeFramesCount > maxFakeFrames)
                     return std::format("{} Doesn't support more than {}x", name, maxFakeFrames);
 
@@ -3150,8 +3156,9 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
                 shownAt = now;
             }
 
-            // With an FG input also the measured base frame rate, the same as FPS shows that FG isn't generating
-            const std::string fpsValue = shown.baseFrameTime > 0.0
+            // With an FG input also the measured base frame rate, but only while FG is generating frames
+            const bool fgGenerating = (fg != nullptr && fg->IsGenerating()) || nvngxFgGenerating;
+            const std::string fpsValue = (shown.baseFrameTime > 0.0 && fgGenerating)
                                              ? StrFmt("%.1f/%.1f", shown.frameRate, 1000.0 / shown.baseFrameTime)
                                              : StrFmt("%.1f", shown.frameRate);
 
@@ -4661,12 +4668,6 @@ static void RenderFGStatus(State& state, Config* config)
         ImGui::Text("Please select %s Frame Generation in the game options\n"
                     "You might need to select %s first",
                     name, name);
-    }
-    else if (input != FGInput::NvngxFG && !config->IsFGEnabled())
-    {
-        // The game controls Nvngx FG, the rest is set by Frame Gen in the output's settings
-        ImGui::SameLine();
-        ImGui::TextColored(StatusWarn(), "(turn on Frame Gen below)");
     }
 }
 
