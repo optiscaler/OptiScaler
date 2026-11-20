@@ -75,7 +75,7 @@ bool Config::Reload(std::filesystem::path iniPath)
                     upscaler.set_from_config(value);
             };
 
-            readUpscaler("Dx11Upscaler", CodeToUpscaler, Dx11Upscaler, CustomUpscalerDx11);
+            readUpscaler("Dx11Upscaler", CodeToEnum<Upscaler>, Dx11Upscaler, CustomUpscalerDx11);
             readUpscaler("Dx12Upscaler", CodeToUpscalerFfx, Dx12Upscaler, CustomUpscaler);
             readUpscaler("VulkanUpscaler", CodeToUpscalerFfx, VulkanUpscaler, CustomUpscalerVk);
 
@@ -107,21 +107,11 @@ bool Config::Reload(std::filesystem::path iniPath)
             if (auto FGNvngxReplacementString = readString("FrameGen", "FGNvngxReplacement");
                 canUseNvngxReplacement && FGNvngxReplacementString.has_value())
             {
-                if (lstrcmpiA(FGNvngxReplacementString.value().c_str(), "none") == 0)
-                    FGNvngxReplacement.set_from_config(FGNvngxReplacement::None);
-                else if (lstrcmpiA(FGNvngxReplacementString.value().c_str(), "nukems") == 0)
-                    FGNvngxReplacement.set_from_config(FGNvngxReplacement::Nukems);
-                else if (lstrcmpiA(FGNvngxReplacementString.value().c_str(), "arturs") == 0)
-                    FGNvngxReplacement.set_from_config(FGNvngxReplacement::Arturs);
-                else if (lstrcmpiA(FGNvngxReplacementString.value().c_str(), "ffx") == 0)
-                    FGNvngxReplacement.set_from_config(FGNvngxReplacement::FFX);
-                else if (lstrcmpiA(FGNvngxReplacementString.value().c_str(), "combo") == 0)
-                    FGNvngxReplacement.set_from_config(FGNvngxReplacement::Combo);
-                else
-                {
-                    FGNvngxReplacement.set_from_config(FGNvngxReplacement::Custom);
+                auto replacement = CodeToEnum<enum FGNvngxReplacement>(FGNvngxReplacementString.value());
+                FGNvngxReplacement.set_from_config(replacement);
+
+                if (replacement == FGNvngxReplacement::Custom)
                     State::Instance().fgNvngxCustom = FGNvngxReplacementString.value();
-                }
             }
 
             if (auto forceXell = readBool("fakenvapi", "ForceXeLL"); forceXell.has_value() && forceXell.value())
@@ -1377,7 +1367,7 @@ bool Config::SaveIni()
             }
 
             std::string value = upscaler
-                                    .transform(UpscalerToCode) // Turn enum into string
+                                    .transform(EnumToCode<Upscaler>) // Turn enum into string
                                     .value_or("auto");
 
             ini.SetValue("Upscalers", key, value.c_str());
@@ -1388,7 +1378,7 @@ bool Config::SaveIni()
         SaveUpscaler("VulkanUpscaler", Instance()->VulkanUpscaler, Instance()->CustomUpscalerVk);
 
         if (auto regular = Instance()->RRRegularUpscaler.value_for_config(); regular.has_value())
-            ini.SetValue("Upscalers", "RRUpscaler", UpscalerToCode(regular.value()).c_str());
+            ini.SetValue("Upscalers", "RRUpscaler", EnumToCode(regular.value()).c_str());
         else
             ini.SetValue("Upscalers", "RRUpscaler", Instance()->CustomRRUpscaler.value_for_config_or("auto").c_str());
 
@@ -1413,18 +1403,10 @@ bool Config::SaveIni()
         if (auto FGNvngxReplacementHeld = Instance()->FGNvngxReplacement.value_for_config();
             FGNvngxReplacementHeld.has_value())
         {
-            if (FGNvngxReplacementHeld.value() == FGNvngxReplacement::None)
-                FGNvngxReplacementString = "None";
-            else if (FGNvngxReplacementHeld.value() == FGNvngxReplacement::Nukems)
-                FGNvngxReplacementString = "Nukems";
-            else if (FGNvngxReplacementHeld.value() == FGNvngxReplacement::Arturs)
-                FGNvngxReplacementString = "Arturs";
-            else if (FGNvngxReplacementHeld.value() == FGNvngxReplacement::FFX)
-                FGNvngxReplacementString = "FFX";
-            else if (FGNvngxReplacementHeld.value() == FGNvngxReplacement::Combo)
-                FGNvngxReplacementString = "Combo";
-            else if (FGNvngxReplacementHeld.value() == FGNvngxReplacement::Custom)
+            if (FGNvngxReplacementHeld.value() == FGNvngxReplacement::Custom)
                 FGNvngxReplacementString = State::Instance().fgNvngxCustom;
+            else
+                FGNvngxReplacementString = EnumToCode(FGNvngxReplacementHeld.value());
         }
         ini.SetValue("FrameGen", "FGNvngxReplacement", FGNvngxReplacementString.c_str());
 

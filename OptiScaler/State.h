@@ -90,6 +90,18 @@ enum class FGNvngxReplacement : uint32_t
     Custom, // State::fgNvngxCustom folder in custom
 };
 
+template <> struct EnumConfig<FGNvngxReplacement>
+{
+    // Any other value is the name of a custom folder
+    static constexpr auto default_value = FGNvngxReplacement::Custom;
+
+    static constexpr std::pair<FGNvngxReplacement, std::string_view> mapping[] = {
+        { FGNvngxReplacement::None, "None" },     { FGNvngxReplacement::Nukems, "Nukems" },
+        { FGNvngxReplacement::Arturs, "Arturs" }, { FGNvngxReplacement::FFX, "FFX" },
+        { FGNvngxReplacement::Combo, "Combo" },
+    };
+};
+
 enum class WorkingMode : uint32_t
 {
     Dxgi,

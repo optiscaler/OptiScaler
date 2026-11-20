@@ -73,6 +73,25 @@ enum class Upscaler
     Reset
 };
 
+template <> struct EnumConfig<Upscaler>
+{
+    static constexpr auto default_value = Upscaler::Reset;
+
+    // CodeToEnum takes the first match by code and EnumToCode the first match by value, so the aliases below are only
+    // read and DLSSD is only written
+    static constexpr std::pair<Upscaler, std::string_view> mapping[] = {
+        { Upscaler::XeSS, "xess" },         { Upscaler::XeSS_on12, "xess_12" },
+        { Upscaler::FSR21, "fsr21" },       { Upscaler::FSR21_on12, "fsr21_12" },
+        { Upscaler::FSR22, "fsr22" },       { Upscaler::FSR22_on12, "fsr22_12" },
+        { Upscaler::FFX, "ffx" },           { Upscaler::FFX_on12, "ffx_12" },
+        { Upscaler::DLSS, "dlss" },         { Upscaler::DLSS_on12, "dlss_12" },
+        { Upscaler::FSR31, "fsr31" },       // DX11 only, CodeToUpscalerFfx reads it as FFX on DX12 and Vulkan
+        { Upscaler::DLSS, "dlssd" },        // Ray reconstruction is picked by RRUpscaler
+        { Upscaler::FFX_on12, "fsr31_12" }, // From before FSR 3.1 got renamed to FFX
+        { Upscaler::DLSSD, "dlssd" },
+    };
+};
+
 enum class ApiUpscalerInput
 {
     DLSS_DX11,
@@ -279,16 +298,6 @@ inline bool IsRRRegularUpscaler(Upscaler upscaler)
            upscaler == Upscaler::FFX || upscaler == Upscaler::DLSS;
 }
 
-// Converts enum to the string codes for config
-std::string UpscalerToCode(Upscaler upscaler);
-
-// Converts string codes into enum for config
-Upscaler CodeToUpscaler(const std::string& code);
-
-// Upscalers that use FFX got renamed from fsr31 to ffx
-// Needs this function for compatibility for now
-Upscaler CodeToUpscalerFfx(const std::string& code);
-
 // Enum to String Code
 template <typename T> std::string EnumToCode(T value)
 {
@@ -314,4 +323,14 @@ template <typename T> T CodeToEnum(std::string_view code)
     }
 
     return EnumConfig<T>::default_value;
+}
+
+// Upscalers that use FFX got renamed from fsr31 to ffx, on DX11 fsr31 is still the native DX11 FSR 3.1
+// DX11: fsr31 -> fsr31, fsr31_12 -> ffx_12
+// DX12: fsr31 -> ffx
+// VK:   fsr31 -> ffx, fsr31_12 -> ffx_12
+inline Upscaler CodeToUpscalerFfx(std::string_view code)
+{
+    auto upscaler = CodeToEnum<Upscaler>(code);
+    return upscaler == Upscaler::FSR31 ? Upscaler::FFX : upscaler;
 }

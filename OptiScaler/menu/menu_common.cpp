@@ -307,8 +307,22 @@ enum OverlayRow : int
     OverlayRow_COUNT,
 };
 
-static const char* overlayRowKeys[] = { "fps",      "upscale",       "frametime", "frametimegraph",
-                                        "upscaler", "upscalergraph", "lowlatency" };
+template <> struct EnumConfig<OverlayRow>
+{
+    // Unknown keys are skipped
+    static constexpr auto default_value = OverlayRow_COUNT;
+
+    static constexpr std::pair<OverlayRow, std::string_view> mapping[] = {
+        { OverlayRow_Fps, "fps" },
+        { OverlayRow_Upscale, "upscale" },
+        { OverlayRow_FrameTime, "frametime" },
+        { OverlayRow_FrameTimeGraph, "frametimegraph" },
+        { OverlayRow_UpscalerTime, "upscaler" },
+        { OverlayRow_UpscalerTimeGraph, "upscalergraph" },
+        { OverlayRow_LowLatency, "lowlatency" },
+    };
+};
+
 static const char* overlayRowNames[] = {
     "FPS",           "Upscale Ratio",       "Frame Time",         "Frame Time Graph",
     "Upscaler Time", "Upscaler Time Graph", "Low Latency Timings"
@@ -381,11 +395,8 @@ static std::vector<OverlayRowEntry> OverlayRows(FpsOverlay type)
         if (!shown)
             name.remove_prefix(1);
 
-        for (int row = 0; row < OverlayRow_COUNT; row++)
-        {
-            if (name == overlayRowKeys[row] && !listed(row))
-                rows.push_back({ row, shown });
-        }
+        if (const auto row = CodeToEnum<OverlayRow>(name); row != OverlayRow_COUNT && !listed(row))
+            rows.push_back({ row, shown });
     }
 
     for (int row = 0; row < OverlayRow_COUNT; row++)
@@ -402,7 +413,7 @@ static void SetOverlayRows(const std::vector<OverlayRowEntry>& rows)
     std::string keys;
 
     for (const auto& entry : rows)
-        keys += (keys.empty() ? "" : ",") + std::string(entry.shown ? "" : "-") + overlayRowKeys[entry.row];
+        keys += (keys.empty() ? "" : ",") + std::string(entry.shown ? "" : "-") + EnumToCode((OverlayRow) entry.row);
 
     Config::Instance()->FpsOverlayRows = keys;
 }
@@ -8736,7 +8747,7 @@ void MenuCommon::RenderFpsOverlaySettings(RenderMenuContext& ctx)
                 for (size_t i = 0; i < shownRows.size(); i++)
                 {
                     const int row = shownRows[i].row;
-                    ScopedID rowId { overlayRowKeys[row] };
+                    ScopedID rowId { EnumToCode((OverlayRow) row).c_str() };
 
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
