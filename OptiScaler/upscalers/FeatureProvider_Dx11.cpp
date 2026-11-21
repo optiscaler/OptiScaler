@@ -123,6 +123,10 @@ bool FeatureProvider_Dx11::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NG
         upscaler = Upscaler::FSR22;
         loaded = true; // Assuming the fallback always loads successfully
     }
+    else if (!custom.empty())
+    {
+        (*feature)->SetCustomName(custom);
+    }
 
     if (!rayReconstruction)
         cfg.Dx11Upscaler = upscaler;

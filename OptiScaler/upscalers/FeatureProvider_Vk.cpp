@@ -115,6 +115,10 @@ bool FeatureProvider_Vk::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NGX_
         upscaler = Upscaler::FSR22;
         loaded = true; // Assuming the fallback always loads successfully
     }
+    else if (!custom.empty())
+    {
+        (*feature)->SetCustomName(custom);
+    }
 
     // Ray reconstruction's DLSSD isn't one of the upscalers, nor is a regular one picked for it
     if (rayReconstruction)

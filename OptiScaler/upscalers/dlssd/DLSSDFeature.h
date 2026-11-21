@@ -17,7 +17,6 @@ class DLSSDFeature : public virtual IFeature
 
     // Custom DLSSD, nullptr for NVIDIA's
     Nvngx_RRDllProxy* _custom = nullptr;
-    std::string _customName;
 
     void ProcessEvaluateParams(NVSDK_NGX_Parameter* InParameters);
     void ProcessInitParams(NVSDK_NGX_Parameter* InParameters);
@@ -28,9 +27,6 @@ class DLSSDFeature : public virtual IFeature
   public:
     feature_version Version() override { return feature_version { _version.major, _version.minor, _version.patch }; }
     Upscaler GetUpscalerType() const override { return Upscaler::DLSSD; }
-
-    // Empty for NVIDIA's
-    const std::string& CustomName() const { return _customName; }
 
     DLSSDFeature(unsigned int handleId, NVSDK_NGX_Parameter* InParameters);
 

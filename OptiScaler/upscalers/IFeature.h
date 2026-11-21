@@ -106,6 +106,9 @@ class IFeature
     std::unordered_set<std::pair<float, float>, hashFunction> _jitterInfo;
 
   protected:
+    // Name of the custom provider it runs, empty for the regular ones
+    std::string _customName;
+
     // D3D11with12
     inline static ID3D12Device* _dx11on12Device = nullptr;
     inline static ID3D12Device* _localDx11on12Device = nullptr;
@@ -178,7 +181,10 @@ class IFeature
     virtual Upscaler GetUpscalerType() const = 0;
     virtual API Api() const = 0;
     std::string Name() const { return UpscalerDisplayName(GetUpscalerType()); };
-    std::string ShortName() const { return UpscalerShortName(GetUpscalerType()); }; // Without the version
+    // Without the version, a custom provider's name instead of the upscaler it runs as
+    std::string ShortName() const { return _customName.empty() ? UpscalerShortName(GetUpscalerType()) : _customName; };
+    const std::string& CustomName() const { return _customName; }
+    void SetCustomName(const std::string& name) { _customName = name; }
     virtual std::optional<double> ReadUpscalerTime(void* commandQueue) { return std::nullopt; }
     virtual void ReadDetailedGpuTimes(void* commandQueue, std::vector<DetailedGpuTime>& detailedGpuTimes) {};
 
