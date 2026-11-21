@@ -112,17 +112,17 @@ void IFGFeature_Vk::PrepareDevice(VkPhysicalDevice physicalDevice, VkDeviceCreat
     _queueCreateInfos.assign(createInfo.pQueueCreateInfos,
                              createInfo.pQueueCreateInfos + createInfo.queueCreateInfoCount);
 
-    for (auto& queue : _extraQueues)
+    // A family with enough free queues and the fewest capabilities beyond the needed ones
+    auto pickFamily = [&](const ExtraQueue& queue, uint32_t needed)
     {
-        // A family with a free queue and the fewest capabilities beyond the needed ones
-        queue.family = UINT32_MAX;
+        uint32_t picked = UINT32_MAX;
         int fewestExtra = INT_MAX;
 
         for (uint32_t family = 0; family < familyCount; family++)
         {
             auto familyCaps = caps(families[family].queueFlags);
 
-            if ((familyCaps & queue.flags) != queue.flags || used[family] >= families[family].queueCount)
+            if ((familyCaps & queue.flags) != queue.flags || used[family] + needed > families[family].queueCount)
                 continue;
 
             if (queue.present && !vkGetPhysicalDeviceWin32PresentationSupportKHR(physicalDevice, family))
@@ -131,9 +131,36 @@ void IFGFeature_Vk::PrepareDevice(VkPhysicalDevice physicalDevice, VkDeviceCreat
             if (int extra = std::popcount(familyCaps & ~queue.flags); extra < fewestExtra)
             {
                 fewestExtra = extra;
-                queue.family = family;
+                picked = family;
             }
         }
+
+        return picked;
+    };
+
+    // Consecutive queues of the same kind go to one family when one has room for all of them, Streamline uses its
+    // queues of a kind as consecutive ones of one family
+    uint32_t groupFamily = UINT32_MAX;
+    size_t groupEnd = 0;
+
+    for (size_t q = 0; q < _extraQueues.size(); q++)
+    {
+        auto& queue = _extraQueues[q];
+
+        if (q >= groupEnd)
+        {
+            groupEnd = q + 1;
+
+            while (groupEnd < _extraQueues.size() && _extraQueues[groupEnd].flags == queue.flags &&
+                   _extraQueues[groupEnd].present == queue.present)
+            {
+                groupEnd++;
+            }
+
+            groupFamily = pickFamily(queue, (uint32_t) (groupEnd - q));
+        }
+
+        queue.family = groupFamily != UINT32_MAX ? groupFamily : pickFamily(queue, 1);
 
         if (queue.family == UINT32_MAX)
         {
