@@ -197,12 +197,12 @@ inline bool HasExport(const std::string& name, Kind kind, const char* exportName
 
     if (inserted)
     {
-        auto image = KernelBaseProxy::LoadLibraryExW_()(path.c_str(), NULL,
-                                                        LOAD_LIBRARY_AS_IMAGE_RESOURCE | LOAD_LIBRARY_AS_DATAFILE);
+        // Normal call on purpose
+        auto image = LoadLibraryExW(path.c_str(), NULL, LOAD_LIBRARY_AS_IMAGE_RESOURCE | LOAD_LIBRARY_AS_DATAFILE);
         it->second = ManualGetProcAddress(image, exportName) != nullptr;
 
         if (image != nullptr)
-            KernelBaseProxy::FreeLibrary_()(image);
+            FreeLibrary(image);
     }
 
     return it->second;
