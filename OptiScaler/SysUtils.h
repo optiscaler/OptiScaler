@@ -177,4 +177,39 @@ inline static void to_lower_in_place(std::wstring& wstring)
     std::transform(wstring.begin(), wstring.end(), wstring.begin(), ::towlower);
 }
 
+// Export lookup that reads the module's export table directly, for exports GetProcAddress hides and for modules
+// mapped with LOAD_LIBRARY_AS_IMAGE_RESOURCE, whose handles carry tag bits in the low 2 bits. 64-bit images only.
+inline void* ManualGetProcAddress(HMODULE hModule, const char* functionName)
+{
+    auto base = (BYTE*) ((ULONG_PTR) hModule & ~(ULONG_PTR) 3);
+    if (base == nullptr)
+        return nullptr;
+
+    auto dosHeader = (IMAGE_DOS_HEADER*) base;
+    if (dosHeader->e_magic != IMAGE_DOS_SIGNATURE)
+        return nullptr;
+
+    auto ntHeaders = (IMAGE_NT_HEADERS64*) (base + dosHeader->e_lfanew);
+    if (ntHeaders->Signature != IMAGE_NT_SIGNATURE || ntHeaders->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC)
+        return nullptr;
+
+    IMAGE_DATA_DIRECTORY exportData = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+    if (!exportData.VirtualAddress)
+        return nullptr;
+
+    auto exportDir = (IMAGE_EXPORT_DIRECTORY*) (base + exportData.VirtualAddress);
+
+    auto nameRvas = (DWORD*) (base + exportDir->AddressOfNames);
+    auto ordinalTable = (WORD*) (base + exportDir->AddressOfNameOrdinals);
+    auto functionTable = (DWORD*) (base + exportDir->AddressOfFunctions);
+
+    for (DWORD i = 0; i < exportDir->NumberOfNames; ++i)
+    {
+        if (_stricmp((const char*) base + nameRvas[i], functionName) == 0)
+            return base + functionTable[ordinalTable[i]];
+    }
+
+    return nullptr;
+}
+
 #include "OptiTypes.h"

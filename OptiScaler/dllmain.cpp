@@ -62,46 +62,6 @@ typedef const char*(CDECL* PFN_wine_get_version)(void);
 typedef void (*PFN_InitializeASI)(void);
 typedef bool (*PFN_PatchResult)(void);
 
-static inline void* ManualGetProcAddress(HMODULE hModule, const char* functionName)
-{
-    if (!hModule)
-        return nullptr;
-
-    // Verify the alignment
-    auto dosHeader = (IMAGE_DOS_HEADER*) hModule;
-    if (dosHeader->e_magic != IMAGE_DOS_SIGNATURE)
-        return nullptr;
-
-    auto ntHeaders = (IMAGE_NT_HEADERS*) ((BYTE*) hModule + dosHeader->e_lfanew);
-    if (ntHeaders->Signature != IMAGE_NT_SIGNATURE)
-        return nullptr;
-
-    // Look at the export directory
-    IMAGE_DATA_DIRECTORY exportData = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
-    if (!exportData.VirtualAddress)
-        return nullptr;
-
-    auto exportDir = (IMAGE_EXPORT_DIRECTORY*) ((BYTE*) hModule + exportData.VirtualAddress);
-
-    DWORD* nameRvas = (DWORD*) ((BYTE*) hModule + exportDir->AddressOfNames);
-    WORD* ordinalTable = (WORD*) ((BYTE*) hModule + exportDir->AddressOfNameOrdinals);
-    DWORD* functionTable = (DWORD*) ((BYTE*) hModule + exportDir->AddressOfFunctions);
-
-    // Iterate over exported names
-    for (DWORD i = 0; i < exportDir->NumberOfNames; ++i)
-    {
-        const char* name = (const char*) hModule + nameRvas[i];
-        if (_stricmp(name, functionName) == 0)
-        {
-            WORD ordinal = ordinalTable[i];
-            DWORD funcRva = functionTable[ordinal];
-            return (BYTE*) hModule + funcRva;
-        }
-    }
-
-    return nullptr; // Not found
-}
-
 static bool IsRunningOnWine()
 {
     LOG_FUNC();

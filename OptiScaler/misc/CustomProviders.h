@@ -7,6 +7,7 @@
 #include <proxies/Ntdll_Proxy.h>
 
 #include <filesystem>
+#include <map>
 
 // Custom providers are dlls in custom/<name>/<kind> of the Opti folder, or ones an ASI plugin registered with
 // RegisterProvider. Each kind a name has is an entry in the upscaler or FG lists:
@@ -14,7 +15,7 @@
 //   custom/<name>/ffx_vk     Vulkan FFX upscaler
 //   custom/<name>/ffx_fg     DX12 FFX frame generation and its swapchain, an FSR FG provider
 //   custom/<name>/ffx_fg_vk  Vulkan FFX frame generation and its swapchain, an FSR FG provider
-//   custom/<name>/dlss       NGX runtime that runs DLSS on DX12 and Vulkan, on DX11 through DX12 interop
+//   custom/<name>/dlss       NGX runtime that runs DLSS on the APIs it exports, DX11 natively or through DX12 interop
 //   custom/<name>/dlssg      nvngx_dlssg replacement, an FG Nvngx entry
 //   custom/<name>/dlssd      nvngx_dlssd replacement, a ray reconstruction (RRUpscaler) entry
 // The dll can have any name. When the folder has more dlls, like ones the dll loads itself, the standard name of the
@@ -163,20 +164,57 @@ inline std::vector<std::string> List(Kind kind)
 
 inline bool Has(const std::string& name, Kind kind) { return !name.empty() && Contains(List(kind), name); }
 
+// The first plugin that registered the name for that kind
+inline std::optional<PluginProvider> FindPlugin(const std::string& name, Kind kind)
+{
+    std::scoped_lock lock(pluginMutex);
+
+    for (auto& provider : pluginProviders)
+    {
+        if (provider.kind == kind && _stricmp(provider.name.c_str(), name.c_str()) == 0)
+            return provider;
+    }
+
+    return std::nullopt;
+}
+
+// Whether the name's provider of that kind has the export: a plugin's resolver, else the folder dll's export table,
+// mapped as an image resource so none of its code runs (checked once per dll and export)
+inline bool HasExport(const std::string& name, Kind kind, const char* exportName)
+{
+    if (auto plugin = FindPlugin(name, kind))
+        return plugin->getProc(plugin->userData, exportName) != nullptr;
+
+    auto path = DllPath(name, kind);
+    if (path.empty())
+        return false;
+
+    static std::mutex cacheMutex;
+    static std::map<std::pair<std::wstring, std::string>, bool> cache;
+
+    std::scoped_lock lock(cacheMutex);
+    auto [it, inserted] = cache.try_emplace({ path.wstring(), exportName });
+
+    if (inserted)
+    {
+        auto image = KernelBaseProxy::LoadLibraryExW_()(path.c_str(), NULL,
+                                                        LOAD_LIBRARY_AS_IMAGE_RESOURCE | LOAD_LIBRARY_AS_DATAFILE);
+        it->second = ManualGetProcAddress(image, exportName) != nullptr;
+
+        if (image != nullptr)
+            KernelBaseProxy::FreeLibrary_()(image);
+    }
+
+    return it->second;
+}
+
 // Exports of the name's kind, a plugin's first, then the folder's dll. Empty when there are none.
 inline Exports Load(const std::string& name, Kind kind)
 {
+    if (auto plugin = FindPlugin(name, kind))
     {
-        std::scoped_lock lock(pluginMutex);
-
-        for (auto& provider : pluginProviders)
-        {
-            if (provider.kind == kind && _stricmp(provider.name.c_str(), name.c_str()) == 0)
-            {
-                LOG_INFO("Using custom {} from a plugin", name);
-                return { .getProc = provider.getProc, .userData = provider.userData };
-            }
-        }
+        LOG_INFO("Using custom {} from a plugin", name);
+        return { .getProc = plugin->getProc, .userData = plugin->userData };
     }
 
     auto path = DllPath(name, kind);
@@ -221,32 +259,38 @@ inline CustomOptional<Upscaler, SoftDefault>& UpscalerSetting(API api)
     return api == API::DX11 ? cfg->Dx11Upscaler : api == API::Vulkan ? cfg->VulkanUpscaler : cfg->Dx12Upscaler;
 }
 
-// Upscalers a custom name runs as on the API, the native one first
+// Upscalers a custom name runs as on the API, the native one first. A DLSS runtime is one for the APIs it exports
+// CreateFeature for.
 inline std::vector<Upscaler> Upscalers(const std::string& name, API api)
 {
     std::vector<Upscaler> upscalers;
 
-    auto add = [&](Upscaler upscaler, Kind kind)
+    auto add = [&](Upscaler upscaler, Kind kind, const char* requiredExport = nullptr)
     {
-        if (Has(name, kind))
+        if (Has(name, kind) && (requiredExport == nullptr || HasExport(name, kind, requiredExport)))
             upscalers.push_back(upscaler);
     };
 
+    constexpr auto dx11Dlss = "NVSDK_NGX_D3D11_CreateFeature";
+    constexpr auto dx12Dlss = "NVSDK_NGX_D3D12_CreateFeature";
+    constexpr auto vkDlss = "NVSDK_NGX_VULKAN_CreateFeature";
+
     if (api == API::DX11)
     {
+        add(Upscaler::DLSS, Kind::Dlss, dx11Dlss);
         add(Upscaler::FFX_on12, Kind::Ffx);
-        add(Upscaler::DLSS_on12, Kind::Dlss);
+        add(Upscaler::DLSS_on12, Kind::Dlss, dx12Dlss);
     }
     else if (api == API::Vulkan)
     {
         add(Upscaler::FFX, Kind::FfxVk);
         add(Upscaler::FFX_on12, Kind::Ffx);
-        add(Upscaler::DLSS, Kind::Dlss);
+        add(Upscaler::DLSS, Kind::Dlss, vkDlss);
     }
     else
     {
         add(Upscaler::FFX, Kind::Ffx);
-        add(Upscaler::DLSS, Kind::Dlss);
+        add(Upscaler::DLSS, Kind::Dlss, dx12Dlss);
     }
 
     return upscalers;

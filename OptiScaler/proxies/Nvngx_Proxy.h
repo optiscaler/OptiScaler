@@ -595,6 +595,7 @@ struct NvngxModule : NgxExports
 struct CustomNgxModule
 {
     NvngxModule module;
+    bool dx11Inited = false;
     bool dx12Inited = false;
     bool vulkanInited = false;
 };
@@ -655,6 +656,33 @@ class NVNGXProxy
     {
         return Config::Instance()->UseGenericAppIdWithDlss.value_or_default() ? app_id_override
                                                                               : State::Instance().NVNGX_ApplicationId;
+    }
+
+    static NVSDK_NGX_Result InitDx11Module(const NvngxModule& module, ID3D11Device* InDevice)
+    {
+        NVSDK_NGX_FeatureCommonInfo fcInfo {};
+        GetFeatureCommonInfo(&fcInfo);
+        NVSDK_NGX_Result nvResult = NVSDK_NGX_Result_Fail;
+
+        if (State::Instance().NVNGX_ProjectId != "" && module.D3D11_Init_ProjectID != nullptr)
+        {
+            LOG_DEBUG("module.D3D11_Init_ProjectID!");
+
+            nvResult = module.D3D11_Init_ProjectID(ProjectIdForDlss(), State::Instance().NVNGX_Engine,
+                                                   State::Instance().NVNGX_EngineVersion.c_str(),
+                                                   State::Instance().NVNGX_ApplicationDataPath.c_str(), InDevice,
+                                                   State::Instance().NVNGX_Version, &fcInfo);
+        }
+        else if (module.D3D11_Init_Ext != nullptr)
+        {
+            LOG_DEBUG("module.D3D11_Init_Ext!");
+            nvResult = module.D3D11_Init_Ext(AppIdForDlss(), State::Instance().NVNGX_ApplicationDataPath.c_str(),
+                                             InDevice, State::Instance().NVNGX_Version, &fcInfo);
+        }
+
+        LOG_DEBUG("result: {0:X}", (UINT) nvResult);
+
+        return nvResult;
     }
 
     static NVSDK_NGX_Result InitDx12Module(const NvngxModule& module, ID3D12Device* InDevice)
@@ -895,29 +923,7 @@ class NVNGXProxy
         if (_module.dll == nullptr)
             return false;
 
-        NVSDK_NGX_FeatureCommonInfo fcInfo {};
-        GetFeatureCommonInfo(&fcInfo);
-        NVSDK_NGX_Result nvResult = NVSDK_NGX_Result_Fail;
-
-        if (State::Instance().NVNGX_ProjectId != "" && _module.D3D11_Init_ProjectID != nullptr)
-        {
-            LOG_DEBUG("_module.D3D11_Init_ProjectID!");
-
-            nvResult = _module.D3D11_Init_ProjectID(ProjectIdForDlss(), State::Instance().NVNGX_Engine,
-                                                    State::Instance().NVNGX_EngineVersion.c_str(),
-                                                    State::Instance().NVNGX_ApplicationDataPath.c_str(), InDevice,
-                                                    State::Instance().NVNGX_Version, &fcInfo);
-        }
-        else if (_module.D3D11_Init_Ext != nullptr)
-        {
-            LOG_DEBUG("_module.D3D11_Init_Ext!");
-            nvResult = _module.D3D11_Init_Ext(AppIdForDlss(), State::Instance().NVNGX_ApplicationDataPath.c_str(),
-                                              InDevice, State::Instance().NVNGX_Version, &fcInfo);
-        }
-
-        LOG_DEBUG("result: {0:X}", (UINT) nvResult);
-
-        _dx11Inited = (nvResult == NVSDK_NGX_Result_Success);
+        _dx11Inited = InitDx11Module(_module, InDevice) == NVSDK_NGX_Result_Success;
         return _dx11Inited;
     }
 
@@ -1034,12 +1040,41 @@ class NVNGXProxy
             usable = (module.VULKAN_Init_ProjectID != nullptr || module.VULKAN_Init_Ext != nullptr) &&
                      module.VULKAN_CreateFeature != nullptr && module.VULKAN_EvaluateFeature != nullptr &&
                      module.VULKAN_ReleaseFeature != nullptr;
+        else if (api == API::DX11)
+            usable = (module.D3D11_Init_ProjectID != nullptr || module.D3D11_Init_Ext != nullptr) &&
+                     module.D3D11_CreateFeature != nullptr && module.D3D11_EvaluateFeature != nullptr &&
+                     module.D3D11_ReleaseFeature != nullptr;
         else
             usable = (module.D3D12_Init_ProjectID != nullptr || module.D3D12_Init_Ext != nullptr) &&
                      module.D3D12_CreateFeature != nullptr && module.D3D12_EvaluateFeature != nullptr &&
                      module.D3D12_ReleaseFeature != nullptr;
 
         return usable ? &custom : nullptr;
+    }
+
+    // Inited once until ShutdownCustomDx11
+    static bool InitCustomDx11(CustomNgxModule& custom, ID3D11Device* InDevice)
+    {
+        if (!custom.dx11Inited)
+            custom.dx11Inited = InitDx11Module(custom.module, InDevice) == NVSDK_NGX_Result_Success;
+
+        return custom.dx11Inited;
+    }
+
+    static void ShutdownCustomDx11(CustomNgxModule& custom, ID3D11Device* InDevice)
+    {
+        if (!custom.dx11Inited)
+            return;
+
+        if (custom.module.D3D11_Shutdown != nullptr)
+            custom.module.D3D11_Shutdown();
+        else if (custom.module.D3D11_Shutdown1 != nullptr)
+        {
+            unsigned int remaining = 0;
+            custom.module.D3D11_Shutdown1(InDevice, &remaining);
+        }
+
+        custom.dx11Inited = false;
     }
 
     // Inited once until ShutdownCustomDx12

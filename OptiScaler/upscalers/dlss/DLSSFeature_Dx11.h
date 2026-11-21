@@ -6,10 +6,20 @@
 class DLSSFeatureDx11 : public DLSSFeature, public IFeature_Dx11
 {
   private:
+    // Custom NGX runtime, nullptr for NVIDIA's
+    CustomNgxModule* _custom = nullptr;
+
+    // Functions of the NGX runtime this runs on
+    PFN_D3D11_CreateFeature CreateFeature() const;
+    PFN_D3D11_EvaluateFeature EvaluateFeature() const;
+    PFN_D3D11_ReleaseFeature ReleaseFeature() const;
+
   protected:
   public:
     bool InitInternal(ID3D11DeviceContext* InContext, NVSDK_NGX_Parameter* InParameters) override;
     bool EvaluateInternal(ID3D11DeviceContext* InDeviceContext, NVSDK_NGX_Parameter* InParameters) override;
+
+    void Shutdown(ID3D11Device* InDevice);
 
     feature_version Version() override { return DLSSFeature::Version(); }
     Upscaler GetUpscalerType() const final { return DLSSFeature::GetUpscalerType(); }
@@ -26,6 +36,6 @@ class DLSSFeatureDx11 : public DLSSFeature, public IFeature_Dx11
 
     bool IsWithDx12() override { return false; }
 
-    DLSSFeatureDx11(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters);
+    DLSSFeatureDx11(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters, const std::string& customUpscaler = "");
     ~DLSSFeatureDx11();
 };

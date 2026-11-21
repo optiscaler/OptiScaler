@@ -5,6 +5,7 @@
 
 #include <upscalers/IFeature_Dx11.h>
 #include <upscalers/FeatureProvider_Dx11.h>
+#include <upscalers/dlss/DLSSFeature_Dx11.h>
 
 #include "NVNGX_DLSS.h"
 #include "NVNGX_Parameter.h"
@@ -306,6 +307,9 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_Shutdown()
     // }
 
     // Dx11Contexts.clear();
+
+    if (const auto dlssFeature = dynamic_cast<DLSSFeatureDx11*>(State::Instance().currentFeature))
+        dlssFeature->Shutdown(D3D11Device);
 
     D3D11Device = nullptr;
     State::Instance().currentFeature = nullptr;
