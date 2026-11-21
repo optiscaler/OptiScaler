@@ -204,7 +204,7 @@ bool DLSSG_Dx12::Dispatch()
         return false;
     }
 
-    SetOptions(true);
+    SetOptions(true, _hwnd != nullptr ? _hwnd : State::Instance().currentSwapchainDesc.OutputWindow);
 
     if (!_haveHudless.has_value())
     {
