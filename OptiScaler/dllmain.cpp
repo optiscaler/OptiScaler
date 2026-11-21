@@ -170,9 +170,16 @@ static void RunAgilityUpgrade(HMODULE dx12Module)
                 pathSet = true;
             }
 
+            auto corePath =
+                std::filesystem::path(Config::Instance()->MainDllPath.value()) / L"D3D12_OptiScaler" / L"D3D12Core.dll";
+
             if (path.empty())
             {
                 LOG_ERROR("Can't upgrade Agility SDK, Opti folder isn't reachable from the exe folder");
+            }
+            else if (std::error_code ec; !std::filesystem::exists(corePath, ec))
+            {
+                LOG_ERROR("Can't upgrade Agility SDK, {} is missing", wstring_to_string(corePath.wstring()));
             }
             else
             {
@@ -1323,10 +1330,21 @@ static void CheckWorkingMode()
     if (State::Instance().isWindows10 && !State::Instance().isRunningOnLinux &&
         !Config::Instance()->FsrAgilitySDKUpgrade.has_value())
     {
+        auto corePath =
+            std::filesystem::path(Config::Instance()->MainDllPath.value()) / L"D3D12_OptiScaler" / L"D3D12Core.dll";
+
         if (gameAgilityVersion < customD3D12SDKVersion)
         {
-            LOG_INFO("Enabling AgilitySDKUpgrade");
-            Config::Instance()->FsrAgilitySDKUpgrade.set_volatile_value(true);
+            if (std::error_code ec; std::filesystem::exists(corePath, ec))
+            {
+                LOG_INFO("Enabling AgilitySDKUpgrade");
+                Config::Instance()->FsrAgilitySDKUpgrade.set_volatile_value(true);
+            }
+            else
+            {
+                LOG_WARN("Game's Agility SDK is older than {}, but AgilitySDKUpgrade can't be enabled, {} is missing",
+                         customD3D12SDKVersion, wstring_to_string(corePath.wstring()));
+            }
         }
     }
 
