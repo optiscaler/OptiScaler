@@ -1248,17 +1248,21 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
             State::Instance().newBackend = entry.upscaler;
 
             // Regular and custom entries share an upscaler type, which the backend change check compares,
-            // so a switch between them is marked here
+            // so a switch between them is marked here. A regular entry always clears the custom name, which the
+            // ini would otherwise save in place of it.
             if (auto& customSetting = CustomProviders::NameSetting(api);
-                !selected && entry.custom != customSetting.value_or("") &&
-                (!entry.custom.empty() || CustomProviders::Runs(customSetting.value_or(""), api, entry.upscaler)))
+                !selected && entry.custom != customSetting.value_or(""))
             {
+                const bool typeUnchanged =
+                    !entry.custom.empty() || CustomProviders::Runs(customSetting.value_or(""), api, entry.upscaler);
+
                 if (entry.custom.empty())
                     customSetting.reset();
                 else
                     customSetting = entry.custom;
 
-                MARK_ALL_BACKENDS_CHANGED();
+                if (typeUnchanged)
+                    MARK_ALL_BACKENDS_CHANGED();
             }
         }
 
