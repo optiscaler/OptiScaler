@@ -2122,7 +2122,22 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                 if (handle != nullptr)
                     HookFSR2Dx12Inputs(handle);
 
-                HookFSR2ExeInputs();
+                const bool hasFsr2Create =
+                    KernelBaseProxy::GetProcAddress_()(exeModule, "ffxFsr2ContextCreate") != nullptr ||
+                    KernelBaseProxy::GetProcAddress_()(
+                        exeModule, "?ffxFsr2ContextCreate@@YAHPEAUFfxFsr2Context@@PEBUFfxFsr2ContextDescription@@@Z") !=
+                        nullptr;
+
+                // Protected executables may still replace their code after static DLL initialization.
+                if (_staticLoad && (hasFsr2Create || Config::Instance()->Fsr2Pattern.value_or_default()))
+                {
+                    if (DxgiHooks::DeferFsr2ExeHooks(HookFSR2ExeInputs))
+                        LOG_INFO("Deferring executable FSR2 hooks until the game's DXGI factory call");
+                    else
+                        LOG_ERROR("Can't defer executable FSR2 hooks: DXGI factory hooks are incomplete");
+                }
+                else
+                    HookFSR2ExeInputs();
             }
         }
 

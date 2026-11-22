@@ -19,7 +19,59 @@ static DxgiProxy::PFN_CreateDxgiFactory1 o_CreateDXGIFactory1 = nullptr;
 static DxgiProxy::PFN_CreateDxgiFactory2 o_CreateDXGIFactory2 = nullptr;
 static bool creatingD3D12DeviceForLuma = false;
 
+static std::atomic<void (*)()> pendingFsr2ExeHooks = nullptr;
+static std::once_flag fsr2ExeHooksOnce;
+
 #pragma intrinsic(_ReturnAddress)
+
+static bool IsGameFactoryCall(void* returnAddress)
+{
+    auto caller = Util::GetCallerModule(returnAddress);
+    if (caller == exeModule)
+        return true;
+    if (caller == dllModule)
+        return false;
+
+    // Engine and interposer DLLs can forward the executable's factory call.
+    void* frames[64] {};
+    auto count = CaptureStackBackTrace(0, ARRAYSIZE(frames), frames, nullptr);
+    for (USHORT i = 0; i < count; ++i)
+    {
+        if (Util::GetCallerModule(frames[i]) == exeModule)
+            return true;
+    }
+
+    return false;
+}
+
+static void HookPendingFsr2ExeInputs(void* returnAddress)
+{
+    if (pendingFsr2ExeHooks.load() == nullptr || State::creatingD3DDevice || IdentifyGpu::isDetecting() ||
+        !IsGameFactoryCall(returnAddress))
+        return;
+
+    std::call_once(fsr2ExeHooksOnce,
+                   []()
+                   {
+                       LOG_INFO("Installing executable FSR2 hooks at the game's DXGI factory call");
+                       auto start = std::chrono::steady_clock::now();
+                       pendingFsr2ExeHooks.load()();
+                       LOG_DEBUG(
+                           "Executable FSR2 hooks installed in {:.3f} ms",
+                           std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+                       pendingFsr2ExeHooks = nullptr;
+                   });
+}
+
+bool DxgiHooks::DeferFsr2ExeHooks(void (*hook)())
+{
+    Hook(true);
+    if (o_CreateDXGIFactory == nullptr || o_CreateDXGIFactory1 == nullptr || o_CreateDXGIFactory2 == nullptr)
+        return false;
+
+    pendingFsr2ExeHooks = hook;
+    return true;
+}
 
 // Special K calls our exports from its DXGI init and when passing on the game's calls
 static bool IsFromSpecialK(void* returnAddress)
@@ -120,6 +172,8 @@ inline static HRESULT hkCreateDXGIFactory(REFIID riid, IDXGIFactory** ppFactory)
     auto caller = Util::WhoIsTheCaller(_ReturnAddress());
     LOG_DEBUG("Caller: {}", caller);
 
+    HookPendingFsr2ExeInputs(_ReturnAddress());
+
     if (creatingD3D12DeviceForLuma)
     {
         LOG_DEBUG("Bypassing hooking/wrapping during Luma D3D12 device creation");
@@ -182,6 +236,8 @@ inline static HRESULT hkCreateDXGIFactory1(REFIID riid, IDXGIFactory1** ppFactor
 {
     auto caller = Util::WhoIsTheCaller(_ReturnAddress());
     LOG_DEBUG("Caller: {}", caller);
+
+    HookPendingFsr2ExeInputs(_ReturnAddress());
 
     if (creatingD3D12DeviceForLuma)
     {
@@ -246,6 +302,8 @@ inline static HRESULT hkCreateDXGIFactory2(UINT Flags, REFIID riid, IDXGIFactory
     auto caller = Util::WhoIsTheCaller(_ReturnAddress());
     LOG_DEBUG("Caller: {}", caller);
 
+    HookPendingFsr2ExeInputs(_ReturnAddress());
+
     if (creatingD3D12DeviceForLuma)
     {
         LOG_DEBUG("Bypassing hooking/wrapping during Luma D3D12 device creation");
@@ -305,15 +363,18 @@ inline static HRESULT hkCreateDXGIFactory2(UINT Flags, REFIID riid, IDXGIFactory
     return result;
 }
 
-void DxgiHooks::Hook()
+void DxgiHooks::Hook(bool force)
 {
     std::lock_guard<std::mutex> lock(hookMutex);
+
+    if (force)
+        DxgiProxy::Init();
 
     // If not spoofing and
     // using no frame generation (or Nukem's) and
     // not using DXGI spoofing we don't need DXGI hooks
     // Probably I forgot something but we can add it later
-    if (!Config::Instance()->OverlayMenu.value_or_default() &&
+    if (!force && !Config::Instance()->OverlayMenu.value_or_default() &&
         (Config::Instance()->FGInput.value_or_default() == FGInput::NoFG ||
          Config::Instance()->FGInput.value_or_default() == FGInput::NvngxFG) &&
         !Config::Instance()->DxgiSpoofing.value_or_default())
