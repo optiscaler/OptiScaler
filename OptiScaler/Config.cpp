@@ -584,7 +584,7 @@ bool Config::Reload(std::filesystem::path iniPath)
                 BabaNeuralDebugView.set_from_config(std::clamp(setting.value(), 0, 2));
 
             if (auto setting = readInt("CAS", "OptiSharpenModel"); setting.has_value())
-                OptiSharpenModel.set_from_config(std::clamp(setting.value(), 0, 5));
+                OptiSharpenModel.set_from_config(std::clamp(setting.value(), 0, 3));
 
             if (auto setting = readInt("CAS", "OptiSharpenDebugView"); setting.has_value())
                 OptiSharpenDebugView.set_from_config(std::clamp(setting.value(), 0, 2));

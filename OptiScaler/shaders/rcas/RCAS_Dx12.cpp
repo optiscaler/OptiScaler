@@ -7,7 +7,11 @@
 #include "precompile/da_rcas_sharpen_Shader.h"
 
 #include "precompile/baba_neural_sharpen_Shader.h"
-#include "precompile/opti_sharpen_Shader.h"
+#include "precompile/opti_sharpen_fp16p_Shader.h"
+#include "precompile/opti_sharpen_fp32_Shader.h"
+
+#include "shaders/OPTI_SHARPEN_FP16P_Shader.h"
+#include "shaders/OPTI_SHARPEN_FP32_Shader.h"
 
 #include <Config.h>
 
@@ -101,12 +105,19 @@ bool RCAS_Dx12::DispatchDepthAdaptive(ID3D12PipelineState* pipelineState, ID3D12
     return true;
 }
 
-bool RCAS_Dx12::EnsureNeuralPipeline(SharpenShader InShader)
+ID3D12PipelineState* RCAS_Dx12::NeuralPipeline(SharpenShader InShader, OptiPrecision InPrecision)
+{
+    if (InShader == SharpenShader::OptiSharpen)
+        return _pipelineStateOpti[(size_t) InPrecision];
+
+    return _pipelineStateBaba;
+}
+
+bool RCAS_Dx12::EnsureNeuralPipeline(SharpenShader InShader, OptiPrecision InPrecision)
 {
     const bool isOpti = InShader == SharpenShader::OptiSharpen;
-    auto& pipelineState = isOpti ? _pipelineStateOpti : _pipelineStateBaba;
-    auto& failed = isOpti ? _optiPipelineFailed : _babaPipelineFailed;
-    const char* shaderName = isOpti ? "OptiSharpen" : "BaBa Neural";
+    auto& pipelineState = isOpti ? _pipelineStateOpti[(size_t) InPrecision] : _pipelineStateBaba;
+    auto& failed = isOpti ? _optiPipelineFailed[(size_t) InPrecision] : _babaPipelineFailed;
 
     if (pipelineState != nullptr)
         return true;
@@ -115,14 +126,32 @@ bool RCAS_Dx12::EnsureNeuralPipeline(SharpenShader InShader)
     if (failed || _device == nullptr)
         return false;
 
+    const void* bytecode = baba_neural_sharpen_cso;
+    size_t bytecodeSize = sizeof(baba_neural_sharpen_cso);
+    const char* source = babaNeuralSharpenCode.c_str();
+    std::string shaderName = "BaBa Neural";
+
+    if (isOpti)
+    {
+        shaderName = std::format("OptiSharpen ({})", OptiPrecisionName(InPrecision));
+
+        if (InPrecision == OptiPrecision::Fp16Packed)
+        {
+            bytecode = opti_sharpen_fp16p_cso;
+            bytecodeSize = sizeof(opti_sharpen_fp16p_cso);
+            source = optiSharpenFp16PackedCode.c_str();
+        }
+        else
+        {
+            bytecode = opti_sharpen_fp32_cso;
+            bytecodeSize = sizeof(opti_sharpen_fp32_cso);
+            source = optiSharpenFp32Code.c_str();
+        }
+    }
+
     LOG_INFO("[{0}] Creating {1} sharpening shader", _name, shaderName);
 
-    bool created = isOpti ? CreateComputePipeline(_device, &pipelineState, opti_sharpen_cso, sizeof(opti_sharpen_cso),
-                                                  optiSharpenCode.c_str())
-                          : CreateComputePipeline(_device, &pipelineState, baba_neural_sharpen_cso,
-                                                  sizeof(baba_neural_sharpen_cso), babaNeuralSharpenCode.c_str());
-
-    if (!created)
+    if (!CreateComputePipeline(_device, &pipelineState, bytecode, bytecodeSize, source))
     {
         LOG_ERROR("[{0}] Failed to create compute pipeline for {1}, RCAS will be used instead", _name, shaderName);
         pipelineState = nullptr;
@@ -133,11 +162,11 @@ bool RCAS_Dx12::EnsureNeuralPipeline(SharpenShader InShader)
     return true;
 }
 
-bool RCAS_Dx12::DispatchNeural(SharpenShader InShader, ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InResource,
-                               ID3D12Resource* InMotionVectors, RcasConstants InConstants, ID3D12Resource* OutResource,
-                               FrameDescriptorHeap& currentHeap)
+bool RCAS_Dx12::DispatchNeural(SharpenShader InShader, OptiPrecision InPrecision, ID3D12GraphicsCommandList* InCmdList,
+                               ID3D12Resource* InResource, ID3D12Resource* InMotionVectors, RcasConstants InConstants,
+                               ID3D12Resource* OutResource, FrameDescriptorHeap& currentHeap)
 {
-    auto pipelineState = InShader == SharpenShader::OptiSharpen ? _pipelineStateOpti : _pipelineStateBaba;
+    auto pipelineState = NeuralPipeline(InShader, InPrecision);
 
     if (InMotionVectors == nullptr || pipelineState == nullptr || _device == nullptr)
         return false;
@@ -221,12 +250,16 @@ bool RCAS_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* I
         (sharpnessShader == SharpenShader::DepthAwareDAS || sharpnessShader == SharpenShader::DepthAware))
         sharpnessShader = SharpenShader::RCAS;
 
+    // Read once, the menu can change it meanwhile. FillMotionConstants takes the shader's Model from it.
+    _optiModel = OptiModelSetting();
+    const auto optiPrecision = GetOptiPrecision(_optiModel, false);
+
     // Neural shaders fall back to plain RCAS when their shader can't be created
     const bool isNeural = sharpnessShader == SharpenShader::BabaNeural || sharpnessShader == SharpenShader::OptiSharpen;
-    if (isNeural && !EnsureNeuralPipeline(sharpnessShader))
+    if (isNeural && !EnsureNeuralPipeline(sharpnessShader, optiPrecision))
         sharpnessShader = SharpenShader::RCAS;
 
-    SetTimedShader(sharpnessShader);
+    SetTimedShader(sharpnessShader, optiPrecision);
 
     if (sharpnessShader == SharpenShader::DepthAwareDAS)
     {
@@ -240,8 +273,8 @@ bool RCAS_Dx12::Dispatch(ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* I
     }
     else if (sharpnessShader == SharpenShader::BabaNeural || sharpnessShader == SharpenShader::OptiSharpen)
     {
-        return DispatchNeural(sharpnessShader, InCmdList, InResource, InMotionVectors, InConstants, OutResource,
-                              currentHeap);
+        return DispatchNeural(sharpnessShader, optiPrecision, InCmdList, InResource, InMotionVectors, InConstants,
+                              OutResource, currentHeap);
     }
     else if (sharpnessShader == SharpenShader::RCAS)
     {
@@ -300,7 +333,8 @@ RCAS_Dx12::~RCAS_Dx12()
     DeferredRelease::Release(_pipelineStateDA);
     DeferredRelease::Release(_pipelineStateDASDA);
     DeferredRelease::Release(_pipelineStateBaba);
-    DeferredRelease::Release(_pipelineStateOpti);
+    for (auto& pipelineState : _pipelineStateOpti)
+        DeferredRelease::Release(pipelineState);
 
     for (int i = 0; i < RCAS_NUM_OF_HEAPS; i++)
     {

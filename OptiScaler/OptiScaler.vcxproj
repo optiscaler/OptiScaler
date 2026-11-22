@@ -243,9 +243,11 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="shaders\rcas\precompile\baba_neural_sharpen_Shader.h" />
     <ClInclude Include="shaders\rcas\precompile\baba_neural_sharpen_Shader_Dx11.h" />
     <ClInclude Include="shaders\rcas\precompile\baba_neural_sharpen_Shader_Vk.h" />
-    <ClInclude Include="shaders\rcas\precompile\opti_sharpen_Shader.h" />
-    <ClInclude Include="shaders\rcas\precompile\opti_sharpen_Shader_Dx11.h" />
-    <ClInclude Include="shaders\rcas\precompile\opti_sharpen_Shader_Vk.h" />
+    <ClInclude Include="shaders\rcas\precompile\opti_sharpen_fp32_Shader.h" />
+    <ClInclude Include="shaders\rcas\precompile\opti_sharpen_fp32_Shader_Dx11.h" />
+    <ClInclude Include="shaders\rcas\precompile\opti_sharpen_fp32_Shader_Vk.h" />
+    <ClInclude Include="shaders\rcas\precompile\opti_sharpen_fp16p_Shader.h" />
+    <ClInclude Include="shaders\rcas\precompile\opti_sharpen_fp16p_Shader_Vk.h" />
     <ClInclude Include="shaders\reproject\mouseInputs\InputCollection.h" />
     <ClInclude Include="shaders\hud_copy\HudCopy_Vk.h" />
     <ClInclude Include="shaders\hudless_compare_compute\HCC_Vk.h" />
@@ -315,7 +317,8 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="shaders\rcas\precompile\RCAS_Shader_Dx11.h" />
     <ClInclude Include="shaders\rcas\precompile\RCAS_Shader_Vk.h" />
     <ClInclude Include="shaders\rcas\shaders\BABA_NEURAL_Shader.h" />
-    <ClInclude Include="shaders\rcas\shaders\OPTI_SHARPEN_Shader.h" />
+    <ClInclude Include="shaders\rcas\shaders\OPTI_SHARPEN_FP32_Shader.h" />
+    <ClInclude Include="shaders\rcas\shaders\OPTI_SHARPEN_FP16P_Shader.h" />
     <ClInclude Include="shaders\rcas\shaders\DA_DAS_Shader.h" />
     <ClInclude Include="shaders\rcas\shaders\DA_RCAS_Shader.h" />
     <ClInclude Include="shaders\rcas\shaders\RCAS_Shader.h" />

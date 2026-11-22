@@ -19,11 +19,11 @@ class RCAS_Dx12 : public Shader_Dx12, public RCAS_Common
     ID3D12PipelineState* _pipelineStateDA = nullptr;
     ID3D12PipelineState* _pipelineStateDASDA = nullptr;
 
-    // BaBa Neural and OptiSharpen are created when they are first used
+    // BaBa Neural and OptiSharpen are created when they are first used, OptiSharpen one per precision
     ID3D12PipelineState* _pipelineStateBaba = nullptr;
     bool _babaPipelineFailed = false;
-    ID3D12PipelineState* _pipelineStateOpti = nullptr;
-    bool _optiPipelineFailed = false;
+    ID3D12PipelineState* _pipelineStateOpti[(size_t) OptiPrecision::Count] {};
+    bool _optiPipelineFailed[(size_t) OptiPrecision::Count] {};
 
     uint32_t InNumThreadsX = 16;
     uint32_t InNumThreadsY = 16;
@@ -34,11 +34,12 @@ class RCAS_Dx12 : public Shader_Dx12, public RCAS_Common
                                ID3D12Resource* InResource, ID3D12Resource* InMotionVectors, ID3D12Resource* InDepth,
                                RcasConstants InConstants, ID3D12Resource* OutResource,
                                FrameDescriptorHeap& currentHeap);
-    // BaBa Neural or OptiSharpen, same bindings and constants
-    bool DispatchNeural(SharpenShader InShader, ID3D12GraphicsCommandList* InCmdList, ID3D12Resource* InResource,
-                        ID3D12Resource* InMotionVectors, RcasConstants InConstants, ID3D12Resource* OutResource,
-                        FrameDescriptorHeap& currentHeap);
-    bool EnsureNeuralPipeline(SharpenShader InShader);
+    // BaBa Neural or OptiSharpen, same bindings and constants. InPrecision only matters for OptiSharpen.
+    bool DispatchNeural(SharpenShader InShader, OptiPrecision InPrecision, ID3D12GraphicsCommandList* InCmdList,
+                        ID3D12Resource* InResource, ID3D12Resource* InMotionVectors, RcasConstants InConstants,
+                        ID3D12Resource* OutResource, FrameDescriptorHeap& currentHeap);
+    bool EnsureNeuralPipeline(SharpenShader InShader, OptiPrecision InPrecision);
+    ID3D12PipelineState* NeuralPipeline(SharpenShader InShader, OptiPrecision InPrecision);
 
   public:
     bool CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InSource, D3D12_RESOURCE_STATES InState);

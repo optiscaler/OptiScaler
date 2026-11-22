@@ -998,7 +998,10 @@
     <ClInclude Include="shaders\rcas\shaders\BABA_NEURAL_Shader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="shaders\rcas\shaders\OPTI_SHARPEN_Shader.h">
+    <ClInclude Include="shaders\rcas\shaders\OPTI_SHARPEN_FP32_Shader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\rcas\shaders\OPTI_SHARPEN_FP16P_Shader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="shaders\rcas\shaders\DA_DAS_Shader.h">

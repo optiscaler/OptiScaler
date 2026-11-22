@@ -7585,18 +7585,19 @@ void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)
                     ScopedIndent indent {};
                     ImGui::Spacing();
 
-                    const char* optiModels[] = { "Clean", "TAA", "TAA Wide", "TAA Wide 12", "Punch 10", "Punch 15" };
-                    int optiModel = std::clamp(config->OptiSharpenModel.value_or_default(), 0, 5);
+                    const char* optiModels[] = { "Natural D10", "Crisp D10 p50", "Natural D10 (fp16 packed)",
+                                                 "Crisp D10 p50 (fp16 packed)" };
+                    int optiModel = std::clamp(config->OptiSharpenModel.value_or_default(), 0, 3);
 
                     if (ImGui::Combo("Model", &optiModel, optiModels, IM_ARRAYSIZE(optiModels)))
                         config->OptiSharpenModel = optiModel;
 
-                    ShowTooltip("Clean: The first 3x3 model.\n"
-                                "TAA: Model trained for TAA / upscaler output.\n"
-                                "TAA Wide: TAA model with a wider 13 tap window.\n"
-                                "TAA Wide 12 (default): TAA Wide with a larger network (12 hidden units).\n"
-                                "Punch 10: Stronger TAA Wide 12, allowed to overshoot the local range a little.\n"
-                                "Punch 15: Stronger than Punch 10, overshoots a bit more.");
+                    ShowTooltip("Natural D10 (default): Natural sharpening.\n"
+                                "Crisp D10 p50: Stronger.\n"
+                                "(fp16 packed): The same networks in half precision, written for packed math.\n"
+                                "Faster on Dx12 / Vulkan, Dx11 runs them in fp32.\n"
+                                "All use a 25 tap (5x5) window and overshoot the local range by up to 15%.\n"
+                                "Each model scales the strength, the top of the slider is its best point.");
 
                     const char* optiViews[] = { "Normal", "Sharpening map", "Change magnitude" };
                     int optiView = std::clamp(config->OptiSharpenDebugView.value_or_default(), 0, 2);
