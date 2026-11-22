@@ -35,6 +35,37 @@
 
 // #define LOG_LIB_OPERATIONS
 
+namespace
+{
+bool IsInSystemDirectory(const std::filesystem::path& path)
+{
+    static const std::wstring sysDir = []
+    {
+        wchar_t buffer[MAX_PATH] {};
+        GetSystemDirectoryW(buffer, MAX_PATH);
+        auto dir = std::filesystem::path(buffer).lexically_normal().wstring();
+        to_lower_in_place(dir);
+        return dir;
+    }();
+
+    if (!path.has_parent_path())
+        return false;
+
+    auto dir = path.parent_path().lexically_normal().wstring();
+    to_lower_in_place(dir);
+    return dir == sysDir;
+}
+
+bool IsSystemModule(HMODULE module)
+{
+    wchar_t modulePath[MAX_PATH] {};
+    if (module == nullptr || GetModuleFileNameW(module, modulePath, MAX_PATH) == 0)
+        return false;
+
+    return IsInSystemDirectory(modulePath);
+}
+} // namespace
+
 HMODULE LibraryLoadHooks::LoadLibraryCheckA(std::string libName, LPCSTR lpLibFullPath)
 {
     auto fullPath = std::string(lpLibFullPath);
@@ -77,6 +108,16 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
     if ((State::Instance().workingMode != WorkingMode::Dxgi || !State::Instance().skipDxgiLoadChecks) &&
         CheckDllNameW(&libName, &dllNamesW))
     {
+        // A load by system directory path wants the system dll. When the chained original is not the system one
+        // (DXVK's dxgi as dxgi-original.dll) serving Opti would hand it that original instead. The Vulkan loader
+        // enumerates adapters through system dxgi while DXVK creates its instance, so that re-enters DXVK and
+        // deadlocks.
+        if (IsInSystemDirectory(path) && !IsSystemModule(originalModule))
+        {
+            LOG_INFO("{} call, original is not the system dll, loading the system dll", libNameA);
+            return NtdllProxy::LoadLibraryExW_Ldr(libName.c_str(), NULL, 0);
+        }
+
         if (!State::Instance().ServeOriginal())
         {
             LOG_INFO("{} call, returning this dll!", libNameA);
@@ -324,19 +365,35 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
         if (module != nullptr)
         {
-            if (DxgiProxy::Module() != nullptr)
+            // The Steam overlay Vulkan layer loads the overlay dll from inside vkCreateInstance. With DXVK's dxgi that
+            // instance creation runs inside a factory creation of this thread (the game, IdentifyGpu, Opti's factory
+            // hooks) and creating another factory there re-enters DXVK's instance creation and deadlocks.
+            if (State::Instance().creatingD3DDevice || State::Instance().creatingVulkanInstance)
+            {
+                LOG_DEBUG("Skipping CreateDxgiFactory methods for overlay, a D3D/DXGI/Vulkan creation is in progress");
+            }
+            else if (DxgiProxy::Module() != nullptr)
             {
                 LOG_INFO("Calling CreateDxgiFactory methods for overlay!");
                 IDXGIFactory* factory = nullptr;
                 IDXGIFactory1* factory1 = nullptr;
                 IDXGIFactory2* factory2 = nullptr;
 
+                // DXVK's dxgi creates a Vulkan instance here and the Steam overlay Vulkan layer loads the overlay
+                // dll again from inside it, re-entering DXVK's instance creation would deadlock
+                insideThisCode = true;
+                bool factoryCreated = false;
+
+                // As dxgi.dll these resolve to the original's unhooked exports. Mark the creation as Opti's own,
+                // otherwise the Vulkan hooks treat DXVK's instance and device as a Vulkan game's
+                ScopedCreatingD3DDevice creatingD3DDevice {};
+
                 auto ocResult = DxgiProxy::CreateDxgiFactory_Hooked()(__uuidof(factory), &factory);
                 LOG_DEBUG("CreateDxgiFactory result: {:X}", ocResult);
 
                 if (ocResult == S_OK && factory != nullptr)
                 {
-                    insideThisCode = true;
+                    factoryCreated = true;
                     LOG_DEBUG("CreateDxgiFactory ok");
                     factory->Release();
                 }
@@ -358,6 +415,8 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
                     LOG_DEBUG("CreateDxgiFactory2 ok");
                     factory2->Release();
                 }
+
+                insideThisCode = factoryCreated;
             }
 
             return module;

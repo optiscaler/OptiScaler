@@ -606,7 +606,10 @@ static VkResult hkvkCreateInstance(const VkInstanceCreateInfo* pCreateInfo, cons
     VkResult result;
     {
         ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
+        const bool previousCreatingInstance = State::Instance().creatingVulkanInstance;
+        State::Instance().creatingVulkanInstance = true;
         result = o_vkCreateInstance(&localCreateInfo, pAllocator, pInstance);
+        State::Instance().creatingVulkanInstance = previousCreatingInstance;
     }
 
     // OptiScaler's own Streamline only makes short lived ones

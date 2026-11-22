@@ -335,10 +335,15 @@ bool WithDx12::CreateDx12Device(D3D_FEATURE_LEVEL InFeatureLevel, IDXGIAdapter* 
         {
             IDXGIFactory2* factory = nullptr;
 
-            if (DxgiProxy::Module() == nullptr)
-                result = CreateDXGIFactory2(0, IID_PPV_ARGS(&factory));
-            else
-                result = DxgiProxy::CreateDxgiFactory2_()(0, __uuidof(factory), &factory);
+            {
+                // DXVK's dxgi creates a Vulkan instance, which must not be taken for the game's
+                ScopedCreatingD3DDevice creatingFactory {};
+
+                if (DxgiProxy::Module() == nullptr)
+                    result = CreateDXGIFactory2(0, IID_PPV_ARGS(&factory));
+                else
+                    result = DxgiProxy::CreateDxgiFactory2_()(0, __uuidof(factory), &factory);
+            }
 
             if (FAILED(result) || factory == nullptr)
             {

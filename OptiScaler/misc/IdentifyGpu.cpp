@@ -435,8 +435,12 @@ void IdentifyGpu::updateD3d12Capabilities(D3d12Proxy::PFN_D3D12CreateDevice o_D3
         ScopedSkipSpoofingThread skipSpoofingThread {};
 
         ComPtr<IDXGIFactory4> factory;
-        if (FAILED(DxgiProxy::CreateDxgiFactory_()(__uuidof(factory), (IDXGIFactory**) factory.GetAddressOf())))
-            continue;
+        {
+            // DXVK's dxgi creates a Vulkan instance, which must not be taken for the game's
+            ScopedCreatingD3DDevice creatingFactory {};
+            if (FAILED(DxgiProxy::CreateDxgiFactory_()(__uuidof(factory), (IDXGIFactory**) factory.GetAddressOf())))
+                continue;
+        }
 
         ComPtr<IDXGIAdapter> adapter;
         if (SUCCEEDED(factory->EnumAdapterByLuid(gpuInfo.luid, IID_PPV_ARGS(&adapter))))
