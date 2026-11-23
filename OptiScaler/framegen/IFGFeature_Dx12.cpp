@@ -581,9 +581,6 @@ bool IFGFeature_Dx12::InitCopyCmdList()
     if (_copyCommandList[0] == nullptr || _copyCommandAllocator[0] == nullptr)
         DestroyCopyCmdList();
 
-    ID3D12CommandAllocator* allocator = nullptr;
-    ID3D12GraphicsCommandList* cmdList = nullptr;
-
     for (size_t i = 0; i < BUFFER_COUNT; i++)
     {
         auto result =
@@ -595,8 +592,7 @@ bool IFGFeature_Dx12::InitCopyCmdList()
         }
 
         _copyCommandAllocator[i]->SetName(L"_copyCommandAllocator");
-        if (CheckForRealObject(__FUNCTION__, _copyCommandAllocator[i], (IUnknown**) &allocator))
-            _copyCommandAllocator[i] = allocator;
+        ReplaceWithRealObject(__FUNCTION__, _copyCommandAllocator[i]);
 
         result = _device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, _copyCommandAllocator[i], NULL,
                                             IID_PPV_ARGS(&_copyCommandList[i]));
@@ -606,8 +602,7 @@ bool IFGFeature_Dx12::InitCopyCmdList()
             return false;
         }
         _copyCommandList[i]->SetName(L"_copyCommandList");
-        if (CheckForRealObject(__FUNCTION__, _copyCommandList[i], (IUnknown**) &cmdList))
-            _copyCommandList[i] = cmdList;
+        ReplaceWithRealObject(__FUNCTION__, _copyCommandList[i]);
 
         result = _copyCommandList[i]->Close();
         if (result != S_OK)

@@ -99,6 +99,20 @@ class IFGFeature
     bool _reprojectionActive = false;
 
     bool CheckForRealObject(std::string functionName, IUnknown* pObject, IUnknown** ppRealObject);
+
+    // Swaps an owned Streamline proxy for an owned reference to its real object, the proxy is released
+    template <typename T> void ReplaceWithRealObject(std::string functionName, T*& pObject)
+    {
+        IUnknown* real = nullptr;
+        if (!CheckForRealObject(functionName, pObject, &real))
+            return;
+
+        // CheckForRealObject's pointer is borrowed from the proxy
+        real->AddRef();
+        pObject->Release();
+        pObject = (T*) real;
+    }
+
     int GetDispatchIndex(UINT64& willDispatchFrame);
     UINT64 NextDispatchFrame();
 
