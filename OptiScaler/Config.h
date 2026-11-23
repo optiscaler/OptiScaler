@@ -380,7 +380,7 @@ class Config
 
     // OptiSharpen
     // 0 / 1 = Natural / Crisp D10, 2 / 3 the same in fp16 packed (own pipeline)
-    CustomOptional<int> OptiSharpenModel { 0 };
+    CustomOptional<int> OptiSharpenModel { 3 };
     CustomOptional<int> OptiSharpenDebugView { 0 }; // 0 = normal, 1 = sharpening map, 2 = change magnitude
 
     // MAS
