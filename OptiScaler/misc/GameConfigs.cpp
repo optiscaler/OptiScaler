@@ -231,6 +231,13 @@ const std::vector<GameConfig> gameConfigs = {
         .defaults = { UseNtdllHooks = false, FGPreserveSwapChain = false },
     },
 
+    // Jade Dynasty / Zhuxian
+    // Kernel hooks required to unlock DLSS inputs
+    {
+        .ueExes = { "zhuxianclient" },
+        .defaults = { UseNtdllHooks = false },
+    },
+
     // Zenless Zone Zero
     // IgnoreTagsWithoutHudlessForFG fixes flipped Unity MVs/Depth
     {
