@@ -82,6 +82,7 @@ bool XeFG_Dx12::CreateSwapchainContext(ID3D12Device* device)
     }
 
     auto createResult = false;
+    auto xellAcquired = false;
 
 #ifndef DONT_USE_XMX
     ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
@@ -94,6 +95,7 @@ bool XeFG_Dx12::CreateSwapchainContext(ID3D12Device* device)
         if (result != XEFG_SWAPCHAIN_RESULT_SUCCESS)
         {
             LOG_ERROR("D3D12CreateContext error: {} ({})", magic_enum::enum_name(result), (UINT) result);
+            _swapChainContext = nullptr;
             return false;
         }
 
@@ -110,23 +112,36 @@ bool XeFG_Dx12::CreateSwapchainContext(ID3D12Device* device)
         // AntiLag 2 output. Either stays valid until this context is destroyed.
         if (auto xellContext = InputCommon::acquire_xefg_xell(device); xellContext != nullptr)
         {
+            xellAcquired = true;
             result = XeFGProxy::SetLatencyReduction()(_swapChainContext, xellContext);
 
             if (result != XEFG_SWAPCHAIN_RESULT_SUCCESS)
             {
                 LOG_ERROR("SetLatencyReduction error: {} ({})", magic_enum::enum_name(result), (UINT) result);
-                return false;
+                break;
             }
         }
         else
         {
             LOG_ERROR("Couldn't create XeLL");
-            return false;
+            break;
         }
 
         createResult = true;
 
     } while (false);
+
+    // Callers take a context as created, a half initialized one is destroyed so the next try starts over
+    if (!createResult && _swapChainContext != nullptr)
+    {
+        auto result = XeFGProxy::Destroy()(_swapChainContext);
+        LOG_DEBUG("Destroyed the half initialized context: {} ({})", magic_enum::enum_name(result), (UINT) result);
+        _swapChainContext = nullptr;
+
+        // After the context, like DestroySwapchainContext
+        if (xellAcquired)
+            InputCommon::release_xefg_xell();
+    }
 
     return createResult;
 }
