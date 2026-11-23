@@ -337,7 +337,13 @@ xell_result_t InputXeLL::D3D12CreateContext(ID3D12Device* device, xell_input_han
     if (XeFGInputs::Passthrough())
     {
         native = true;
-        CreateReal(context);
+
+        // The game's XeFG needs the real context, without it the game fails like it would on the real XeLL
+        if (!CreateReal(context))
+        {
+            delete context;
+            return XELL_RESULT_ERROR_UNKNOWN;
+        }
     }
 
     AddContext(context);
