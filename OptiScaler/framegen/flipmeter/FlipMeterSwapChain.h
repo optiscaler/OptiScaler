@@ -73,11 +73,14 @@ class DECLSPEC_UUID("6d0a3c0e-4c6b-4a5e-9d3f-0c5d1f6f1b77") FlipMeterSwapChain f
         bool coversOutput = true;
         HRESULT configResult = S_OK; // Of the last SetConfig
         UINT32 configStatus = AmdExtFlipMeterStatus_Ok;
+        HRESULT presentResult = S_OK; // Of the last flip meter Present, about the flip before it
+        UINT32 presentStatus = AmdExtFlipMeterStatus_Ok;
     };
 
     Status GetStatus() const
     {
-        return { _metering, Mode(), _generatedPerFrame, _coversOutput, _configResult, _configStatus };
+        return { _metering,     Mode(),        _generatedPerFrame, _coversOutput,
+                 _configResult, _configStatus, _presentResult,     _presentStatus };
     }
 
     bool SupportsMode(AmdExtFlipMeterMode mode) const;
@@ -271,6 +274,8 @@ class DECLSPEC_UUID("6d0a3c0e-4c6b-4a5e-9d3f-0c5d1f6f1b77") FlipMeterSwapChain f
     bool _coversOutput = true;
     HRESULT _configResult = S_OK;
     UINT32 _configStatus = AmdExtFlipMeterStatus_Ok;
+    std::atomic<HRESULT> _presentResult = S_OK; // Written by the presenter
+    std::atomic<UINT32> _presentStatus = AmdExtFlipMeterStatus_Ok;
 
     UINT64 _presentCount = 0;      // Game presents
     INT64 _qpcFrequency = 0;       // Ticks per second

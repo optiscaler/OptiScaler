@@ -60,10 +60,32 @@ enum AmdExtFlipMeterConfigFlags : uint32_t
 
 // Values seen in the status fields. FSR initializes every status to NotAvailable before a call.
 // After a failed SetConfig on creation FSR keeps the interface only for status 0 or 10.
+//
+// SetConfig maps the KMD's status: 1 -> 4, 2 (too many generated frames) -> 5, 3 (mode not in the supported modes)
+// -> 6, 4 -> 9, others -> 11.
+//
+// Present doesn't call the KMD. It reads a status dword the KMD writes for every flip of the swapchain to a page
+// SetConfig maps (driver 26.11.2), so it describes the flip before:
+//   bit0 the flip was paced, bit1 the window isn't in the state the pacer needs, bit2 the flip had no usable pacing
+//   info. Present returns S_OK only with bit0, E_FAIL with the status below otherwise.
 enum AmdExtFlipMeterStatus : uint32_t
 {
     AmdExtFlipMeterStatus_Ok = 0,
+
+    // Present: the driver's window manager doesn't see the swapchain's window as the fullscreen app flipped to the
+    // display's main plane (its per-source window state 2). Seen when the window is composed by DWM or flipped to an
+    // overlay plane. Gmx_DriverFramePacingSupportedModes bits 0x08 and 0x10 lift the requirement, 0x08 is
+    // AmdExtFlipMeterCaps_DoNotEnable though.
+    AmdExtFlipMeterStatus_WindowNotEligible = 7,
+
+    // Present: the flip came without usable pacing info: no Present call for it, another config's handle, targetQpc 0,
+    // or framesLeft above the configured generated frames or repeated within one presentId
+    AmdExtFlipMeterStatus_NoPacingInfo = 8,
+
+    // Present: metering isn't configured (mode Off)
     AmdExtFlipMeterStatus_Retry = 10,
+
+    // Present: nothing is known about the flips yet, e.g. right after SetConfig or a buffer resize
     AmdExtFlipMeterStatus_NotAvailable = 11,
 };
 

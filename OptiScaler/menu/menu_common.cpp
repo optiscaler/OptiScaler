@@ -6068,7 +6068,38 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             const auto status = swapChain->GetStatus();
 
             // While no frames are generated the FG status already says it's off
-            if (status.metering)
+            if (status.metering && FAILED(status.presentResult))
+            {
+                ImGui::TextColored(StatusError(), "Driver pacing: the driver doesn't pace the flips (%08X, status %u)",
+                                   (UINT) status.presentResult, status.presentStatus);
+
+                switch (status.presentStatus)
+                {
+                case AmdExtFlipMeterStatus_WindowNotEligible:
+                    ImGui::TextWrapped("The driver doesn't see the game as a fullscreen app flipped straight to the "
+                                       "display. Try exclusive fullscreen and closing overlays (Discord, Steam, Game "
+                                       "Bar, RTSS) and windows on top of the game.");
+                    ShowTooltip("Status 7: the driver's window manager doesn't report the swapchain's window\n"
+                                "in its fullscreen state, the window is likely composed by DWM\n"
+                                "or shown on an overlay plane");
+                    break;
+
+                case AmdExtFlipMeterStatus_NoPacingInfo:
+                    ImGui::TextWrapped("The driver got flips without usable pacing info.");
+                    ShowTooltip("Status 8: a flip came without a flip meter Present, with a target time of 0\n"
+                                "or with more generated frames than configured");
+                    break;
+
+                case AmdExtFlipMeterStatus_Retry:
+                    ImGui::TextWrapped("The driver has no pacing config for the swapchain.");
+                    break;
+
+                default:
+                    ImGui::TextWrapped("The driver hasn't reported on the flips yet.");
+                    break;
+                }
+            }
+            else if (status.metering)
             {
                 ImGui::TextColored(StatusOk(), "Driver pacing: %s",
                                    status.mode == AmdExtFlipMeterMode_FrameIndex ? "frame index mode"

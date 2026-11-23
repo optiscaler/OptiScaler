@@ -534,6 +534,10 @@ void FlipMeterSwapChain::ApplyConfig(bool enable)
     _configResult = result;
     _configStatus = config.status;
     _metering = SUCCEEDED(result) && enable;
+
+    // The presenter is flushed, the next metered present reports for the new config
+    _presentResult = S_OK;
+    _presentStatus = AmdExtFlipMeterStatus_Ok;
     _discontinuity = true;
 }
 
@@ -777,8 +781,17 @@ HRESULT FlipMeterSwapChain::PresentQueued(const QueuedFrame& frame)
             UINT32 status = AmdExtFlipMeterStatus_NotAvailable;
             const auto meterResult = _flipMeter->Present(target.Get(), &info, &status);
 
-            if (FAILED(meterResult))
-                LOG_DEBUG("Flip meter present failed: {:X}, status: {}", (UINT) meterResult, status);
+            // Every flip reports one, a changed status is enough for the log
+            const bool resultChanged = _presentResult.exchange(meterResult) != meterResult;
+            const bool statusChanged = _presentStatus.exchange(status) != status;
+
+            if (resultChanged || statusChanged)
+            {
+                if (FAILED(meterResult))
+                    LOG_WARN("Flip meter present failed: {:X}, status: {}", (UINT) meterResult, status);
+                else
+                    LOG_INFO("Flip meter present succeeds again");
+            }
         }
 
         // The real swapchain can release its buffers from within its present
