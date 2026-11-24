@@ -797,7 +797,8 @@ static constexpr auto kAmdCardInfo = []() consteval
           "AMD Radeon(TM) Navi Graphics Custom Made for Magic Leap" },
         { kGfx10_3_3, 0x163F, 0xE1, kGfx10_3, true, "gfx1033",
           "AMD Radeon(TM) Navi Graphics Custom Made for Magic Leap" },
-        { kGfx10_3_3, 0x163F, 0xAF, kGfx10_3, true, "gfx1033", "AMD Radeon(TM) Graphics" },
+        { kGfx10_3_3, 0x163F, 0xAF, kGfx10_3, true, "gfx1033", "AMD Custom GPU 0405" },
+        { kGfx10_3_3, 0x1435, 0xAE, kGfx10_3, true, "gfx1033", "AMD Custom GPU 0932" },
 
         { kGfx10_3_4, 0x7420, 0x00, kGfx10_3, false, "gfx1034", "AMD Radeon(TM) Graphics" },
         { kGfx10_3_4, 0x7422, 0x00, kGfx10_3, false, "gfx1034", "AMD Radeon PRO W6400" },
@@ -1214,6 +1215,17 @@ static constexpr auto kAmdCardInfo = []() consteval
         { kGfx11_5_1, 0x1586, 0xE2, kGfx11_5, true, "gfx1151", "AMD Radeon(TM) 8050S Graphics" },
         { kGfx11_5_1, 0x1586, 0xE3, kGfx11_5, true, "gfx1151", "AMD Radeon(TM) 8050S Graphics" },
 
+        {kGfx11_5_1, 0x1586, 0xCA, kGfx11_5, true, "gfx1151", "AMD Radeon(TM) 8065S Graphics"},
+        {kGfx11_5_1, 0x1586, 0xCB, kGfx11_5, true, "gfx1151", "AMD Radeon(TM) 8060S Graphics"},
+        {kGfx11_5_1, 0x1586, 0xCC, kGfx11_5, true, "gfx1151", "AMD Radeon(TM) 8050S Graphics"},
+        {kGfx11_5_1, 0x1586, 0xCD, kGfx11_5, true, "gfx1151", "AMD Radeon(TM) 8060S Graphics"},
+        {kGfx11_5_1, 0x1586, 0xCE, kGfx11_5, true, "gfx1151", "AMD Radeon(TM) 8050S Graphics"},
+        {kGfx11_5_1, 0x1586, 0xCF, kGfx11_5, true, "gfx1151", "AMD Radeon(TM) 8040S Graphics"},
+        {kGfx11_5_1, 0x1586, 0xDA, kGfx11_5, true, "gfx1151", "AMD Radeon(TM) 8065S Graphics"},
+        {kGfx11_5_1, 0x1586, 0xDB, kGfx11_5, true, "gfx1151", "AMD Radeon(TM) 8050S Graphics"},
+        {kGfx11_5_1, 0x1586, 0xDC, kGfx11_5, true, "gfx1151", "AMD Radeon(TM) 8050S Graphics"},
+        {kGfx11_5_1, 0x1586, 0xDD, kGfx11_5, true, "gfx1151", "AMD Radeon(TM) 8040S Graphics"},
+
         { kGfx11_5_2, 0x1114, 0x00, kGfx11_5, true, "gfx1152", "AMD Radeon(TM) Graphics" },
         { kGfx11_5_2, 0x1114, 0xC1, kGfx11_5, true, "gfx1152", "AMD Radeon(TM) Graphics" },
         { kGfx11_5_2, 0x1114, 0xC2, kGfx11_5, true, "gfx1152", "AMD Radeon(TM) 860M Graphics" },
@@ -1485,31 +1497,60 @@ static constexpr auto kDeviceInfo = std::to_array<DeviceInfo>({
     return std::nullopt;
 }
 
-[[nodiscard]] constexpr std::optional<uint32_t> GetTotalLdsSizeInBytesImpl(const HwGeneration gen,
-                                                                           const uint8_t num_cus) noexcept
-{
-    // Anything less than GFX9 is not supported.
-    if (gen < kGfx9) [[unlikely]]
-    {
-        return std::nullopt;
-    }
+static_assert(
+        []() constexpr noexcept {
+            constexpr uint32_t kRevisions[] = {0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF, 0xDA, 0xDB, 0xDC, 0xDD};
+            for (const uint32_t revision_id : kRevisions)
+            {
+                const auto card_info = GetCardInfoForDevice({device_info::kAmdVendorId, 0x1586, revision_id});
+                if (!card_info.has_value() || card_info->asic_type != device_info::AsicType::kGfx11_5_1 || card_info->generation != kGfx11_5 ||
+                    !card_info->is_apu)
+                {
+                    return false;
+                }
 
-    static_assert(kCdna4 < kGfx11_5, "Update this check!");
-    if (gen == kCdna4)
-    {
-        constexpr uint32_t kLdsBytesPerCu = 160 * 1024;
-        return num_cus * kLdsBytesPerCu;
-    }
+                const auto device_info = GetDeviceInfoForAsicType(card_info->asic_type);
+                if (!device_info.has_value() || device_info->num_cus != 40)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }(),
+        "Device ID 0x1586 (revisions 0xCA-0xCF and 0xDA-0xDD) is not properly supported by GetCardInfoForDevice.");
 
-    static_assert(kGfx11_5 > kGfx12, "Update this check!");
-    if (gen <= kGfx11_5)
+    [[nodiscard]] constexpr std::optional<uint32_t> GetTotalLdsSizeInBytesImpl(const HwGeneration gen, const uint8_t num_cus) noexcept
     {
-        constexpr uint32_t kLdsBytesPerCu = 64 * 1024;
-        return num_cus * kLdsBytesPerCu;
+        constexpr uint32_t kKiB             = 1024;
+        uint32_t           lds_bytes_per_cu = 0;
+        switch (gen)
+        {
+        case kGfx9:
+        case kGfx10:
+        case kGfx10_3:
+        case kGfx11:
+        case kGfx11_5:
+        case kGfx12:
+        case kCdna:
+        case kCdna2:
+        case kCdna3:
+            lds_bytes_per_cu = 64 * kKiB;
+            break;
+        case kCdna4:
+            lds_bytes_per_cu = 160 * kKiB;
+            break;
+        case kUndefinedGeneration:
+        case kNvidia:
+        case kIntel:
+        case kSouthernIsland:
+        case kSeaIsland:
+        case kVolcanicIsland:
+            [[fallthrough]];
+        [[unlikely]] default:
+            return std::nullopt;
+        }
+        return num_cus * lds_bytes_per_cu;
     }
-
-    return std::nullopt;
-}
 
 // Compile-time tests — one per HW generation, with an arbitrary CU count of 4.
 static_assert(!GetTotalLdsSizeInBytesImpl(kUndefinedGeneration, 4).has_value());
