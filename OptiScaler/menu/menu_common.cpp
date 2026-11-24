@@ -82,6 +82,7 @@ constexpr uint64_t debounceThreshold = 1000;
 
 static bool hasGamepad = false;
 static bool ffxInitTried = false;
+static bool ffxVkInitTried = false;
 static bool xefgInitTried = false;
 static std::string windowTitle;
 static std::string selectedUpscalerName = "";
@@ -4890,8 +4891,16 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
     auto constexpr fgNvngxFfxIndex = (uint32_t) FGNvngxReplacement::FFX;
     if (state.swapchainApi == API::Vulkan)
+    {
+        // The Vulkan FFX dlls are only loaded with the device when FSR FG is the output
+        if (!ffxVkInitTried && !FfxApiProxy::IsFGReadyVk())
+        {
+            ffxVkInitTried = true;
+            FfxApiProxy::InitFfxVk();
+        }
         nvngxOptions[fgNvngxFfxIndex].set_disabled(!FfxApiProxy::IsFGReadyVk() && !FSR4DriverProviderVk::InitFg(),
                                                    "Missing amd_fidelityfx_framegeneration_vk.dll");
+    }
     else
         nvngxOptions[fgNvngxFfxIndex].set_disabled(!FfxApiProxy::IsFGReady(false),
                                                    "Missing amd_fidelityfx_framegeneration_dx12.dll");
