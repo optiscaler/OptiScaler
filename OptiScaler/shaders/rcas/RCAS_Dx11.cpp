@@ -8,7 +8,8 @@
 #include "precompile/da_rcas_sharpen_Shader_Dx11.h"
 
 #include "precompile/baba_neural_sharpen_Shader_Dx11.h"
-#include "precompile/opti_sharpen_fp32_Shader_Dx11.h"
+#include "precompile/opti_sharpen_fp32_crisp_Shader_Dx11.h"
+#include "precompile/opti_sharpen_fp32_natural_Shader_Dx11.h"
 
 #include "shaders/OPTI_SHARPEN_FP32_Shader.h"
 
@@ -226,11 +227,11 @@ bool RCAS_Dx11::DispatchDASDepthAdaptive(ID3D11Device* InDevice, ID3D11DeviceCon
     return true;
 }
 
-bool RCAS_Dx11::EnsureNeuralShader(SharpenShader InShader, OptiPrecision InPrecision, ID3D11Device* InDevice)
+bool RCAS_Dx11::EnsureNeuralShader(SharpenShader InShader, OptiVariant InVariant, ID3D11Device* InDevice)
 {
     const bool isOpti = InShader == SharpenShader::OptiSharpen;
-    auto& computeShader = isOpti ? _computeShaderOpti[(size_t) InPrecision] : _computeShaderBaba;
-    auto& failed = isOpti ? _optiShaderFailed[(size_t) InPrecision] : _babaShaderFailed;
+    auto& computeShader = isOpti ? _computeShaderOpti[(size_t) InVariant] : _computeShaderBaba;
+    auto& failed = isOpti ? _optiShaderFailed[(size_t) InVariant] : _babaShaderFailed;
 
     if (computeShader != nullptr)
         return true;
@@ -241,22 +242,25 @@ bool RCAS_Dx11::EnsureNeuralShader(SharpenShader InShader, OptiPrecision InPreci
 
     const void* bytecode = baba_neural_sharpen_cso;
     size_t bytecodeSize = sizeof(baba_neural_sharpen_cso);
-    const char* source = babaNeuralSharpenCode.c_str();
+    std::string source = babaNeuralSharpenCode;
     std::string shaderName = "BaBa Neural";
 
     if (isOpti)
     {
-        shaderName = std::format("OptiSharpen ({})", OptiPrecisionName(InPrecision));
+        shaderName = std::format("OptiSharpen ({})", OptiVariantName(InVariant));
 
-        // GetOptiPrecision gives only fp32 on Dx11
-        bytecode = opti_sharpen_fp32_cso;
-        bytecodeSize = sizeof(opti_sharpen_fp32_cso);
-        source = optiSharpenFp32Code.c_str();
+        // GetOptiVariant gives only the fp32 ones on Dx11
+        const bool crisp = IsCrisp(InVariant);
+        bytecode = crisp ? opti_sharpen_fp32_crisp_cso : opti_sharpen_fp32_natural_cso;
+        bytecodeSize = crisp ? sizeof(opti_sharpen_fp32_crisp_cso) : sizeof(opti_sharpen_fp32_natural_cso);
+
+        // The runtime compiled one gets the preset the way the precompiled ones do
+        source = std::format("#define OPTI_MODEL {}\n", crisp ? 1 : 0) + optiSharpenFp32Code;
     }
 
     LOG_INFO("[{0}] Creating {1} sharpening shader", _name, shaderName);
 
-    HRESULT result = CreateComputeShader(InDevice, computeShader, bytecode, bytecodeSize, source);
+    HRESULT result = CreateComputeShader(InDevice, computeShader, bytecode, bytecodeSize, source.c_str());
 
     if (FAILED(result))
     {
@@ -270,12 +274,12 @@ bool RCAS_Dx11::EnsureNeuralShader(SharpenShader InShader, OptiPrecision InPreci
     return true;
 }
 
-bool RCAS_Dx11::DispatchNeural(SharpenShader InShader, OptiPrecision InPrecision, ID3D11DeviceContext* InContext,
+bool RCAS_Dx11::DispatchNeural(SharpenShader InShader, OptiVariant InVariant, ID3D11DeviceContext* InContext,
                                ID3D11Texture2D* InResource, ID3D11Texture2D* InMotionVectors, RcasConstants InConstants,
                                ID3D11Texture2D* OutResource)
 {
     auto computeShader =
-        InShader == SharpenShader::OptiSharpen ? _computeShaderOpti[(size_t) InPrecision] : _computeShaderBaba;
+        InShader == SharpenShader::OptiSharpen ? _computeShaderOpti[(size_t) InVariant] : _computeShaderBaba;
 
     if (computeShader == nullptr)
         return false;
@@ -356,14 +360,14 @@ bool RCAS_Dx11::Dispatch(ID3D11Device* InDevice, ID3D11DeviceContext* InContext,
 
     // Read once, the menu can change it meanwhile. FillMotionConstants takes the shader's Model from it.
     _optiModel = OptiModelSetting();
-    const auto optiPrecision = GetOptiPrecision(_optiModel, true);
+    const auto optiVariant = GetOptiVariant(_optiModel, true);
 
     // Neural shaders fall back to plain RCAS when their shader can't be created
     const bool isNeural = sharpnessShader == SharpenShader::BabaNeural || sharpnessShader == SharpenShader::OptiSharpen;
-    if (isNeural && !EnsureNeuralShader(sharpnessShader, optiPrecision, InDevice))
+    if (isNeural && !EnsureNeuralShader(sharpnessShader, optiVariant, InDevice))
         sharpnessShader = SharpenShader::RCAS;
 
-    SetTimedShader(sharpnessShader, optiPrecision);
+    SetTimedShader(sharpnessShader, optiVariant);
 
     if (sharpnessShader == SharpenShader::DepthAwareDAS)
     {
@@ -377,7 +381,7 @@ bool RCAS_Dx11::Dispatch(ID3D11Device* InDevice, ID3D11DeviceContext* InContext,
     }
     else if (sharpnessShader == SharpenShader::BabaNeural || sharpnessShader == SharpenShader::OptiSharpen)
     {
-        return DispatchNeural(sharpnessShader, optiPrecision, InContext, InResource, InMotionVectors, InConstants,
+        return DispatchNeural(sharpnessShader, optiVariant, InContext, InResource, InMotionVectors, InConstants,
                               OutResource);
     }
     else if (sharpnessShader == SharpenShader::RCAS)

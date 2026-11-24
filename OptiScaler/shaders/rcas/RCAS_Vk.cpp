@@ -7,8 +7,10 @@
 #include <misc/DeferredRelease.h>
 
 #include "precompile/baba_neural_sharpen_Shader_Vk.h"
-#include "precompile/opti_sharpen_fp16p_Shader_Vk.h"
-#include "precompile/opti_sharpen_fp32_Shader_Vk.h"
+#include "precompile/opti_sharpen_fp16p_crisp_Shader_Vk.h"
+#include "precompile/opti_sharpen_fp16p_natural_Shader_Vk.h"
+#include "precompile/opti_sharpen_fp32_crisp_Shader_Vk.h"
+#include "precompile/opti_sharpen_fp32_natural_Shader_Vk.h"
 
 RCAS_Vk::RCAS_Vk(std::string InName, VkDevice InDevice, VkPhysicalDevice InPhysicalDevice)
     : Shader_Vk(InName, InDevice, InPhysicalDevice)
@@ -230,43 +232,56 @@ bool RCAS_Vk::DispatchRCAS(VkCommandBuffer InCmdList, RcasConstants InConstants,
     return true;
 }
 
-bool RCAS_Vk::EnsureOptiPipeline(OptiPrecision InPrecision)
+bool RCAS_Vk::EnsureOptiPipeline(OptiVariant InVariant)
 {
-    auto& pipeline = _pipelineOpti[(size_t) InPrecision];
+    auto& pipeline = _pipelineOpti[(size_t) InVariant];
 
     if (pipeline != VK_NULL_HANDLE)
         return true;
 
     // Don't try to create it again every frame
-    if (_optiPipelineFailed[(size_t) InPrecision] || _device == VK_NULL_HANDLE)
+    if (_optiPipelineFailed[(size_t) InVariant] || _device == VK_NULL_HANDLE)
         return false;
 
     std::vector<char> code;
 
-    if (InPrecision == OptiPrecision::Fp16Packed)
-        code.assign(opti_sharpen_fp16p_spv, opti_sharpen_fp16p_spv + sizeof(opti_sharpen_fp16p_spv));
-    else
-        code.assign(opti_sharpen_fp32_spv, opti_sharpen_fp32_spv + sizeof(opti_sharpen_fp32_spv));
+    auto assign = [&code](const auto& spv) { code.assign(spv, spv + sizeof(spv)); };
 
-    LOG_INFO("[{0}] Creating OptiSharpen ({1}) pipeline", _name, OptiPrecisionName(InPrecision));
+    switch (InVariant)
+    {
+    case OptiVariant::Fp32Natural:
+        assign(opti_sharpen_fp32_natural_spv);
+        break;
+    case OptiVariant::Fp32Crisp:
+        assign(opti_sharpen_fp32_crisp_spv);
+        break;
+    case OptiVariant::Fp16PackedNatural:
+        assign(opti_sharpen_fp16p_natural_spv);
+        break;
+    default:
+        assign(opti_sharpen_fp16p_crisp_spv);
+        break;
+    }
+
+    LOG_INFO("[{0}] Creating OptiSharpen ({1}) pipeline", _name, OptiVariantName(InVariant));
 
     if (!CreateComputePipeline(_device, _pipelineLayout, &pipeline, code))
     {
         LOG_ERROR("[{0}] Failed to create pipeline for OptiSharpen ({1}), RCAS will be used instead", _name,
-                  OptiPrecisionName(InPrecision));
+                  OptiVariantName(InVariant));
         pipeline = VK_NULL_HANDLE;
-        _optiPipelineFailed[(size_t) InPrecision] = true;
+        _optiPipelineFailed[(size_t) InVariant] = true;
         return false;
     }
 
     return true;
 }
 
-bool RCAS_Vk::DispatchNeural(SharpenShader InShader, OptiPrecision InPrecision, VkCommandBuffer InCmdList,
+bool RCAS_Vk::DispatchNeural(SharpenShader InShader, OptiVariant InVariant, VkCommandBuffer InCmdList,
                              RcasConstants InConstants, const VkImageInfo& InResourceInfo,
                              const VkImageInfo& InMotionVectorsInfo, const VkImageInfo& OutResourceInfo)
 {
-    auto pipeline = InShader == SharpenShader::OptiSharpen ? _pipelineOpti[(size_t) InPrecision] : _pipelineBaba;
+    auto pipeline = InShader == SharpenShader::OptiSharpen ? _pipelineOpti[(size_t) InVariant] : _pipelineBaba;
 
     InternalConstantsBaba constants {};
     constants.OutputWidth = OutResourceInfo.Width;
@@ -346,11 +361,11 @@ bool RCAS_Vk::Dispatch(VkDevice InDevice, VkCommandBuffer InCmdList, RcasConstan
 
     // Read once, the menu can change it meanwhile. FillMotionConstants takes the shader's Model from it.
     _optiModel = OptiModelSetting();
-    const auto optiPrecision = GetOptiPrecision(_optiModel, false);
+    const auto optiVariant = GetOptiVariant(_optiModel, false);
 
     // No pipeline for the neural shader, plain RCAS instead
     if ((sharpnessShader == SharpenShader::BabaNeural && _pipelineBaba == VK_NULL_HANDLE) ||
-        (sharpnessShader == SharpenShader::OptiSharpen && !EnsureOptiPipeline(optiPrecision)))
+        (sharpnessShader == SharpenShader::OptiSharpen && !EnsureOptiPipeline(optiVariant)))
     {
         if (!_neuralFallbackLogged)
         {
@@ -361,7 +376,7 @@ bool RCAS_Vk::Dispatch(VkDevice InDevice, VkCommandBuffer InCmdList, RcasConstan
         sharpnessShader = SharpenShader::RCAS;
     }
 
-    SetTimedShader(sharpnessShader, optiPrecision);
+    SetTimedShader(sharpnessShader, optiVariant);
 
     if (sharpnessShader == SharpenShader::DepthAwareDAS)
     {
@@ -375,8 +390,8 @@ bool RCAS_Vk::Dispatch(VkDevice InDevice, VkCommandBuffer InCmdList, RcasConstan
     }
     else if (sharpnessShader == SharpenShader::BabaNeural || sharpnessShader == SharpenShader::OptiSharpen)
     {
-        return DispatchNeural(sharpnessShader, optiPrecision, InCmdList, InConstants, InResourceInfo,
-                              InMotionVectorsInfo, OutResourceInfo);
+        return DispatchNeural(sharpnessShader, optiVariant, InCmdList, InConstants, InResourceInfo, InMotionVectorsInfo,
+                              OutResourceInfo);
     }
     else if (sharpnessShader == SharpenShader::RCAS)
     {

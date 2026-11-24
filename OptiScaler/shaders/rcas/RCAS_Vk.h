@@ -21,13 +21,13 @@ class RCAS_Vk : public Shader_Vk, public RCAS_Common
     VkPipeline _pipelineDASDA = VK_NULL_HANDLE;
 
     // RCAS is used when the BaBa Neural / OptiSharpen pipeline can't be created
-    // Uses the same resources as the plain RCAS. OptiSharpen has one per precision, created when first used.
+    // Uses the same resources as the plain RCAS. OptiSharpen has one per variant, created when first used.
     VkPipeline _pipelineBaba = VK_NULL_HANDLE;
-    std::array<VkPipeline, (size_t) OptiPrecision::Count> _pipelineOpti {};
-    std::array<bool, (size_t) OptiPrecision::Count> _optiPipelineFailed {};
+    std::array<VkPipeline, (size_t) OptiVariant::Count> _pipelineOpti {};
+    std::array<bool, (size_t) OptiVariant::Count> _optiPipelineFailed {};
     bool _neuralFallbackLogged = false;
 
-    bool EnsureOptiPipeline(OptiPrecision InPrecision);
+    bool EnsureOptiPipeline(OptiVariant InVariant);
 
     void UpdateDescriptorSet(VkDescriptorBufferInfo bufferInfo, int setIndex, VkImageView inputView,
                              VkImageView motionView, VkImageView outputView);
@@ -37,8 +37,8 @@ class RCAS_Vk : public Shader_Vk, public RCAS_Common
     bool DispatchRCAS(VkCommandBuffer InCmdList, RcasConstants InConstants, const VkImageInfo& InResourceInfo,
                       const VkImageInfo& InMotionVectorsInfo, const VkImageInfo& OutResourceInfo);
 
-    // BaBa Neural or OptiSharpen, same bindings and constants. InPrecision only matters for OptiSharpen.
-    bool DispatchNeural(SharpenShader InShader, OptiPrecision InPrecision, VkCommandBuffer InCmdList,
+    // BaBa Neural or OptiSharpen, same bindings and constants. InVariant only matters for OptiSharpen.
+    bool DispatchNeural(SharpenShader InShader, OptiVariant InVariant, VkCommandBuffer InCmdList,
                         RcasConstants InConstants, const VkImageInfo& InResourceInfo,
                         const VkImageInfo& InMotionVectorsInfo, const VkImageInfo& OutResourceInfo);
 
