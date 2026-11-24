@@ -798,6 +798,7 @@ static constexpr auto kAmdCardInfo = []() consteval
         { kGfx10_3_3, 0x163F, 0xE1, kGfx10_3, true, "gfx1033",
           "AMD Radeon(TM) Navi Graphics Custom Made for Magic Leap" },
         { kGfx10_3_3, 0x163F, 0xAF, kGfx10_3, true, "gfx1033", "AMD Radeon(TM) Graphics" },
+        { kGfx10_3_3, 0x1435, 0xAE, kGfx10_3, true, "gfx1033", "AMD Custom GPU 0932" },
 
         { kGfx10_3_4, 0x7420, 0x00, kGfx10_3, false, "gfx1034", "AMD Radeon(TM) Graphics" },
         { kGfx10_3_4, 0x7422, 0x00, kGfx10_3, false, "gfx1034", "AMD Radeon PRO W6400" },
