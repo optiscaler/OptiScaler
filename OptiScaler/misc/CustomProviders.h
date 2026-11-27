@@ -19,8 +19,8 @@
 //   custom/<name>/dlssg      nvngx_dlssg replacement, an FG Nvngx entry
 //   custom/<name>/dlssd      nvngx_dlssd replacement, a ray reconstruction (RRUpscaler) entry
 // The dll can have any name. When the folder has more dlls, like ones the dll loads itself, the standard name of the
-// kind is used (amd_fidelityfx_upscaler_dx12.dll, nvngx.dll...), else the first one. A Vulkan FFX dll other than
-// amd_fidelityfx_vk.dll takes the V2 backend type of FFX SDK 2.x.
+// kind is used (amd_fidelityfx_upscaler_dx12.dll, nvngx.dll...), else the first one with the kind's entry points, else
+// the first one. A Vulkan FFX dll other than amd_fidelityfx_vk.dll takes the V2 backend type of FFX SDK 2.x.
 namespace CustomProviders
 {
 // Same values as OptiProviderKind
@@ -43,6 +43,9 @@ struct KindInfo
     const wchar_t* folder;
     // Fixed size, an initializer_list in an inline function's static differs between translation units
     const wchar_t* standardNames[2];
+    // Without a standard name, the first dll exporting one of these is the provider. The dlls it loads itself can
+    // sort before it, like XeSS's libxell.dll and libxess_fg.dll beside a dlssg replacement.
+    const char* entryPoints[2];
 };
 
 inline const KindInfo& Info(Kind kind)
@@ -53,7 +56,7 @@ inline const KindInfo& Info(Kind kind)
         { L"ffx_fg", { L"amd_fidelityfx_framegeneration_dx12.dll", L"amd_fidelityfx_dx12.dll" } },
         { L"ffx_fg_vk", { L"amd_fidelityfx_framegeneration_vk.dll", L"amd_fidelityfx_vk.dll" } },
         { L"dlss", { L"nvngx.dll" } },
-        { L"dlssg", { L"nvngx_dlssg.dll" } },
+        { L"dlssg", { L"nvngx_dlssg.dll" }, { "NVSDK_NGX_D3D12_Init", "NVSDK_NGX_VULKAN_Init" } },
         { L"dlssd", { L"nvngx_dlssd.dll" } },
     };
 
@@ -67,6 +70,29 @@ inline std::filesystem::path Root()
 
 inline std::filesystem::path Folder(const std::string& name) { return Root() / string_to_wstring(name); }
 
+// Whether the dll has the export, read from its export table with the dll mapped as an image resource so none of its
+// code runs (checked once per dll and export)
+inline bool FileHasExport(const std::filesystem::path& path, const char* exportName)
+{
+    static std::mutex cacheMutex;
+    static std::map<std::pair<std::wstring, std::string>, bool> cache;
+
+    std::scoped_lock lock(cacheMutex);
+    auto [it, inserted] = cache.try_emplace({ path.wstring(), exportName });
+
+    if (inserted)
+    {
+        // Normal call on purpose
+        auto image = LoadLibraryExW(path.c_str(), NULL, LOAD_LIBRARY_AS_IMAGE_RESOURCE | LOAD_LIBRARY_AS_DATAFILE);
+        it->second = ManualGetProcAddress(image, exportName) != nullptr;
+
+        if (image != nullptr)
+            FreeLibrary(image);
+    }
+
+    return it->second;
+}
+
 // The dll in custom/<name>/<kind>, empty when there's none
 inline std::filesystem::path DllPath(const std::string& name, Kind kind)
 {
@@ -79,13 +105,28 @@ inline std::filesystem::path DllPath(const std::string& name, Kind kind)
             return folder / standardName;
     }
 
+    const auto& entryPoints = Info(kind).entryPoints;
+    std::filesystem::path first;
+
     for (auto& entry : std::filesystem::directory_iterator(folder, error))
     {
-        if (_wcsicmp(entry.path().extension().c_str(), L".dll") == 0)
+        if (_wcsicmp(entry.path().extension().c_str(), L".dll") != 0)
+            continue;
+
+        if (entryPoints[0] == nullptr)
+            return entry.path();
+
+        if (first.empty())
+            first = entry.path();
+
+        auto hasEntryPoint = [&entry](const char* entryPoint)
+        { return entryPoint != nullptr && FileHasExport(entry.path(), entryPoint); };
+
+        if (std::ranges::any_of(entryPoints, hasEntryPoint))
             return entry.path();
     }
 
-    return {};
+    return first;
 }
 
 // Where the exports of a custom provider come from, a dll from its folder or a plugin's resolver
@@ -178,34 +219,14 @@ inline std::optional<PluginProvider> FindPlugin(const std::string& name, Kind ki
     return std::nullopt;
 }
 
-// Whether the name's provider of that kind has the export: a plugin's resolver, else the folder dll's export table,
-// mapped as an image resource so none of its code runs (checked once per dll and export)
+// Whether the name's provider of that kind has the export: a plugin's resolver, else the folder dll's export table
 inline bool HasExport(const std::string& name, Kind kind, const char* exportName)
 {
     if (auto plugin = FindPlugin(name, kind))
         return plugin->getProc(plugin->userData, exportName) != nullptr;
 
     auto path = DllPath(name, kind);
-    if (path.empty())
-        return false;
-
-    static std::mutex cacheMutex;
-    static std::map<std::pair<std::wstring, std::string>, bool> cache;
-
-    std::scoped_lock lock(cacheMutex);
-    auto [it, inserted] = cache.try_emplace({ path.wstring(), exportName });
-
-    if (inserted)
-    {
-        // Normal call on purpose
-        auto image = LoadLibraryExW(path.c_str(), NULL, LOAD_LIBRARY_AS_IMAGE_RESOURCE | LOAD_LIBRARY_AS_DATAFILE);
-        it->second = ManualGetProcAddress(image, exportName) != nullptr;
-
-        if (image != nullptr)
-            FreeLibrary(image);
-    }
-
-    return it->second;
+    return !path.empty() && FileHasExport(path, exportName);
 }
 
 // Exports of the name's kind, a plugin's first, then the folder's dll. Empty when there are none.
