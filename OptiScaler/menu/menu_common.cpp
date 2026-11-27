@@ -9379,11 +9379,15 @@ void MenuCommon::RenderVsyncSettings(RenderMenuContext& ctx)
             }
         }
     }
-    else
+
+    // Vulkan games, D3D games under Proton once dxvk/vkd3d-proton's swapchain is seen (its present mode list), and
+    // native D3D games (Windows), where FIFO, Mailbox and Immediate map to the DXGI present's sync interval and tearing
     {
-        SectionTitle("V-Sync Settings");
+        const bool underProton = state.swapchainApi != Vulkan && state.vkPresentModeMask != 0;
+        const bool nativeDxgi = state.swapchainApi != Vulkan && state.vkPresentModeMask == 0;
+        SectionTitle(underProton ? "Present Mode (Proton)" : (nativeDxgi ? "Present Mode" : "V-Sync Settings"));
         {
-            ScopedID sectionId { "V-Sync Settings" };
+            ScopedID sectionId { "Vulkan Present Mode" };
 
             const auto& forced = config->VulkanPresentMode;
             const char* preview = forced.has_value() ? VulkanHooks::PresentModeName(forced.value()) : "Game's";
@@ -9401,7 +9405,10 @@ void MenuCommon::RenderVsyncSettings(RenderMenuContext& ctx)
                 {
                     const auto& entry = VulkanHooks::PresentModes[i];
 
-                    if ((state.vkPresentModeMask & (1u << i)) == 0)
+                    if (nativeDxgi
+                            ? (entry.mode != VK_PRESENT_MODE_IMMEDIATE_KHR &&
+                               entry.mode != VK_PRESENT_MODE_MAILBOX_KHR && entry.mode != VK_PRESENT_MODE_FIFO_KHR)
+                            : (state.vkPresentModeMask & (1u << i)) == 0)
                         continue;
 
                     if (ImGui::Selectable(entry.name, forced.has_value() && forced.value() == entry.mode))
@@ -9421,7 +9428,10 @@ void MenuCommon::RenderVsyncSettings(RenderMenuContext& ctx)
                         "FIFO Relaxed: V-Sync, tears when below the refresh rate.\n"
                         "FIFO Latest Ready: V-Sync, shows the newest ready frame at each refresh.\n\n"
                         "Mailbox and FIFO Latest Ready can drop generated frames above the refresh rate.\n"
-                        "Only modes the display supports are listed.");
+                        "Only modes the display supports are listed.\n\n"
+                        "D3D games on Windows: FIFO is V-Sync, Mailbox is no V-Sync without tearing (windowed or\n"
+                        "borderless), Immediate is no V-Sync with tearing. Applies at the next frame and takes\n"
+                        "priority over Override Vsync.");
 
             if (state.vkGamePresentMode >= 0)
                 ImGui::Text("Game's present mode: %s", VulkanHooks::PresentModeName(state.vkGamePresentMode));

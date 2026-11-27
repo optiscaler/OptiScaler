@@ -100,6 +100,12 @@ static VkDevice _fifoLatestReadyDevice = VK_NULL_HANDLE;
 // The game's swapchain, its presents ask the game to recreate it when the present mode override changes
 static VkSwapchainKHR _gameSwapchain = VK_NULL_HANDLE;
 
+// Present mode override for the swapchains dxvk/vkd3d-proton create for D3D games under Proton
+static VkPhysicalDevice _dxgiPD = VK_NULL_HANDLE;
+static VkSwapchainKHR _dxgiSwapchain = VK_NULL_HANDLE;
+static VkPresentModeKHR _dxgiForcedMode = VK_PRESENT_MODE_MAX_ENUM_KHR;
+static VkPresentModeKHR _dxgiForcedModes[8] {};
+
 // Set while the FG output handles a swapchain call
 static thread_local bool _inFGCall = false;
 
@@ -810,6 +816,11 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
                 LOG_DEBUG("_device captured: {0:X}", (UINT64) _device);
                 MenuOverlayVk::DeviceCreated(_device, &localCreateInfo);
             }
+            else
+            {
+                // The D3D device's physical device, for the present mode override of its swapchain
+                _dxgiPD = physicalDevice;
+            }
         }
 
         ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
@@ -973,6 +984,31 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
             fg->Present();
     }
 
+    // dxvk/vkd3d-proton switch present modes per present (VK_EXT_swapchain_maintenance1), keep the forced one
+    VkSwapchainPresentModeInfoEXT* dxgiModeInfo = nullptr;
+    const VkPresentModeKHR* dxgiModesOld = nullptr;
+    if (dxgiBacked && _dxgiForcedMode != VK_PRESENT_MODE_MAX_ENUM_KHR)
+    {
+        for (auto next = (VkBaseOutStructure*) localPresentInfo.pNext; next != nullptr; next = next->pNext)
+        {
+            if (next->sType != VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_EXT)
+                continue;
+
+            auto info = (VkSwapchainPresentModeInfoEXT*) next;
+            if (info->swapchainCount > std::size(_dxgiForcedModes) || info->pPresentModes == nullptr)
+                break;
+
+            for (uint32_t i = 0; i < info->swapchainCount; i++)
+                _dxgiForcedModes[i] =
+                    localPresentInfo.pSwapchains[i] == _dxgiSwapchain ? _dxgiForcedMode : info->pPresentModes[i];
+
+            dxgiModeInfo = info;
+            dxgiModesOld = info->pPresentModes;
+            info->pPresentModes = _dxgiForcedModes;
+            break;
+        }
+    }
+
     // original call
     ScopedVulkanCreatingSC scopedVulkanCreatingSC {};
     VkResult result;
@@ -986,6 +1022,9 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
     {
         result = o_QueuePresentKHR(queue, &localPresentInfo);
     }
+
+    if (dxgiModeInfo != nullptr)
+        dxgiModeInfo->pPresentModes = dxgiModesOld;
 
     // dxvk/vkd3d-proton's are counted by the DXGI swapchain
     if (!dxgiBacked)
@@ -1002,6 +1041,15 @@ static VkResult hkvkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPres
                   _gameSwapchain) != localPresentInfo.pSwapchains + localPresentInfo.swapchainCount)
     {
         LOG_TRACE("Present mode override changed, asking the game to recreate its swapchain");
+        result = VK_SUBOPTIMAL_KHR;
+    }
+
+    // Same for dxvk/vkd3d-proton, they recreate their swapchain on suboptimal
+    if (State::Instance().vkPresentModeChanged && result == VK_SUCCESS && dxgiBacked &&
+        _dxgiSwapchain != VK_NULL_HANDLE &&
+        std::find(localPresentInfo.pSwapchains, localPresentInfo.pSwapchains + localPresentInfo.swapchainCount,
+                  _dxgiSwapchain) != localPresentInfo.pSwapchains + localPresentInfo.swapchainCount)
+    {
         result = VK_SUBOPTIMAL_KHR;
     }
 
@@ -1060,8 +1108,17 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
         }
     }
 
-    // Present mode override, the FG outputs create their swapchains from this create info too
-    if (pCreateInfo != nullptr && !State::Instance().vulkanSkipHooks && !dxgiBacked && _PD != VK_NULL_HANDLE)
+    // Present mode override, the FG outputs create their swapchains from this create info too. dxvk/vkd3d-proton's
+    // (D3D games under Proton) use the D3D device's physical device
+    const VkPhysicalDevice modePD = dxgiBacked ? _dxgiPD : _PD;
+    VkSwapchainPresentModesCreateInfoEXT* dxgiModeList = nullptr;
+    uint32_t dxgiModeListCount = 0;
+    const VkPresentModeKHR* dxgiModeListModes = nullptr;
+    static VkPresentModeKHR dxgiListMode = VK_PRESENT_MODE_FIFO_KHR;
+    if (dxgiBacked)
+        _dxgiForcedMode = VK_PRESENT_MODE_MAX_ENUM_KHR;
+
+    if (pCreateInfo != nullptr && !State::Instance().vulkanSkipHooks && modePD != VK_NULL_HANDLE)
     {
         auto& state = State::Instance();
         state.vkGamePresentMode = pCreateInfo->presentMode;
@@ -1069,10 +1126,10 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
         uint32_t count = 0;
         std::vector<VkPresentModeKHR> supported;
 
-        if (vkGetPhysicalDeviceSurfacePresentModesKHR(_PD, pCreateInfo->surface, &count, nullptr) == VK_SUCCESS)
+        if (vkGetPhysicalDeviceSurfacePresentModesKHR(modePD, pCreateInfo->surface, &count, nullptr) == VK_SUCCESS)
         {
             supported.resize(count);
-            vkGetPhysicalDeviceSurfacePresentModesKHR(_PD, pCreateInfo->surface, &count, supported.data());
+            vkGetPhysicalDeviceSurfacePresentModesKHR(modePD, pCreateInfo->surface, &count, supported.data());
             supported.resize(count);
         }
 
@@ -1096,7 +1153,7 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
         for (auto next = (const VkBaseInStructure*) pCreateInfo->pNext; next != nullptr; next = next->pNext)
             gameModeList |= next->sType == VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODES_CREATE_INFO_EXT;
 
-        if (const auto& mode = Config::Instance()->VulkanPresentMode; mode.has_value() && !gameModeList)
+        if (const auto& mode = Config::Instance()->VulkanPresentMode; mode.has_value() && (!gameModeList || dxgiBacked))
         {
             const auto entry = std::ranges::find(VulkanHooks::PresentModes, (VkPresentModeKHR) mode.value(),
                                                  &VulkanHooks::PresentModeEntry::mode);
@@ -1113,6 +1170,26 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
                 }
 
                 localCreateInfo.presentMode = entry->mode;
+
+                if (dxgiBacked)
+                {
+                    _dxgiForcedMode = entry->mode;
+
+                    // dxvk/vkd3d-proton's present mode list becomes the forced mode only, restored after the call
+                    for (auto next = (VkBaseOutStructure*) pCreateInfo->pNext; next != nullptr; next = next->pNext)
+                    {
+                        if (next->sType != VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODES_CREATE_INFO_EXT)
+                            continue;
+
+                        dxgiModeList = (VkSwapchainPresentModesCreateInfoEXT*) next;
+                        dxgiModeListCount = dxgiModeList->presentModeCount;
+                        dxgiModeListModes = dxgiModeList->pPresentModes;
+                        dxgiListMode = entry->mode;
+                        dxgiModeList->presentModeCount = 1;
+                        dxgiModeList->pPresentModes = &dxgiListMode;
+                        break;
+                    }
+                }
             }
             else
             {
@@ -1188,6 +1265,19 @@ static VkResult hkvkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateI
 
     if (result == VK_SUCCESS && lowLatencySwapchain)
         VulkanHooks::SetLowLatencySwapchain(*pSwapchain);
+
+    if (dxgiModeList != nullptr)
+    {
+        dxgiModeList->presentModeCount = dxgiModeListCount;
+        dxgiModeList->pPresentModes = dxgiModeListModes;
+    }
+
+    if (result == VK_SUCCESS && dxgiBacked && pSwapchain != nullptr && *pSwapchain != VK_NULL_HANDLE &&
+        !State::Instance().vulkanSkipHooks)
+    {
+        _dxgiSwapchain = *pSwapchain;
+        State::Instance().vkPresentModeChanged = false;
+    }
 
     if (result == VK_SUCCESS && device != VK_NULL_HANDLE && pCreateInfo != nullptr && *pSwapchain != VK_NULL_HANDLE &&
         !State::Instance().vulkanSkipHooks && !dxgiBacked)

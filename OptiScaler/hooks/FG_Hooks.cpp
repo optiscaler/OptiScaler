@@ -1539,6 +1539,35 @@ HRESULT FGHooks::FGPresent(IDXGISwapChain* This, UINT SyncInterval, UINT Flags,
         LOG_DEBUG("Final SyncInterval: {}", SyncInterval);
     }
 
+    // Present mode on native D3D (no dxvk/vkd3d-proton swapchain underneath, Windows): FIFO is V-Sync, Mailbox is
+    // no V-Sync without tearing (the compositor shows the newest frame), Immediate is no V-Sync with tearing.
+    // Takes priority over ForceVsync, applies at the next present.
+    if (willPresent && config->VulkanPresentMode.has_value() && state.vkPresentModeMask == 0)
+    {
+        const int mode = config->VulkanPresentMode.value();
+        const int IMMEDIATE = 0, MAILBOX = 1, FIFO = 2;
+
+        if (mode == FIFO)
+        {
+            SyncInterval = 1;
+            Flags &= ~DXGI_PRESENT_ALLOW_TEARING;
+        }
+        else if (mode == MAILBOX)
+        {
+            SyncInterval = 0;
+            Flags &= ~DXGI_PRESENT_ALLOW_TEARING;
+        }
+        else if (mode == IMMEDIATE)
+        {
+            SyncInterval = 0;
+
+            DXGI_SWAP_CHAIN_DESC scDesc {};
+            if (This->GetDesc(&scDesc) == S_OK && (scDesc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) != 0 &&
+                scDesc.Windowed)
+                Flags |= DXGI_PRESENT_ALLOW_TEARING;
+        }
+    }
+
     // FSR-FG and XeFG with the Reflex output: the game's present as DLSSG reports it
     ID3D12CommandQueue* gameQueue = nullptr;
     uint32_t frameMultiplier = 1;
