@@ -4,6 +4,7 @@
 #include <proxies/FfxApi_Proxy.h>
 #include "FFXFeature_Dx12.h"
 #include <misc/DeferredRelease.h>
+#include <fsr4/FSR4Models.h>
 #include "MathUtils.h"
 
 using namespace OptiMath;
@@ -123,6 +124,7 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
         }
 
         paramColor = SubrectInput(InCommandList, paramColor, SubrectSlot::Color);
+        paramColor = ClampColorInput(InCommandList, paramColor);
         params.color = ffxApiGetResourceDX12(paramColor, FFX_API_RESOURCE_STATE_COMPUTE_READ);
     }
     else
@@ -516,6 +518,34 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
     return true;
 }
 
+ID3D12Resource* FFXFeatureDx12::ClampColorInput(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InColor)
+{
+    if (Version().major < 4 || !ColorClamp_Dx12::NeedsClamp(InColor->GetDesc().Format))
+        return InColor;
+
+    // Only FP8 is known to handle +Inf, an unknown model gets the clamp too
+    if (FSR4Models::ActiveModel(_upscalerModule) == FSR4Model::FP8)
+        return InColor;
+
+    if (_colorClamp == nullptr)
+        _colorClamp = std::make_unique<ColorClamp_Dx12>("ColorClamp", Device);
+
+    if (!_colorClamp->IsInit() ||
+        !_colorClamp->CreateBufferResource(Device, InColor, D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
+    {
+        return InColor;
+    }
+
+    _colorClamp->SetBufferState(InCommandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+    if (!_colorClamp->Dispatch(InCommandList, InColor))
+        return InColor;
+
+    _colorClamp->SetBufferState(InCommandList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+    return _colorClamp->Buffer();
+}
+
 bool FFXFeatureDx12::InitFFX(const NVSDK_NGX_Parameter* InParameters)
 {
     LOG_FUNC();
@@ -564,6 +594,9 @@ bool FFXFeatureDx12::InitFFX(const NVSDK_NGX_Parameter* InParameters)
         override.header.type = FFX_API_DESC_TYPE_OVERRIDE_VERSION;
         override.versionId = versions.ids[upscalerIndex.value_or_default()];
         backendDesc.header.pNext = &override.header;
+
+        _upscalerModule =
+            _customUpscaler != nullptr ? _customUpscaler->module.dll : FfxApiProxy::UpscalerModule(override.versionId);
 
         // FSR4's own auto exposure reads the whole color texture instead of just renderSize. On UE the padding
         // outside the view can hold garbage that makes it think the scene is very bright and black out the frame.

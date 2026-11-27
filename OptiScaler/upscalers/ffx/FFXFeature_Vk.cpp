@@ -6,6 +6,7 @@
 #include "nvsdk_ngx_vk.h"
 #include "MathUtils.h"
 #include <fsr4/FSR4DriverProviderVk.h>
+#include <fsr4/FSR4Models.h>
 
 using namespace OptiMath;
 
@@ -157,6 +158,45 @@ FFXFeatureVk::FFXFeatureVk(unsigned int InHandleId, NVSDK_NGX_Parameter* InParam
     // Driver provided FSR 4 works without the FFX SDK
     if (FSR4DriverProviderVk::Init())
         _moduleLoaded = true;
+}
+
+NVSDK_NGX_Resource_VK* FFXFeatureVk::ClampColorInput(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Resource_VK* InColor)
+{
+    if (InColor == nullptr || Version().major < 4)
+        return InColor;
+
+    const auto& info = InColor->Resource.ImageViewInfo;
+
+    if (!ColorClamp_Vk::NeedsClamp(info.Format))
+        return InColor;
+
+    // Only FP8 is known to handle +Inf, an unknown model gets the clamp too
+    if (_ffx != nullptr && FSR4Models::ActiveModel(_ffx->dll) == FSR4Model::FP8)
+        return InColor;
+
+    if (_colorClamp == nullptr)
+        _colorClamp = std::make_unique<ColorClamp_Vk>("ColorClamp", Device, PhysicalDevice);
+
+    if (!_colorClamp->IsInit() || !_colorClamp->CreateImage(info.Width, info.Height))
+        return InColor;
+
+    _colorClamp->SetImageLayout(InCmdBuffer, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
+    if (!_colorClamp->Dispatch(InCmdBuffer, info.ImageView))
+        return InColor;
+
+    _colorClamp->SetImageLayout(InCmdBuffer, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+    _clampedColor = *InColor;
+    _clampedColor.ReadWrite = false;
+
+    auto& clampedInfo = _clampedColor.Resource.ImageViewInfo;
+    clampedInfo.ImageView = _colorClamp->GetImageView();
+    clampedInfo.Image = _colorClamp->GetImage();
+    clampedInfo.SubresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+    clampedInfo.Format = VK_FORMAT_R16G16B16A16_SFLOAT;
+
+    return &_clampedColor;
 }
 
 bool FFXFeatureVk::InitFFX(const NVSDK_NGX_Parameter* InParameters)
@@ -318,6 +358,7 @@ bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Param
     NVSDK_NGX_Resource_VK* paramColor = nullptr;
     InParameters->Get(NVSDK_NGX_Parameter_Color, (void**) &paramColor);
     paramColor = SubrectInput(InCmdBuffer, paramColor, SubrectSlot::Color);
+    paramColor = ClampColorInput(InCmdBuffer, paramColor);
 
     if (paramColor)
     {

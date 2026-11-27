@@ -5,6 +5,7 @@
 #include "vk/ffx_api_vk.h"
 #include <proxies/FfxApi_Proxy.h>
 #include <shaders/velocity_convert/VC_Vk.h>
+#include <shaders/color_clamp/CC_Vk.h>
 
 class FFXFeatureVk : public FFXFeature, public IFeature_Vk
 {
@@ -16,6 +17,12 @@ class FFXFeatureVk : public FFXFeature, public IFeature_Vk
     CustomFfxModule* _customUpscaler = nullptr;
 
     std::unique_ptr<VelocityConvert_Vk> _velocityConvert = nullptr;
+
+    std::unique_ptr<ColorClamp_Vk> _colorClamp = nullptr;
+    NVSDK_NGX_Resource_VK _clampedColor {};
+
+    // Clamped copy of the color for FSR 4 models that can't handle non finite input, the color itself otherwise
+    NVSDK_NGX_Resource_VK* ClampColorInput(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Resource_VK* InColor);
 
     // Last logged inputs of the driver provided FSR 4
     std::string _lastFsr4Inputs;
