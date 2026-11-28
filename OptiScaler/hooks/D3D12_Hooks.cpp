@@ -4,6 +4,7 @@
 
 #include <Util.h>
 #include <Config.h>
+#include <misc/CustomProviders.h>
 
 #include <magic_enum.hpp>
 
@@ -33,6 +34,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <memory>
 #include <type_traits>
 
@@ -2509,7 +2511,32 @@ static void HookToDevice(ID3D12Device* InDevice)
     if (State::Instance().activeFgOutput == FGOutput::DLSSG && !State::Instance().creatingD3DDevice &&
         StreamlineProxy::LoadStreamline())
     {
-        StreamlineProxy::InitWithD3D12(InDevice);
+        // RDR2 probes D3D12 before starting its Vulkan renderer. slInit chooses an API for
+        // the lifetime of the process. The real DX12 swapchain path (DLSSG_Dx12's ctor)
+        // still calls InitWithD3D12; Vulkan selects its API in CreateFGFeature instead.
+        if (State::Instance().gameQuirks & GameQuirk::DeferStreamlineUntilRenderApi)
+        {
+            LOG_INFO("Deferring Streamline API selection for RDR2's D3D12 device");
+            // The custom DLL used to load during the eager slInit. Preserve its early
+            // hook installation WITHOUT selecting a render API: XeMFG needs to see
+            // vkCreateInstance as well as vkCreateDevice. Loading it from either of
+            // those callbacks is too late for the call already in progress.
+            if (State::Instance().activeFgNvngx == FGNvngxReplacement::Custom)
+            {
+                // A provider may create D3D12 devices during load. Do not recursively
+                // load it or wait on a once_flag owned by this same thread.
+                static std::atomic_bool preloadStarted { false };
+                if (!preloadStarted.exchange(true))
+                {
+                    const auto& name = State::Instance().activeFgNvngxCustom;
+                    LOG_INFO("Preloading custom DLSSG {} before RDR2 selects its rendering API", name);
+                    if (!CustomProviders::Load(name, CustomProviders::Kind::Dlssg))
+                        LOG_ERROR("Custom DLSSG preload failed; check the provider path and restart the game");
+                }
+            }
+        }
+        else
+            StreamlineProxy::InitWithD3D12(InDevice);
     }
 }
 
