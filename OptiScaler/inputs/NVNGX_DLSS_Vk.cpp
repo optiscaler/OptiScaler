@@ -5,6 +5,7 @@
 
 #include "NVNGX_DLSS.h"
 #include <framegen/nvngx/Nvngx_FG.h>
+#include <framegen/dlssg/DLSSG_NvngxDynamic.h>
 #include <upscalers/nvngx/Nvngx_RR.h>
 #include <inputs/FG/Upscaler_Inputs_Vk.h>
 #include "NVNGX_Parameter.h"
@@ -960,12 +961,17 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_EvaluateFeature(VkCommandBuffer 
 
         // MFG can evaluate once per generated frame, only the first one is a new game frame
         uint32_t frameIndex = 1;
-        if (InParameters != nullptr)
-            InParameters->Get("DLSSG.MultiFrameIndex", &frameIndex);
+        if (InParameters == nullptr ||
+            InParameters->Get("DLSSG.MultiFrameIndex", &frameIndex) != NVSDK_NGX_Result_Success)
+        {
+            frameIndex = 1;
+        }
 
         if (state.activeFgInput == FGInput::NvngxFG && frameIndex <= 1)
             state.gameFrameRate.Present(Util::MillisecondsNow());
         fgEvalSeen = true;
+
+        DlssgNvngxDynamic::OnEvaluate(frameIndex);
     }
     else if (fgEvalSeen && ++evalWithoutFG == 6)
     {

@@ -306,6 +306,7 @@ bool DLSSG_Vk::CreateSwapchain(VkDevice device, const VkSwapchainCreateInfoKHR* 
     StreamlineProxy::SetFeatureLoaded()(sl::kFeatureDLSS_G, true);
 
     ShowSurface(pCreateInfo->surface);
+    _hwnd = VulkanHooks::SurfaceWindow(pCreateInfo->surface);
 
     auto result = _sl.createSwapchain(device, pCreateInfo, pAllocator, pSwapchain);
 
@@ -457,7 +458,7 @@ bool DLSSG_Vk::Dispatch()
         return false;
     }
 
-    SetOptions(false);
+    SetOptions(false, _hwnd);
 
     if (!SetConstants(fIndex, (uint32_t) willDispatchFrame, velocity->width, velocity->height))
         return false;

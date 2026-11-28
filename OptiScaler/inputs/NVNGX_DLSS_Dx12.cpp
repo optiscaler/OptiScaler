@@ -10,6 +10,7 @@
 #include "upscalers/dlss/DLSSFeature_Dx12.h"
 
 #include <framegen/nvngx/Nvngx_FG.h>
+#include <framegen/dlssg/DLSSG_NvngxDynamic.h>
 #include <upscalers/nvngx/Nvngx_RR.h>
 #include "FG/FSR3_Dx12_FG.h"
 #include "FG/Upscaler_Inputs_Dx12.h"
@@ -1169,11 +1170,15 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
 
         // MFG can evaluate once per generated frame, only the first one is a new game frame
         uint32_t frameIndex = 1;
+        if (InParameters->Get("DLSSG.MultiFrameIndex", &frameIndex) != NVSDK_NGX_Result_Success)
+            frameIndex = 1;
         InParameters->Get("DLSSG.MultiFrameIndex", &frameIndex);
 
         if (state.activeFgInput == FGInput::NvngxFG && frameIndex <= 1)
             State::Instance().gameFrameRate.Present(Util::MillisecondsNow());
         ReflexHooks::setDlssgFrameCount(frameCount);
+
+        DlssgNvngxDynamic::OnEvaluate(frameIndex);
 
         float dlssgCameraNear = 0.0f;
         float dlssgCameraFar = 0.0f;
