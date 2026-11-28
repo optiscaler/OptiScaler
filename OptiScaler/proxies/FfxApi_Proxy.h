@@ -1521,7 +1521,7 @@ class FfxApiProxy
             {
                 LOG_DEBUG("Trying to load {}", wstring_to_string(dllNames[i]));
 
-                auto overridePath = Config::Instance()->FfxDx12Path.value_or(L"");
+                auto overridePath = Config::Instance()->FfxVkPath.value_or(L"");
 
                 if (main_vk_hooked.dll == nullptr)
                 {
@@ -1673,7 +1673,7 @@ class FfxApiProxy
             {
                 LOG_DEBUG("Trying to load {}", wstring_to_string(dllNames[i]));
 
-                auto overridePath = Config::Instance()->FfxDx12SRPath.value_or(L"");
+                std::wstring overridePath {};
 
                 if (upscaling_vk_hooked.dll == nullptr)
                 {
